@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 const options = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
 ] as const;
 
 const subscribe = () => () => {};
@@ -21,10 +20,13 @@ type ThemeToggleProps = {
   className?: string;
 };
 
-/** Light / Dark / System selector. The choice is persisted by next-themes. */
+/**
+ * Light / Dark selector. With no stored choice the site follows the operating
+ * system, and the matching option shows as selected; picking one persists it.
+ */
 export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps) {
-  const { theme, setTheme } = useTheme();
-  // The stored preference is unknown on the server, so nothing is marked
+  const { resolvedTheme, setTheme } = useTheme();
+  // The active theme is unknown on the server, so nothing is marked
   // checked until after hydration.
   const mounted = useSyncExternalStore(
     subscribe,
@@ -64,7 +66,7 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
           key={value}
           type="button"
           role="radio"
-          aria-checked={mounted && theme === value}
+          aria-checked={mounted && resolvedTheme === value}
           aria-label={showLabels ? undefined : label}
           title={showLabels ? undefined : label}
           onClick={() => choose(value)}

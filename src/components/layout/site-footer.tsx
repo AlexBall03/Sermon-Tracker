@@ -26,7 +26,7 @@ export function SiteFooter() {
             </Link>
           </nav>
           <p>
-            © {year} {siteConfig.name}
+            {year} {siteConfig.name}
           </p>
         </div>
       </div>

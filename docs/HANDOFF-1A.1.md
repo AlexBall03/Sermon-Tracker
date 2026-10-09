@@ -11,7 +11,7 @@ Completed 9 October 2026. The design-system reference is [ARCHITECTURE.md](../AR
 - **Capabilities** changed from three identical cards to an editorial numbered list with hairlines, icons, and an emerald rule that draws across on hover.
 - **Library section** now shows three idea cards (sermon with a linked point, point, undecided) instead of repeating a list.
 - **Beta notice** is a neutral panel with a gold rule and a faint emerald corner wash.
-- **Theme control** is Light / Dark / System instead of a two-state toggle.
+- **Theme control** is a Light / Dark radio group. There is no System option; the system preference is simply the default until a choice is made.
 - **Logo**: the bookmark moved from below the spine to a ribbon over the top of the left page, and the book was re-centred vertically on the tile. Nothing else in the mark changed, except that the `light` and `mono` variants needed a contrasting ribbon colour (gold and black) because their old ribbon colour matched the page it now sits on. Raster icons and the share image were regenerated; the share card background is now charcoal.
 - No dependencies were added. No routes, metadata, or architecture changed.
 

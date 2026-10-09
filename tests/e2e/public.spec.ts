@@ -97,7 +97,9 @@ test.describe("theme", () => {
 
     await openMenuIfCollapsed(page);
     const themes = page.getByRole("radiogroup", { name: "Colour theme" });
-    await expect(themes.getByRole("radio", { name: "System" })).toBeChecked();
+    // No stored choice yet: the option matching the system preference is selected.
+    await expect(themes.getByRole("radio", { name: "Light" })).toBeChecked();
+    await expect(themes.getByRole("radio")).toHaveCount(2);
 
     await themes.getByRole("radio", { name: "Dark" }).click();
     await expect(html).toHaveClass(/dark/);
@@ -106,9 +108,12 @@ test.describe("theme", () => {
     await page.reload();
     await expect(html).toHaveClass(/dark/);
 
-    // Back to System: the page follows the emulated light preference again.
+    // A manual choice wins over the system preference in both directions.
     await openMenuIfCollapsed(page);
-    await themes.getByRole("radio", { name: "System" }).click();
+    await themes.getByRole("radio", { name: "Light" }).click();
+    await expect(html).not.toHaveClass(/dark/);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.reload();
     await expect(html).not.toHaveClass(/dark/);
   });
 });
