@@ -1,23 +1,82 @@
 "use client";
 
-import { Moon, Sun } from "lucide-react";
+import { useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+const options = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+] as const;
+
+const subscribe = () => () => {};
+
+type ThemeToggleProps = {
+  /** Show the option names beside the icons (used in the mobile menu). */
+  showLabels?: boolean;
+  className?: string;
+};
+
+/** Light / Dark / System selector. The choice is persisted by next-themes. */
+export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps) {
+  const { theme, setTheme } = useTheme();
+  // The stored preference is unknown on the server, so nothing is marked
+  // checked until after hydration.
+  const mounted = useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
+
+  function choose(value: string) {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!document.startViewTransition || reduceMotion) {
+      setTheme(value);
+      return;
+    }
+    document.startViewTransition(() => flushSync(() => setTheme(value)));
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const radios = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const current = radios.indexOf(document.activeElement as HTMLElement);
+    const next = radios[(current + step + radios.length) % radios.length];
+    next.focus();
+    next.click();
+  }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="Toggle colour theme"
-      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+    <div
+      role="radiogroup"
+      aria-label="Colour theme"
+      onKeyDown={onKeyDown}
+      className={cn("inline-flex gap-0.5 rounded-lg border bg-muted p-0.5", className)}
     >
-      {/* Both icons render; CSS picks one, so there is no hydration flash. */}
-      <Sun className="hidden dark:block" />
-      <Moon className="dark:hidden" />
-    </Button>
+      {options.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={mounted && theme === value}
+          aria-label={showLabels ? undefined : label}
+          title={showLabels ? undefined : label}
+          onClick={() => choose(value)}
+          className={cn(
+            "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground aria-checked:bg-surface-raised aria-checked:text-foreground aria-checked:shadow-card dark:aria-checked:bg-accent",
+            showLabels ? "h-10 flex-1 px-3" : "size-7",
+          )}
+        >
+          <Icon className="size-4" aria-hidden />
+          {showLabels && label}
+        </button>
+      ))}
+    </div>
   );
 }

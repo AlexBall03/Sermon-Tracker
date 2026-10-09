@@ -18,10 +18,10 @@ const sharePage = `
 <style>
   html,body{margin:0}
   body{width:1200px;height:630px;display:flex;align-items:center;justify-content:center;gap:56px;
-    background:linear-gradient(140deg,#0e6b4f,#0b3d2e 70%);color:#f8f6ed}
+    background:radial-gradient(60% 80% at 22% 50%,rgba(45,169,133,.22),transparent 70%),#101114;color:#f5f2ea}
   svg{width:230px;height:230px;filter:drop-shadow(0 18px 40px rgba(0,0,0,.35))}
   h1{margin:0;font:600 104px/1 "Playfair Display",serif;letter-spacing:-.02em}
-  p{margin:26px 0 0;font:500 30px/1 Montserrat,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#d4af6b}
+  p{margin:26px 0 0;font:500 30px/1 Montserrat,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#d5b574}
 </style>
 ${mark}<div><h1>Sermon Tracker</h1><p>Capture. Develop. Preach.</p></div>`;
 

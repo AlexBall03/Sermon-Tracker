@@ -7,8 +7,7 @@
     </linearGradient>
   </defs>
   <rect width="100" height="100" rx="23" fill="url(#tile)"/>
-  <g transform="translate(0 -4)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M45.5 68h9v19L50 82.5 45.5 87z" fill="#d4af6b"/>
+  <g transform="translate(0 0.5)" fill="none" stroke-linecap="round" stroke-linejoin="round">
     <path d="M13 30v41h30.5c2.4 0 3.2 4.5 6.5 4.5s4.1-4.5 6.5-4.5H87V30" stroke="#f8f6ed" stroke-width="4"/>
     <path d="M48.5 31C43 25.5 29 24 19 26.6V64c10-2.6 24-1.6 29.5 3.2z" fill="#f8f6ed"/>
     <path d="M51.5 31C57 25.5 71 24 81 26.6V64c-10-2.6-24-1.6-29.5 3.2z" fill="#f8f6ed"/>
@@ -16,6 +15,7 @@
       <path d="M26 38.5c6-1.5 11.5-1 16.5 1.5"/>
       <path d="M26 50.5c6-1.5 11.5-1 16.5 1.5"/>
     </g>
+    <path d="M34.5 22h8v24l-4-4-4 4z" fill="#d4af6b"/>
     <g stroke="#0b3d2e" stroke-width="4">
       <path d="M56 39l2.5 2.6 4-5.2M68 39h7"/>
       <path d="M56 51l2.5 2.6 4-5.2M68 51h7"/>

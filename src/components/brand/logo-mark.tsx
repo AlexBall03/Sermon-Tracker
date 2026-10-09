@@ -2,7 +2,7 @@ import { useId } from "react";
 
 /**
  * Sermon Tracker icon mark: an open Bible with a checklist on the right-hand
- * page and a bookmark, on a rounded-square tile.
+ * page and a bookmark ribbon over the left, on a rounded-square tile.
  *
  * Redrawn as flat vector from the brand board (docs/brand/brand-board.png).
  * The mark is a fixed brand asset, so its colours are literal and do not
@@ -35,14 +35,14 @@ const palettes: Record<
     page: "#0b3d2e",
     ink: "#f8f6ed",
     script: "#a7b89f",
-    bookmark: "#0b3d2e",
+    bookmark: "#d4af6b",
   },
   mono: {
     tile: ["#111111", "#111111"],
     page: "#ffffff",
     ink: "#111111",
     script: "#111111",
-    bookmark: "#ffffff",
+    bookmark: "#111111",
   },
 };
 
@@ -73,9 +73,7 @@ export function LogoMark({ variant = "primary", title, className }: LogoMarkProp
         </linearGradient>
       </defs>
       <rect width="100" height="100" rx="23" fill={`url(#${gradientId})`} />
-      <g transform="translate(0 -4)" fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {/* bookmark */}
-        <path d="M46.6 68h6.8v18L50 82.4 46.6 86z" fill={c.bookmark} />
+      <g transform="translate(0 0.5)" fill="none" strokeLinecap="round" strokeLinejoin="round">
         {/* cover */}
         <path
           d="M14 31v39.5h29.5c2.4 0 3.2 4.5 6.5 4.5s4.1-4.5 6.5-4.5H86V31"
@@ -91,6 +89,8 @@ export function LogoMark({ variant = "primary", title, className }: LogoMarkProp
           <path d="M25 45c6.5-1.6 13-1 18.5 1.8" />
           <path d="M25 53c6.5-1.6 13-1 18.5 1.8" />
         </g>
+        {/* bookmark: ribbon over the top of the left page */}
+        <path d="M36.5 23.5h6v19l-3-3-3 3z" fill={c.bookmark} />
         {/* right page: checklist */}
         <g stroke={c.ink} strokeWidth="2.5">
           <path d="M55.5 37.6l2.2 2.3 3.8-4.8M65 37.5h10.5" />

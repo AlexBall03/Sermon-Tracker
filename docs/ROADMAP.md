@@ -1,12 +1,13 @@
 # Roadmap
 
-Status as of 9 October 2026: **Phase 1A complete. Phase 1B is next.**
+Status as of 9 October 2026: **Phase 1A and the 1A.1 visual redesign are complete. Phase 1B is next.**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
 ## Phase 1 — Foundation, Architecture & Branding
 
 - **1A: Foundation, branding, public experience** — complete
+- **1A.1: Visual redesign and design-system refinement** — complete ([handoff](HANDOFF-1A.1.md))
 - **1B: Database, authentication, administration** — next
 - **1C: Authenticated dashboard, deployment, hardening**
 

@@ -4,7 +4,7 @@ The primary technical reference for Sermon Tracker. Update it when a decision ch
 
 ## Overview
 
-One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (currently the theme provider and toggle).
+One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (currently the theme provider, theme control, and mobile menu).
 
 | Concern       | Choice                                                         |
 | ------------- | -------------------------------------------------------------- |
@@ -36,7 +36,7 @@ src/
   components/
     ui/                     shadcn primitives, restyled to the tokens
     brand/                  LogoMark, Logo
-    layout/                 SiteHeader, SiteFooter, ThemeProvider, ThemeToggle
+    layout/                 SiteHeader, MobileNav, SiteFooter, ThemeProvider, ThemeToggle
     marketing/              Landing-page sections and their sample content
   lib/
     site.ts                 Site config and the route map
@@ -77,57 +77,90 @@ Phase 1B attaches Clerk in `src/proxy.ts`, protects everything under `(app)`, an
 
 ## Design system
 
-Reference: [docs/brand/brand-board.png](docs/brand/brand-board.png).
+Direction (Phase 1A.1): modern editorial SaaS on neutral foundations, with emerald as the accent, gold as a small second accent, selective glass, and a restrained emerald glow. `docs/brand/brand-board.png` is the original board; it predates this direction (green-dominant palette, bookmark below the book) and is kept as a historical reference for the mark and typography only.
 
 ### Tokens
 
 All tokens live in `src/app/globals.css` in three layers:
 
-1. **Brand palette** (`--brand-*`): the only raw brand hex values. Emerald `#0E6B4F`, Forest `#0B3D2E`, Sage `#A7B89F`, Gold `#D4AF6B`, Cream `#F8F6ED`, Charcoal `#1F2937`.
-2. **Semantic tokens**, defined separately for light (`:root`) and dark (`.dark`): `background`, `foreground`, `surface`, `card`, `popover`, `muted`, `border`, `input`, `primary`, `secondary`, `accent`, `gold`, `gold-ink`, `gold-foreground`, `destructive`, `ring`, `nav`, `nav-border`, `on-brand`.
-3. **`@theme inline` mapping**, which exposes them as Tailwind utilities (`bg-primary`, `text-muted-foreground`, ...).
+1. **Brand palette** (`--brand-*`): the only raw brand hex values. Emerald `#127A5B` (light) and `#2DA985` (dark), gold `#A47B35` and `#D5B574`, ink `#18191C`, paper `#F5F2EA`.
+2. **Semantic tokens**, defined separately for light (`:root`) and dark (`.dark`).
+3. **`@theme inline` mapping**, which exposes them as Tailwind utilities (`bg-surface`, `text-muted-foreground`, `shadow-raised`, ...).
+
+| Token                        | Light                 | Dark                  | Use                                    |
+| ---------------------------- | --------------------- | --------------------- | -------------------------------------- |
+| `background`                 | `#F8F7F4`             | `#101114`             | Page canvas                            |
+| `surface` / `card`           | `#FFFFFF`             | `#1B1D22`             | Cards, panels, alternate section bands |
+| `surface-raised` / `popover` | `#FFFFFF`             | `#24262C`             | Menus, dialogs, selected segments      |
+| `muted`, `secondary`         | `#F0EFEB`             | `#24262C`             | Quiet fills                            |
+| `accent`                     | `#EBE9E4`             | `#2A2D34`             | Hover highlight (shadcn meaning)       |
+| `foreground`                 | `#18191C`             | `#F5F2EA`             | Primary text                           |
+| `muted-foreground`           | `#63666D`             | `#A3A4AA`             | Secondary text                         |
+| `border` / `input`           | `#E4E2DC` / `#D3D1CA` | white 9% / 16%        | Hairlines, control borders             |
+| `primary` / `ring`           | `#127A5B`             | `#2DA985` / `#3FBF98` | Actions, selected and focus states     |
+| `gold` / `gold-ink`          | `#A47B35` / `#7D5F24` | `#D5B574`             | Decoration / readable gold text        |
+| `nav` / `nav-border`         | white 72%             | canvas 70%            | Glass surfaces                         |
+| `glow`                       | emerald 16%           | emerald 34%           | Emerald illumination                   |
+
+Shadows are tokens too: `shadow-card` (resting surfaces), `shadow-raised` (the one or two elevated things on a view), `shadow-glow` (emerald; hover on primary actions and featured controls).
 
 Rules:
 
-- Components use semantic utilities only. Do not write brand hex values or `--brand-*` variables in components. The one exception is the logo mark, which is a fixed asset.
-- `accent` keeps the shadcn meaning (a subtle interactive highlight) so added primitives behave. The brand gold is `gold`. Use `gold-ink` when gold must be readable text; plain `gold` fails contrast on cream.
-- Green stays dominant. Gold is for small accents: a rule, a numeral, a bookmark.
-- Dark mode is its own palette of forest-tinted surfaces with a lighter emerald primary, not an inversion.
+- Components use semantic utilities only. Do not write hex values or `--brand-*` variables in components. The one exception is the logo mark, which is a fixed asset.
+- Foundations are neutral. Emerald is for primary actions, selected navigation, active controls, focus rings, eyebrow labels, and small details. It is never the background of a card, section, or bar.
+- Gold is rarer than emerald: a rule, a numeral, a dot. Use `gold-ink` when gold must be readable text; plain `gold` fails contrast on light surfaces.
+- Light emerald is `#127A5B`, slightly darker than the `#168765` first proposed, so that it passes AA both as text on the canvas and under white button labels.
+- Each theme is designed separately. Dark uses visible emerald illumination and inner highlights; light uses soft tinted shadows and hairline borders.
+- `accent` keeps the shadcn meaning (a subtle interactive highlight) so added primitives behave.
 
 ### Utilities
 
-- `bg-brand-surface` — emerald-to-forest gradient panel. Pair with `text-on-brand`.
-- `glass` — translucent blurred surface. Reserved for navigation, floating elements, and dialogs. Content cards stay opaque (`bg-card`).
-- `animate-rise` — short entrance fade. Use sparingly.
+- `container-page` — the shared content container (80rem max, responsive gutters). Header, sections, and footer all use it so edges align.
+- `glass` — translucent blurred surface. Reserved for the navigation bar, menus, and dialogs. Content cards stay opaque. It sets background, blur, and border colour; add the border side you need. A `glass` element nested inside another cannot blur the page, so panels attached to the bar are opaque.
+- `glow-emerald` — blurred radial emerald light. Put it on an absolutely positioned, `aria-hidden` element behind one featured thing per view. Never animate it and never put it behind ordinary cards.
+- `bg-grid` — faint neutral grid texture that fades at the edges; hero only.
+- `animate-rise`, `animate-menu` — short entrance fades. Use sparingly.
+
+### Geometry and layout
+
+- `--radius` is 10px: `rounded-md` 8px (controls inside controls), `rounded-lg` 10px (buttons, inputs), `rounded-xl` 14px (cards, windows). `rounded-full` is for dots and small chips only.
+- Section rhythm is `py-20 lg:py-28`. Alternate `bg-background` and `bg-surface` bands with `border-y` instead of coloured blocks.
+- A shell that renders the fixed header offsets `main` with `pt-16`; in-page anchor targets use `scroll-mt-16` or more.
 
 ### Typography
 
 - `font-display` (Playfair Display): the wordmark and marketing headings. Use sparingly inside the authenticated app.
 - `font-sans` (Montserrat): body copy and all application UI.
-- Eyebrow labels are uppercase with wide tracking, echoing the tagline on the brand board.
+- Eyebrow labels are uppercase, `text-xs`, wide tracking, in `primary`.
+- Section headings are `text-4xl sm:text-5xl` with `leading-[1.1]`; supporting copy is `text-lg` in `muted-foreground`, capped near `max-w-xl`.
 
 ### Motion and accessibility
 
-- Transitions are short and tied to interaction. A global `prefers-reduced-motion` rule disables animation and smooth scrolling.
-- Every focusable element gets a visible `outline` in the `ring` colour. On brand-gradient surfaces add `outline-on-brand`.
+- Transitions are 200–300ms and tied to interaction. A global `prefers-reduced-motion` rule disables animation and smooth scrolling.
+- Every focusable element gets a visible `outline` in the `ring` colour.
 - The root layout provides a skip link; each shell must render `<main id="main">`.
 - Text colour pairs were chosen for WCAG AA contrast in both themes.
 
 ### Theming
 
-`next-themes` sets a `class` on `<html>`, follows the system preference by default, and persists a manual choice. The toggle renders both icons and lets CSS choose, avoiding a hydration mismatch.
+`next-themes` sets a `class` on `<html>`, follows the system preference by default, persists a manual choice in `localStorage`, and applies it before first paint. `ThemeToggle` is a Light / Dark / System radio group; its checked state is set only after hydration, so server and client markup match. A theme change cross-fades through the View Transitions API where supported and motion is allowed. Do not add a second theme mechanism.
+
+### Navigation
+
+`SiteHeader` is a fixed, full-width, 64px glass bar with a bottom hairline. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items; Escape closes it and returns focus. The authenticated shell in Phase 1B/1C should reuse the bar's structure and tokens.
 
 ### Components
 
-shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@latest add <name>` only when a feature needs it, then restyle it to the tokens as `ui/button.tsx` does (pill shape, semantic colours). For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
+shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@latest add <name>` only when a feature needs it, then restyle it to the tokens as `ui/button.tsx` does (`rounded-lg`, semantic colours, `shadow-glow` on primary hover). For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
 
 ### Logo
 
-- `LogoMark` (`components/brand/logo-mark.tsx`) is the icon as inline SVG with the board's four variants: `primary`, `dark`, `light`, `mono`.
+- `LogoMark` (`components/brand/logo-mark.tsx`) is the icon as inline SVG with four variants: `primary`, `dark`, `light`, `mono`. The tile stays emerald; on neutral bars it is the one solid block of green.
+- The bookmark is a ribbon over the top of the left page (changed in 1A.1 from a ribbon below the spine), and the book is centred vertically on the tile. In the `light` and `mono` variants the ribbon takes a colour that contrasts with the page.
 - `Logo` is the lockup: mark plus the wordmark in live Playfair Display text.
-- `public/brand/mark.svg` is the standalone primary mark. `src/app/icon.svg` is a simplified small-size version for the favicon.
-- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`.
-- The mark was redrawn as flat vector from the raster brand board. If a designer-made vector is supplied, replace the paths in `LogoMark`, `mark.svg`, and `icon.svg`, then rerun the script.
+- `public/brand/mark.svg` is the standalone primary mark. `src/app/icon.svg` is a simplified small-size version for the favicon. Keep all three in step.
+- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`. The share card is charcoal with a soft emerald glow.
+- If a designer-made vector is supplied, replace the paths in `LogoMark`, `mark.svg`, and `icon.svg`, then rerun the script.
 - Never substitute a generic icon or emoji for the logo.
 
 ## SEO and metadata

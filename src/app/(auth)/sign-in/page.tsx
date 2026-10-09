@@ -17,7 +17,7 @@ export const metadata: Metadata = {
  */
 export default function SignInPage() {
   return (
-    <div className="rounded-3xl glass p-8 text-center shadow-xl shadow-black/5 sm:p-10">
+    <div className="rounded-xl border bg-surface p-8 text-center shadow-raised sm:p-10">
       <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">
         Invitation-only beta
       </p>

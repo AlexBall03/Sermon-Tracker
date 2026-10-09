@@ -9,87 +9,99 @@
  * 1. Brand palette: the only place raw brand hex values live.
  * 2. Semantic tokens: what components consume. Defined per theme.
  * 3. @theme mapping: exposes semantic tokens as Tailwind utilities.
+ * Foundations are neutral; emerald is the accent, gold a small second accent.
  * See ARCHITECTURE.md > Design system.
  */
 
 :root {
-  --brand-emerald: #0e6b4f;
-  --brand-forest: #0b3d2e;
-  --brand-sage: #a7b89f;
-  --brand-gold: #d4af6b;
-  --brand-cream: #f8f6ed;
-  --brand-charcoal: #1f2937;
+  --brand-emerald: #127a5b;
+  --brand-emerald-bright: #2da985;
+  --brand-gold: #a47b35;
+  --brand-gold-bright: #d5b574;
+  --brand-ink: #18191c;
+  --brand-paper: #f5f2ea;
 
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 }
 
 :root {
-  --background: var(--brand-cream);
-  --foreground: var(--brand-charcoal);
-  --surface: #fffefa;
+  --background: #f8f7f4;
+  --foreground: var(--brand-ink);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
   --card: var(--surface);
   --card-foreground: var(--foreground);
-  --popover: var(--surface);
+  --popover: var(--surface-raised);
   --popover-foreground: var(--foreground);
-  --muted: #efede1;
-  --muted-foreground: #4b5563;
-  --border: #e2dfd0;
-  --input: #d2cfbe;
+  --muted: #f0efeb;
+  --muted-foreground: #63666d;
+  --border: #e4e2dc;
+  --input: #d3d1ca;
   --primary: var(--brand-emerald);
-  --primary-foreground: var(--brand-cream);
-  --secondary: #e3eadf;
-  --secondary-foreground: var(--brand-forest);
+  --primary-foreground: #ffffff;
+  --secondary: #f0efeb;
+  --secondary-foreground: var(--brand-ink);
   /* accent = subtle interactive highlight (shadcn convention) */
-  --accent: #e9eee4;
-  --accent-foreground: var(--brand-forest);
+  --accent: #ebe9e4;
+  --accent-foreground: var(--brand-ink);
   /* gold = restrained brand accent; gold-ink is the text-safe tone */
   --gold: var(--brand-gold);
   --gold-ink: #7d5f24;
-  --gold-foreground: var(--brand-forest);
+  --gold-foreground: #ffffff;
   --destructive: #b42318;
   --ring: var(--brand-emerald);
-  --nav: color-mix(in oklab, var(--brand-cream) 72%, transparent);
-  --nav-border: color-mix(in oklab, var(--brand-forest) 10%, transparent);
-  /* brand surface = the emerald/forest gradient panels */
-  --brand-surface-from: var(--brand-emerald);
-  --brand-surface-to: var(--brand-forest);
-  --on-brand: var(--brand-cream);
+  --nav: color-mix(in oklab, #ffffff 72%, transparent);
+  --nav-border: color-mix(in oklab, #000000 9%, transparent);
+  /* emerald illumination: soft tint in light, visible glow in dark */
+  --glow: color-mix(in oklab, var(--primary) 16%, transparent);
+  --grid-line: color-mix(in oklab, #000000 5%, transparent);
+  --elevation-card: 0 1px 2px rgb(24 25 28 / 0.05), 0 1px 1px rgb(24 25 28 / 0.03);
+  --elevation-raised:
+    0 1px 2px rgb(24 25 28 / 0.05), 0 12px 32px -8px rgb(24 25 28 / 0.12),
+    0 32px 64px -24px rgb(18 122 91 / 0.14);
+  --elevation-glow: 0 6px 20px -6px color-mix(in oklab, var(--primary) 45%, transparent);
 }
 
 .dark {
-  --background: #07231b;
-  --foreground: #f1eee3;
-  --surface: #0d2e24;
+  --background: #101114;
+  --foreground: var(--brand-paper);
+  --surface: #1b1d22;
+  --surface-raised: #24262c;
   --card: var(--surface);
   --card-foreground: var(--foreground);
-  --popover: #103429;
+  --popover: var(--surface-raised);
   --popover-foreground: var(--foreground);
-  --muted: #123a2d;
-  --muted-foreground: #a9b8ac;
-  --border: color-mix(in oklab, var(--brand-sage) 18%, transparent);
-  --input: color-mix(in oklab, var(--brand-sage) 26%, transparent);
-  --primary: #34a982;
-  --primary-foreground: #04130e;
-  --secondary: #14402f;
-  --secondary-foreground: #dde6d8;
-  --accent: #164634;
-  --accent-foreground: var(--foreground);
-  --gold: #ddbd82;
-  --gold-ink: #ddbd82;
-  --gold-foreground: #04130e;
+  --muted: #24262c;
+  --muted-foreground: #a3a4aa;
+  --border: color-mix(in oklab, #ffffff 9%, transparent);
+  --input: color-mix(in oklab, #ffffff 16%, transparent);
+  --primary: var(--brand-emerald-bright);
+  --primary-foreground: #06140f;
+  --secondary: #24262c;
+  --secondary-foreground: var(--brand-paper);
+  --accent: #2a2d34;
+  --accent-foreground: var(--brand-paper);
+  --gold: var(--brand-gold-bright);
+  --gold-ink: var(--brand-gold-bright);
+  --gold-foreground: #17130a;
   --destructive: #f97066;
-  --ring: #4cc49a;
-  --nav: color-mix(in oklab, #07231b 68%, transparent);
-  --nav-border: color-mix(in oklab, var(--brand-sage) 16%, transparent);
-  --brand-surface-from: #0f5a43;
-  --brand-surface-to: #0a3226;
-  --on-brand: var(--brand-cream);
+  --ring: #3fbf98;
+  --nav: color-mix(in oklab, #101114 70%, transparent);
+  --nav-border: color-mix(in oklab, #ffffff 9%, transparent);
+  --glow: color-mix(in oklab, var(--primary) 34%, transparent);
+  --grid-line: color-mix(in oklab, #ffffff 4%, transparent);
+  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --elevation-raised:
+    0 1px 2px rgb(0 0 0 / 0.4), 0 24px 56px -16px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --elevation-glow: 0 0 28px -6px color-mix(in oklab, var(--primary) 60%, transparent);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -111,7 +123,6 @@
   --color-ring: var(--ring);
   --color-nav: var(--nav);
   --color-nav-border: var(--nav-border);
-  --color-on-brand: var(--on-brand);
 
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-playfair), ui-serif, Georgia, serif;
@@ -124,7 +135,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.4);
 
-  --animate-rise: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --shadow-card: var(--elevation-card);
+  --shadow-raised: var(--elevation-raised);
+  --shadow-glow: var(--elevation-glow);
+
+  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-menu: menu 0.18s ease-out both;
 
   @keyframes rise {
     from {
@@ -136,18 +152,57 @@
       transform: translateY(0);
     }
   }
+
+  @keyframes menu {
+    from {
+      opacity: 0;
+      transform: translateY(-0.375rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
-/* Emerald-to-forest brand surface. Pair with `text-on-brand`. */
-@utility bg-brand-surface {
-  background-image: linear-gradient(140deg, var(--brand-surface-from), var(--brand-surface-to));
+/* Shared page container: header, sections, and footer all align to this. */
+@utility container-page {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+
+  @media (min-width: 40rem) {
+    padding-inline: 2rem;
+  }
 }
 
-/* Selective glass: navigation and floating elements only. */
+/* Selective glass: navigation, menus, and dialogs only. Add your own border side. */
 @utility glass {
   background-color: var(--nav);
-  border: 1px solid var(--nav-border);
-  backdrop-filter: blur(18px) saturate(1.4);
+  border-color: var(--nav-border);
+  backdrop-filter: blur(16px) saturate(1.5);
+}
+
+/*
+ * Emerald illumination. Put on an absolutely positioned, aria-hidden element
+ * behind one featured thing per view. Not for ordinary cards.
+ */
+@utility glow-emerald {
+  background-image: radial-gradient(closest-side, var(--glow), transparent);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+/* Faint neutral grid texture that fades out towards the edges. */
+@utility bg-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  background-position: center top;
+  mask-image: radial-gradient(ellipse 70% 75% at 50% 0%, #000 30%, transparent 100%);
+  pointer-events: none;
 }
 
 @layer base {
@@ -165,6 +220,12 @@
   }
   ::selection {
     background-color: color-mix(in oklab, var(--primary) 28%, transparent);
+  }
+
+  /* Theme changes cross-fade (see ThemeToggle). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.2s;
   }
 
   @media (prefers-reduced-motion: reduce) {

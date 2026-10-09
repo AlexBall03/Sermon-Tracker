@@ -1,4 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+/** On small viewports the primary navigation sits behind the menu button. */
+async function openMenuIfCollapsed(page: Page) {
+  const menu = page.getByRole("button", { name: "Open menu" });
+  if (await menu.isVisible()) await menu.click();
+}
 
 test.describe("public landing page", () => {
   test("renders the brand, tagline, and SEO metadata", async ({ page }) => {
@@ -24,6 +30,7 @@ test.describe("public landing page", () => {
 
   test("header sign-in leads to the interim sign-in page", async ({ page }) => {
     await page.goto("/");
+    await openMenuIfCollapsed(page);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Sign in" })
@@ -40,6 +47,36 @@ test.describe("public landing page", () => {
     const skip = page.getByRole("link", { name: "Skip to content" });
     await expect(skip).toBeFocused();
     await expect(skip).toBeInViewport();
+  });
+
+  test("header is a full-width fixed bar that does not cover the heading", async ({ page }) => {
+    await page.goto("/");
+    const header = page.getByRole("banner");
+    const bar = (await header.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    expect(bar.x).toBe(0);
+    expect(bar.y).toBe(0);
+    expect(bar.width).toBe(viewport.width);
+
+    const heading = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    expect(heading.y).toBeGreaterThanOrEqual(bar.height);
+
+    await page.mouse.wheel(0, 600);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect((await header.boundingBox())!.y).toBe(0);
+  });
+
+  test("mobile menu opens, closes with Escape, and returns focus", async ({ page }) => {
+    await page.goto("/");
+    const open = page.getByRole("button", { name: "Open menu" });
+    test.skip(!(await open.isVisible()), "desktop shows the navigation inline");
+
+    await open.click();
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: "How it works" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(nav).toHaveCount(0);
+    await expect(open).toBeFocused();
   });
 });
 
@@ -58,12 +95,21 @@ test.describe("theme", () => {
     const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     const lightBackground = await background();
 
-    await page.getByRole("button", { name: "Toggle colour theme" }).click();
+    await openMenuIfCollapsed(page);
+    const themes = page.getByRole("radiogroup", { name: "Colour theme" });
+    await expect(themes.getByRole("radio", { name: "System" })).toBeChecked();
+
+    await themes.getByRole("radio", { name: "Dark" }).click();
     await expect(html).toHaveClass(/dark/);
     expect(await background()).not.toBe(lightBackground);
 
     await page.reload();
     await expect(html).toHaveClass(/dark/);
+
+    // Back to System: the page follows the emulated light preference again.
+    await openMenuIfCollapsed(page);
+    await themes.getByRole("radio", { name: "System" }).click();
+    await expect(html).not.toHaveClass(/dark/);
   });
 });
 

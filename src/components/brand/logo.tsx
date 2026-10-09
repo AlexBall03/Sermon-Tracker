@@ -12,7 +12,7 @@ export function Logo({ className, markClassName }: LogoProps) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark className={cn("size-8 shrink-0", markClassName)} />
-      <span className="font-display text-[1.3rem] leading-none font-semibold tracking-tight">
+      <span className="font-display text-[1.3rem] leading-none font-semibold tracking-tight whitespace-nowrap">
         {siteConfig.name}
       </span>
     </span>

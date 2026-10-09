@@ -1,6 +1,9 @@
-import { sampleIdeas } from "./sample-ideas";
+import { Link2 } from "lucide-react";
 
-const filters = ["All ideas", "Sermons", "Points", "Undecided"];
+import { cn } from "@/lib/utils";
+import { sampleIdeas, type SampleIdea } from "./sample-ideas";
+
+const [sermon, point, undecided] = sampleIdeas;
 
 /** Static illustration of the planned library. Nothing here is interactive. */
 export function AppPreview() {
@@ -8,19 +11,19 @@ export function AppPreview() {
     <section
       id="preview"
       aria-labelledby="preview-heading"
-      className="mx-auto grid max-w-6xl scroll-mt-24 items-start gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14"
+      className="container-page grid scroll-mt-16 items-center gap-12 py-20 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20 lg:py-28"
     >
-      <div className="lg:sticky lg:top-28">
+      <div>
         <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">
           In development
         </p>
         <h2
           id="preview-heading"
-          className="mt-4 font-display text-3xl leading-tight font-semibold tracking-tight sm:text-4xl"
+          className="mt-4 font-display text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-5xl"
         >
           One library for every idea
         </h2>
-        <p className="mt-5 leading-relaxed text-muted-foreground">
+        <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
           Sermon ideas, reusable points, and thoughts you have not classified yet will live
           together, so nothing is lost between separate lists. This is an idea tracker, not a
           manuscript editor.
@@ -28,47 +31,52 @@ export function AppPreview() {
       </div>
 
       <figure>
-        <div className="overflow-hidden rounded-2xl border bg-card shadow-xl shadow-black/5">
-          <div className="flex items-center gap-2 border-b px-4 py-3">
-            <span className="size-2.5 rounded-full bg-border" />
-            <span className="size-2.5 rounded-full bg-border" />
-            <span className="size-2.5 rounded-full bg-border" />
-            <span className="ml-3 text-xs font-medium text-muted-foreground">Library</span>
-          </div>
-          <div className="flex gap-1.5 overflow-hidden border-b px-4 py-3">
-            {filters.map((filter, index) => (
-              <span
-                key={filter}
-                className={
-                  index === 0
-                    ? "rounded-full bg-primary px-3 py-1 text-xs font-semibold whitespace-nowrap text-primary-foreground"
-                    : "rounded-full bg-muted px-3 py-1 text-xs font-medium whitespace-nowrap text-muted-foreground"
-                }
-              >
-                {filter}
-              </span>
-            ))}
-          </div>
-          <ul className="divide-y">
-            {sampleIdeas.map((idea) => (
-              <li key={idea.title} className="flex items-center gap-4 px-4 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-display text-[1.05rem] font-semibold">{idea.title}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {idea.kind} · {idea.scripture}
-                  </p>
-                </div>
-                <span className="hidden shrink-0 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground sm:inline">
-                  {idea.note}
-                </span>
-              </li>
-            ))}
-          </ul>
+        <div aria-hidden className="grid gap-4 sm:grid-cols-2">
+          <IdeaCard idea={sermon} className="sm:row-span-2">
+            <div className="mt-8 border-t pt-5">
+              <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                <Link2 className="size-3.5" />
+                Linked point
+              </p>
+              <p className="mt-3 flex gap-3 text-sm leading-relaxed">
+                <span className="font-display text-gold-ink italic">01</span>
+                {point.title}
+              </p>
+            </div>
+          </IdeaCard>
+          <IdeaCard idea={point} />
+          <IdeaCard idea={undecided} className="border-dashed bg-transparent shadow-none" />
         </div>
-        <figcaption className="mt-4 text-sm text-muted-foreground">
+        <figcaption className="mt-5 text-sm text-muted-foreground">
           Illustrative preview of a planned feature. The finished library may look different.
         </figcaption>
       </figure>
     </section>
+  );
+}
+
+function IdeaCard({
+  idea,
+  className,
+  children,
+}: {
+  idea: SampleIdea;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={cn("rounded-xl border bg-surface p-6 shadow-card", className)}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold tracking-[0.14em] text-primary uppercase">
+          {idea.kind}
+        </span>
+        <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {idea.note}
+        </span>
+      </div>
+      <p className="mt-5 font-display text-2xl leading-snug font-semibold">{idea.title}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{idea.scripture}</p>
+      {children}
+    </div>
   );
 }
