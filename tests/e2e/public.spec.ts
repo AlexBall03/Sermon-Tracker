@@ -28,7 +28,7 @@ test.describe("public landing page", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
-  test("header sign-in leads to the interim sign-in page", async ({ page }) => {
+  test("header sign-in leads to the sign-in page", async ({ page }) => {
     await page.goto("/");
     await openMenuIfCollapsed(page);
     await page
@@ -36,9 +36,8 @@ test.describe("public landing page", () => {
       .getByRole("link", { name: "Sign in" })
       .click();
     await expect(page).toHaveURL(/\/sign-in$/);
-    await expect(page.getByRole("heading", { name: "Sign-in is not open yet" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
-    await expect(page.locator("input")).toHaveCount(0);
   });
 
   test("skip link is the first focusable element", async ({ page }) => {

@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 9 October 2026: **Phase 1A and the 1A.1 visual redesign are complete. Phase 1B is next.**
+Status as of 9 October 2026: **Phases 1A, 1A.1, and 1B are implemented. Phase 1B still needs its Clerk and Neon accounts connected and a live check ([handoff](HANDOFF-1B.md)). Phase 1C is next.**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -8,8 +8,8 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 
 - **1A: Foundation, branding, public experience** — complete
 - **1A.1: Visual redesign and design-system refinement** — complete ([handoff](HANDOFF-1A.1.md))
-- **1B: Database, authentication, administration** — next
-- **1C: Authenticated dashboard, deployment, hardening**
+- **1B: Database, authentication, administration** — implemented; live Clerk and Neon verification outstanding ([handoff](HANDOFF-1B.md))
+- **1C: Authenticated dashboard, deployment, hardening** — next
 
 ## Phase 2 — Core Idea Tracker
 

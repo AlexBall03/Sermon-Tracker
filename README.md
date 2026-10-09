@@ -8,13 +8,11 @@ Production domain: [sermontracker.com](https://sermontracker.com)
 
 ## Status
 
-**Phase 1A complete:** application foundation, brand design system, and the public landing page. There is no authentication, database, or idea tracking yet. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/HANDOFF-1A.md](docs/HANDOFF-1A.md).
+**Phase 1B implemented:** database, invitation-only authentication, administration, and the authenticated shell, on top of the Phase 1A foundation and landing page. Idea tracking has not started. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/HANDOFF-1B.md](docs/HANDOFF-1B.md).
 
 ## Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 · shadcn/ui · Zod · Vitest · Playwright · npm · Vercel
-
-Planned for Phase 1B: Clerk, Neon PostgreSQL, Drizzle ORM.
+Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 · shadcn/ui · Clerk · Neon PostgreSQL · Drizzle ORM · Zod · Vitest · Playwright · npm · Vercel
 
 ## Getting started
 
@@ -22,24 +20,31 @@ Requires Node.js 22 or later.
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+cp .env.example .env.local   # then fill in development values
+npm run dev                  # migrates the development database, then http://localhost:3000
 ```
 
-No environment variables are needed in Phase 1A. See [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md).
+`npm run dev` needs a development database and Clerk keys; [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) has the setup checklist. To work on the interface without them, use `npm run dev:next`.
 
 ## Commands
 
-| Command                | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| `npm run dev`          | Development server                                            |
-| `npm run build`        | Production build                                              |
-| `npm run start`        | Serve the production build                                    |
-| `npm run lint`         | ESLint                                                        |
-| `npm run typecheck`    | Generate route types, then `tsc --noEmit`                     |
-| `npm run format`       | Prettier (with Tailwind class sorting)                        |
-| `npm run test`         | Unit and component tests (Vitest)                             |
-| `npm run test:e2e`     | End-to-end tests (Playwright; builds and serves on port 3100) |
-| `npm run brand:assets` | Regenerate raster icons and the share image from the SVG mark |
+| Command                   | Purpose                                                       |
+| ------------------------- | ------------------------------------------------------------- |
+| `npm run dev`             | Apply development migrations, then start the dev server       |
+| `npm run dev:next`        | Dev server only, no database                                  |
+| `npm run db:generate`     | Generate a migration from schema changes                      |
+| `npm run db:migrate:dev`  | Apply pending migrations to development                       |
+| `npm run db:migrate:prod` | Apply pending migrations to production (asks to confirm)      |
+| `npm run db:status`       | Show target, stamp, and pending migrations                    |
+| `npm run db:stamp`        | Identify a database as development or production              |
+| `npm run build`           | Production build                                              |
+| `npm run start`           | Serve the production build                                    |
+| `npm run lint`            | ESLint                                                        |
+| `npm run typecheck`       | Generate route types, then `tsc --noEmit`                     |
+| `npm run format`          | Prettier (with Tailwind class sorting)                        |
+| `npm run test`            | Unit and component tests (Vitest)                             |
+| `npm run test:e2e`        | End-to-end tests (Playwright; builds and serves on port 3100) |
+| `npm run brand:assets`    | Regenerate raster icons and the share image from the SVG mark |
 
 First-time Playwright setup: `npx playwright install chromium`.
 
@@ -49,7 +54,7 @@ First-time Playwright setup: `npx playwright install chromium`.
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phases and current status
 - [docs/DATABASE.md](docs/DATABASE.md) — database direction and migration convention
 - [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) — environments, variables, secrets
-- [docs/HANDOFF-1A.md](docs/HANDOFF-1A.md) — Phase 1A handoff and Phase 1B prerequisites
+- [docs/HANDOFF-1B.md](docs/HANDOFF-1B.md) — Phase 1B handoff, remaining setup, and Phase 1C readiness
 
 ## Branches
 

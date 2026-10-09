@@ -4,7 +4,7 @@ The primary technical reference for Sermon Tracker. Update it when a decision ch
 
 ## Overview
 
-One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (currently the theme provider, theme control, and mobile menu).
+One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (theme, navigation menus, and the admin tables and forms). Clerk handles identity; PostgreSQL handles application authorization.
 
 | Concern       | Choice                                                         |
 | ------------- | -------------------------------------------------------------- |
@@ -13,8 +13,8 @@ One full-stack Next.js application deployed to Vercel. No separate backend, queu
 | Styling       | Tailwind CSS v4, semantic CSS-variable tokens                  |
 | UI primitives | shadcn/ui (`base-nova` style on Base UI), added only as needed |
 | Validation    | Zod                                                            |
-| Auth (1B)     | Clerk                                                          |
-| Database (1B) | Neon PostgreSQL with Drizzle ORM                               |
+| Auth          | Clerk (`@clerk/nextjs`), invitation-only                       |
+| Database      | Neon PostgreSQL with Drizzle ORM                               |
 | Tests         | Vitest + Testing Library, Playwright                           |
 | Hosting       | Vercel                                                         |
 
@@ -27,23 +27,30 @@ src/
     globals.css             Design tokens and base styles
     (marketing)/            Public, indexable pages (header + footer shell)
       page.tsx              Landing page  /
-    (auth)/                 Centred shell for sign-in
-      sign-in/page.tsx      Interim notice until Clerk lands in 1B
+    (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
+    (app)/                  Authenticated shell: dashboard, admin
     icon.svg                Favicon (small-size mark)
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
     robots.ts, sitemap.ts
+  proxy.ts                  Clerk session and guest/signed-in redirects (routing only)
+  db/                       Drizzle schema, connection, test database
+  features/
+    auth/                   Provisioning and the access helpers
+    admin/                  User and invitation services, server actions, components
   components/
     ui/                     shadcn primitives, restyled to the tokens
     brand/                  LogoMark, Logo
-    layout/                 SiteHeader, MobileNav, SiteFooter, ThemeProvider, ThemeToggle
+    layout/                 SiteHeader, MobileNav, AppHeader, AccountMenu, SiteFooter, ThemeProvider, ThemeToggle
     marketing/              Landing-page sections and their sample content
   lib/
     site.ts                 Site config and the route map
     env.ts                  Zod-validated environment access
+    clerk-appearance.ts     Clerk components mapped to the design tokens
     utils.ts                cn()
 public/brand/               mark.svg, icon-192.png, icon-512.png
-scripts/                    generate-brand-assets.mjs
+scripts/                    generate-brand-assets.mjs, db/ (migration commands)
+drizzle/                    Generated SQL migrations (committed)
 tests/e2e/                  Playwright specs
 docs/                       Roadmap, database, environments, handoff, brand board
 ```
@@ -51,29 +58,78 @@ docs/                       Roadmap, database, environments, handoff, brand boar
 Conventions:
 
 - Unit and component tests sit beside the code as `*.test.ts(x)`. End-to-end specs live in `tests/e2e`.
-- Feature code for later phases goes in `src/features/<feature>/` (components, server actions, queries, schemas together). Create a folder when its first feature is built, not before.
+- Feature code goes in `src/features/<feature>/` (components, server actions, queries, schemas together). Create a folder when its first feature is built, not before.
 - Import through the `@/` alias.
 - Read environment variables only through `src/lib/env.ts`.
 
 ## Routing
 
-| Path         | Purpose                                  | Phase | Indexed |
-| ------------ | ---------------------------------------- | ----- | ------- |
-| `/`          | Public landing page                      | 1A    | Yes     |
-| `/sign-in`   | Sign-in (interim notice now, Clerk next) | 1A/1B | No      |
-| `/dashboard` | Authenticated home                       | 1C    | No      |
-| `/library`   | Unified idea library                     | 2     | No      |
-| `/history`   | Preaching history                        | 3     | No      |
-| `/settings`  | User preferences                         | 1C+   | No      |
-| `/admin`     | Restricted administration                | 1B    | No      |
+| Path                 | Purpose                                    | Phase | Indexed |
+| -------------------- | ------------------------------------------ | ----- | ------- |
+| `/`                  | Public landing page                        | 1A    | Yes     |
+| `/sign-in`           | Clerk sign-in                              | 1B    | No      |
+| `/accept-invitation` | Account creation from an invitation link   | 1B    | No      |
+| `/access-denied`     | Shown to disabled or unauthorised accounts | 1B    | No      |
+| `/dashboard`         | Authenticated home (placeholder until 1C)  | 1B/1C | No      |
+| `/library`           | Unified idea library                       | 2     | No      |
+| `/history`           | Preaching history                          | 3     | No      |
+| `/settings`          | User preferences                           | 1C+   | No      |
+| `/admin`             | Restricted administration                  | 1B    | No      |
 
 Route groups separate the three shells without affecting URLs:
 
 - `(marketing)` exists. Public header and footer.
 - `(auth)` exists. Minimal centred layout.
-- `(app)` will be added in Phase 1B/1C for the authenticated shell (navigation plus an always-reachable quick-capture control). It will set `robots: noindex` in its layout.
+- `(app)` exists. Authenticated shell with the application bar; `robots: noindex` in its layout. Quick capture (Phase 2) goes in the bar, before the theme control.
 
-Phase 1B attaches Clerk in `src/proxy.ts`, protects everything under `(app)`, and redirects signed-in visitors from `/` to `/dashboard`. Nothing in Phase 1A simulates authentication. The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`), which also drives `robots.txt`.
+The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`, `appRoutes`), which also drives `robots.txt` and the proxy.
+
+## Authentication and authorization
+
+**Clerk** verifies identity: passwords, Google sign-in, sessions, recovery, invitations. **The `users` table** decides what a person may do: role (`admin`, `user`) and status (`active`, `disabled`). Nothing about authorization is stored in Clerk or trusted from the browser.
+
+### Request flow
+
+1. `src/proxy.ts` runs Clerk and handles routing only: a guest on an application path goes to sign-in (Clerk builds the return URL and only honours same-origin targets), and a signed-in visitor on `/`, `/sign-in`, or `/accept-invitation` goes to `/dashboard`.
+2. `getAccess()` in `src/features/auth/access.ts` resolves the caller once per request: Clerk user ID, then `provisionUser`, then the status check. It calls `connection()` first so the decision is never prerendered or cached.
+3. Pages and layouts call `requireActiveUser()` or `requireAdmin()`, which redirect to `/sign-in` or `/access-denied`. Server actions and route handlers call `authorize("active" | "admin")`, which returns a failure value instead.
+
+The proxy is never the only check. Every page under `(app)` and every server action authorises itself, because a layout does not re-run on navigation and a server action can be called directly.
+
+| Situation                                   | Result                       |
+| ------------------------------------------- | ---------------------------- |
+| Guest visits `/`                            | Landing page                 |
+| Guest visits `/dashboard` or `/admin`       | Redirect to `/sign-in`       |
+| Signed-in visitor on `/` or `/sign-in`      | Redirect to `/dashboard`     |
+| Standard user visits `/admin`               | Redirect to `/access-denied` |
+| Disabled or uninvited account, any app path | Redirect to `/access-denied` |
+| Administrator visits `/admin`               | Administration               |
+
+### Provisioning
+
+`provisionUser` (`src/features/auth/provisioning.ts`) runs on a signed-in request:
+
+- An existing row is returned unchanged. A disabled account is never re-enabled by signing in.
+- A new identity gets a row only if it is authorised: its Clerk ID equals `INITIAL_ADMIN_CLERK_USER_ID`, or its Clerk public metadata has `appAccess: true`. Invitations sent from `/admin` attach that metadata and Clerk copies it to the account; public metadata can only be written with the secret key.
+- The insert is `ON CONFLICT DO NOTHING` on the unique `clerk_user_id`, followed by a read, so concurrent first requests produce one row.
+
+Registration itself is closed by Clerk's Restricted sign-up mode (a dashboard setting; see docs/ENVIRONMENTS.md). The metadata check is a second barrier in case that setting is ever changed. A consequence: a user created by hand in the Clerk dashboard is not admitted unless `appAccess: true` is added to their public metadata there, or they are the initial administrator.
+
+There is no webhook. If a Clerk identity is deleted in the Clerk dashboard, the application row remains: nobody can sign in as it, the admin directory shows it as "Sign-in identity removed", and it can be disabled. Rows are not deleted in this phase.
+
+### Initial administrator
+
+The Clerk ID in `INITIAL_ADMIN_CLERK_USER_ID` becomes `admin` when its row is created. If the row already existed, it is promoted only while the table has no administrator at all. It is identified by Clerk ID, never by email; no request parameter is involved; and a role later set by another administrator is not overwritten.
+
+### Administration
+
+`/admin` shows real counts (users from the database, pending invitations from Clerk), the user directory, and invitations. Mutations are the server actions in `src/features/admin/actions.ts`: each calls `authorize("admin")`, validates input with Zod, and takes the acting administrator from the session. An administrator cannot change their own account. `updateUser` runs in a transaction that takes a shared advisory lock and refuses any change that would leave no active administrator. Clerk is the source of truth for invitations; "resend" sends a new invitation and then revokes the old one.
+
+Disabling an account takes effect on that person's next request, because status is read from the database every time. Their Clerk session is not revoked; it simply no longer grants anything.
+
+### Caching
+
+Cache Components is on. Nothing user-specific uses `use cache`. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
 
 ## Design system
 
@@ -147,7 +203,11 @@ Rules:
 
 ### Navigation
 
-`SiteHeader` is a fixed, full-width, 64px glass bar with a bottom hairline. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items; Escape closes it and returns focus. The authenticated shell in Phase 1B/1C should reuse the bar's structure and tokens.
+`SiteHeader` is a fixed, full-width, 64px glass bar with a bottom hairline. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items; Escape closes it and returns focus.
+
+`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, the theme control, and `AccountMenu` (name, email, manage account, sign out). Below `md` the same items move into a panel. The current page link is emerald via `aria-current`. The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
+
+Clerk's sign-in, sign-up, and profile components are styled through `src/lib/clerk-appearance.ts`, which maps Clerk's variables to the CSS tokens so they follow the theme class.
 
 ### Components
 
@@ -166,7 +226,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 ## SEO and metadata
 
 - Base metadata is in the root layout: title template, description, Open Graph, Twitter card, `metadataBase` of `https://sermontracker.com`.
-- The landing page sets its canonical URL. `/sign-in` is `noindex`.
+- The landing page sets its canonical URL. `/sign-in`, `/accept-invitation`, `/access-denied`, and everything under `(app)` are `noindex`.
 - `robots.ts` disallows every application path. On any Vercel deployment that is not production (`VERCEL_ENV`), the whole site is `noindex` and `robots.txt` disallows everything.
 - A page that sets its own `openGraph` object replaces the inherited one, including the share image. Extend it deliberately.
 - There is no web app manifest yet; it belongs to Phase 7 (PWA). The icons it will need already exist in `public/brand/`.
@@ -189,14 +249,16 @@ These are settled and constrain later phases. None are implemented yet.
 
 ## Testing
 
-- **Vitest** (jsdom): configuration logic and component rendering, including accessible names.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, and the auth and admin services. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is mocked.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
 ## Security
 
 - The repository is public. No secrets in source, docs, tests, or examples.
-- Secret variables stay server-side; only values prefixed `NEXT_PUBLIC_` reach the browser.
+- Secret variables stay server-side; only values prefixed `NEXT_PUBLIC_` reach the browser. Database and Clerk server modules import `server-only`.
+- Authorization is decided on the server from the database on every request. Client-side role checks only decide what to show.
+- Migration commands identify the database before touching it and refuse on any doubt. See [docs/DATABASE.md](docs/DATABASE.md).
 - See [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md).
 
 ## Decisions log
@@ -210,3 +272,9 @@ These are settled and constrain later phases. None are implemented yet.
 | No manifest in Phase 1                              | Installability is Phase 7 scope                                                    |
 | `@vitejs/plugin-react` not installed                | Vitest transforms JSX itself; the plugin conflicted on peer dependencies           |
 | Playwright serves a production build on port 3100   | Tests what ships, and avoids a dev server on 3000                                  |
+| Neon WebSocket pool, not the HTTP driver            | The last-administrator check needs an interactive transaction                      |
+| Role and status as text with CHECK constraints      | Adding a value is a plain migration; no enum type to alter                         |
+| Provision on first request, no Clerk webhook        | Nothing in this phase needs lifecycle events; one less public endpoint             |
+| Database identity stamp plus a declared environment | A hostname is not proof; a mismatch anywhere stops the command                     |
+| Previews share the development database and Clerk   | No production credentials outside production; one fewer environment to migrate     |
+| Access denial is a redirect to `/access-denied`     | `forbidden()` is still experimental in Next.js 16                                  |

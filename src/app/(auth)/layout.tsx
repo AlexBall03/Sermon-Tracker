@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { routes } from "@/lib/site";
 
-/** Minimal centred shell for sign-in. Clerk's components mount here in Phase 1B. */
+/** Minimal centred shell for sign-in, invitation acceptance, and access notices. */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative isolate flex flex-1 flex-col items-center justify-center px-5 py-16">

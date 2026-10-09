@@ -1,0 +1,211 @@
+// Database commands: migrate, stamp, status. See docs/DATABASE.md.
+//
+//   node scripts/db/cli.mjs migrate dev|prod
+//   node scripts/db/cli.mjs stamp   dev|prod [--force]
+//   node scripts/db/cli.mjs status  dev|prod
+//
+// Every command identifies its target before changing anything and refuses
+// when the identity is missing or does not match (see guard.mjs).
+
+import { existsSync, readFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
+
+import { Pool } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { migrate } from "drizzle-orm/neon-serverless/migrator";
+
+import {
+  checkStamp,
+  checkTarget,
+  describeTarget,
+  pendingMigrations,
+  redact,
+  resolveTarget,
+} from "./guard.mjs";
+
+const root = fileURLToPath(new URL("../../", import.meta.url));
+const migrationsFolder = `${root}drizzle`;
+
+class Refusal extends Error {}
+
+function loadEnvFile(name) {
+  const path = `${root}${name}`;
+  // Values already present in the shell win over the file.
+  if (existsSync(path)) process.loadEnvFile(path);
+}
+
+/** Connection settings for a target. Production never reads DATABASE_URL. */
+function connectionFor(target) {
+  if (target === "production") {
+    loadEnvFile(".env.production.local");
+    const url = process.env.PRODUCTION_DATABASE_URL;
+    if (!url) {
+      throw new Refusal(
+        "PRODUCTION_DATABASE_URL is not set. Provide it in the shell or in .env.production.local (git-ignored).",
+      );
+    }
+    return { url, declared: "production" };
+  }
+  loadEnvFile(".env.local");
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Refusal(
+      'DATABASE_URL is not set. Add it to .env.local (see docs/ENVIRONMENTS.md), or use "npm run dev:next" to work on the interface without a database.',
+    );
+  }
+  return { url, declared: process.env.DATABASE_ENVIRONMENT || undefined };
+}
+
+async function readStamp(pool) {
+  const exists = await pool.query(
+    "select to_regclass('sermon_tracker_meta.environment') is not null as present",
+  );
+  if (!exists.rows[0].present) return null;
+  const result = await pool.query("select name from sermon_tracker_meta.environment");
+  return result.rows[0]?.name ?? null;
+}
+
+async function writeStamp(pool, target) {
+  await pool.query("create schema if not exists sermon_tracker_meta");
+  await pool.query(
+    `create table if not exists sermon_tracker_meta.environment (
+       singleton boolean primary key default true check (singleton),
+       name text not null,
+       stamped_at timestamptz not null default now()
+     )`,
+  );
+  await pool.query(
+    `insert into sermon_tracker_meta.environment (name) values ($1)
+     on conflict (singleton) do update set name = excluded.name, stamped_at = now()`,
+    [target],
+  );
+}
+
+async function isEmptyDatabase(pool) {
+  const result = await pool.query(
+    `select count(*)::int as tables from information_schema.tables
+     where table_schema not in ('pg_catalog', 'information_schema')
+       and table_schema not like 'pg\\_%'`,
+  );
+  return result.rows[0].tables === 0;
+}
+
+async function readPending(pool) {
+  const journal = JSON.parse(readFileSync(`${migrationsFolder}/meta/_journal.json`, "utf8"));
+  const exists = await pool.query(
+    "select to_regclass('drizzle.__drizzle_migrations') is not null as present",
+  );
+  let last = null;
+  if (exists.rows[0].present) {
+    const result = await pool.query(
+      "select max(created_at) as last from drizzle.__drizzle_migrations",
+    );
+    last = result.rows[0].last === null ? null : Number(result.rows[0].last);
+  }
+  return { pending: pendingMigrations(journal.entries, last), total: journal.entries.length };
+}
+
+async function confirm(phrase) {
+  if (!process.stdin.isTTY) {
+    throw new Refusal(
+      "This command needs confirmation and must be run in an interactive terminal.",
+    );
+  }
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await prompt.question(`Type "${phrase}" to continue: `);
+    if (answer.trim() !== phrase)
+      throw new Refusal("Confirmation did not match. Nothing was changed.");
+  } finally {
+    prompt.close();
+  }
+}
+
+async function inspect(pool, target, declared) {
+  const [stamp, isEmpty] = [await readStamp(pool), await isEmptyDatabase(pool)];
+  const verdict = checkTarget({
+    target,
+    declared,
+    stamp,
+    isEmpty,
+    vercelEnv: process.env.VERCEL_ENV || undefined,
+  });
+  return { stamp, verdict };
+}
+
+async function runMigrate(pool, target, { url, declared }) {
+  const { verdict } = await inspect(pool, target, declared);
+  if (!verdict.ok) throw new Refusal(verdict.reason);
+
+  const { pending } = await readPending(pool);
+  if (target === "production") {
+    console.log(`Target:   PRODUCTION  ${describeTarget(url)}`);
+    console.log(
+      pending.length
+        ? `Pending:  ${pending.length}\n${pending.map((tag) => `  - ${tag}`).join("\n")}`
+        : "Pending:  none",
+    );
+    if (pending.length === 0) return;
+    console.log("Migrations are not rolled back automatically if one fails.");
+    await confirm("migrate production");
+  } else if (pending.length === 0) {
+    console.log("Database: development, up to date.");
+    return;
+  }
+
+  if (verdict.needsStamp) await writeStamp(pool, target);
+  await migrate(drizzle({ client: pool }), { migrationsFolder });
+  console.log(`Database: applied ${pending.length} migration(s) to ${target}.`);
+}
+
+async function runStamp(pool, target, { url }, force) {
+  const stamp = await readStamp(pool);
+  const verdict = checkStamp({ target, stamp, force });
+  if (!verdict.ok) throw new Refusal(verdict.reason);
+  console.log(`Target:        ${describeTarget(url)}`);
+  console.log(`Current stamp: ${stamp ?? "(none)"}`);
+  if (verdict.alreadyStamped) {
+    console.log(`Already stamped ${target}. Nothing to do.`);
+    return;
+  }
+  await confirm(`stamp ${target}`);
+  await writeStamp(pool, target);
+  console.log(`Stamped as ${target}.`);
+}
+
+async function runStatus(pool, target, { url, declared }) {
+  const { stamp, verdict } = await inspect(pool, target, declared);
+  const { pending, total } = await readPending(pool);
+  console.log(`Target:     ${describeTarget(url)}`);
+  console.log(`Declared:   ${declared ?? "(not set)"}`);
+  console.log(`Stamp:      ${stamp ?? "(none)"}`);
+  console.log(`Migrations: ${total - pending.length} applied, ${pending.length} pending`);
+  for (const tag of pending) console.log(`  - ${tag}`);
+  console.log(verdict.ok ? "Check:      ok" : `Check:      refused. ${verdict.reason}`);
+}
+
+async function main() {
+  const [command, targetName, ...flags] = process.argv.slice(2);
+  // `status` is read-only, so it defaults to development.
+  const target = resolveTarget(targetName ?? (command === "status" ? "dev" : undefined));
+  if (!["migrate", "stamp", "status"].includes(command) || !target) {
+    throw new Refusal("Usage: node scripts/db/cli.mjs <migrate|stamp|status> <dev|prod> [--force]");
+  }
+
+  const connection = connectionFor(target);
+  const pool = new Pool({ connectionString: connection.url });
+  try {
+    if (command === "migrate") await runMigrate(pool, target, connection);
+    if (command === "stamp") await runStamp(pool, target, connection, flags.includes("--force"));
+    if (command === "status") await runStatus(pool, target, connection);
+  } finally {
+    await pool.end();
+  }
+}
+
+main().catch((error) => {
+  const prefix = error instanceof Refusal ? "Refused" : "Database command failed";
+  console.error(`\n${prefix}: ${redact(error?.message ?? error)}\n`);
+  process.exit(1);
+});

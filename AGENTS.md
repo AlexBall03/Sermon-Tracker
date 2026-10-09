@@ -10,9 +10,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Sermon Tracker project notes
 
-- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1A.md`.
+- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`.
 - Stay inside the current phase. Do not build later-phase features early.
 - The repository owner manages Git. Run read-only Git commands only: no commit, stage, branch, push, pull, or config changes.
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.
 - The repository is public. No secrets anywhere.
 - Use semantic design tokens from `src/app/globals.css`; no hardcoded brand colours in components.
+- Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`, commit the SQL. Never `drizzle-kit push`, never hand-edit an applied migration, never run `db:migrate:prod` or `db:stamp`.
+- Every page under `(app)` and every server action checks access itself with the helpers in `src/features/auth/access.ts`. The proxy is routing only.
+- `npm run dev` needs a development database. Use `npm run dev:next` when none is configured.

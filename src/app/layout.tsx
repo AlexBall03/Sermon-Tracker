@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Montserrat, Playfair_Display } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { isIndexable } from "@/lib/env";
-import { siteConfig } from "@/lib/site";
+import { clerkAppearance } from "@/lib/clerk-appearance";
+import { isAuthConfigured, isIndexable } from "@/lib/env";
+import { routes, siteConfig } from "@/lib/site";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -48,6 +50,27 @@ export const viewport: Viewport = {
   ],
 };
 
+/**
+ * Clerk wraps the tree only when its keys are configured, so the public site
+ * still builds and runs without credentials. It sits inside <body>, as Cache
+ * Components requires.
+ */
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  if (!isAuthConfigured()) return children;
+  return (
+    <ClerkProvider
+      appearance={clerkAppearance}
+      signInUrl={routes.signIn}
+      signUpUrl={routes.acceptInvitation}
+      signInFallbackRedirectUrl={routes.dashboard}
+      signUpFallbackRedirectUrl={routes.dashboard}
+      afterSignOutUrl={routes.home}
+    >
+      {children}
+    </ClerkProvider>
+  );
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
@@ -62,7 +85,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
-        <ThemeProvider>{children}</ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );
