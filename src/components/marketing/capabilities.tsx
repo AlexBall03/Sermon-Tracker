@@ -47,32 +47,33 @@ export function Capabilities() {
           </p>
         </div>
 
-        <ol className="mt-14 grid lg:mt-20 lg:grid-cols-3">
+        <ol className="mt-14 grid gap-x-12 lg:mt-20 lg:grid-cols-3 xl:gap-x-16">
           {capabilities.map(({ step, icon: Icon, title, body }, index) => (
-            <li
-              key={step}
-              className="group relative border-t py-10 lg:px-10 lg:not-first:border-l lg:first:pl-0 lg:last:pr-0"
-            >
-              {/* emerald rule draws across on hover */}
+            <li key={step} className="group relative border-t pt-8 pb-10 lg:pb-0">
+              {/*
+               * Emerald rule: a short tick that draws across its own column on
+               * hover. Scaled rather than resized, so it can never leave the column.
+               */}
               <span
                 aria-hidden
-                className="absolute -top-px left-0 h-px w-12 bg-primary transition-[width] duration-500 ease-out group-hover:w-full lg:left-10 lg:group-first:left-0"
+                className="absolute inset-x-0 -top-px h-px origin-left scale-x-[0.14] bg-primary transition-transform duration-500 ease-out group-hover:scale-x-100"
               />
-              <div className="flex items-start justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <span className="grid size-9 place-items-center rounded-lg border bg-background text-primary transition-shadow duration-300 group-hover:shadow-glow">
                     <Icon className="size-4" aria-hidden />
                   </span>
                   <span className="text-xs font-semibold tracking-[0.24em] uppercase">{step}</span>
                 </div>
+                {/* pr-1 keeps the italic overhang inside the column */}
                 <span
                   aria-hidden
-                  className="font-display text-5xl leading-none text-gold-ink/70 italic transition-colors duration-300 group-hover:text-gold-ink"
+                  className="pr-1 font-display text-4xl leading-none text-gold-ink/70 italic transition-colors duration-300 group-hover:text-gold-ink"
                 >
                   {String(index + 1).padStart(2, "0")}
                 </span>
               </div>
-              <h3 className="mt-10 font-display text-2xl leading-snug font-semibold">{title}</h3>
+              <h3 className="mt-8 font-display text-2xl leading-snug font-semibold">{title}</h3>
               <p className="mt-3 leading-relaxed text-muted-foreground">{body}</p>
             </li>
           ))}
