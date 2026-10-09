@@ -1,0 +1,180 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens
+ * 1. Brand palette: the only place raw brand hex values live.
+ * 2. Semantic tokens: what components consume. Defined per theme.
+ * 3. @theme mapping: exposes semantic tokens as Tailwind utilities.
+ * See ARCHITECTURE.md > Design system.
+ */
+
+:root {
+  --brand-emerald: #0e6b4f;
+  --brand-forest: #0b3d2e;
+  --brand-sage: #a7b89f;
+  --brand-gold: #d4af6b;
+  --brand-cream: #f8f6ed;
+  --brand-charcoal: #1f2937;
+
+  --radius: 0.75rem;
+}
+
+:root {
+  --background: var(--brand-cream);
+  --foreground: var(--brand-charcoal);
+  --surface: #fffefa;
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --muted: #efede1;
+  --muted-foreground: #4b5563;
+  --border: #e2dfd0;
+  --input: #d2cfbe;
+  --primary: var(--brand-emerald);
+  --primary-foreground: var(--brand-cream);
+  --secondary: #e3eadf;
+  --secondary-foreground: var(--brand-forest);
+  /* accent = subtle interactive highlight (shadcn convention) */
+  --accent: #e9eee4;
+  --accent-foreground: var(--brand-forest);
+  /* gold = restrained brand accent; gold-ink is the text-safe tone */
+  --gold: var(--brand-gold);
+  --gold-ink: #7d5f24;
+  --gold-foreground: var(--brand-forest);
+  --destructive: #b42318;
+  --ring: var(--brand-emerald);
+  --nav: color-mix(in oklab, var(--brand-cream) 72%, transparent);
+  --nav-border: color-mix(in oklab, var(--brand-forest) 10%, transparent);
+  /* brand surface = the emerald/forest gradient panels */
+  --brand-surface-from: var(--brand-emerald);
+  --brand-surface-to: var(--brand-forest);
+  --on-brand: var(--brand-cream);
+}
+
+.dark {
+  --background: #07231b;
+  --foreground: #f1eee3;
+  --surface: #0d2e24;
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: #103429;
+  --popover-foreground: var(--foreground);
+  --muted: #123a2d;
+  --muted-foreground: #a9b8ac;
+  --border: color-mix(in oklab, var(--brand-sage) 18%, transparent);
+  --input: color-mix(in oklab, var(--brand-sage) 26%, transparent);
+  --primary: #34a982;
+  --primary-foreground: #04130e;
+  --secondary: #14402f;
+  --secondary-foreground: #dde6d8;
+  --accent: #164634;
+  --accent-foreground: var(--foreground);
+  --gold: #ddbd82;
+  --gold-ink: #ddbd82;
+  --gold-foreground: #04130e;
+  --destructive: #f97066;
+  --ring: #4cc49a;
+  --nav: color-mix(in oklab, #07231b 68%, transparent);
+  --nav-border: color-mix(in oklab, var(--brand-sage) 16%, transparent);
+  --brand-surface-from: #0f5a43;
+  --brand-surface-to: #0a3226;
+  --on-brand: var(--brand-cream);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-destructive: var(--destructive);
+  --color-ring: var(--ring);
+  --color-nav: var(--nav);
+  --color-nav-border: var(--nav-border);
+  --color-on-brand: var(--on-brand);
+
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-playfair), ui-serif, Georgia, serif;
+  --font-heading: var(--font-sans);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.4);
+
+  --animate-rise: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Emerald-to-forest brand surface. Pair with `text-on-brand`. */
+@utility bg-brand-surface {
+  background-image: linear-gradient(140deg, var(--brand-surface-from), var(--brand-surface-to));
+}
+
+/* Selective glass: navigation and floating elements only. */
+@utility glass {
+  background-color: var(--nav);
+  border: 1px solid var(--nav-border);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  html {
+    @apply scroll-smooth font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 28%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

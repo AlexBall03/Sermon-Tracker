@@ -1,0 +1,67 @@
+# Roadmap
+
+Status as of 9 October 2026: **Phase 1A complete. Phase 1B is next.**
+
+Work stays inside the current phase. Do not implement later-phase functionality early.
+
+## Phase 1 — Foundation, Architecture & Branding
+
+- **1A: Foundation, branding, public experience** — complete
+- **1B: Database, authentication, administration** — next
+- **1C: Authenticated dashboard, deployment, hardening**
+
+## Phase 2 — Core Idea Tracker
+
+- Unified idea library
+- Quick capture
+- Sermon ideas
+- Reusable point ideas
+- Undecided ideas
+- Scripture references
+- Tags, statuses, search
+- Sermon-point associations
+
+## Phase 3 — Preaching History
+
+- Preaching occurrences
+- Configurable venues
+- Configurable preaching contexts
+- Historical records
+
+## Phase 4 — Outline Builder
+
+- Ordered sermon outlines
+- Optional introductions and conclusions
+- Main points and subpoints
+- Reusable point associations
+- Sermon-specific customisations
+
+## Phase 5 — Productivity & Insights
+
+- Reminders
+- Idea resurfacing
+- Statistics
+- Enhanced discovery
+
+## Phase 6 — Sharing & Data Portability
+
+- User-to-user sharing
+- Accept/reject workflow
+- Independent copies
+- Import/export
+
+## Phase 7 — PWA & Offline Support
+
+- Installable application
+- Offline capture
+- Synchronisation
+- Conflict handling
+
+## Phase 8 — Public Launch Readiness
+
+- Onboarding
+- Security review
+- Performance
+- Accessibility
+- Monitoring
+- Operational readiness
