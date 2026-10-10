@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search, X } from "l
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, type SelectGroup } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { bibleBooks, chaptersIn, getBook, oldTestamentBooks, versesIn } from "../books";
@@ -130,7 +131,6 @@ export function ScriptureBrowser({
   const [attached, setAttached] = useState<string | null>(null);
   const [entry, setEntry] = useState("");
   const [entryError, setEntryError] = useState<string | null>(null);
-  const [showTips, setShowTips] = useState(false);
   const [results, setResults] = useState<Results | null>(null);
   const [view, setView] = useState<"read" | "results">("read");
   const latestSearch = useRef(0);
@@ -248,7 +248,8 @@ export function ScriptureBrowser({
   ];
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+    // `min-w-0`: beside the idea it is a flex item, and must narrow with the dialog.
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)}>
       {header}
 
       <div className="space-y-3 border-b px-4 pb-4 sm:px-5">
@@ -319,38 +320,39 @@ export function ScriptureBrowser({
               {entryError}
             </p>
           )}
-          <button
-            type="button"
-            aria-expanded={showTips}
-            aria-controls={`${id}-tips`}
-            onClick={() => setShowTips((shown) => !shown)}
-            className="mt-1.5 rounded-sm text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            {showTips ? "Hide search options" : "Search options"}
-          </button>
-          <dl
-            id={`${id}-tips`}
-            hidden={!showTips}
-            className={
-              showTips
-                ? "mt-2 grid animate-menu grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg bg-muted px-3 py-2.5 text-xs"
-                : undefined
-            }
-          >
-            {tips.map(([example, meaning]) => (
-              <div key={example} className="contents">
-                <dt className="font-mono font-semibold whitespace-nowrap">{example}</dt>
-                <dd className="text-muted-foreground">{meaning}</dd>
-              </div>
-            ))}
-            <div className="col-span-2 mt-1 text-muted-foreground">
-              Words are matched as written, whatever their capitals. To go to a passage, use Book,
-              Chapter, and Verse below.
-            </div>
-          </dl>
+          {/* Floats over the passage, so opening it moves nothing. */}
+          <Popover>
+            <PopoverTrigger className="mt-1.5 rounded-sm text-xs font-medium text-muted-foreground link-underline hover:text-foreground">
+              Search options
+            </PopoverTrigger>
+            <PopoverContent
+              // Nothing inside to focus. Focus stays on the link: sending it to the
+              // search box counts as leaving the popover, which closes it at once.
+              initialFocus={false}
+              className="w-[22rem] p-3 text-xs"
+            >
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                {tips.map(([example, meaning]) => (
+                  <div key={example} className="contents">
+                    <dt className="font-mono font-semibold whitespace-nowrap">{example}</dt>
+                    <dd className="text-muted-foreground">{meaning}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-2 text-muted-foreground">
+                Words are matched as written, whatever their capitals. To go to a passage, use Book,
+                Chapter, and Verse below.
+              </p>
+            </PopoverContent>
+          </Popover>
         </form>
 
-        <div role="group" aria-label="Go to a passage" className="flex items-center gap-2">
+        {/* On a phone the book takes a line of its own, so its name is never cut short. */}
+        <div
+          role="group"
+          aria-label="Go to a passage"
+          className="flex items-center gap-2 max-sm:flex-wrap"
+        >
           <Button
             type="button"
             variant="outline"
@@ -367,7 +369,7 @@ export function ScriptureBrowser({
             value={String(book)}
             onChange={(value) => goTo(Number(value), 1)}
             groups={bookGroups}
-            className="flex-1"
+            className="flex-1 max-sm:order-first max-sm:basis-full"
           />
           <Select
             label="Chapter"
@@ -375,7 +377,7 @@ export function ScriptureBrowser({
             onChange={(value) => goTo(book, Number(value))}
             options={numbers(chaptersIn(book))}
             layout="grid"
-            className="w-[4.5rem] tabular-nums"
+            className="tabular-nums max-sm:flex-1 sm:w-[4.5rem]"
           />
           <Select
             label="Verse"
@@ -383,7 +385,7 @@ export function ScriptureBrowser({
             onChange={(value) => goTo(book, chapter, value === "all" ? null : Number(value))}
             options={[{ value: "all", label: "All" }, ...numbers(versesIn(book, chapter))]}
             layout="grid"
-            className="w-[4.5rem] tabular-nums"
+            className="tabular-nums max-sm:flex-1 sm:w-[4.5rem]"
           />
           <Button
             type="button"
@@ -580,7 +582,7 @@ export function ScriptureBrowser({
                     setPicked([]);
                     setCarried(null);
                   }}
-                  className="rounded-sm font-medium text-primary underline-offset-4 hover:underline"
+                  className="rounded-sm font-medium text-primary link-underline"
                 >
                   Clear, and use the whole chapter
                 </button>

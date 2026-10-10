@@ -314,8 +314,10 @@ Ordinary buttons still do not glow. The primary button's hover is a colour step 
 
 ### Typography
 
-- `font-sans` (Montserrat): all interface text — navigation, controls, tables, forms, body copy. Body carries `-0.008em` tracking because Montserrat sets wide. Dense data is 14px with `tabular-nums`.
-- `font-display` / `font-serif` (Playfair Display): landing headlines, page titles, dialog titles, and sermon material (idea titles, and Scripture references in italic). Always weight 500 or 600 with slight negative tracking; never bold.
+- `font-sans` (Figtree): all interface text — navigation, controls, tables, forms, body copy. Dense data is 14px with `tabular-nums`.
+- `font-display` (Playfair Display): headlines only — the wordmark, landing headlines, page titles, dialog titles. Always weight 500 or 600 with slight negative tracking; never bold, never italic (the italic is not loaded), and never for text that is read at length: its thin strokes do not hold up at reading sizes.
+- `font-serif` (Lora): sermon material, set to be read — Scripture text, idea titles, and Scripture references in italic. Weight 400 or 500.
+- The owner chose this trio from samples on 2026-10-10, replacing Montserrat (too wide at small sizes) and Playfair for verse text (too fine).
 - Scale: hero `4.5–5.25rem` (one line from `lg`, three stacked words below), with its copy and actions in one left-aligned column beneath it; marketing section headings `2rem → 2.625rem`; application page titles `1.875rem → 2.125rem`; in-page section headings are sans, `text-lg font-semibold`. Supporting copy is `1.0625rem` in `muted-foreground`, capped near `max-w-xl`.
 - No uppercase tracked labels, and no serif inside tables, forms, or controls.
 
@@ -323,6 +325,7 @@ Ordinary buttons still do not glow. The primary button's hover is a colour step 
 
 - Interactions answer in 150–200ms with colour, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon marked `data-trailing` nudges forward (leading icons and spinners stay put).
 - Everything that acts on a click shows the hand cursor: a base rule in `globals.css` covers buttons, `role="button"`, menu items, and `summary` (Tailwind 4 leaves buttons on the arrow), and links have it natively. Disabled controls keep the arrow, as does the theme option that is already selected.
+- Text links take `link-underline` (in `globals.css`), never `hover:underline`: the line is always present in a transparent colour and fades in with the text colour. Icons inside menu rows carry their own colour transition, so they change with the row.
 - Only interactive elements have hover states. Illustrations, informational cards, and table rows do not.
 - Every hover has a matching pressed state: buttons press in, and quiet controls (navigation links, icon buttons, the theme options) darken to `active:bg-foreground/10`.
 - Compact controls are for a pointer. On touch screens (`pointer-coarse:`) small and icon buttons, menu rows, menu triggers, and the theme options grow to 44px.

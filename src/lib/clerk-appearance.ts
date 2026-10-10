@@ -21,7 +21,7 @@ export const clerkAppearance: NonNullable<ComponentProps<typeof ClerkProvider>["
     colorBorder: "var(--border)",
     colorRing: "var(--ring)",
     colorDanger: "var(--destructive)",
-    fontFamily: "var(--font-montserrat), ui-sans-serif, system-ui, sans-serif",
+    fontFamily: "var(--font-figtree), ui-sans-serif, system-ui, sans-serif",
     borderRadius: "0.5rem",
   },
   elements: {

@@ -148,10 +148,14 @@
   --color-nav: var(--nav);
   --color-nav-border: var(--nav-border);
 
-  /* Montserrat runs the interface; Playfair Display carries headlines and sermon material. */
-  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  /*
+   * Figtree runs the interface. Playfair Display is for headlines alone; it is
+   * too fine to read at length. Lora carries sermon material: Scripture,
+   * references, idea titles.
+   */
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-playfair), ui-serif, Georgia, serif;
-  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
+  --font-serif: var(--font-lora), ui-serif, Georgia, serif;
   --font-heading: var(--font-sans);
 
   /* Radius follows hierarchy: chips 6, controls 8, cards 12, the hero window 16. */
@@ -386,6 +390,24 @@
   }
 }
 
+/*
+ * A text link's hover underline. The line is always there in a transparent
+ * colour, so it fades in with the text colour; `hover:underline` switches the
+ * line itself on, which cannot be animated.
+ */
+@utility link-underline {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition-property: color, text-decoration-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+
+  &:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
 /* Shared page container: header, sections, and footer all align to this. */
 @utility container-page {
   width: 100%;
@@ -487,8 +509,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Montserrat sets wide; a touch of negative tracking keeps text compact. */
-    letter-spacing: -0.008em;
     font-feature-settings: "lnum";
   }
   :focus-visible {

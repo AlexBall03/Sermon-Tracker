@@ -64,9 +64,7 @@ export function SiteFooter() {
                 href={siteConfig.developer.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // Always underlined, in a transparent colour: the line then fades in
-                // with the text colour instead of appearing at once.
-                className="rounded-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors duration-150 hover:text-primary hover:decoration-primary"
+                className="rounded-sm font-medium text-foreground link-underline hover:text-primary"
               >
                 {siteConfig.developer.name}
               </a>

@@ -25,7 +25,7 @@ const buttonVariants = cva(
         ghost: "text-foreground hover:bg-accent",
         destructive:
           "bg-destructive text-destructive-foreground shadow-card hover:brightness-110 dark:hover:brightness-105",
-        link: "text-primary underline-offset-4 hover:underline active:scale-100",
+        link: "text-primary link-underline transition-[color,text-decoration-color] active:scale-100",
       },
       size: {
         // 44px on touch screens; the compact sizes are for a pointer.

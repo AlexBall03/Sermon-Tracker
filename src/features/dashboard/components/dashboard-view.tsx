@@ -62,7 +62,7 @@ export function DashboardView({ firstName, isAdmin, recentIdeas }: DashboardView
             </div>
             <Link
               href={routes.library}
-              className="group/all mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary underline-offset-4 hover:underline"
+              className="group/all mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary link-underline"
             >
               Open the library
               <ArrowRight

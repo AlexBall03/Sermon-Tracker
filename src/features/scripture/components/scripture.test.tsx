@@ -307,13 +307,15 @@ describe("ScriptureBrowser", () => {
     expect(pressed()).toEqual(["1", "2"]);
   });
 
-  it("lists the search options on request", () => {
+  it("lists the search options on request", async () => {
     browse();
     const toggle = screen.getByRole("button", { name: "Search options" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
-    expect(screen.getByText('"living water"')).toBeVisible();
+    // In a popover over the passage, which is placed a moment after it opens.
+    await waitFor(() => expect(screen.getByText('"living water"')).toBeVisible());
     expect(screen.getByText("lov*")).toBeVisible();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
   it("offers another try when a chapter cannot be loaded", async () => {

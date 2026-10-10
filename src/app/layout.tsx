@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Montserrat, Playfair_Display } from "next/font/google";
+import { Figtree, Lora, Playfair_Display } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 
 import { NavigationProgress } from "@/components/layout/navigation-progress";
@@ -11,15 +11,22 @@ import { routes, siteConfig } from "@/lib/site";
 import "./globals.css";
 
 // All interface text: navigation, controls, tables, forms, body copy.
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
   display: "swap",
 });
 
-// Headlines, page titles, and sermon material (idea titles, Scripture).
+// Headlines only: the wordmark, page titles, dialog titles. Never italic.
 const playfair = Playfair_Display({
   variable: "--font-playfair",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+// Sermon material, set to be read: Scripture, references, idea titles.
+const lora = Lora({
+  variable: "--font-lora",
   subsets: ["latin"],
   display: "swap",
   style: ["normal", "italic"],
@@ -80,7 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${montserrat.variable} ${playfair.variable} h-full antialiased`}
+      className={`${figtree.variable} ${playfair.variable} ${lora.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col">

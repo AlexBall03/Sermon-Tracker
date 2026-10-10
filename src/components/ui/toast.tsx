@@ -67,7 +67,7 @@ export function ToastProvider({
               <Link
                 href={toast.action.href}
                 onClick={dismiss}
-                className="rounded-md px-2 py-1.5 font-semibold text-primary underline-offset-4 hover:underline"
+                className="rounded-md px-2 py-1.5 font-semibold text-primary link-underline"
               >
                 {toast.action.label}
               </Link>
