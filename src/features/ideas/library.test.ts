@@ -173,7 +173,7 @@ describe("search", () => {
   });
 
   it("does not search a subject kept on an idea that is no longer a sermon", async () => {
-    expect(await found({ q: "prayer", kind: "point" })).toEqual([]);
+    expect(await found({ q: "prayer", kinds: ["point"] })).toEqual([]);
     expect(await found({ q: "unfaithful prayer" })).toEqual([]);
   });
 
@@ -228,22 +228,76 @@ describe("search", () => {
 
 describe("filters", () => {
   it("filters by each kind", async () => {
-    expect(sorted(await found({ kind: "sermon" }))).toEqual(sorted([A, B]));
-    expect(await found({ kind: "point" })).toEqual([C]);
-    expect(sorted(await found({ kind: "undecided" }))).toEqual(sorted([D, E]));
+    expect(sorted(await found({ kinds: ["sermon"] }))).toEqual(sorted([A, B]));
+    expect(await found({ kinds: ["point"] })).toEqual([C]);
+    expect(sorted(await found({ kinds: ["undecided"] }))).toEqual(sorted([D, E]));
+  });
+
+  it("matches any of several kinds", async () => {
+    expect(sorted(await found({ kinds: ["sermon", "point"] }))).toEqual(sorted([A, B, C]));
+    expect(sorted(await found({ kinds: ["point", "undecided"] }))).toEqual(sorted([C, D, E]));
+    expect(await found({ kinds: ["sermon", "point", "undecided"] })).toHaveLength(5);
+    // The same kind twice is that kind once.
+    expect(await found({ kinds: ["point", "point"] })).toEqual([C]);
   });
 
   it("filters by each status", async () => {
-    expect(sorted(await found({ status: "captured" }))).toEqual(sorted([C, D]));
-    expect(sorted(await found({ status: "developing" }))).toEqual(sorted([A, E]));
-    expect(await found({ status: "ready" })).toEqual([B]);
+    expect(sorted(await found({ statuses: ["captured"] }))).toEqual(sorted([C, D]));
+    expect(sorted(await found({ statuses: ["developing"] }))).toEqual(sorted([A, E]));
+    expect(await found({ statuses: ["ready"] })).toEqual([B]);
+  });
+
+  it("matches any of several statuses", async () => {
+    expect(sorted(await found({ statuses: ["developing", "ready"] }))).toEqual(sorted([A, B, E]));
+    expect(sorted(await found({ statuses: ["captured", "ready"] }))).toEqual(sorted([B, C, D]));
   });
 
   it("filters by sermon type, among sermons only", async () => {
     // C is a point that still carries "topical".
-    expect(await found({ sermonType: "topical" })).toEqual([A]);
-    expect(await found({ sermonType: "expository" })).toEqual([B]);
-    expect(await found({ sermonType: "topical", kind: "point" })).toEqual([]);
+    expect(await found({ sermonTypes: ["topical"] })).toEqual([A]);
+    expect(await found({ sermonTypes: ["expository"] })).toEqual([B]);
+    expect(await found({ sermonTypes: ["topical"], kinds: ["point"] })).toEqual([]);
+  });
+
+  it("matches either sermon type, and still only sermons", async () => {
+    // Both types together are every sermon with a type, and never the point.
+    expect(sorted(await found({ sermonTypes: ["topical", "expository"] }))).toEqual(sorted([A, B]));
+    expect(await found({ sermonTypes: ["topical", "expository"], kinds: ["point"] })).toEqual([]);
+    expect(
+      await found({ sermonTypes: ["topical", "expository"], kinds: ["point", "undecided"] }),
+    ).toEqual([]);
+    // Asking for sermons and points as well changes nothing: a type is a sermon's.
+    expect(sorted(await found({ sermonTypes: ["topical"], kinds: ["sermon", "point"] }))).toEqual([
+      A,
+    ]);
+  });
+
+  it("joins the values in a filter with or, and the filters with and", async () => {
+    // (sermon or point) and (captured or ready): B is a ready sermon, C a captured point.
+    expect(
+      sorted(await found({ kinds: ["sermon", "point"], statuses: ["captured", "ready"] })),
+    ).toEqual(sorted([B, C]));
+    // (sermon) and (developing or ready) and (faith and prayer)
+    expect(
+      await found({
+        kinds: ["sermon"],
+        statuses: ["developing", "ready"],
+        tagIds: [tag.faith, tag.prayer],
+        tagMode: "all",
+      }),
+    ).toEqual([A]);
+    // The same, with either tag: B has prayer alone.
+    expect(
+      sorted(
+        await found({
+          kinds: ["sermon"],
+          statuses: ["developing", "ready"],
+          tagIds: [tag.faith, tag.prayer],
+          tagMode: "any",
+        }),
+      ),
+    ).toEqual(sorted([A, B]));
+    expect(await found({ kinds: ["undecided"], statuses: ["ready"] })).toEqual([]);
   });
 
   it("filters by one tag", async () => {
@@ -258,14 +312,83 @@ describe("filters", () => {
     expect(sorted(page.items.map((idea) => idea.title))).toEqual(sorted([A, B, C]));
   });
 
+  it("requires every tag in all mode", async () => {
+    // A has both; B has prayer alone; C has faith alone.
+    expect(await found({ tagIds: [tag.faith, tag.prayer], tagMode: "all" })).toEqual([A]);
+    // One tag is the same in either mode.
+    expect(sorted(await found({ tagIds: [tag.faith], tagMode: "all" }))).toEqual(sorted([A, C]));
+    expect(sorted(await found({ tagIds: [tag.prayer], tagMode: "all" }))).toEqual(sorted([A, B]));
+    // A tag nothing carries cannot be among "every".
+    expect(await found({ tagIds: [tag.faith, tag.unused], tagMode: "all" })).toEqual([]);
+  });
+
+  it("does not restrict by tag when none is chosen, in either mode", async () => {
+    expect(await found({ tagIds: [], tagMode: "all" })).toHaveLength(5);
+    expect(await found({ tagIds: [], tagMode: "any" })).toHaveLength(5);
+  });
+
+  it("treats a tag chosen twice as chosen once", async () => {
+    expect(await found({ tagIds: [tag.faith, tag.faith, tag.prayer], tagMode: "all" })).toEqual([
+      A,
+    ]);
+    expect(sorted(await found({ tagIds: [tag.faith, tag.faith], tagMode: "all" }))).toEqual(
+      sorted([A, C]),
+    );
+    const any = await searchIdeas(db, me, query({ tagIds: [tag.faith, tag.faith, tag.prayer] }));
+    expect(any.total).toBe(3);
+  });
+
+  it("is safe with a tag that does not exist", async () => {
+    const unknown = "99999999-9999-4999-8999-999999999999";
+    // Any: the unknown tag is on nothing, so the known one decides.
+    expect(sorted(await found({ tagIds: [tag.faith, unknown] }))).toEqual(sorted([A, C]));
+    expect(await found({ tagIds: [unknown] })).toEqual([]);
+    // All: nothing can carry it.
+    expect(await found({ tagIds: [tag.faith, unknown], tagMode: "all" })).toEqual([]);
+    expect(await found({ tagIds: [unknown], tagMode: "all" })).toEqual([]);
+  });
+
+  it("counts and pages the ideas that match every tag", async () => {
+    const page = await searchIdeas(
+      db,
+      me,
+      query({ tagIds: [tag.faith, tag.prayer], tagMode: "all", page: 7 }),
+      1,
+    );
+    expect(page).toMatchObject({ total: 1, page: 1, totalPages: 1 });
+    expect(page.items.map((idea) => idea.title)).toEqual([A]);
+
+    // Any of the two, one to a page: three ideas, three pages, no idea twice.
+    const titles: string[] = [];
+    for (const number of [1, 2, 3]) {
+      const one = await searchIdeas(
+        db,
+        me,
+        query({ tagIds: [tag.faith, tag.prayer], page: number }),
+        1,
+      );
+      expect(one).toMatchObject({ total: 3, totalPages: 3, page: number });
+      titles.push(...one.items.map((idea) => idea.title));
+    }
+    expect(sorted(titles)).toEqual(sorted([A, B, C]));
+  });
+
   it("requires every kind of filter at once", async () => {
     expect(
-      await found({ kind: "sermon", status: "developing", tagIds: [tag.faith, tag.prayer] }),
+      await found({
+        kinds: ["sermon"],
+        statuses: ["developing"],
+        tagIds: [tag.faith, tag.prayer],
+      }),
     ).toEqual([A]);
     expect(
-      await found({ q: "pray", kind: "sermon", status: "ready", tagIds: [tag.prayer] }),
+      await found({ q: "pray", kinds: ["sermon"], statuses: ["ready"], tagIds: [tag.prayer] }),
     ).toEqual([B]);
-    expect(await found({ kind: "sermon", status: "captured" })).toEqual([]);
+    expect(await found({ kinds: ["sermon"], statuses: ["captured"] })).toEqual([]);
+    // Tags with a search and a date: C is the only faith idea created in February.
+    expect(
+      await found({ q: "faith", tagIds: [tag.faith], tagMode: "all", createdFrom: "2026-02-01" }),
+    ).toEqual([C]);
   });
 
   it("includes both ends of a date range, as UTC days", async () => {
@@ -309,6 +432,12 @@ describe("filters", () => {
     expect(await found({ tagIds: [tag.theirs] })).toEqual([]);
     expect(await found({ tagIds: [tag.faith] }, other)).toEqual([]);
     expect(await found({ tagIds: [tag.theirs] }, other)).toEqual(["Faith of another"]);
+    // In all mode someone else's tag is one no idea of mine can have.
+    expect(await found({ tagIds: [tag.theirs], tagMode: "all" })).toEqual([]);
+    expect(await found({ tagIds: [tag.faith, tag.theirs], tagMode: "all" })).toEqual([]);
+    // In any mode it is ignored, and my own tag still decides.
+    expect(sorted(await found({ tagIds: [tag.faith, tag.theirs] }))).toEqual(sorted([A, C]));
+    expect(await found({ tagIds: [tag.faith, tag.theirs], tagMode: "all" }, other)).toEqual([]);
   });
 
   it("returns each idea's own tags and nothing of anyone else's", async () => {

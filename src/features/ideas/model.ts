@@ -44,6 +44,12 @@ export const searchLimits = { query: 200, terms: 8 } as const;
 /** How many tags the library can be filtered by at once. */
 export const tagFilterLimit = 20;
 
+/** How several chosen tags filter the library: any one of them, or every one. The first is the default. */
+export const tagModes = ["any", "all"] as const;
+export type TagMode = (typeof tagModes)[number];
+
+export const tagModeLabels: Record<TagMode, string> = { any: "Any", all: "All" };
+
 /** The library's orderings. The first is the default. */
 export const librarySorts = [
   "updated-desc",

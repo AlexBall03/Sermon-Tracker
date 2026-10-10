@@ -42,7 +42,8 @@ src/
     admin/                  User and invitation services, server actions, components
     dashboard/              Dashboard view, greeting, and the summary figures to come
     ideas/                  The idea model, queries, tags, the library query contract, server actions,
-                            quick capture, list, editor
+                            quick capture, list, editor, tag picker, and components/library/ (the
+                            library's controls, results, pager, and tag management)
     scripture/              Books, references, chapter and search reads, and every Scripture component
     settings/               Account management: schemas, server action, Clerk hooks, components
   components/
@@ -87,7 +88,7 @@ Conventions:
 | `/dashboard`         | Authenticated home                         | 1C.1  | No      |
 | `/settings`          | Account management and appearance          | 1C.1  | No      |
 | `/admin`             | Restricted administration                  | 1B    | No      |
-| `/library`           | The owner's ideas, a page at a time        | 2B.1  | No      |
+| `/library`           | The owner's ideas: search, filter, browse  | 2B.2  | No      |
 | `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
 | `/api/bible/…`       | A chapter, or a word search (JSON)         | 2A    | No      |
 | `/history`           | Preaching history                          | 3     | No      |
@@ -160,38 +161,65 @@ One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, 
 
 ### Library
 
-The data layer is Phase 2B.1; the controls that drive it are Phase 2B.2. Today `/library` shows the result, a count, and Previous / Next links. There is no search box or filter control yet: the query can only be set by URL.
+The data layer is Phase 2B.1 and the interface Phase 2B.2. `/library` is a search box, a toolbar (filters, order, cards or list, tag management), an expandable filter panel, the filters in force as removable chips, a count, the results, and numbered pages.
 
 **The query is the URL.** `features/ideas/library-query.ts` is the contract, with no server code in it, so the browser can build links with it:
 
 | Parameter                    | Values                                                                                  | Default        |
 | ---------------------------- | --------------------------------------------------------------------------------------- | -------------- |
 | `q`                          | Search text, cut to 200 characters; the first 8 words are used                          | none           |
-| `kind`                       | `sermon`, `point`, `undecided`                                                          | all            |
-| `status`                     | `captured`, `developing`, `ready`                                                       | all            |
-| `type`                       | `topical`, `expository`                                                                 | all            |
+| `kind`                       | `sermon`, `point`, `undecided`; repeat it for several                                   | all            |
+| `status`                     | `captured`, `developing`, `ready`; repeat it for several                                | all            |
+| `type`                       | `topical`, `expository`; repeat it for several                                          | all            |
 | `tag`                        | A tag ID; repeat it for several (20 at most)                                            | none           |
+| `tag_mode`                   | `any`, `all`                                                                            | `any`          |
 | `created_from`, `created_to` | `YYYY-MM-DD`                                                                            | none           |
 | `updated_from`, `updated_to` | `YYYY-MM-DD`                                                                            | none           |
 | `sort`                       | `updated-desc`, `updated-asc`, `created-desc`, `created-asc`, `title-asc`, `title-desc` | `updated-desc` |
 | `page`                       | A whole number from 1                                                                   | 1              |
 
-- `parseLibraryQuery` never throws. A missing, malformed, or out-of-range value becomes its default, unknown parameters are ignored, and where one value is expected the first is used. `serializeLibraryQuery` and `libraryHref` write a query back with every default left out, in a fixed order, so one query has one address. A control that changes a filter should set `page` back to 1.
+- `parseLibraryQuery` never throws. A missing, malformed, or out-of-range value becomes its default, unknown parameters are ignored, and where one value is expected (`q`, `tag_mode`, the dates, `sort`, `page`) the first is used. A filter that repeats keeps the values it recognises, each once, and drops the rest; an address written when filters took one value (`?kind=sermon`) reads as a list of one.
+- `serializeLibraryQuery` and `libraryHref` write a query back with every default left out, in a fixed order: filter values in the order the model lists them, tag IDs sorted, and `tag_mode` only when it is `all` and a tag is chosen. One query has one address, however its values were picked.
+- **Filter semantics.** Within a filter, any chosen value will do. Between filters, every one must hold. An empty filter asks nothing. Tags follow `tag_mode`: `any` (the default) matches an idea with at least one chosen tag, `all` only an idea with every one. The same tag twice is one tag; no tags chosen means no tag restriction in either mode.
+- `activeFilterCount`, `clearFilters` (keeps the search and the order), `toggled`, and `invertedRange` are the small pure helpers the controls share.
 - The URL holds nothing about the account. A shared link shows the person who opens it their own ideas; a tag ID that is not theirs simply matches nothing.
 
 **`searchIdeas(db, ownerId, query)`** returns `{ items, total, page, pageSize, totalPages }`. PostgreSQL does the filtering, ordering, counting, and paging; only the 24 ideas on the page are read, and their references and tags come in two further queries however many ideas there are.
 
 - **Search** is case-insensitive and matches part of a word (`ILIKE '%word%'`). Every word must be found, each in the title, the notes, or the subject; they need not be in the same field. `%`, `_`, and `\` in the text are escaped and mean themselves. There are no operators.
 - **A subject or sermon type counts only on a sermon.** Both columns are kept when an idea is reclassified, but a point shows neither, so the subject is not searched and the `type` filter does not match there.
-- **Filters** of different kinds must all hold. Several tags are alternatives: an idea with any one of them matches, and is returned once (`EXISTS`, not a join).
+- **Filters** of different kinds must all hold; several values of one kind are alternatives (`IN`). Tags are matched in a correlated subquery, never a join, so an idea is returned once: `EXISTS` for any, and for all a count of the idea's links among the chosen tags that must equal the number chosen. The owner is in that subquery, so a tag that is unknown or someone else's matches nothing in `all` and is ignored in `any`. The SQL is in docs/DATABASE.md.
 - **Dates** are calendar days read as UTC days, the zone every date is shown in. Both ends are inclusive: "to 31 January" includes the whole of that day.
 - **Sorting** goes through a fixed map from the six keys to SQL; nothing from the request becomes a column name. Every order ends with the ID in the same direction, so ideas with equal timestamps or equal titles keep one order across pages. Titles sort without regard to case.
 - **Paging** is by offset. A page past the end returns the last page, and `page` in the result says which one that was. A library that changes between two requests can shift an idea across a page boundary; that is the accepted cost of offset paging.
+- **A range that ends before it starts** finds nothing. The date inputs limit each other (`min` / `max`) so one cannot be made in the panel, and when an address carries one the panel and the empty state both say so.
 - **No trigram index.** The owner is always in the WHERE clause, so a search scans one account's rows (hundreds or thousands), not the table. `pg_trgm` would need an extension in a migration, and a GIN index over 20,000-character notes would be paid for on every save. If an account ever outgrows this, that is the next step.
+
+**The interface** (`features/ideas/components/library/`). The page is a Server Component: it authorises, reads the query, runs `searchIdeas` and `listTags` together, and renders. The results and the pager are rendered on the server; only the controls are Client Components, and they share one small context instead of one large component.
+
+| Piece                                 | Kind   | What it does                                                                                                                                     |
+| ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LibraryProvider`, `useLibrary`       | client | Holds the query the server parsed and the account's tags; `apply(change)` turns a change into the next address. The only place controls navigate |
+| `LibrarySearch`                       | client | The search box: 300 ms debounce, Enter and Clear at once                                                                                         |
+| `LibraryToolbar`                      | client | Filters button with a count, the order (`Select`), `ViewSwitcher`, Manage tags                                                                   |
+| `LibraryFilters`                      | client | The expandable panel: kind, status, sermon type, tags with Any / All, created and changed date ranges, Clear filters                             |
+| `FilterChips`                         | client | Every filter in force as a removable chip, shown whether the panel is open or not                                                                |
+| `IdeaResults`                         | server | One page of ideas, as cards or rows                                                                                                              |
+| `Pagination`, `pageWindow`            | server | Previous, Next, and numbered links with a window and ellipses; "Page x of y" on a narrow screen                                                  |
+| `TagManager`                          | client | The Manage tags dialog                                                                                                                           |
+| `TagPicker` (`components/tag-picker`) | client | Tag selection in the idea editor                                                                                                                 |
+
+- **Navigation and races.** `apply` builds every change on the query _last asked for_ (a ref), not on the one the page is still showing, and sets `page` to 1 unless the change names a page. A filter chosen while a search is on its way, or a debounced search landing just after a filter, adds to the other instead of undoing it. The navigation runs in a transition: the controls show the new state at once (`useOptimistic`), the results dim and take `aria-busy` until they arrive, and the page does not scroll. When nothing is on its way the ref is reset from the server's query, which is how Back and Forward are taken up. The provider does not call `useSearchParams`, so it needs no `<Suspense>` of its own.
+- **Search and history.** Typing asks after a 300 ms pause. One spell of typing is one history entry: the first request is a `push` and the refinements that follow are `replace`, so Back leaves the search instead of undoing it a letter at a time. Enter and Clear ask at once. When the query changes from outside, the box follows it.
+- **View preference.** Cards (the default) or list, kept in `localStorage` under `library-view` and never in the URL: a shared link should not change how someone else reads. The choice in force is one attribute on `<html>`, `data-library-view`, read by two custom variants in `globals.css`: `list-view:` and `card-view:` (which is simply "not the list"). `IdeaResults` is one piece of markup styled by those variants, so switching re-renders nothing, both views always show the same ideas, and nothing can mismatch at hydration. `LibraryViewScript` sets the attribute before the first paint from the server's HTML, as `SplashScript` does, and the switcher's layout effect does the same after a client navigation. The switcher's checked state comes from `useSyncExternalStore`, as `ThemeToggle`'s does.
+- **What a result shows.** Title, kind, status, and the date it last changed; on a sermon, its type and subject; notes clamped to two lines (cards only); up to three Scripture references and four tags, with a count of the rest. A point shows no sermon type or subject even where the record kept them. In list view a hovered or focused row gains an emerald edge on the left, the counterpart of a card's emerald border.
+- **Returning to the same place.** A result links to `/library/<id>?from=<the library's query string>` (`ideaHref`). The idea page turns `from` back into an address with `libraryReturnHref`, which parses it as a library query and writes it out again: whatever `from` holds, the result is a `/library…` address, so it cannot be used as an open redirect. The "Library" link and the redirect after a deletion use it. The browser's own Back works because all the state is in the URL.
+- **Empty states** are three: nothing captured at all (no controls, a Capture button); a search that finds nothing ("Clear search", filters kept); filters that find nothing ("Clear filters", search kept), which says the library has ideas and never calls it empty.
+- **The count** is the query's `total`: "12 matching ideas", or "Showing 25–48 of 126 ideas" when there is more than one page. It is a status region.
 
 ### Tags
 
-A tag belongs to one account and can go on any of that account's ideas, of any kind. `features/ideas/tags.ts` is the service and `tag-actions.ts` the server actions. **There is no interface for tags yet** (Phase 2B.2).
+A tag belongs to one account and can go on any of that account's ideas, of any kind. `features/ideas/tags.ts` is the service and `tag-actions.ts` the server actions. They are managed in the library's Manage tags dialog, chosen in the idea editor, shown on every card, and filtered by in the library.
 
 - **Service**: `listTags` (alphabetical, with how many ideas carry each), `createTag`, `renameTag`, `deleteTag`, `getIdeaTags`, `setIdeaTags` (replace), `addIdeaTags`, `removeIdeaTags`, and `tagsForIdeas` (the batch read). Every statement has the owner in its WHERE clause, as in `ideas.ts`.
 - **Actions**: `createTag`, `renameTag`, `deleteTag`, `setIdeaTags`, `addIdeaTags`, `removeIdeaTags`. Same rules as the idea actions: `authorize("active")`, Zod, the owner from the session, fixed messages.
@@ -201,7 +229,12 @@ A tag belongs to one account and can go on any of that account's ideas, of any k
 - **All or nothing.** Assignment runs in a transaction; one unknown tag in a list undoes the whole change, including an idea being created or updated at the same time.
 - **Saving an idea with tags.** `ideaInputSchema` has an optional `tagIds`. Left out, the idea's tags are untouched, which is what quick capture and the editor do today. Given, they replace what was there, in the same transaction as the idea. A repeated create returns the first idea with the tags it was first given.
 - **Tagging is not an edit.** `setIdeaTags`, `addIdeaTags`, `removeIdeaTags`, renaming, and deleting a tag leave `ideas.updated_at` alone, so tidying tags does not reorder the library.
-- Every idea read (`getIdea`, `recentIdeas`, `searchIdeas`) returns its `tags` as `{ id, name }`, alphabetically. Nothing displays them yet.
+- Every idea read (`getIdea`, `recentIdeas`, `searchIdeas`) returns its `tags` as `{ id, name }`, alphabetically. `TagChip` and `TagList` (`components/tag-chip.tsx`) are how a tag is shown, everywhere.
+- **Manage tags** (`TagManager`) is a dialog opened from the library's toolbar: create, rename in place, delete behind `ConfirmDialog` (which says how many ideas the tag comes off and that the ideas are kept), each tag with its `ideaCount` from the one grouped query in `listTags`, and a box to find a tag once there are more than eight. It calls the existing actions unchanged. Nothing is shown as done before the server answers; a refusal leaves what was typed in place; the actions' `revalidatePath` brings the new list. A deleted tag is also taken out of the library's filter.
+- **In the editor** (`TagPicker`, through `TagsField`): the idea's tags as removable chips, and a popover to find one of the account's tags or create a new one by name. `IdeaDraft` holds `tags` (with names, for showing); the editor sends `tagIds` made from them with every save.
+- **Existing tags are never lost to an unrelated edit.** The idea page passes the idea's current tags as the draft's starting value, so a save that changed only the title sends the same tags back. This is the risk Phase 2B.1 named: a form that sent `tagIds: []` by default would clear them. It is tested at the service, in the editor, and on the page.
+- **A tag created in the picker exists at once**, whether or not the idea is then saved; it is a tag action, and like every tag action it leaves `ideas.updated_at` alone. Putting it on the idea happens with Save, atomically with the rest of the idea.
+- **Quick capture does not choose tags yet.** It sends no `tagIds`, which the schema reads as "leave them alone".
 
 ### Quick capture
 
@@ -408,7 +441,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - **`Segmented`**: a choice between a few options, side by side, built on native radio buttons.
 - **`Textarea`**: styled as `Input`.
 - **Toast** (`ui/toast.tsx`): `useToast()` shows one short confirmation at the foot of the screen, with an optional link. It is a status region and never takes focus.
-- **`PageHeader`** (`components/layout/page-header.tsx`): title, one line of context, hairline. Every application page starts with it.
+- **`PageHeader`** (`components/layout/page-header.tsx`): title, one line of context, hairline, and optionally the page's one main `action` at its end (the library's Capture). Every application page starts with it.
 - **`Badge`** (`ui/badge.tsx`): `accent`, `muted`, `danger`.
 - **`StatStrip`** (`ui/stat-strip.tsx`): summary figures as one divided strip. A stat is a number, "Unavailable" when it could not be loaded, or a sentence (`pending`) when the measure does not exist yet.
 - **`ActionStatus`** and **`ConfirmDialog`** (`ui/`): the result line and the confirmation used by every consequential action.
@@ -456,6 +489,8 @@ These are settled and constrain later phases. The first and fourth are implement
 
 - **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, and Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
+- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
+- **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
 ## Security
@@ -509,3 +544,11 @@ These are settled and constrain later phases. The first and fourth are implement
 | `idea_tags` repeats the owner in both foreign keys     | A cross-account tag cannot exist even if application code is wrong                      |
 | `tagIds` optional on an idea's input                   | Existing forms save without disturbing tags; the 2B.2 forms opt in                      |
 | A retained subject or sermon type is not matched       | A point shows neither, so a match on them would have no visible reason                  |
+| Filters repeat their URL parameter                     | Several values without a new syntax; an old single-value link still works               |
+| "All tags" is a counted subquery, not a join           | One row per idea, one query however many tags, and the owner checked inside it          |
+| Library view kept in `localStorage`, not the URL       | A preference of the reader, not part of what was searched for; no migration             |
+| One results markup, restyled by an attribute on html   | No flash, no hydration mismatch, and both views cannot disagree                         |
+| Controls build on the query last asked for             | A debounced search and a filter click cannot undo each other                            |
+| The way back is a query string, re-parsed              | It can only ever produce a library address, so it is not an open redirect               |
+| Tag management is a dialog in the library              | Tags are tidied while looking at the ideas they organise; no extra page or nav item     |
+| Signed-in E2E through Clerk's testing ticket           | No password or bypass in the repository; development instance only                      |

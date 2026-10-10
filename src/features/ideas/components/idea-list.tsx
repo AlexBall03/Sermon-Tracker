@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
 import type { IdeaWithReferences } from "../ideas";
 import { ideaKindLabels, ideaStatusLabels } from "../model";
+import { TagList } from "./tag-chip";
 
 /** A row shows this many references; the rest are on the idea's own page. */
 const shownReferences = 3;
@@ -14,8 +15,8 @@ const shownReferences = 3;
 /**
  * Ideas as a list of cards, each one a link to the idea. The whole card is
  * the link's target; the Scripture references sit above it, so they open
- * their preview instead. Built to take search and filters in a later phase:
- * it only renders the ideas it is given.
+ * their preview instead. This is the dashboard's short list; the library
+ * draws its pages with `library/idea-results.tsx`, as cards or as rows.
  */
 export function IdeaList({ ideas, label }: { ideas: IdeaWithReferences[]; label: string }) {
   return (
@@ -63,6 +64,7 @@ export function IdeaList({ ideas, label }: { ideas: IdeaWithReferences[]; label:
                 />
               ))}
               {more > 0 && <span className="text-xs text-muted-foreground">and {more} more</span>}
+              <TagList tags={idea.tags} limit={3} />
               <p className="ml-auto text-xs text-muted-foreground">
                 {ideaStatusLabels[idea.status]}
                 <span aria-hidden> · </span>

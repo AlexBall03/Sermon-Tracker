@@ -267,6 +267,30 @@ describe("tags saved with an idea", () => {
     );
   });
 
+  it("keeps an idea's tags when the editor changes something else and sends them back", async () => {
+    const faith = await tag(me, "Faith");
+    const prayer = await tag(me, "Prayer");
+    const created = await createIdea(db, me, input({ title: "Draft", tagIds: [faith, prayer] }));
+    const id = created!.id;
+    const linksBefore = await db.select().from(ideaTags).where(eq(ideaTags.ideaId, id));
+
+    // What the editor does: the idea's current tags go back with every save.
+    const current = (await getIdea(db, me, id))!.tags.map((item) => item.id);
+    const saved = await updateIdea(
+      db,
+      me,
+      id,
+      input({ title: "A better title", notes: "And a note.", status: "ready", tagIds: current }),
+    );
+    expect(saved).toMatchObject({ title: "A better title", notes: "And a note.", status: "ready" });
+    expect(names(saved?.tags)).toEqual(["Faith", "Prayer"]);
+    expect(names((await getIdea(db, me, id))?.tags)).toEqual(["Faith", "Prayer"]);
+    // The links themselves were left alone, not removed and made again.
+    const linksAfter = await db.select().from(ideaTags).where(eq(ideaTags.ideaId, id));
+    expect(linksAfter).toHaveLength(2);
+    expect(linksAfter).toEqual(expect.arrayContaining(linksBefore));
+  });
+
   it("saves none of an update when a tag is unknown", async () => {
     const faith = await tag(me, "Faith");
     const created = await createIdea(db, me, input({ title: "Draft", tagIds: [faith] }));

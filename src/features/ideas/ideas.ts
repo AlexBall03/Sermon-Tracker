@@ -182,29 +182,40 @@ function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
     );
   }
 
-  if (query.kind) conditions.push(eq(ideas.kind, query.kind));
-  if (query.status) conditions.push(eq(ideas.status, query.status));
+  // Within a filter any chosen value will do; an empty filter asks nothing.
+  if (query.kinds.length > 0) conditions.push(inArray(ideas.kind, query.kinds));
+  if (query.statuses.length > 0) conditions.push(inArray(ideas.status, query.statuses));
   // A type kept from when an idea was a sermon does not count.
-  if (query.sermonType) {
-    conditions.push(eq(ideas.kind, "sermon"), eq(ideas.sermonType, query.sermonType));
+  if (query.sermonTypes.length > 0) {
+    conditions.push(eq(ideas.kind, "sermon"), inArray(ideas.sermonType, query.sermonTypes));
   }
 
-  // Any one of the tags is enough. EXISTS, not a join, so an idea with two of them is one row.
-  if (query.tagIds.length > 0) {
-    conditions.push(
-      exists(
-        db
-          .select({ one: sql`1` })
-          .from(ideaTags)
-          .where(
-            and(
-              eq(ideaTags.ideaId, ideas.id),
-              eq(ideaTags.ownerId, ownerId),
-              inArray(ideaTags.tagId, query.tagIds),
-            ),
-          ),
-      ),
+  // Tags are matched in a subquery, never a join, so an idea with two of them
+  // is still one row. The same tag asked for twice is one tag.
+  const tagIds = [...new Set(query.tagIds)];
+  if (tagIds.length > 0) {
+    const carried = and(
+      eq(ideaTags.ideaId, ideas.id),
+      eq(ideaTags.ownerId, ownerId),
+      inArray(ideaTags.tagId, tagIds),
     );
+    if (query.tagMode === "all") {
+      // Every tag: the idea carries as many of them as were asked for. A tag
+      // that is unknown, or someone else's, is on none of the owner's ideas,
+      // so asking for it as well finds nothing.
+      const held = db.select({ held: count() }).from(ideaTags).where(carried);
+      conditions.push(sql`(${held}) = ${tagIds.length}`);
+    } else {
+      // Any one of the tags is enough.
+      conditions.push(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(ideaTags)
+            .where(carried),
+        ),
+      );
+    }
   }
 
   type DateColumn = typeof ideas.createdAt | typeof ideas.updatedAt;

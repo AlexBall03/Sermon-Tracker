@@ -5,6 +5,16 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * The library's list view (features/ideas/components/library/library-view.ts).
+ * The choice is one attribute on <html>, set before the first paint, so the
+ * same markup is drawn as cards or as rows without a flash or a re-render.
+ * Cards are the default, so `card-view:` is simply "not the list": a style
+ * belongs to one view or the other and the two never compete.
+ */
+@custom-variant list-view (&:where([data-library-view="list"] *));
+@custom-variant card-view (&:where(:not([data-library-view="list"] *)));
+
+/*
  * Design tokens (Phase 1B.1)
  * 1. Brand palette: the only place raw brand hex values live.
  * 2. Semantic tokens: what components consume. Defined per theme.

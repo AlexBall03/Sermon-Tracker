@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`).
 
 ## Layout
 
@@ -86,6 +86,13 @@ Which tags are on which ideas.
 - `idea_tags_idea_fk`: `(idea_id, owner_id)` references `ideas (id, owner_id)`, `ON DELETE CASCADE`.
 - `idea_tags_tag_fk`: `(tag_id, owner_id)` references `tags (id, owner_id)`, `ON DELETE CASCADE`.
 - `idea_tags_tag_idx (tag_id)` serves the tag filter, the per-tag counts, and the cascade when a tag is deleted.
+
+**Library filters (Phase 2B.2, no schema change).** Kind, status, and sermon type each take several values and become `IN (…)`; a sermon type still requires `kind = 'sermon'`. Tags are matched in a subquery correlated on the idea, never a join, so an idea is one row however many of the tags it has:
+
+- any: `EXISTS (SELECT 1 FROM idea_tags WHERE idea_id = ideas.id AND owner_id = $owner AND tag_id IN (…))`
+- all: `(SELECT count(*) FROM idea_tags WHERE idea_id = ideas.id AND owner_id = $owner AND tag_id IN (…)) = <number of distinct tags asked for>`
+
+The primary key `(idea_id, tag_id)` makes that count exact, and the lookup is by the primary key's leading column. Because the owner is in the subquery, a tag ID that is unknown or belongs to another account is never counted: it finds nothing in "all" and is ignored in "any". No index was added.
 
 Because one `owner_id` must satisfy both foreign keys, a row can only join a tag and an idea that belong to the same account. Deleting an idea or a tag removes its rows here and nothing else.
 

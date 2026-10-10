@@ -17,6 +17,7 @@ import {
   type IdeaStatus,
   type SermonType,
 } from "./model";
+import type { IdeaTag } from "./tags";
 
 /** A passage attached to an idea. A sermon may mark one as its main text. */
 export type IdeaReference = ScriptureReference & { isPrimary: boolean };
@@ -110,7 +111,16 @@ export type IdeaDraft = {
   sermonType: SermonType | null;
   subject: string;
   references: IdeaReference[];
+  /**
+   * The idea's tags, with their names for showing. A form that saves them
+   * sends their IDs as `tagIds`; one that does not (quick capture) leaves
+   * the idea's tags as they are.
+   */
+  tags: IdeaTag[];
 };
+
+/** The draft's tags as the input schema takes them. */
+export const draftTagIds = (draft: IdeaDraft) => draft.tags.map((tag) => tag.id);
 
 export const emptyDraft: IdeaDraft = {
   kind: "undecided",
@@ -120,6 +130,7 @@ export const emptyDraft: IdeaDraft = {
   sermonType: null,
   subject: "",
   references: [],
+  tags: [],
 };
 
 /** True when the person has written anything worth keeping. */

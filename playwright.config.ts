@@ -1,5 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// The signed-in spec (tests/e2e/library.spec.ts) reads the development Clerk keys
+// and E2E_CLERK_USER_EMAIL from the same file the application does. A machine
+// without one (CI, a fresh clone) simply runs the guest specs.
+try {
+  process.loadEnvFile(".env.local");
+} catch {
+  // No .env.local: nothing to load.
+}
+
 // A dedicated port keeps e2e runs clear of a dev server on 3000.
 const port = 3100;
 const baseURL = `http://localhost:${port}`;

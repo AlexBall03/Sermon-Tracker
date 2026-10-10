@@ -14,20 +14,27 @@ import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
 import { changeIdeaKind, deleteIdea, updateIdea } from "../actions";
 import { ideaKindLabels, type IdeaKind } from "../model";
-import { fieldErrors, ideaInputSchema, type IdeaDraft } from "../schemas";
+import { draftTagIds, fieldErrors, ideaInputSchema, type IdeaDraft } from "../schemas";
+import type { IdeaTag } from "../tags";
 import {
   KindField,
   NotesField,
   ReferencesField,
   SermonFields,
   StatusField,
+  TagsField,
   TitleField,
   type UpdateDraft,
 } from "./idea-fields";
 
 type IdeaEditorProps = {
   id: string;
+  /** The idea as it is saved, including the tags it already has. */
   initial: IdeaDraft;
+  /** Every tag the account has, to choose from. */
+  allTags?: IdeaTag[];
+  /** Where "back" and a deletion lead: the library as it was left. */
+  backHref?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -44,8 +51,19 @@ const offline: ActionResult = {
  * kind, so the title, notes, references, and sermon details all stay, whether
  * or not there are unsaved edits on the page. Leaving with unsaved edits, by
  * any route, asks first (`useLeaveGuard`).
+ *
+ * Tags are saved with the rest. The draft starts from the tags the idea
+ * already has and every save sends the draft's tags, so changing only the
+ * title sends the same tags back and none is lost.
  */
-export function IdeaEditor({ id, initial, createdAt, updatedAt }: IdeaEditorProps) {
+export function IdeaEditor({
+  id,
+  initial,
+  allTags = [],
+  backHref = routes.library,
+  createdAt,
+  updatedAt,
+}: IdeaEditorProps) {
   const router = useRouter();
   const toast = useToast();
   const [draft, setDraft] = useState(initial);
@@ -73,7 +91,7 @@ export function IdeaEditor({ id, initial, createdAt, updatedAt }: IdeaEditorProp
 
   async function save() {
     if (busy) return;
-    const parsed = ideaInputSchema.safeParse(draft);
+    const parsed = ideaInputSchema.safeParse({ ...draft, tagIds: draftTagIds(draft) });
     if (!parsed.success) {
       const found = fieldErrors(parsed.error);
       setErrors(found);
@@ -112,7 +130,7 @@ export function IdeaEditor({ id, initial, createdAt, updatedAt }: IdeaEditorProp
     guard.allowLeaving();
     setSaved(draft);
     toast({ message: outcome.message });
-    router.push(routes.library);
+    router.push(backHref);
   }
 
   return (
@@ -139,6 +157,7 @@ export function IdeaEditor({ id, initial, createdAt, updatedAt }: IdeaEditorProp
           </p>
         </div>
         <ReferencesField draft={draft} update={update} />
+        <TagsField draft={draft} update={update} options={allTags} />
         <NotesField
           form={form}
           draft={draft}

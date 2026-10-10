@@ -42,6 +42,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.2.45",
     "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",

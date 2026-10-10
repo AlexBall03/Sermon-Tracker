@@ -62,6 +62,7 @@ const idea = (id: string, title: string, kind: string) => ({
       isPrimary: false,
     },
   ],
+  tags: [],
 });
 
 beforeEach(() => {

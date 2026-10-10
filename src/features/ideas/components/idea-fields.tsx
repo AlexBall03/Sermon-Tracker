@@ -15,6 +15,8 @@ import {
   type SermonType,
 } from "../model";
 import type { IdeaDraft } from "../schemas";
+import type { IdeaTag } from "../tags";
+import { TagPicker } from "./tag-picker";
 
 /** Applies a change to the draft as it stands, as a state setter does. */
 export type UpdateDraft = (change: (draft: IdeaDraft) => IdeaDraft) => void;
@@ -157,6 +159,21 @@ export function ReferencesField({ draft, update }: Pick<FieldProps, "draft" | "u
       }
       allowPrimary={draft.kind === "sermon"}
       max={ideaLimits.references}
+    />
+  );
+}
+
+/** The idea's tags, chosen from the account's own, with a new one made on the spot if needed. */
+export function TagsField({
+  draft,
+  update,
+  options,
+}: Pick<FieldProps, "draft" | "update"> & { options: IdeaTag[] }) {
+  return (
+    <TagPicker
+      value={draft.tags}
+      onChange={(change) => update((current) => ({ ...current, tags: change(current.tags) }))}
+      options={options}
     />
   );
 }
