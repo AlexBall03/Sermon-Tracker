@@ -31,16 +31,36 @@ describe("checkTarget", () => {
     expect(checkTarget({ ...prod, stamp: "development" }).ok).toBe(false);
   });
 
-  it("never runs production migrations on Vercel", () => {
-    expect(checkTarget({ ...prod, vercelEnv: "production" }).ok).toBe(false);
+  it("runs production migrations on Vercel only in the production deployment", () => {
+    expect(checkTarget({ ...prod, vercelEnv: "production" })).toEqual({
+      ok: true,
+      needsStamp: false,
+    });
     expect(checkTarget({ ...prod, vercelEnv: "preview" }).ok).toBe(false);
+    expect(checkTarget({ ...prod, vercelEnv: "development" }).ok).toBe(false);
+    // The production deployment still refuses a database that is not production.
+    expect(checkTarget({ ...prod, vercelEnv: "production", stamp: "development" }).ok).toBe(false);
+    expect(checkTarget({ ...prod, vercelEnv: "production", declared: "development" }).ok).toBe(
+      false,
+    );
   });
 
   it("fails closed when the identity is ambiguous", () => {
     expect(checkTarget({ ...dev, declared: undefined }).ok).toBe(false);
     expect(checkTarget({ ...dev, stamp: null, isEmpty: false }).ok).toBe(false);
+    // From a workstation an unstamped production database is always stamped by hand.
     expect(checkTarget({ ...prod, stamp: null, isEmpty: true }).ok).toBe(false);
+    expect(checkTarget({ ...prod, vercelEnv: "production", stamp: null, isEmpty: false }).ok).toBe(
+      false,
+    );
     expect(checkTarget({ ...dev, target: "staging" }).ok).toBe(false);
+  });
+
+  it("stamps a brand-new production database on its first production deployment", () => {
+    expect(checkTarget({ ...prod, vercelEnv: "production", stamp: null, isEmpty: true })).toEqual({
+      ok: true,
+      needsStamp: true,
+    });
   });
 
   it("stamps a brand-new development database automatically", () => {

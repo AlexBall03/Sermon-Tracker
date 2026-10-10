@@ -26,8 +26,12 @@ export function describeTarget(url) {
  * - `stamp`: the environment name stored inside the database, or null.
  * - `isEmpty`: the database has no tables at all.
  *
+ * - `vercelEnv`: VERCEL_ENV, set only inside a Vercel build or deployment.
+ *
  * The declaration and the stamp must both agree with the target. An unstamped
- * database is accepted only for development and only while it is empty.
+ * database is accepted only while it is empty, and only where nothing else
+ * could be meant: for development, or for production inside the production
+ * deployment itself.
  */
 export function checkTarget({ target, declared, stamp, isEmpty, vercelEnv }) {
   if (!ENVIRONMENTS.includes(target)) {
@@ -36,8 +40,8 @@ export function checkTarget({ target, declared, stamp, isEmpty, vercelEnv }) {
   if (target === "development" && vercelEnv === "production") {
     return refuse("Development migrations cannot run in a production deployment.");
   }
-  if (target === "production" && vercelEnv) {
-    return refuse("Production migrations are run by hand from a workstation, not on Vercel.");
+  if (target === "production" && vercelEnv && vercelEnv !== "production") {
+    return refuse("Production migrations cannot run in a preview or development deployment.");
   }
   if (declared !== target) {
     return refuse(
@@ -53,6 +57,9 @@ export function checkTarget({ target, declared, stamp, isEmpty, vercelEnv }) {
     );
   }
   if (target === "development" && isEmpty) return { ok: true, needsStamp: true };
+  if (target === "production" && vercelEnv === "production" && isEmpty) {
+    return { ok: true, needsStamp: true };
+  }
   return refuse(
     `This database has no environment stamp. Run "npm run db:stamp -- ${shortName(target)}" once to identify it.`,
   );

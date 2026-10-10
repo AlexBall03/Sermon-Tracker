@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Menu, Settings, X } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { routes } from "@/lib/site";
 import { AccountMenu, useAccountActions, useAccountIdentity } from "./account-menu";
+import { MenuIcon } from "./menu-icon";
 import { ThemeToggle } from "./theme-toggle";
-import { useNavPanel } from "./use-nav-panel";
+import { row, useNavPanel } from "./use-nav-panel";
 
 /** Links shown for a role. Hiding a link is presentation; the pages enforce access. */
 export function appLinks(isAdmin: boolean) {
@@ -75,9 +76,9 @@ type AppMobileNavProps = {
   isCurrent: (href: string) => boolean;
 };
 
-/** Small-screen navigation, following the public MobileNav: a button and a panel below the bar. */
+/** Small-screen navigation, following the public MobileNav: a button and a sheet below the bar. */
 function AppMobileNav({ links, isCurrent }: AppMobileNavProps) {
-  const { open, mounted, buttonRef, toggle, close, panelProps } = useNavPanel();
+  const { open, mounted, buttonRef, toggle, close, panelProps, scrimProps } = useNavPanel();
   const { name, email } = useAccountIdentity();
   const { signOut } = useAccountActions();
 
@@ -93,62 +94,77 @@ function AppMobileNav({ links, isCurrent }: AppMobileNavProps) {
         onClick={toggle}
         className="-mr-2 grid size-10 place-items-center rounded-lg text-foreground transition-colors duration-150 hover:bg-accent active:bg-foreground/12"
       >
-        {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
+        <MenuIcon open={open} />
       </button>
 
       {mounted && (
-        // Opaque rather than glass: a backdrop filter nested in the blurred
-        // header cannot see the page behind it.
-        <div
-          id="app-mobile-nav"
-          {...panelProps}
-          className={`absolute inset-x-0 top-full border-b bg-surface-raised shadow-raised ${panelProps.className}`}
-        >
-          <nav aria-label="Application" className="container-page flex flex-col py-3">
-            {links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={close}
-                aria-current={isCurrent(link.href) ? "page" : undefined}
-                className="-mx-2 flex min-h-11 items-center rounded-lg px-2 text-[0.9375rem] font-medium transition-colors duration-150 hover:bg-accent aria-[current=page]:bg-primary-soft aria-[current=page]:text-primary"
-              >
-                {link.label}
-              </Link>
-            ))}
+        <>
+          <div
+            {...scrimProps}
+            className={`absolute inset-x-0 top-full h-dvh bg-background/70 ${scrimProps.className}`}
+          />
+          {/*
+           * Opaque rather than glass: a backdrop filter nested in the blurred
+           * header cannot see the page behind it.
+           */}
+          <div
+            id="app-mobile-nav"
+            {...panelProps}
+            className={`absolute inset-x-0 top-full max-h-[calc(100dvh-var(--bar-h))] overflow-y-auto overscroll-contain border-b bg-surface-raised shadow-raised ${panelProps.className}`}
+          >
+            <nav aria-label="Application" className="container-page pb-5">
+              <ul className="divide-y border-b">
+                {links.map((link, index) => (
+                  <li key={link.href} style={row(index)} className="animate-menu-row">
+                    <Link
+                      href={link.href}
+                      onClick={close}
+                      aria-current={isCurrent(link.href) ? "page" : undefined}
+                      // The current page is marked by a short emerald rule before its name.
+                      className="flex min-h-13 items-center font-display text-xl tracking-[-0.01em] transition-colors duration-150 before:mr-3 before:hidden before:h-5 before:w-0.5 before:rounded-full before:bg-primary hover:text-primary active:text-primary aria-[current=page]:before:block"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
 
-            <div className="mt-3 border-t pt-4">
-              <p className="truncate text-sm font-semibold">{name}</p>
-              {email && email !== name && (
-                <p className="truncate text-sm text-muted-foreground">{email}</p>
-              )}
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Link
-                  href={routes.settings}
-                  onClick={close}
-                  aria-current={isCurrent(routes.settings) ? "page" : undefined}
-                  className={buttonVariants({
-                    variant: "outline",
-                    className:
-                      "aria-[current=page]:border-primary/70 aria-[current=page]:text-primary",
-                  })}
-                >
-                  <Settings aria-hidden />
-                  Settings
-                </Link>
-                <Button variant="secondary" onClick={signOut}>
-                  <LogOut aria-hidden />
-                  Sign out
-                </Button>
+              <div style={row(links.length)} className="animate-menu-row pt-5">
+                <p className="truncate text-sm font-semibold">{name}</p>
+                {email && email !== name && (
+                  <p className="truncate text-sm text-muted-foreground">{email}</p>
+                )}
+                <div className="mt-3.5 grid grid-cols-2 gap-2">
+                  <Link
+                    href={routes.settings}
+                    onClick={close}
+                    aria-current={isCurrent(routes.settings) ? "page" : undefined}
+                    className={buttonVariants({
+                      variant: "outline",
+                      className:
+                        "aria-[current=page]:border-primary/70 aria-[current=page]:text-primary",
+                    })}
+                  >
+                    <Settings aria-hidden />
+                    Settings
+                  </Link>
+                  <Button variant="secondary" onClick={signOut}>
+                    <LogOut aria-hidden />
+                    Sign out
+                  </Button>
+                </div>
               </div>
-            </div>
 
-            <div className="mt-4 border-t pt-4 pb-1">
-              <p className="mb-2 text-sm font-medium text-muted-foreground">Theme</p>
-              <ThemeToggle showLabels className="flex w-full" />
-            </div>
-          </nav>
-        </div>
+              <div
+                style={row(links.length + 1)}
+                className="mt-5 flex animate-menu-row items-center justify-between border-t pt-4"
+              >
+                <p className="text-sm font-medium text-muted-foreground">Theme</p>
+                <ThemeToggle />
+              </div>
+            </nav>
+          </div>
+        </>
       )}
     </div>
   );

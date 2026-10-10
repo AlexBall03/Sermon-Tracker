@@ -121,12 +121,9 @@ Rules: only that exact Clerk ID is ever bootstrapped; it happens when the accoun
 
 ### 9. Production database
 
-```bash
-PRODUCTION_DATABASE_URL="…" npm run db:stamp -- prod      # once
-PRODUCTION_DATABASE_URL="…" npm run db:migrate:prod       # before each release with migrations
-```
+Nothing to run. With the Production variables from step 7 in place, each production deployment applies its pending migrations during the build, and the first one stamps the empty database as `production`. If a migration is refused or fails, the build fails and says why.
 
-See [DATABASE.md](DATABASE.md) for the safeguards and deployment ordering.
+See [DATABASE.md](DATABASE.md) for the safeguards, the by-hand commands, and deployment ordering.
 
 ### 10. Verify a deployment
 

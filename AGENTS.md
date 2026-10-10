@@ -16,6 +16,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.
 - The repository is public. No secrets anywhere.
 - Use semantic design tokens from `src/app/globals.css`; no hardcoded brand colours in components. The interface is neutral: emerald is for actions, selection, and focus, not for surfaces.
-- Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`, commit the SQL. Never `drizzle-kit push`, never hand-edit an applied migration, never run `db:migrate:prod` or `db:stamp`.
+- Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`, commit the SQL. Never `drizzle-kit push`, never hand-edit an applied migration, never run `db:migrate:prod` or `db:stamp`. Production is migrated by its own deployment during `npm run build` (see `docs/DATABASE.md`), so every migration must work with the code already live.
 - Every page under `(app)` and every server action checks access itself with the helpers in `src/features/auth/access.ts`. The proxy is routing only.
 - `npm run dev` needs a development database. Use `npm run dev:next` when none is configured.

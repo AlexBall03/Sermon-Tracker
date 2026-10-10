@@ -36,12 +36,10 @@ export function Hero() {
               Sign in
               <ArrowRight data-trailing />
             </Link>
-            <Link
-              href="#capabilities"
-              className={buttonVariants({ variant: "outline", size: "lg" })}
-            >
+            {/* A plain anchor: next/link does not scroll again to a hash already in the URL. */}
+            <a href="#capabilities" className={buttonVariants({ variant: "outline", size: "lg" })}>
               See how it works
-            </Link>
+            </a>
           </div>
         </div>
 

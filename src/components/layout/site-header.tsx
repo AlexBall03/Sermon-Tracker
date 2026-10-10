@@ -29,12 +29,13 @@ export function SiteHeader() {
           <ul className="flex items-center gap-0.5">
             {sectionLinks.map((link) => (
               <li key={link.href}>
-                <Link
+                {/* A plain anchor: next/link does not scroll again to a hash already in the URL. */}
+                <a
                   href={link.href}
                   className="rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10"
                 >
                   {link.label}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>

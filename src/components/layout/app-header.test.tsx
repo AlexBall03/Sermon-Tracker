@@ -24,9 +24,22 @@ vi.mock("@clerk/nextjs", () => ({
 import { initialsOf } from "./account-menu";
 import { AppHeader } from "./app-header";
 
+// jsdom has no matchMedia. The listeners are kept so a test can cross the breakpoint.
+const mediaListeners = new Set<(event: { matches: boolean }) => void>();
+
 beforeEach(() => {
   vi.clearAllMocks();
   state.pathname = "/admin";
+  mediaListeners.clear();
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      addEventListener: (_: string, listener: (event: { matches: boolean }) => void) =>
+        mediaListeners.add(listener),
+      removeEventListener: (_: string, listener: (event: { matches: boolean }) => void) =>
+        mediaListeners.delete(listener),
+    }) as unknown as MediaQueryList;
 });
 
 describe("AppHeader", () => {
@@ -113,6 +126,20 @@ describe("AppHeader", () => {
     act(() => void vi.advanceTimersByTime(500));
     expect(panel).not.toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("closes the mobile menu when the window widens past the breakpoint", () => {
+    render(<AppHeader isAdmin={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    expect(document.getElementById("app-mobile-nav")).toBeInTheDocument();
+
+    act(() => mediaListeners.forEach((listener) => listener({ matches: true })));
+    // Removed at once: a hidden panel would keep the bar opaque.
+    expect(document.getElementById("app-mobile-nav")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("sends account management to our settings page from the account menu", async () => {

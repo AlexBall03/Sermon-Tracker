@@ -13,16 +13,22 @@ const links = [
   { href: routes.signIn, label: "Sign in" },
 ] as const;
 
-/** Two rows: the lockup and the page's links, then a hairline and the small print. */
+const linkClassName =
+  "block rounded-md px-2.5 py-1.5 whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:py-3";
+
+/**
+ * Two rows: the lockup with a line saying what the product is, beside the
+ * page's links; then a hairline and the small print.
+ */
 export function SiteFooter() {
   return (
     <footer className="border-t">
-      <div className="container-page pt-10 pb-8 lg:pt-12">
-        <div className="flex flex-col gap-7 sm:flex-row sm:items-start sm:justify-between">
+      <div className="container-page pt-11 pb-8 lg:pt-14">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Logo />
-            <p className="mt-2.5 font-serif text-[0.9375rem] text-muted-foreground italic">
-              {siteConfig.tagline}
+            <Logo markClassName="size-8" textClassName="text-[1.3125rem]" />
+            <p className="mt-3.5 max-w-[19rem] text-sm leading-relaxed text-pretty text-muted-foreground">
+              {siteConfig.blurb}
             </p>
           </div>
           <nav aria-label="Footer">
@@ -30,19 +36,23 @@ export function SiteFooter() {
             <ul className="-mx-2.5 -my-1.5 flex flex-wrap gap-x-1 text-sm font-medium">
               {links.map((link) => (
                 <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="block rounded-md px-2.5 py-1.5 whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:py-3"
-                  >
-                    {link.label}
-                  </Link>
+                  {link.href.includes("#") ? (
+                    // A plain anchor: next/link does not scroll again to a hash already in the URL.
+                    <a href={link.href} className={linkClassName}>
+                      {link.label}
+                    </a>
+                  ) : (
+                    <Link href={link.href} className={linkClassName}>
+                      {link.label}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
           </nav>
         </div>
 
-        <div className="mt-8 flex flex-col gap-2 border-t pt-6 text-[0.8125rem] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-9 flex flex-col gap-2 border-t pt-6 text-[0.8125rem] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <p className="tabular-nums">
               {year} {siteConfig.name}

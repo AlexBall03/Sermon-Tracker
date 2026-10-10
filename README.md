@@ -37,7 +37,7 @@ npm run dev                  # migrates the development database, then http://lo
 | `npm run db:migrate:prod` | Apply pending migrations to production (asks to confirm)      |
 | `npm run db:status`       | Show target, stamp, and pending migrations                    |
 | `npm run db:stamp`        | Identify a database as development or production              |
-| `npm run build`           | Production build                                              |
+| `npm run build`           | Production build; on Vercel production, then migrates it      |
 | `npm run start`           | Serve the production build                                    |
 | `npm run lint`            | ESLint                                                        |
 | `npm run typecheck`       | Generate route types, then `tsc --noEmit`                     |

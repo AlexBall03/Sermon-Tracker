@@ -4,6 +4,8 @@ export const siteConfig = {
   tagline: "Capture. Develop. Preach.",
   description:
     "Sermon Tracker gives preachers one place to capture sermon and point ideas before they are forgotten, develop them over time, and keep a record of what has been preached.",
+  /** One plain sentence for the public footer. */
+  blurb: "A private place to keep sermon ideas until they are ready to preach.",
   /** Canonical production origin. Previews and local builds still point here. */
   url: "https://sermontracker.com",
   /** Credited in the public footer. */

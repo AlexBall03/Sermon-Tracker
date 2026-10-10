@@ -1,8 +1,11 @@
 // Database commands: migrate, stamp, status. See docs/DATABASE.md.
 //
-//   node scripts/db/cli.mjs migrate dev|prod
+//   node scripts/db/cli.mjs migrate dev|prod|deploy
 //   node scripts/db/cli.mjs stamp   dev|prod [--force]
 //   node scripts/db/cli.mjs status  dev|prod
+//
+// `migrate deploy` is the build step: it migrates production inside the Vercel
+// production deployment, without a prompt, and does nothing anywhere else.
 //
 // Every command identifies its target before changing anything and refuses
 // when the identity is missing or does not match (see guard.mjs).
@@ -35,8 +38,21 @@ function loadEnvFile(name) {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
-/** Connection settings for a target. Production never reads DATABASE_URL. */
-function connectionFor(target) {
+/**
+ * Connection settings for a target. From a workstation, production never
+ * reads DATABASE_URL. The production deployment has only its own DATABASE_URL,
+ * and the guard checks that it is declared and stamped as production.
+ */
+function connectionFor(target, automated) {
+  if (automated) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Refusal(
+        "DATABASE_URL is not set for the Production environment in Vercel (see docs/ENVIRONMENTS.md).",
+      );
+    }
+    return { url, declared: process.env.DATABASE_ENVIRONMENT || undefined };
+  }
   if (target === "production") {
     loadEnvFile(".env.production.local");
     const url = process.env.PRODUCTION_DATABASE_URL;
@@ -134,7 +150,7 @@ async function inspect(pool, target, declared) {
   return { stamp, verdict };
 }
 
-async function runMigrate(pool, target, { url, declared }) {
+async function runMigrate(pool, target, { url, declared }, automated) {
   const { verdict } = await inspect(pool, target, declared);
   if (!verdict.ok) throw new Refusal(verdict.reason);
 
@@ -148,7 +164,8 @@ async function runMigrate(pool, target, { url, declared }) {
     );
     if (pending.length === 0) return;
     console.log("Migrations are not rolled back automatically if one fails.");
-    await confirm("migrate production");
+    // A deployment has no terminal; pushing to the production branch is the confirmation.
+    if (!automated) await confirm("migrate production");
   } else if (pending.length === 0) {
     console.log("Database: development, up to date.");
     return;
@@ -187,16 +204,25 @@ async function runStatus(pool, target, { url, declared }) {
 
 async function main() {
   const [command, targetName, ...flags] = process.argv.slice(2);
+  const automated = command === "migrate" && targetName === "deploy";
+  if (automated && process.env.VERCEL_ENV !== "production") {
+    console.log("Database: not a production deployment, migrations skipped.");
+    return;
+  }
   // `status` is read-only, so it defaults to development.
-  const target = resolveTarget(targetName ?? (command === "status" ? "dev" : undefined));
+  const target = automated
+    ? "production"
+    : resolveTarget(targetName ?? (command === "status" ? "dev" : undefined));
   if (!["migrate", "stamp", "status"].includes(command) || !target) {
-    throw new Refusal("Usage: node scripts/db/cli.mjs <migrate|stamp|status> <dev|prod> [--force]");
+    throw new Refusal(
+      "Usage: node scripts/db/cli.mjs <migrate|stamp|status> <dev|prod> [--force], or migrate deploy",
+    );
   }
 
-  const connection = connectionFor(target);
+  const connection = connectionFor(target, automated);
   const pool = new Pool({ connectionString: connection.url });
   try {
-    if (command === "migrate") await runMigrate(pool, target, connection);
+    if (command === "migrate") await runMigrate(pool, target, connection, automated);
     if (command === "stamp") await runStamp(pool, target, connection, flags.includes("--force"));
     if (command === "status") await runStatus(pool, target, connection);
   } finally {

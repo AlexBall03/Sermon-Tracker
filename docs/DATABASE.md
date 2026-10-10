@@ -51,7 +51,8 @@ Never edit a migration that has been applied anywhere, and never use `drizzle-ki
 | `npm run dev:next`        | Starts Next without touching a database (interface work only)                                       |
 | `npm run db:generate`     | Writes a migration from schema changes                                                              |
 | `npm run db:migrate:dev`  | Applies pending migrations to development                                                           |
-| `npm run db:migrate:prod` | Applies pending migrations to production, after confirmation                                        |
+| `npm run build`           | Builds; in the Vercel production deployment only, then applies pending migrations to production     |
+| `npm run db:migrate:prod` | Applies pending migrations to production by hand, after confirmation                                |
 | `npm run db:status`       | Target, stamp, applied and pending migrations (`-- prod` for production)                            |
 | `npm run db:stamp -- dev` | Identifies a database as development (`-- prod` for production)                                     |
 
@@ -60,7 +61,7 @@ Never edit a migration that has been applied anywhere, and never use `drizzle-ki
 A hostname or database name is not trusted to tell development from production. Instead each database says what it is.
 
 - **The stamp.** A one-row table, `sermon_tracker_meta.environment`, holds `development` or `production`. It lives outside the schema Drizzle manages.
-- **The declaration.** `DATABASE_ENVIRONMENT` sits beside `DATABASE_URL` and says what that URL is meant to be. The production command does not read `DATABASE_URL` at all; it reads `PRODUCTION_DATABASE_URL`.
+- **The declaration.** `DATABASE_ENVIRONMENT` sits beside `DATABASE_URL` and says what that URL is meant to be. On a workstation the production command does not read `DATABASE_URL` at all; it reads `PRODUCTION_DATABASE_URL`.
 
 A command runs only when the command's target, the declaration, and the stamp all agree. Anything else is refused and nothing is changed:
 
@@ -72,7 +73,9 @@ A command runs only when the command's target, the declaration, and the stamp al
 | Brand-new, empty database used for development               | Stamped `development` automatically |
 | Production command pointed at a development database         | Refused                             |
 | Development command inside the production deployment         | Refused                             |
-| Any production migration on Vercel                           | Refused                             |
+| Production migration in a preview deployment                 | Refused                             |
+| Production build, database declared and stamped `production` | Migrated                            |
+| Production build, brand-new empty database                   | Stamped `production`, then migrated |
 
 A Neon branch created from production copies production's stamp, so it is refused for development until you run `npm run db:stamp -- dev --force` against it. That is deliberate: a copy of production data should be relabelled on purpose.
 
@@ -82,28 +85,31 @@ Connection strings are never printed. Commands show the host and database name o
 
 ## Production migrations
 
-Production migrations never run during a Vercel build or at application start. They are run by hand from a workstation:
+The production deployment migrates its own database. `npm run build` is `next build`, then `node scripts/db/cli.mjs migrate deploy`:
 
-```bash
-# one time, to identify the production database
-PRODUCTION_DATABASE_URL="…" npm run db:stamp -- prod
+- **Anywhere but the Vercel production deployment** (a local build, a preview): it prints that migrations were skipped and does nothing. Previews use the development database, which `npm run dev` migrates.
+- **In the production deployment** (`VERCEL_ENV=production`): it connects with the deployment's own `DATABASE_URL`, checks the declaration and the stamp, prints the host, database name, and pending migrations, and applies them without a prompt. Pushing to `master` is the confirmation. With nothing pending it exits at once.
+- **The first deployment**: an empty, unstamped database is stamped `production` and migrated. A database that already has tables but no stamp is refused, as is one stamped `development`.
 
-# each release that includes migrations
-PRODUCTION_DATABASE_URL="…" npm run db:status -- prod
-PRODUCTION_DATABASE_URL="…" npm run db:migrate:prod
-```
-
-`db:migrate:prod` prints the target and the pending migrations, then requires typing `migrate production` in an interactive terminal. Instead of the inline variable you may keep the URL in `.env.production.local`, which is git-ignored. In PowerShell, set it with `$env:PRODUCTION_DATABASE_URL = "…"` first.
+It runs after the code has compiled and before Vercel puts the deployment live. If it refuses or a migration fails, the build fails and the previous deployment keeps serving. The reason is in the build log.
 
 Drizzle records applied migrations in `drizzle.__drizzle_migrations`, so rerunning is safe. A failed migration is not rolled back automatically: read the error, fix forward with a new migration, and use Neon's point-in-time restore if data was damaged.
 
+### By hand, from a workstation
+
+The same commands remain for looking at production or repairing it:
+
+```bash
+PRODUCTION_DATABASE_URL="…" npm run db:status -- prod
+PRODUCTION_DATABASE_URL="…" npm run db:stamp -- prod
+PRODUCTION_DATABASE_URL="…" npm run db:migrate:prod
+```
+
+`db:migrate:prod` prints the target and the pending migrations, then requires typing `migrate production` in an interactive terminal. From a workstation an unstamped production database is never stamped automatically. Instead of the inline variable you may keep the URL in `.env.production.local`, which is git-ignored. In PowerShell, set it with `$env:PRODUCTION_DATABASE_URL = "…"` first.
+
 ### Ordering with deployments
 
-Vercel deploys `master` as soon as it is pushed, so the database must be ready first, and the old code must keep working against the new schema.
-
-1. Merge to `dev`; the migration runs locally and against the development database.
-2. Before merging to `master`, run `npm run db:migrate:prod`.
-3. Merge to `master`. Vercel deploys code that expects the schema already in place.
+While a production build runs, and again after any rollback, the previous deployment's code is serving requests against the new schema. Nothing here stops two production builds from migrating at the same moment, so avoid pushing a second release with migrations while the first is still building.
 
 Keep every migration backward compatible with the code currently in production ("expand, then contract"):
 
