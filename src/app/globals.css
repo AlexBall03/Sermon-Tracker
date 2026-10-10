@@ -353,6 +353,39 @@
   }
 }
 
+/*
+ * The capture control's breathing edge: a ring of emerald light around the
+ * control that slowly comes and goes. It is drawn on a pseudo-element, apart
+ * from the control's own border and shadow, so the control's hover and focus
+ * styles keep their transitions and the two never fight over a property.
+ * Used sparingly: see ARCHITECTURE.md > Glow.
+ */
+@utility breathe-ring {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 1px solid transparent;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: breathe 5s ease-in-out infinite;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    border-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: color-mix(in oklab, var(--primary) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--lamp) 14%, transparent);
+  }
+}
+
 /* Shared page container: header, sections, and footer all align to this. */
 @utility container-page {
   width: 100%;
@@ -505,4 +538,128 @@
 @utility scroll-quiet {
   scrollbar-width: thin;
   scrollbar-color: var(--input) transparent;
+}
+
+/*
+ * Splash: the loading screen for a first visit and for the first page after
+ * signing in (components/layout/splash-screen.tsx). Its state is one attribute
+ * on <html>, set before the first paint: "on", then "leaving" while it fades,
+ * then absent. With no attribute it is never displayed at all.
+ */
+[data-splash-screen] {
+  display: none;
+}
+
+html[data-splash="on"] [data-splash-screen],
+html[data-splash="leaving"] [data-splash-screen] {
+  display: grid;
+}
+
+/* the fade; its duration is `fadeMs` in splash-controller.tsx */
+html[data-splash="leaving"] [data-splash-screen] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+
+/*
+ * The page's own entrance waits behind the splash instead of playing unseen,
+ * so the landing page's opening sequence starts as the splash lifts.
+ */
+html[data-splash="on"] :is(main, header, footer, nav) * {
+  animation-play-state: paused !important;
+}
+
+/* as the screen fades, what is on it lifts a little, as if making way */
+.splash-content {
+  transition: transform 0.45s ease;
+}
+
+html[data-splash="leaving"] .splash-content {
+  transform: translateY(-0.75rem);
+}
+
+/* the one light: large and soft behind the mark, breathing for as long as the splash is up */
+.splash-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(52rem, 150vw);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background-image: radial-gradient(closest-side, var(--glow), transparent);
+  pointer-events: none;
+  animation: splash-glow 3.6s ease-in-out infinite;
+}
+
+@keyframes splash-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    scale: 0.94;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* a line of emerald light passing along the hairline, for as long as the splash is up */
+.splash-light {
+  background-image: linear-gradient(to right, transparent, var(--lamp), transparent);
+  animation: splash-light 1.5s cubic-bezier(0.45, 0, 0.55, 1) 0.5s infinite both;
+}
+
+@keyframes splash-light {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(210%);
+  }
+}
+
+/*
+ * Navigation progress: the slim bar above the header
+ * (components/layout/navigation-progress.tsx). `data-state` is "loading" while
+ * a page or a navigation is under way, "done" as it arrives, and "idle" between.
+ */
+[data-nav-progress] > div {
+  opacity: 0;
+  transform: scaleX(0);
+}
+
+/* quick at first, then ever slower: it approaches the end without claiming to have reached it */
+[data-nav-progress][data-state="loading"] > div {
+  opacity: 1;
+  animation: nav-progress 12s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+
+/* arrival: run to the end, then fade; together within `finishMs` in navigation-progress.tsx */
+[data-nav-progress][data-state="done"] > div {
+  opacity: 0;
+  transform: scaleX(1);
+  transition:
+    transform 0.2s ease-out,
+    opacity 0.3s ease 0.2s;
+}
+
+@keyframes nav-progress {
+  from {
+    transform: scaleX(0);
+  }
+  12% {
+    transform: scaleX(0.35);
+  }
+  45% {
+    transform: scaleX(0.7);
+  }
+  to {
+    transform: scaleX(0.94);
+  }
+}
+
+/* nothing to scroll behind a full-screen splash; the bar returns as the fade begins */
+html[data-splash="on"] {
+  overflow: hidden;
 }

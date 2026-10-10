@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { asReturningVisitor } from "./returning-visitor";
+
+// The loading screen has its own spec; here the page is tested without it.
+test.beforeEach(({ context, baseURL }) => asReturningVisitor(context, baseURL));
+
 /**
  * Guest behaviour only. These pass with or without Clerk keys in the build:
  * nothing here signs in, so they do not verify Clerk itself. Signed-in flows

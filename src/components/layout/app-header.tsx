@@ -62,13 +62,20 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
               ))}
             </ul>
             <div className="flex items-center gap-3">
-              {/* A sibling of the account button: same height, hairline, and hover. Only the plus is emerald. */}
+              {/*
+               * A sibling of the account button: same height, hairline, and hover. Only the
+               * plus is emerald. A ring of light breathes around it, slowly, to say where a
+               * thought goes; on hover the border and a soft halo ease in and the plus turns.
+               */}
               <button
                 type="button"
                 onClick={capture.open}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-input bg-surface pr-4 pl-3 text-sm font-semibold shadow-card transition-[border-color,background-color,scale] duration-200 hover:border-primary/70 active:scale-[0.98] active:bg-foreground/5"
+                className="group/capture breathe-ring inline-flex h-9 items-center gap-1.5 rounded-full border border-input bg-surface pr-4 pl-3 text-sm font-semibold shadow-card transition-[border-color,background-color,box-shadow,scale] duration-300 ease-out hover:border-primary hover:shadow-focus active:scale-[0.98] active:bg-foreground/5"
               >
-                <Plus className="size-4 text-primary" aria-hidden />
+                <Plus
+                  className="size-4 text-primary transition-transform duration-300 ease-out group-hover/capture:rotate-90"
+                  aria-hidden
+                />
                 Capture
               </button>
               <AccountMenu isAdmin={isAdmin} />
@@ -124,9 +131,13 @@ function TabBar({
             type="button"
             aria-label="Capture an idea"
             onClick={onCapture}
-            className="grid size-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-card transition-[background-color,scale] duration-200 hover:bg-primary-hover active:scale-[0.96]"
+            // The bar's Capture control as a disc: outlined, the plus in emerald, the same breathing edge.
+            className="group/capture breathe-ring grid size-11 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,background-color,box-shadow,scale] duration-300 ease-out hover:border-primary hover:shadow-focus active:scale-[0.96] active:bg-foreground/5"
           >
-            <Plus className="size-5" aria-hidden />
+            <Plus
+              className="size-5 text-primary transition-transform duration-300 ease-out group-hover/capture:rotate-90"
+              aria-hidden
+            />
           </button>
         </li>
         {links.slice(middle).map(tab)}

@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { asReturningVisitor } from "./returning-visitor";
+
+// The loading screen has its own spec; here the page is tested without it.
+test.beforeEach(({ context, baseURL }) => asReturningVisitor(context, baseURL));
+
 /** On small viewports the primary navigation sits behind the menu button. */
 async function openMenuIfCollapsed(page: Page) {
   const menu = page.getByRole("button", { name: "Open menu" });

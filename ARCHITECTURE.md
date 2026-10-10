@@ -34,7 +34,8 @@ src/
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
     robots.ts, sitemap.ts
-  proxy.ts                  Clerk session and guest/signed-in redirects (routing only)
+  proxy.ts                  Clerk session and guest/signed-in redirects (routing only), and the splash signal
+  instrumentation-client.ts Reports the start of each navigation, for the progress bar
   db/                       Drizzle schema, connection, test database
   features/
     auth/                   Provisioning and the access helpers
@@ -165,6 +166,23 @@ One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, 
 - A failed save changes nothing on screen. Closing with something written (the X, Escape, a click outside) asks "Discard this idea?"; discarding empties the form, and any close clears its validation messages. Leaving the page while something is written goes through `useLeaveGuard`. A save in flight cannot be closed or submitted again.
 - Success closes the dialog and shows a toast linking to the idea.
 
+### Loading
+
+Two pieces, both mounted once in the root layout so every shell has them.
+
+**Splash screen** (`components/layout/splash-screen.tsx`): shown on the first page of a browser session and on the first page after signing in, new or returning; never on an ordinary reload or navigation.
+
+- **The proxy decides** (`src/lib/splash.ts`), because only the server knows from the first byte who it is serving. It keeps `st_seen`, an httpOnly session cookie holding who the site was last shown to, and when a splash is due it sets `st_splash=1` for 30 seconds. This is presentation only and grants nothing.
+- **The page reads the signal before it paints.** The splash is in the server's HTML and is `display: none`. A small inline script (`SplashScript`) takes the cookie and sets `data-splash="on"` on `<html>`, so there is no flash either way and nothing depends on when the application's JavaScript arrives. The root layout stays static: it never reads cookies.
+- **`SplashController` takes it down**: at least 1.8 seconds from the moment it went up and not before the page has loaded (giving up on that after 8 seconds), then `"leaving"` for a 0.45 second fade, then the attribute is removed. Every change cancels the timers before it, so there is one timer chain at most. If the script never runs at all, the inline script removes the splash itself after 10 seconds.
+- A sign-in that moves to the next page without a page load is caught too: the signal arrives with that navigation and a layout effect raises the splash before the new page is painted.
+- While it is up the page beneath cannot scroll and its entrance animations are paused, so the landing page's opening sequence begins as the splash lifts.
+- The picture: the mark, the name, the tagline's three words arriving in turn, a line of light passing along a hairline beneath, and one large soft emerald glow behind. The owner chose this over a version that lit Capture, Develop, Preach in sequence, keeping that version's glow.
+
+**Progress bar** (`components/layout/navigation-progress.tsx`): a 1px emerald bar at the very top of the window, above the header. It runs while a page loads (it is in the server's HTML already running, and ends on `load`) and during every navigation in the app. Navigation starts are reported by `src/instrumentation-client.ts` (`onRouterTransitionStart`, the router's own hook, which covers links, Back and Forward, and navigation from code); arrival is a change of pathname or query string. A started bar is shown for at least 0.3 seconds, a navigation to the page already shown ends by itself, and nothing can leave it running: it gives up after 15 seconds. It does not run for server actions or `router.refresh()`, which are not navigations.
+
+Both keep their whole state in one DOM attribute and their styles in `globals.css` ("Splash", "Navigation progress"); neither uses React state, so neither can fall out of step with a render. Timing constants in the two controllers must match the CSS durations noted beside them.
+
 ### Unsaved changes
 
 `useLeaveGuard(dirty, description)` (`components/layout/leave-guard.tsx`) asks before unsaved work is left, by any route. The App Router cannot refuse a navigation, so the guard works around it: a click on a link to another page is caught in the capture phase and held behind a dialog; a Back or Forward move is reversed after the fact (it adds one same-page history entry so that Back is reversible, and stops the router's `popstate` listener from acting on the move); closing, reloading, or leaving the site uses `beforeunload`. Code that navigates on purpose clears `dirty` or calls `allowLeaving()` first. Its third argument, `onLeave`, runs when leaving is confirmed and must throw the unsaved work away: Next keeps a page it has left, state and all, and would otherwise show the abandoned edits again on return. Use the guard for anything that holds edits; the idea editor and quick capture do.
@@ -266,13 +284,17 @@ Glass is for things that float over other content, and nothing else:
 
 ### Glow
 
-Three uses, and no others (none of them on a button):
+Glow and animation are allowed, used sparingly (the owner's rule, 9 October 2026; before that glow was limited to the first three uses below and nothing looped). Each use should be worth a visitor's attention, and a view should have very few. The uses today:
 
 - `lit-edge` — the signature. A static 1px emerald line centred on the top border of a featured surface, with an 8px bloom. One per view: the hero window, the auth card. It makes the element `position: relative`; put it on a wrapper if the element clips its overflow.
 - `hero-glow` — one radial gradient behind the hero window (and, faintly, the auth card). Nothing is blurred or animated. It reaches past its element, so an ancestor must clip sideways (`overflow-x-clip`), or narrow screens scroll horizontally.
 - `shadow-focus` on a focused input.
+- The splash screen's glow and passing light, and the progress bar's faint glow (see Loading). They are seen for a second or two at a time.
+- `breathe-ring` — the capture control's edge, in the bar and in the tab bar. Over five seconds a ring of emerald light and a faint 4px halo come and go around it. The ring is a pseudo-element, apart from the control's own border and shadow, so hover and focus keep their transitions: on hover the border turns emerald, the focus halo eases in, and the plus makes a quarter turn. It is the one animation that loops for as long as a page is open, on the application's one central action.
 
-Buttons do not glow. The primary button's hover is a colour step to `primary-hover`; an earlier emerald ring and halo on hover was removed at the owner's request.
+A further use should clear the same bar as that one: slow, light only (nothing moves or resizes), built from the tokens so both themes work, drawn so that it never takes a property the control's hover or focus needs, and static under reduced motion.
+
+Ordinary buttons still do not glow. The primary button's hover is a colour step to `primary-hover`; an earlier emerald ring and halo on hover was removed at the owner's request.
 
 ### Other utilities
 
@@ -280,6 +302,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 - `container-page` — the shared content container (76rem max, responsive gutters). Header, sections, and footer all use it so edges align.
 - `h-bar` / `pt-bar` — the bar height (`--bar-h`, 56px). A shell that renders the fixed header offsets `main` with `pt-bar`. `html` has `scroll-padding-top` of the same value, so in-page anchors need no offset of their own.
 - `animate-menu` — short entrance for status messages. `animate-sheet` unrolls the mobile sheets from the bar, `animate-menu-row` staggers their rows (`--i`), and `animate-sheet-out` is the exit, all applied through `useNavPanel` (`components/layout/use-nav-panel.ts`), which keeps a closing panel mounted and inert until the animation ends.
+- `breathe-ring` — the capture control's slow breathing edge (see Glow). It makes the element `position: relative`.
 - `animate-rise` — the hero's entrance on load, staggered with `[animation-delay:…]`.
 - `animate-type`, `animate-caret`, `animate-clear`, `animate-settle`, `animate-file` — the hero's capture illustration. It plays once and rests on the filed state. Not for reuse.
 
@@ -303,7 +326,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 - Only interactive elements have hover states. Illustrations, informational cards, and table rows do not.
 - Every hover has a matching pressed state: buttons press in, and quiet controls (navigation links, icon buttons, the theme options) darken to `active:bg-foreground/10`.
 - Compact controls are for a pointer. On touch screens (`pointer-coarse:`) small and icon buttons, menu rows, menu triggers, and the theme options grow to 44px.
-- Load motion is one sequence: the hero rises in, then the capture illustration plays once. There are no scroll-triggered entrances and no looping animation.
+- Load motion is one sequence: the hero rises in, then the capture illustration plays once. There are no scroll-triggered entrances, and one looping animation: the capture control's breathing edge (see Glow).
 - A global `prefers-reduced-motion` rule removes animation, delays, and smooth scrolling; the capture illustration is then static with the thought already filed.
 - Every focusable element gets a visible 2px `outline` in the `ring` colour. Disabled controls are 50% opacity with no pointer events; busy actions change their label ("Sending…", "Working…"), show a spinner (`LoaderCircle` with `animate-spin`), and set `aria-busy`. Action results (`ActionStatus`) carry an icon as well as a colour.
 - The root layout provides a skip link; each shell must render `<main id="main">`.
@@ -317,7 +340,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 `SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button (two lines that cross into an X) and an opaque sheet that unrolls under the bar, set like a contents page: section links in Playfair with hairlines between, Sign in, and the theme control. The page dims behind it; tapping the dimmed area or pressing Escape closes it, and widening the window past `md` removes it. Section links (`#…`) are plain anchors, not `next/link`, which does not scroll again to a hash already in the URL. While the panel is open the bar turns opaque to match it (the panel carries `data-nav-panel`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round emerald button in its centre; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. **The Bible reader and the outline builder each join that list when their pages are built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round outlined button in its centre, styled as the bar's Capture control is; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. **The Bible reader and the outline builder each join that list when their pages are built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald and a slowly breathing edge; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`, the progress bar `z-70`, and the splash screen `z-100`.
 
 The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
 
@@ -396,36 +419,38 @@ These are settled and constrain later phases. The first and fourth are implement
 
 ## Decisions log
 
-| Decision                                               | Reason                                                                             |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Route groups for marketing, auth, and app shells       | Each shell has its own layout; auth can wrap `(app)` without touching public pages |
-| Hex values taken from the written brief                | The brand board labels differ by a character in places; the brief is authoritative |
-| Canonical origin is a constant, not an env variable    | Previews should still canonicalise to production                                   |
-| Static generated share image rather than `next/og`     | Uses the real fonts and mark with no build-time network dependency                 |
-| No manifest in Phase 1                                 | Installability is Phase 7 scope                                                    |
-| `@vitejs/plugin-react` not installed                   | Vitest transforms JSX itself; the plugin conflicted on peer dependencies           |
-| Playwright serves a production build on port 3100      | Tests what ships, and avoids a dev server on 3000                                  |
-| Neon WebSocket pool, not the HTTP driver               | The last-administrator check needs an interactive transaction                      |
-| Role and status as text with CHECK constraints         | Adding a value is a plain migration; no enum type to alter                         |
-| Provision on first request, no Clerk webhook           | Nothing in this phase needs lifecycle events; one less public endpoint             |
-| Database identity stamp plus a declared environment    | A hostname is not proof; a mismatch anywhere stops the command                     |
-| Previews share the development database and Clerk      | No production credentials outside production; one fewer environment to migrate     |
-| Access denial is a redirect to `/access-denied`        | `forbidden()` is still experimental in Next.js 16                                  |
-| Own account UI instead of Clerk's `UserProfile`        | Settings should look like the application; Clerk still does all identity work      |
-| Credential changes call Clerk from the browser         | Only the Frontend API enforces current password, emailed code, and reverification  |
-| Name changes go through a server action                | Our validation and access check; works whatever the instance's profile settings    |
-| Settings is one page with no settings table            | Nothing to store: identity is Clerk's and the theme is already in `localStorage`   |
-| Unavailable figures are described, not shown as 0      | A zero would be a false statement about the person's work                          |
-| Scripture references in a child table, as numbers      | Constraints, and later lookup by book; no verse text is copied onto an idea        |
-| Sermon details kept when an idea is reclassified       | Turning it back into a sermon loses nothing                                        |
-| Idea IDs may be generated in the browser               | A retry or double submit saves one idea; ready for offline capture                 |
-| Bible text loaded by the migrate command               | A 4 MB migration would run for every test database; a checksum versions the text   |
-| Bible table has no translation column                  | One translation; adding one later is an additive change to read-only data          |
-| Bible read by chapter, through a route handler         | Reads are parallel and cacheable; the browser never holds the whole text           |
-| Word search uses the `simple` text configuration       | Exact words, like a concordance; the archaic forms defeat English stemming anyway  |
-| Search query built by hand, not `websearch_to_tsquery` | It has no prefix operator; ours admits only letters and digits                     |
-| Non-adjacent verses become separate references         | A reference is one unbroken passage; no schema change was needed                   |
-| Panel shares the capture dialog instead of stacking    | One modal layer at a time                                                          |
-| Custom `Select` instead of the native control          | The native menu cannot be styled; the owner disliked it                            |
-| Leave guard reverses history moves after the fact      | The App Router has no way to refuse a navigation                                   |
-| Administration only in the account menu                | The owner wants main navigation kept for the work: library, Bible, outlines        |
+| Decision                                               | Reason                                                                                  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Route groups for marketing, auth, and app shells       | Each shell has its own layout; auth can wrap `(app)` without touching public pages      |
+| Hex values taken from the written brief                | The brand board labels differ by a character in places; the brief is authoritative      |
+| Canonical origin is a constant, not an env variable    | Previews should still canonicalise to production                                        |
+| Static generated share image rather than `next/og`     | Uses the real fonts and mark with no build-time network dependency                      |
+| No manifest in Phase 1                                 | Installability is Phase 7 scope                                                         |
+| `@vitejs/plugin-react` not installed                   | Vitest transforms JSX itself; the plugin conflicted on peer dependencies                |
+| Playwright serves a production build on port 3100      | Tests what ships, and avoids a dev server on 3000                                       |
+| Neon WebSocket pool, not the HTTP driver               | The last-administrator check needs an interactive transaction                           |
+| Role and status as text with CHECK constraints         | Adding a value is a plain migration; no enum type to alter                              |
+| Provision on first request, no Clerk webhook           | Nothing in this phase needs lifecycle events; one less public endpoint                  |
+| Database identity stamp plus a declared environment    | A hostname is not proof; a mismatch anywhere stops the command                          |
+| Previews share the development database and Clerk      | No production credentials outside production; one fewer environment to migrate          |
+| Access denial is a redirect to `/access-denied`        | `forbidden()` is still experimental in Next.js 16                                       |
+| Own account UI instead of Clerk's `UserProfile`        | Settings should look like the application; Clerk still does all identity work           |
+| Credential changes call Clerk from the browser         | Only the Frontend API enforces current password, emailed code, and reverification       |
+| Name changes go through a server action                | Our validation and access check; works whatever the instance's profile settings         |
+| Settings is one page with no settings table            | Nothing to store: identity is Clerk's and the theme is already in `localStorage`        |
+| Unavailable figures are described, not shown as 0      | A zero would be a false statement about the person's work                               |
+| Scripture references in a child table, as numbers      | Constraints, and later lookup by book; no verse text is copied onto an idea             |
+| Sermon details kept when an idea is reclassified       | Turning it back into a sermon loses nothing                                             |
+| Idea IDs may be generated in the browser               | A retry or double submit saves one idea; ready for offline capture                      |
+| Bible text loaded by the migrate command               | A 4 MB migration would run for every test database; a checksum versions the text        |
+| Bible table has no translation column                  | One translation; adding one later is an additive change to read-only data               |
+| Bible read by chapter, through a route handler         | Reads are parallel and cacheable; the browser never holds the whole text                |
+| Word search uses the `simple` text configuration       | Exact words, like a concordance; the archaic forms defeat English stemming anyway       |
+| Search query built by hand, not `websearch_to_tsquery` | It has no prefix operator; ours admits only letters and digits                          |
+| Non-adjacent verses become separate references         | A reference is one unbroken passage; no schema change was needed                        |
+| Panel shares the capture dialog instead of stacking    | One modal layer at a time                                                               |
+| Custom `Select` instead of the native control          | The native menu cannot be styled; the owner disliked it                                 |
+| Splash decided by the proxy, signalled by cookie       | The server knows a first visit or a fresh sign-in at once; the root layout stays static |
+| Splash and progress state live in a DOM attribute      | Set before paint by an inline script; no render can disagree with it                    |
+| Leave guard reverses history moves after the fact      | The App Router has no way to refuse a navigation                                        |
+| Administration only in the account menu                | The owner wants main navigation kept for the work: library, Bible, outlines             |

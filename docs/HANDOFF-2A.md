@@ -36,8 +36,10 @@ Ideas can be captured, listed, edited, reclassified, and deleted, each owned by 
 - The panel's box searches text; a passage is reached with the filters. A reference typed into the search box is still offered as "Go to …".
 - "Add to idea" leaves the panel open when the idea is on screen beside it (the two-column capture dialog, the side panel), so several passages can be added in a row; it clears the selection and says what was added. Where the panel covers the idea (narrow screens) it closes and returns to the idea. Replacing a reference always closes.
 - Leaving an idea's page with unsaved edits asks first, however it is left: any link in the app, the browser's Back and Forward, and closing or reloading the tab (`useLeaveGuard`). Choosing to leave throws the edits away, so they are not there on return. Quick capture is guarded the same way while something is written, and closing it (the X, Escape, a click outside) asks "Discard this idea?" first; every close also clears its validation messages.
+- **A loading screen and a progress bar** (outside the phase's original scope). The splash shows on the first page of a browser session and on the first page after signing in, for at least 1.8 seconds, and never on an ordinary reload. The 1px bar at the top runs for every page load and every navigation. See "Loading" in ARCHITECTURE.md.
+- In the Scripture panel: the search box has focus when the panel opens and has a clear button; search matches are emerald and semibold.
 - Dropdowns are a custom `Select` (no native `<select>`); the selected option is emerald.
-- The bar's Capture control is a quiet outlined pill, not a solid emerald button.
+- The bar's Capture control is a quiet outlined pill, not a solid emerald button, and the tab bar's capture button matches it. Both have a slow "breathing" edge (`breathe-ring`). The owner's rule for the design system is now: animation and glow are allowed, used sparingly.
 - Administration left the main navigation; it is in the account menu and the mobile account sheet, where it already was.
 - **Standing instruction:** when the Bible page exists, add it to the main navigation; when the outline page exists, add it too (`components/layout/app-links.ts`).
 
@@ -90,9 +92,9 @@ All four require an active account and check it themselves. Server actions are l
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run lint`           | Pass                                                                                                                                                                                               |
 | `npm run typecheck`      | Pass                                                                                                                                                                                               |
-| `npm run test`           | 257 of 257 pass (34 files; was 123 in 21)                                                                                                                                                          |
+| `npm run test`           | 280 of 280 pass (36 files; was 123 in 21)                                                                                                                                                          |
 | `npm run build`          | Pass, as the first step of the end-to-end run                                                                                                                                                      |
-| `npm run test:e2e`       | 39 pass, 1 skipped (mobile-menu test on desktop)                                                                                                                                                   |
+| `npm run test:e2e`       | 45 pass, 1 skipped (mobile-menu test on desktop)                                                                                                                                                   |
 | `npm run format:check`   | Every file added or changed passes. The command as a whole reports 75 files that this work did not touch: they have CRLF line endings in the working copy (Git `autocrlf`), as HANDOFF-1C.1 noted. |
 | `npm run db:migrate:dev` | Applied both migrations and loaded the Bible; a second run reported "up to date"                                                                                                                   |
 
@@ -109,6 +111,9 @@ Visual check: the Scripture browser, dropdowns, and the bar were looked at in Ch
 - **Search is exact-word.** "love" does not find "loved"; `lov*` does. There is no ranking; results are in canonical order. Negative-only searches are refused.
 - **A passage across chapters** can be typed ("John 3:16-4:2") or kept when editing, but cannot be built by tapping: tapping selects within the chapter on screen.
 - **The library shows the 200 most recently changed ideas**, with no paging, search, or filters.
+- **The splash after signing in** rests on the proxy seeing the first signed-in request. That logic is unit-tested, and the first-visit splash is tested end to end, but the sign-in case itself has not been watched in a real session.
+- **The splash's "first visit"** is per browser session (a session cookie). A browser set to restore sessions keeps it, so the splash returns less often there.
+- **In development, an edit to `globals.css` made by a script was twice not picked up by the running dev server** until the file was saved again. If new styles seem missing, re-save the file.
 - **The leave guard adds one history entry** for the page the first time there are unsaved edits (in the editor or in quick capture) (that is what makes Back reversible). After saving, the first Back press therefore appears to do nothing. Closing, reloading, or leaving the site shows the browser's own wording, which cannot be changed. The settings forms are not guarded.
 - **Dates** are shown in UTC, as elsewhere in the app.
 - **"Add to idea" always means the idea being captured or edited.** Choosing among existing ideas arrives with the Bible reader, where there is no current idea.

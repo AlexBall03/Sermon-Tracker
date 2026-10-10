@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,6 +134,14 @@ export function ScriptureBrowser({
   const [results, setResults] = useState<Results | null>(null);
   const [view, setView] = useState<"read" | "results">("read");
   const latestSearch = useRef(0);
+  const searchBox = useRef<HTMLInputElement>(null);
+
+  // The panel opens ready to search. After the frame, so it follows whatever
+  // the surface holding the panel did with focus as it opened.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => searchBox.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const text = useChapter(book, chapter);
   const scroller = useRef<HTMLDivElement>(null);
@@ -257,23 +265,41 @@ export function ScriptureBrowser({
             Search the Bible
           </label>
           <div className="flex gap-2">
-            <Input
-              id={`${id}-search`}
-              type="search"
-              value={entry}
-              onChange={(event) => {
-                setEntry(event.target.value);
-                setEntryError(null);
-              }}
-              placeholder="Search the text for words"
-              autoComplete="off"
-              spellCheck={false}
-              enterKeyHint="search"
-              maxLength={200}
-              aria-invalid={entryError ? true : undefined}
-              aria-describedby={entryError ? `${id}-search-error` : undefined}
-              className="[&::-webkit-search-cancel-button]:hidden"
-            />
+            <div className="relative min-w-0 flex-1">
+              <Input
+                ref={searchBox}
+                id={`${id}-search`}
+                type="search"
+                value={entry}
+                onChange={(event) => {
+                  setEntry(event.target.value);
+                  setEntryError(null);
+                }}
+                placeholder="Search the text for words"
+                autoComplete="off"
+                spellCheck={false}
+                enterKeyHint="search"
+                maxLength={200}
+                aria-invalid={entryError ? true : undefined}
+                aria-describedby={entryError ? `${id}-search-error` : undefined}
+                // Our own clear control replaces the browser's, which differs from one to the next.
+                className="pr-10 [&::-webkit-search-cancel-button]:hidden"
+              />
+              {entry && (
+                <button
+                  type="button"
+                  aria-label="Clear the search"
+                  onClick={() => {
+                    setEntry("");
+                    setEntryError(null);
+                    searchBox.current?.focus();
+                  }}
+                  className="absolute top-1/2 right-1 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              )}
+            </div>
             <Button
               type="submit"
               variant="outline"
@@ -472,7 +498,7 @@ export function ScriptureBrowser({
                           index % 2 === 1 ? (
                             <mark
                               key={index}
-                              className="rounded-sm bg-primary-soft px-0.5 font-medium text-foreground"
+                              className="rounded-sm bg-primary/20 px-1 font-semibold text-primary dark:bg-primary/25"
                             >
                               {run}
                             </mark>

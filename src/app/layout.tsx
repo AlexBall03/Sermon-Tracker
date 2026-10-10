@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat, Playfair_Display } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 
+import { NavigationProgress } from "@/components/layout/navigation-progress";
+import { SplashScreen } from "@/components/layout/splash-screen";
 import { ThemeProvider } from "@/components/layout/theme-provider";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { isAuthConfigured, isIndexable } from "@/lib/env";
@@ -89,7 +91,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <AuthProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            {/* After the theme's own script, so both are painted in the right colours first time. */}
+            <SplashScreen />
+            <NavigationProgress />
+            {children}
+          </ThemeProvider>
         </AuthProvider>
       </body>
     </html>
