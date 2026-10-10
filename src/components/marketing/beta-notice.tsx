@@ -27,7 +27,7 @@ export function BetaNotice() {
           className={buttonVariants({ size: "lg", className: "justify-self-start" })}
         >
           Already invited? Sign in
-          <ArrowRight />
+          <ArrowRight data-trailing />
         </Link>
       </div>
     </section>

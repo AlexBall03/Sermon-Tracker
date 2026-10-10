@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { LogOut, Settings, ShieldCheck } from "lucide-react";
 
+import { Avatar } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,41 +16,46 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { routes } from "@/lib/site";
 
-/** Name and email of the signed-in person, for presentation only. */
-export function useAccountIdentity() {
-  const { user } = useUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const name = user?.fullName || email || "Account";
-  const initials =
+/** Up to two initials from a name or email address. */
+export function initialsOf(name: string) {
+  return (
     name
       .split(/[\s@.]+/)
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "?";
-  return { name, email, initials };
+      .join("") || "?"
+  );
 }
 
-/** Sign-out and account settings. Used by the desktop menu and the mobile panel. */
+/** Name, email, and picture of the signed-in person, for presentation only. */
+export function useAccountIdentity() {
+  const { user } = useUser();
+  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const name = user?.fullName || email || "Account";
+  const imageUrl = user?.hasImage ? user.imageUrl : null;
+  return { name, email, initials: initialsOf(name), imageUrl };
+}
+
+/** Sign-out. Used by the desktop menu and the mobile panel. */
 export function useAccountActions() {
   const clerk = useClerk();
   return {
-    manageAccount: () => clerk.openUserProfile(),
     signOut: () => clerk.signOut({ redirectUrl: routes.home }),
   };
 }
 
 /** Desktop account menu in the application bar. */
 export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
-  const { name, email, initials } = useAccountIdentity();
-  const { manageAccount, signOut } = useAccountActions();
+  const { name, email, initials, imageUrl } = useAccountIdentity();
+  const { signOut } = useAccountActions();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account menu"
-        className="grid size-9 place-items-center rounded-full border border-input bg-surface text-xs font-semibold text-foreground shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/70 data-popup-open:border-ring data-popup-open:shadow-focus pointer-coarse:size-11"
+        className="grid size-9 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/70 data-popup-open:border-ring data-popup-open:shadow-focus pointer-coarse:size-11"
       >
-        <span aria-hidden>{initials}</span>
+        <Avatar imageUrl={imageUrl} initials={initials} className="size-full bg-surface text-xs" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-60">
         <DropdownMenuGroup>
@@ -59,9 +65,9 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={manageAccount}>
-          <UserRound aria-hidden />
-          Manage account
+        <DropdownMenuItem render={<Link href={routes.settings} />}>
+          <Settings aria-hidden />
+          Settings
         </DropdownMenuItem>
         {isAdmin && (
           <DropdownMenuItem render={<Link href={routes.admin} />}>

@@ -8,11 +8,10 @@ import { getDb } from "@/db";
 import { userRoles, userStatuses } from "@/db/schema";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import type { ActionResult } from "@/lib/action-result";
 import { routes, siteConfig } from "@/lib/site";
 import { createInvitation, describeClerkError, resendInvitation, revokeInvitation } from "./clerk";
 import { updateUser, type UserChange } from "./users";
-
-export type ActionResult = { ok: boolean; message: string };
 
 const userIdSchema = z.uuid();
 const roleSchema = z.enum(userRoles);

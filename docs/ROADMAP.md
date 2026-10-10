@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 9 October 2026: **Phases 1A, 1A.1, 1B, 1B.1, and 1B.2 are implemented. Phase 1B still needs its Clerk and Neon accounts connected and a live check ([handoff](HANDOFF-1B.md)). Phase 1C is next.**
+Status as of 9 October 2026: **Phases 1A, 1A.1, 1B, 1B.1, 1B.2, and 1C.1 are implemented. Nothing signed-in has been verified against live Clerk and Neon yet; that check, with deployment and hardening, is Phase 1C.2 and is next ([handoff](HANDOFF-1C.1.md)).**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -12,7 +12,9 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 - **1B: Database, authentication, administration** — implemented; live Clerk and Neon verification outstanding ([handoff](HANDOFF-1B.md))
 - **1B.1: Premium design overhaul and UI/UX refinement** — complete; neutral editorial system, landing page recomposed, all shells restyled ([handoff](HANDOFF-1B.1.md))
 - **1B.2: Final design polish and UX quality assurance** — complete; hero and spacing refined, interaction states, touch targets, and the Clerk form brought in line ([handoff](HANDOFF-1B.2.md))
-- **1C: Authenticated dashboard, deployment, hardening** — next
+- **1C: Authenticated dashboard, deployment, hardening** — in progress
+  - **1C.1: Dashboard, custom account management, navigation** — implemented; live Clerk behaviour unverified ([handoff](HANDOFF-1C.1.md))
+  - **1C.2: Live authentication and database verification, deployment, hardening** — next
 
 ## Phase 2 — Core Idea Tracker
 
@@ -44,7 +46,7 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 
 - Reminders
 - Idea resurfacing
-- Statistics
+- Statistics: a dedicated Analytics page, and the dashboard's four summary figures (sermon ideas, point ideas, in development, times preached)
 - Enhanced discovery
 
 ## Phase 6 — Sharing & Data Portability

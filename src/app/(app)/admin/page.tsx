@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { getDb } from "@/db";
 import { PageHeader } from "@/components/layout/page-header";
+import { StatStrip } from "@/components/ui/stat-strip";
 import { requireAdmin } from "@/features/auth/access";
 import {
   listPendingInvitations,
@@ -43,24 +44,7 @@ export default async function AdminPage() {
         description="Sermon Tracker is invitation-only. Invite people here, and manage their roles and access."
       />
 
-      {/* One divided strip rather than four separate cards. */}
-      <dl className="mt-8 grid grid-cols-2 rounded-xl border bg-surface shadow-card lg:grid-cols-4">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="px-5 py-4 even:border-l nth-[n+3]:border-t lg:not-first:border-l lg:nth-[n+3]:border-t-0"
-          >
-            <dt className="text-[0.8125rem] font-medium text-muted-foreground">{stat.label}</dt>
-            <dd className="mt-1.5 text-[1.75rem] leading-none font-semibold tracking-[-0.02em] tabular-nums">
-              {stat.value ?? (
-                <span className="text-sm font-medium tracking-normal text-muted-foreground">
-                  Unavailable
-                </span>
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <StatStrip stats={stats} className="mt-8" />
 
       <section aria-labelledby="users-heading" className="mt-10">
         <h2 id="users-heading" className="text-lg font-semibold tracking-[-0.015em]">

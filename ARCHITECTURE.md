@@ -28,7 +28,7 @@ src/
     (marketing)/            Public, indexable pages (header + footer shell)
       page.tsx              Landing page  /
     (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
-    (app)/                  Authenticated shell: dashboard, admin
+    (app)/                  Authenticated shell: dashboard, settings, admin
     icon.svg                Favicon (small-size mark)
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
@@ -38,13 +38,18 @@ src/
   features/
     auth/                   Provisioning and the access helpers
     admin/                  User and invitation services, server actions, components
+    dashboard/              Dashboard view, greeting, and the summary figures to come
+    settings/               Account management: schemas, server action, Clerk hooks, components
   components/
-    ui/                     shadcn primitives, restyled to the tokens
+    ui/                     shadcn primitives restyled to the tokens, and small shared pieces
+                            (Badge, Avatar, StatStrip, ActionStatus, ConfirmDialog)
     brand/                  LogoMark, Logo, Ribbon
     layout/                 SiteHeader, MobileNav, AppHeader, AccountMenu, PageHeader, SiteFooter, ThemeProvider, ThemeToggle
     marketing/              Landing-page sections and their sample content
   lib/
     site.ts                 Site config and the route map
+    action-result.ts        The `{ ok, message }` shape every action reports
+    format.ts               Date formatting that is identical on server and browser
     env.ts                  Zod-validated environment access
     clerk-appearance.ts     Clerk components mapped to the design tokens
     utils.ts                cn()
@@ -70,11 +75,12 @@ Conventions:
 | `/sign-in`           | Clerk sign-in                              | 1B    | No      |
 | `/accept-invitation` | Account creation from an invitation link   | 1B    | No      |
 | `/access-denied`     | Shown to disabled or unauthorised accounts | 1B    | No      |
-| `/dashboard`         | Authenticated home (placeholder until 1C)  | 1B/1C | No      |
+| `/dashboard`         | Authenticated home                         | 1C.1  | No      |
+| `/settings`          | Account management and appearance          | 1C.1  | No      |
+| `/admin`             | Restricted administration                  | 1B    | No      |
 | `/library`           | Unified idea library                       | 2     | No      |
 | `/history`           | Preaching history                          | 3     | No      |
-| `/settings`          | User preferences                           | 1C+   | No      |
-| `/admin`             | Restricted administration                  | 1B    | No      |
+| `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
 
 Route groups separate the three shells without affecting URLs:
 
@@ -126,6 +132,27 @@ The Clerk ID in `INITIAL_ADMIN_CLERK_USER_ID` becomes `admin` when its row is cr
 `/admin` shows real counts (users from the database, pending invitations from Clerk), the user directory, and invitations. Mutations are the server actions in `src/features/admin/actions.ts`: each calls `authorize("admin")`, validates input with Zod, and takes the acting administrator from the session. An administrator cannot change their own account. `updateUser` runs in a transaction that takes a shared advisory lock and refuses any change that would leave no active administrator. Clerk is the source of truth for invitations; "resend" sends a new invitation and then revokes the old one.
 
 Disabling an account takes effect on that person's next request, because status is read from the database every time. Their Clerk session is not revoked; it simply no longer grants anything.
+
+### Dashboard
+
+`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: an empty state where recent ideas will go, shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) have no data until Phases 2 and 3, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page is Phase 5.
+
+### Account management
+
+`/settings` is the application's own interface over Clerk. Clerk remains the identity provider: it stores and checks credentials, verifies email addresses, runs OAuth, and owns sessions. The application stores none of it and adds no table.
+
+| Operation                                                        | Where it runs                                         | Why                                                                                                                         |
+| ---------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Change name                                                      | Server action `updateProfileName` → Clerk Backend API | Our validation, our `authorize("active")`, the ID taken from the session                                                    |
+| Password, email addresses, connected accounts, sessions, picture | Clerk's browser SDK on the signed-in `user` object    | Clerk's Frontend API enforces the current password, emailed codes, and reverification. The Backend API would skip all three |
+
+- Every browser-side call is wrapped in `useReverification`. When Clerk demands a fresh identity check it opens its own dialog (themed by `clerk-appearance.ts`); that step is deliberately Clerk's, not ours.
+- Structure: `features/settings/hooks/` holds every Clerk call (`use-profile`, `use-email-addresses`, `use-password`, `use-connected-accounts`, `use-sessions`); `components/` only render and call them. `AccountGate` waits for the SDK to load. `clerk-errors.ts` maps Clerk error codes to our wording, so provider text is never displayed.
+- `schemas.ts` validates names, addresses, codes, passwords, and picture files for quick feedback. Clerk's own rules still apply and win.
+- Role, status, and joining date are shown read-only from the `users` row. No action accepts a role, a status, or a user ID.
+- A connected account cannot be disconnected when it is the only way to sign in. The provider list is the constant in `use-connected-accounts.ts` (Google), because the SDK has no public list of enabled providers.
+- Appearance reuses `ThemeToggle` on the same `next-themes` store as the bar, plus "Use device setting" to clear a manual choice. Nothing about the theme is saved to the account.
+- Account deletion is not implemented.
 
 ### Caching
 
@@ -194,7 +221,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 - `container-page` — the shared content container (76rem max, responsive gutters). Header, sections, and footer all use it so edges align.
 - `h-bar` / `pt-bar` — the bar height (`--bar-h`, 56px). A shell that renders the fixed header offsets `main` with `pt-bar`. `html` has `scroll-padding-top` of the same value, so in-page anchors need no offset of their own.
-- `animate-menu` — short entrance for panels and status messages.
+- `animate-menu` — short entrance for panels and status messages. `animate-menu-out` is its exit, used by the mobile navigation panels through `useNavPanel` (`components/layout/use-nav-panel.ts`), which keeps a closing panel mounted and inert until the animation ends.
 - `animate-rise` — the hero's entrance on load, staggered with `[animation-delay:…]`.
 - `animate-type`, `animate-caret`, `animate-clear`, `animate-settle`, `animate-file` — the hero's capture illustration. It plays once and rests on the filed state. Not for reuse.
 
@@ -213,7 +240,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 ### Motion and interaction
 
-- Interactions answer in 150–200ms with colour, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon nudges forward.
+- Interactions answer in 150–200ms with colour, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon marked `data-trailing` nudges forward (leading icons and spinners stay put).
 - Everything that acts on a click shows the hand cursor: a base rule in `globals.css` covers buttons, `role="button"`, menu items, and `summary` (Tailwind 4 leaves buttons on the arrow), and links have it natively. Disabled controls keep the arrow, as does the theme option that is already selected.
 - Only interactive elements have hover states. Illustrations, informational cards, and table rows do not.
 - Every hover has a matching pressed state: buttons press in, and quiet controls (navigation links, icon buttons, the theme options) darken to `active:bg-foreground/10`.
@@ -230,9 +257,9 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 ### Navigation
 
-`SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items in 44px rows; Escape closes it and returns focus. While the panel is open the bar turns opaque to match it (the menu button carries `data-nav-toggle`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
+`SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items in 44px rows; Escape closes it and returns focus. While the panel is open the bar turns opaque to match it (the panel carries `data-nav-panel`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, the theme control, and `AccountMenu` (name, email, manage account, sign out). Below `md` the same items move into a panel. The current page link is ink with a 2px emerald rule on the bar's bottom edge, via `aria-current`. The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, the theme control, and `AccountMenu` (name, email, Settings, Administration for administrators, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the same items move into a panel. Add a destination to `appLinks()` only once its page exists. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
 
 The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
 
@@ -246,7 +273,11 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - **Input**: white surface, hairline, darker border on hover, emerald border and `shadow-focus` on focus, `aria-invalid` in destructive.
 - **Dropdown menu, alert dialog**: `glass-float`. Destructive items and confirmations use the destructive colour.
 - **`PageHeader`** (`components/layout/page-header.tsx`): title, one line of context, hairline. Every application page starts with it.
-- **`Badge`** (in `features/admin/components/users-table.tsx`): `accent`, `muted`, `danger`. Move it to `components/ui` when a second feature needs it.
+- **`Badge`** (`ui/badge.tsx`): `accent`, `muted`, `danger`.
+- **`StatStrip`** (`ui/stat-strip.tsx`): summary figures as one divided strip. A stat is a number, "Unavailable" when it could not be loaded, or a sentence (`pending`) when the measure does not exist yet.
+- **`ActionStatus`** and **`ConfirmDialog`** (`ui/`): the result line and the confirmation used by every consequential action.
+- **`Avatar`** (`ui/avatar.tsx`): profile picture or initials. A plain `<img>`, since Clerk serves and sizes the image.
+- **Settings layout**: `SettingsSection` (heading left, controls right, hairline between sections) and `SettingsBlock`; `TextField` is a labelled input with its error or hint.
 - **Card**: there is no card component. A card is `rounded-xl border bg-surface shadow-card`; an empty state is `rounded-xl border border-dashed border-input`.
 - **Tables**: plain header row, 14px rows, no row hover (rows are not links). Below `sm`, secondary columns fold into the first cell rather than scrolling sideways.
 
@@ -287,7 +318,7 @@ These are settled and constrain later phases. None are implemented yet.
 
 ## Testing
 
-- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, and the auth and admin services. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is mocked.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, and the auth, admin, dashboard, and settings code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
@@ -316,3 +347,8 @@ These are settled and constrain later phases. None are implemented yet.
 | Database identity stamp plus a declared environment | A hostname is not proof; a mismatch anywhere stops the command                     |
 | Previews share the development database and Clerk   | No production credentials outside production; one fewer environment to migrate     |
 | Access denial is a redirect to `/access-denied`     | `forbidden()` is still experimental in Next.js 16                                  |
+| Own account UI instead of Clerk's `UserProfile`     | Settings should look like the application; Clerk still does all identity work      |
+| Credential changes call Clerk from the browser      | Only the Frontend API enforces current password, emailed code, and reverification  |
+| Name changes go through a server action             | Our validation and access check; works whatever the instance's profile settings    |
+| Settings is one page with no settings table         | Nothing to store: identity is Clerk's and the theme is already in `localStorage`   |
+| Unavailable figures are described, not shown as 0   | A zero would be a false statement about the person's work                          |

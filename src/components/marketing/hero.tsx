@@ -34,7 +34,7 @@ export function Hero() {
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link href={routes.signIn} className={buttonVariants({ size: "lg" })}>
               Sign in
-              <ArrowRight />
+              <ArrowRight data-trailing />
             </Link>
             <Link
               href="#capabilities"

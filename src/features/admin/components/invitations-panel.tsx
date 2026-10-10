@@ -3,18 +3,16 @@
 import { useActionState, useState, useTransition } from "react";
 import { LoaderCircle } from "lucide-react";
 
+import { ActionStatus } from "@/components/ui/action-status";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  inviteUser,
-  resendUserInvitation,
-  revokeUserInvitation,
-  type ActionResult,
-} from "../actions";
+import type { ActionResult } from "@/lib/action-result";
+import { formatDate } from "@/lib/format";
+import { inviteUser, resendUserInvitation, revokeUserInvitation } from "../actions";
 import type { PendingInvitation } from "../clerk";
-import { ActionStatus, ConfirmDialog, type Confirmation } from "./confirm-dialog";
-import { Badge, formatDate } from "./users-table";
 
 type InvitationsPanelProps = {
   /** Null when Clerk could not be reached; the form still works. */

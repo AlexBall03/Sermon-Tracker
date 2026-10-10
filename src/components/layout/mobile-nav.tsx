@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { routes } from "@/lib/site";
 import { ThemeToggle } from "./theme-toggle";
+import { useNavPanel } from "./use-nav-panel";
 
 type MobileNavProps = {
   links: readonly { href: string; label: string }[];
@@ -14,21 +14,7 @@ type MobileNavProps = {
 
 /** Small-screen navigation: a menu button and a panel that drops below the bar. */
 export function MobileNav({ links }: MobileNavProps) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      buttonRef.current?.focus();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
-
-  const close = () => setOpen(false);
+  const { open, mounted, buttonRef, toggle, close, panelProps } = useNavPanel();
 
   return (
     <div className="md:hidden">
@@ -39,18 +25,19 @@ export function MobileNav({ links }: MobileNavProps) {
         aria-controls="mobile-nav"
         data-nav-toggle
         aria-label={open ? "Close menu" : "Open menu"}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
         className="-mr-2 grid size-10 place-items-center rounded-lg text-foreground transition-colors duration-150 hover:bg-accent active:bg-foreground/12"
       >
         {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
       </button>
 
-      {open && (
+      {mounted && (
         // Opaque rather than glass: a backdrop filter nested in the blurred
         // header cannot see the page behind it.
         <div
           id="mobile-nav"
-          className="absolute inset-x-0 top-full animate-menu border-b bg-surface-raised shadow-raised"
+          {...panelProps}
+          className={`absolute inset-x-0 top-full border-b bg-surface-raised shadow-raised ${panelProps.className}`}
         >
           <nav aria-label="Primary" className="container-page flex flex-col py-3">
             {links.map((link) => (

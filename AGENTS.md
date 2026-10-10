@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Sermon Tracker project notes
 
-- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`.
+- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`.
 - Stay inside the current phase. Do not build later-phase features early.
 - The repository owner manages Git. Run read-only Git commands only: no commit, stage, branch, push, pull, or config changes.
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.

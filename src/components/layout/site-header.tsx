@@ -18,7 +18,7 @@ const sectionLinks = [
  */
 export function SiteHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 glass-settle border-b glass has-[[data-nav-toggle][aria-expanded=true]]:animate-none has-[[data-nav-toggle][aria-expanded=true]]:bg-surface-raised">
+    <header className="fixed inset-x-0 top-0 z-50 glass-settle border-b glass has-[[data-nav-panel]]:animate-none has-[[data-nav-panel]]:bg-surface-raised">
       <div className="container-page flex h-bar items-center justify-between gap-8">
         <HomeLink />
 

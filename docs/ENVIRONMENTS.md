@@ -49,6 +49,14 @@ In **each** instance:
 - **Email address**: enabled, with password sign-in.
 - **Paths**: sign-in URL `/sign-in`, sign-up URL `/accept-invitation`. (The application also sets these itself.)
 
+The `/settings` page also depends on these, in each instance:
+
+- **Email verification by code** enabled for email addresses. Adding an address in settings sends a 6-digit code; a link-only setup will not work with that form.
+- **Password** enabled as a sign-in method, or the password form's changes will be refused.
+- **Users may add and remove email addresses and connected accounts** left at Clerk's defaults. If an instance restricts these, the matching control reports that it could not be done.
+- **First and last name**: not required for saving (names are written through the Backend API), but enable it so invitations collect a name at sign-up.
+- **Reverification** left on (Clerk's default for sensitive changes). Settings relies on it and shows Clerk's own confirmation dialog when it is demanded.
+
 ### 2. Invitation-only registration (dashboard)
 
 In each instance: **Configure → Restrictions → Sign-up mode → Restricted**.
@@ -131,4 +139,18 @@ See [DATABASE.md](DATABASE.md) for the safeguards and deployment ordering.
 - [ ] Disabling a user locks them out on their next request; re-enabling restores access.
 - [ ] Resend and revoke work on a pending invitation.
 - [ ] Sign out returns to `/`; signed in, `/` and `/sign-in` redirect to `/dashboard`.
-- [ ] Light and dark themes on sign-in, dashboard, and admin, on a phone and a desktop.
+- [ ] Light and dark themes on sign-in, dashboard, settings, and admin, on a phone and a desktop.
+
+Account management (Phase 1C.1; none of this has been run against live Clerk):
+
+- [ ] The dashboard greets you by first name; the Administration shortcut shows only for an administrator.
+- [ ] Account menu → Settings opens `/settings`, not Clerk's modal.
+- [ ] Changing your name saves, and the dashboard and account menu show the new name.
+- [ ] Uploading and removing a profile picture works; the picture appears in the account menu.
+- [ ] Adding an email address sends a code; the code verifies it; it can be made primary; a non-primary address can be removed.
+- [ ] Changing the password with a wrong current password is refused with our message; the right one succeeds. "Sign out of my other devices" ends other sessions.
+- [ ] An account created with Google only shows "Set a password", can set one, and cannot disconnect Google before doing so.
+- [ ] Connect Google goes to Google and returns to `/settings` with the account listed; Disconnect removes it.
+- [ ] A second browser appears under Devices and can be signed out from the first.
+- [ ] A sensitive change after a long-lived session opens Clerk's confirmation dialog, styled to match; cancelling it changes nothing.
+- [ ] The theme control in settings and the one in the bar always agree; "Use device setting" returns to the system theme.

@@ -7,10 +7,12 @@ import { cn } from "@/lib/utils";
  * shadcn/ui Button, restyled for Sermon Tracker.
  * For navigation, apply `buttonVariants()` to a `<Link>` instead of nesting.
  * Hover changes colour and shadow only, in 200ms; every variant presses in
- * slightly on click, and a trailing icon nudges forward on hover.
+ * slightly on click. A trailing icon marked `data-trailing` nudges forward on
+ * hover; it is opt-in because CSS cannot tell a leading icon from a trailing
+ * one when the label is plain text.
  */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:transition-transform [&_svg]:duration-200 [&_svg:last-child]:group-hover/button:translate-x-0.5 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:transition-transform [&_svg]:duration-200 [&_svg:not([class*='size-'])]:size-4 [&_svg[data-trailing]]:group-hover/button:translate-x-0.5",
   {
     variants: {
       variant: {

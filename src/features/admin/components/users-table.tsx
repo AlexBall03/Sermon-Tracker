@@ -9,39 +9,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import { setUserRole, setUserStatus, type ActionResult } from "../actions";
+import { ActionStatus } from "@/components/ui/action-status";
+import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
+import type { ActionResult } from "@/lib/action-result";
+import { formatDate } from "@/lib/format";
+import { setUserRole, setUserStatus } from "../actions";
 import type { DirectoryEntry } from "../clerk";
-import { ActionStatus, ConfirmDialog, type Confirmation } from "./confirm-dialog";
-
-// A fixed zone keeps server and browser output identical.
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
-
-export function formatDate(date: Date) {
-  return dateFormat.format(date);
-}
-
-export function Badge({
-  tone,
-  children,
-}: {
-  tone: "accent" | "muted" | "danger";
-  children: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
-        tone === "accent" && "bg-primary-soft text-primary",
-        tone === "muted" && "bg-muted text-muted-foreground",
-        tone === "danger" && "bg-destructive/10 text-destructive",
-      )}
-    >
-      <span aria-hidden className="size-1.5 rounded-full bg-current" />
-      {children}
-    </span>
-  );
-}
 
 function confirmationsFor(entry: DirectoryEntry, label: string): Confirmation[] {
   const role: Confirmation =

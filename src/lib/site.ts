@@ -11,8 +11,8 @@ export const siteConfig = {
 } as const;
 
 /**
- * Route map. `library`, `history`, and `settings` are the agreed paths for
- * later phases and are listed so links and robots rules have one source.
+ * Route map. `library` and `history` are the agreed paths for later phases
+ * and are listed so links and robots rules have one source.
  */
 export const routes = {
   home: "/",

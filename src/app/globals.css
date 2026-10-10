@@ -169,6 +169,7 @@
   --spacing-bar: var(--bar-h);
 
   --animate-menu: menu 0.16s ease-out both;
+  --animate-menu-out: panel-leave 0.12s ease-in both;
   --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
   /*
    * The capture illustration: a thought is typed, then filed. It plays once
@@ -200,6 +201,21 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /*
+   * the mobile panels leaving: the entrance in reverse, a little quicker.
+   * Not named `menu-out`: under that name the build left the keyframes out.
+   */
+  @keyframes panel-leave {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-0.25rem);
     }
   }
 
