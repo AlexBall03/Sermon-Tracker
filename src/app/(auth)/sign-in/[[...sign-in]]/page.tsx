@@ -25,13 +25,10 @@ export default function SignInPage() {
     );
   }
 
+  // Clerk's form supplies the page's h1. It reads the URL, which is only known per request.
   return (
-    <>
-      <h1 className="sr-only">Sign in to Sermon Tracker</h1>
-      {/* Clerk reads the URL, which is only known per request. */}
-      <Suspense fallback={<AuthFormFallback />}>
-        <SignIn withSignUp={false} fallbackRedirectUrl={routes.dashboard} />
-      </Suspense>
-    </>
+    <Suspense fallback={<AuthFormFallback />}>
+      <SignIn withSignUp={false} fallbackRedirectUrl={routes.dashboard} />
+    </Suspense>
   );
 }

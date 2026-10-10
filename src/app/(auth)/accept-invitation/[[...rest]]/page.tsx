@@ -44,10 +44,6 @@ async function AcceptInvitation({ params, searchParams }: PageProps) {
     );
   }
 
-  return (
-    <>
-      <h1 className="sr-only">Accept your Sermon Tracker invitation</h1>
-      <SignUp signInUrl={routes.signIn} fallbackRedirectUrl={routes.dashboard} />
-    </>
-  );
+  // Clerk's form supplies the page's h1.
+  return <SignUp signInUrl={routes.signIn} fallbackRedirectUrl={routes.dashboard} />;
 }

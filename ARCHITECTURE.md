@@ -40,8 +40,8 @@ src/
     admin/                  User and invitation services, server actions, components
   components/
     ui/                     shadcn primitives, restyled to the tokens
-    brand/                  LogoMark, Logo
-    layout/                 SiteHeader, MobileNav, AppHeader, AccountMenu, SiteFooter, ThemeProvider, ThemeToggle
+    brand/                  LogoMark, Logo, Ribbon
+    layout/                 SiteHeader, MobileNav, AppHeader, AccountMenu, PageHeader, SiteFooter, ThemeProvider, ThemeToggle
     marketing/              Landing-page sections and their sample content
   lib/
     site.ts                 Site config and the route map
@@ -133,67 +133,94 @@ Cache Components is on. Nothing user-specific uses `use cache`. The `(app)` layo
 
 ## Design system
 
-Direction (Phase 1A.1): modern editorial SaaS on neutral foundations, with emerald as the accent, gold as a small second accent, selective glass, and a restrained emerald glow. `docs/brand/brand-board.png` is the original board; it predates this direction (green-dominant palette, bookmark below the book) and is kept as a historical reference for the mark and typography only.
+Direction (Phase 1B.1): modern editorial software. Neutral foundations, opaque cards, glass only on layers that float, and emerald as the signature rather than the surface. One thing is meant to be remembered: the **lit edge**, a short line of emerald light on the top border of a featured surface, with a single diffused emerald glow behind the hero window. `docs/brand/brand-board.png` is the original board and is kept as a reference for the mark.
 
 ### Tokens
 
 All tokens live in `src/app/globals.css` in three layers:
 
-1. **Brand palette** (`--brand-*`): the only raw brand hex values. Emerald `#127A5B` (light) and `#2DA985` (dark), gold `#A47B35` and `#D5B574`, ink `#18191C`, paper `#F5F2EA`.
+1. **Brand palette** (`--brand-*`): the only raw brand hex values. Emerald `#127A5B` and `#2DA985`, lamp `#1FBF8F` and `#5FF0BE`, gold `#A47B35` and `#D5B574`, ink `#17181B`, paper `#F7F5F0`, ivory `#EFEBE2`, charcoal `#0E0F11`.
 2. **Semantic tokens**, defined separately for light (`:root`) and dark (`.dark`).
 3. **`@theme inline` mapping**, which exposes them as Tailwind utilities (`bg-surface`, `text-muted-foreground`, `shadow-raised`, ...).
 
-| Token                        | Light                 | Dark                  | Use                                    |
-| ---------------------------- | --------------------- | --------------------- | -------------------------------------- |
-| `background`                 | `#F8F7F4`             | `#101114`             | Page canvas                            |
-| `surface` / `card`           | `#FFFFFF`             | `#1B1D22`             | Cards, panels, alternate section bands |
-| `surface-raised` / `popover` | `#FFFFFF`             | `#24262C`             | Menus, dialogs, selected segments      |
-| `muted`, `secondary`         | `#F0EFEB`             | `#24262C`             | Quiet fills                            |
-| `accent`                     | `#EBE9E4`             | `#2A2D34`             | Hover highlight (shadcn meaning)       |
-| `foreground`                 | `#18191C`             | `#F5F2EA`             | Primary text                           |
-| `muted-foreground`           | `#63666D`             | `#A3A4AA`             | Secondary text                         |
-| `border` / `input`           | `#E4E2DC` / `#D3D1CA` | white 9% / 16%        | Hairlines, control borders             |
-| `primary` / `ring`           | `#127A5B`             | `#2DA985` / `#3FBF98` | Actions, selected and focus states     |
-| `gold` / `gold-ink`          | `#A47B35` / `#7D5F24` | `#D5B574`             | Decoration / readable gold text        |
-| `nav` / `nav-border`         | white 72%             | canvas 70%            | Glass surfaces                         |
-| `glow`                       | emerald 16%           | emerald 34%           | Emerald illumination                   |
+| Token                           | Light                 | Dark                   | Use                                                 |
+| ------------------------------- | --------------------- | ---------------------- | --------------------------------------------------- |
+| `background`                    | `#F7F5F0` warm paper  | `#0E0F11` charcoal     | Page canvas                                         |
+| `surface` / `card`              | `#FFFFFF`             | `#17191C`              | Cards, tables, inputs (opaque)                      |
+| `surface-raised` / `popover`    | `#FFFFFF`             | `#1F2125`              | Mobile panels, Clerk, the glass fallback            |
+| `muted`, `secondary`, `accent`  | ink 4.5% / 6% / 7%    | white 5% / 7% / 8%     | Quiet fills, tracks, hover highlight                |
+| `foreground`                    | `#17181B`             | `#EFEBE2` ivory        | Primary text                                        |
+| `muted-foreground`              | `#5E6168`             | `#A3A4A1`              | Secondary text                                      |
+| `border` / `input`              | `#E4E1D9` / `#D2CFC6` | white 9% / 16%         | Hairlines, control borders                          |
+| `primary` / `primary-hover`     | `#127A5B` / darker    | `#2DA985` / brighter   | Actions, links, selection, current navigation       |
+| `primary-soft`                  | emerald 9%            | emerald 14%            | Tint behind a selected or highlighted item          |
+| `ring`                          | `#127A5B`             | `#5FF0BE`              | Focus outline                                       |
+| `lamp`                          | `#1FBF8F`             | `#5FF0BE`              | The lit edge only; never text or fills              |
+| `gold` / `gold-ink`             | `#A47B35` / `#7D5F24` | `#D5B574`              | Small editorial details; `gold-ink` when it is text |
+| `destructive` (+ `-foreground`) | `#B42318` / white     | `#F97066` / near-black | Destructive actions and errors                      |
+| `nav`, `float`                  | paper 74%, white 82%  | charcoal 70%, 78%      | Glass: the bar, and floating layers                 |
+| `glow`                          | lamp 24%              | emerald 28%            | The hero's one diffused light                       |
 
-Shadows are tokens too: `shadow-card` (resting surfaces), `shadow-raised` (the one or two elevated things on a view), `shadow-glow` (emerald; hover on primary actions and featured controls).
+Shadows are tokens too: `shadow-card` (resting cards and controls), `shadow-raised` (the hero window, auth card, floating layers), `shadow-focus` (a soft 3px emerald halo on a focused input).
 
 Rules:
 
 - Components use semantic utilities only. Do not write hex values or `--brand-*` variables in components. The one exception is the logo mark, which is a fixed asset.
-- Foundations are neutral. Emerald is for primary actions, selected navigation, active controls, focus rings, eyebrow labels, and small details. It is never the background of a card, section, or bar.
-- Gold is rarer than emerald: a rule, a numeral, a dot. Use `gold-ink` when gold must be readable text; plain `gold` fails contrast on light surfaces.
-- Light emerald is `#127A5B`, slightly darker than the `#168765` first proposed, so that it passes AA both as text on the canvas and under white button labels.
-- Each theme is designed separately. Dark uses visible emerald illumination and inner highlights; light uses soft tinted shadows and hairline borders.
-- `accent` keeps the shadcn meaning (a subtle interactive highlight) so added primitives behave.
+- **The interface is neutral.** Emerald is for primary buttons, links, current navigation, selection, focus, kind markers, the lit edge, and the hero glow. No green card backgrounds or green sections.
+- **Gold is a detail**: the stage numerals, the ribbon tip, the short rule on the closing band. Never a fill or a button.
+- Quiet fills are translucent ink (or white in dark), so they work on the canvas and on a card alike. `accent` keeps the shadcn meaning (a subtle interactive highlight) so added primitives behave.
+- Each theme is designed separately: light uses hairlines, soft shadows, and a tinted shadow for glow; dark uses lighter surfaces for elevation, a top inner highlight, and a real (but tight) emerald light.
 
-### Utilities
+### Glass
 
-- `container-page` — the shared content container (80rem max, responsive gutters). Header, sections, and footer all use it so edges align.
-- `glass` — translucent blurred surface. Reserved for the navigation bar, menus, and dialogs. Content cards stay opaque. It sets background, blur, and border colour; add the border side you need. A `glass` element nested inside another cannot blur the page, so panels attached to the bar are opaque.
-- `glow-emerald` — blurred radial emerald light. Put it on an absolutely positioned, `aria-hidden` element behind one featured thing per view. Never animate it and never put it behind ordinary cards.
-- `bg-grid` — faint neutral grid texture that fades at the edges; hero only.
-- `animate-rise`, `animate-menu` — short entrance fades. Use sparingly.
+Glass is for things that float over other content, and nothing else:
+
+- `glass` — the fixed bar. Neutral tint, 16px blur, hairline; add the border side you need. `glass-settle` makes it clear at the very top of the page and glass once content is under it, with a CSS scroll-driven animation (no script; always glass where unsupported).
+- `glass-float` — dropdown menus and dialogs. Denser than the bar so text stays readable over anything, with its own border, inner highlight, and raised shadow. Dialogs raise the opacity further (`--float` override in `ui/alert-dialog.tsx`).
+- Both fall back to an opaque surface when `backdrop-filter` is unavailable.
+- Cards, tables, forms, and the mobile navigation panels are opaque. Do not nest glass inside glass: a backdrop filter inside the blurred bar cannot see the page.
+
+### Glow
+
+Three uses, and no others (none of them on a button):
+
+- `lit-edge` — the signature. A static 1px emerald line centred on the top border of a featured surface, with an 8px bloom. One per view: the hero window, the auth card. It makes the element `position: relative`; put it on a wrapper if the element clips its overflow.
+- `hero-glow` — one radial gradient behind the hero window (and, faintly, the auth card). Nothing is blurred or animated. It reaches past its element, so an ancestor must clip sideways (`overflow-x-clip`), or narrow screens scroll horizontally.
+- `shadow-focus` on a focused input.
+
+Buttons do not glow. The primary button's hover is a colour step to `primary-hover`; an earlier emerald ring and halo on hover was removed at the owner's request.
+
+### Other utilities
+
+- `container-page` — the shared content container (76rem max, responsive gutters). Header, sections, and footer all use it so edges align.
+- `h-bar` / `pt-bar` — the bar height (`--bar-h`, 56px). A shell that renders the fixed header offsets `main` with `pt-bar`. `html` has `scroll-padding-top` of the same value, so in-page anchors need no offset of their own.
+- `animate-menu` — short entrance for panels and status messages.
+- `animate-rise` — the hero's entrance on load, staggered with `[animation-delay:…]`.
+- `animate-type`, `animate-caret`, `animate-clear`, `animate-settle`, `animate-file` — the hero's capture illustration. It plays once and rests on the filed state. Not for reuse.
 
 ### Geometry and layout
 
-- `--radius` is 10px: `rounded-md` 8px (controls inside controls), `rounded-lg` 10px (buttons, inputs), `rounded-xl` 14px (cards, windows). `rounded-full` is for dots and small chips only.
-- Section rhythm is `py-20 lg:py-28`. Alternate `bg-background` and `bg-surface` bands with `border-y` instead of coloured blocks.
-- A shell that renders the fixed header offsets `main` with `pt-16`; in-page anchor targets use `scroll-mt-16` or more.
+- Radius follows hierarchy, from `--radius` 8px: `rounded-md` 6px (chips, menu items), `rounded-lg` 8px (buttons, inputs), `rounded-xl` 12px (cards, tables, menus, dialogs), `rounded-2xl` 16px (the hero window). `rounded-full` is for dots and the avatar.
+- Marketing sections are `py-14 lg:py-20` and sit directly on the canvas, so two neighbours are 160px apart at `lg`; the space above a section's content block is `mt-10 lg:mt-14`. Sections are separated by that spacing alone. The one rule is the closing band's hairline. Application pages are `container-page py-10 lg:py-12` and start with `PageHeader`.
+- Not everything is a card. The three stages hang from a rule; the closing band is a hairline; empty states are dashed outlines.
 
 ### Typography
 
-- `font-display` (Playfair Display): the wordmark and marketing headings. Use sparingly inside the authenticated app.
-- `font-sans` (Montserrat): body copy and all application UI.
-- Eyebrow labels are uppercase, `text-xs`, wide tracking, in `primary`.
-- Section headings are `text-4xl sm:text-5xl` with `leading-[1.1]`; supporting copy is `text-lg` in `muted-foreground`, capped near `max-w-xl`.
+- `font-sans` (Montserrat): all interface text — navigation, controls, tables, forms, body copy. Body carries `-0.008em` tracking because Montserrat sets wide. Dense data is 14px with `tabular-nums`.
+- `font-display` / `font-serif` (Playfair Display): landing headlines, page titles, dialog titles, and sermon material (idea titles, and Scripture references in italic). Always weight 500 or 600 with slight negative tracking; never bold.
+- Scale: hero `4.5–5.25rem` (one line from `lg`, three stacked words below), with its copy and actions in one left-aligned column beneath it; marketing section headings `2rem → 2.625rem`; application page titles `1.875rem → 2.125rem`; in-page section headings are sans, `text-lg font-semibold`. Supporting copy is `1.0625rem` in `muted-foreground`, capped near `max-w-xl`.
+- No uppercase tracked labels, and no serif inside tables, forms, or controls.
 
-### Motion and accessibility
+### Motion and interaction
 
-- Transitions are 200–300ms and tied to interaction. A global `prefers-reduced-motion` rule disables animation and smooth scrolling.
-- Every focusable element gets a visible `outline` in the `ring` colour.
+- Interactions answer in 150–200ms with colour, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon nudges forward.
+- Everything that acts on a click shows the hand cursor: a base rule in `globals.css` covers buttons, `role="button"`, menu items, and `summary` (Tailwind 4 leaves buttons on the arrow), and links have it natively. Disabled controls keep the arrow, as does the theme option that is already selected.
+- Only interactive elements have hover states. Illustrations, informational cards, and table rows do not.
+- Every hover has a matching pressed state: buttons press in, and quiet controls (navigation links, icon buttons, the theme options) darken to `active:bg-foreground/10`.
+- Compact controls are for a pointer. On touch screens (`pointer-coarse:`) small and icon buttons, menu rows, menu triggers, and the theme options grow to 44px.
+- Load motion is one sequence: the hero rises in, then the capture illustration plays once. There are no scroll-triggered entrances and no looping animation.
+- A global `prefers-reduced-motion` rule removes animation, delays, and smooth scrolling; the capture illustration is then static with the thought already filed.
+- Every focusable element gets a visible 2px `outline` in the `ring` colour. Disabled controls are 50% opacity with no pointer events; busy actions change their label ("Sending…", "Working…"), show a spinner (`LoaderCircle` with `animate-spin`), and set `aria-busy`. Action results (`ActionStatus`) carry an icon as well as a colour.
 - The root layout provides a skip link; each shell must render `<main id="main">`.
 - Text colour pairs were chosen for WCAG AA contrast in both themes.
 
@@ -203,23 +230,34 @@ Rules:
 
 ### Navigation
 
-`SiteHeader` is a fixed, full-width, 64px glass bar with a bottom hairline. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items; Escape closes it and returns focus.
+`SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button and an opaque panel under the bar containing the same items in 44px rows; Escape closes it and returns focus. While the panel is open the bar turns opaque to match it (the menu button carries `data-nav-toggle`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, the theme control, and `AccountMenu` (name, email, manage account, sign out). Below `md` the same items move into a panel. The current page link is emerald via `aria-current`. The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, the theme control, and `AccountMenu` (name, email, manage account, sign out). Below `md` the same items move into a panel. The current page link is ink with a 2px emerald rule on the bar's bottom edge, via `aria-current`. The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
 
-Clerk's sign-in, sign-up, and profile components are styled through `src/lib/clerk-appearance.ts`, which maps Clerk's variables to the CSS tokens so they follow the theme class.
+The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
+
+Clerk's sign-in, sign-up, and profile components are styled through `src/lib/clerk-appearance.ts`, which maps Clerk's variables to the CSS tokens so they follow the theme class, and matches Clerk's card to `AuthNotice` (same radius, hairline, and shadow), its primary button to `Button` (40px, no gradient sheen, same colour-only hover), and its inputs to `Input` (hairline, darker on hover, emerald line and soft halo on focus). Clerk draws input borders as box shadows and its own focus ring is a solid 4px band, so the focus override is `!important`. The card is given an opaque background so the glow behind it cannot tint Clerk's translucent footer strip. Clerk's components load from its CDN, so there is no local source to read: inspect the rendered `cl-*` elements when changing this file. The auth shell is the logo above one card; the shell's wrapper supplies the lit edge and glow to whichever card it holds.
 
 ### Components
 
-shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@latest add <name>` only when a feature needs it, then restyle it to the tokens as `ui/button.tsx` does (`rounded-lg`, semantic colours, `shadow-glow` on primary hover). For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
+shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@latest add <name>` only when a feature needs it, then restyle it to the tokens as `ui/button.tsx` does.
+
+- **Button**: `default` (emerald; hover is a colour step only), `secondary`, `outline`, `ghost`, `destructive`, `link`. `outline` is the secondary action beside a primary one; on hover its hairline turns emerald (`border-primary/70`), as does the account trigger's and Clerk's social button. For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
+- **Input**: white surface, hairline, darker border on hover, emerald border and `shadow-focus` on focus, `aria-invalid` in destructive.
+- **Dropdown menu, alert dialog**: `glass-float`. Destructive items and confirmations use the destructive colour.
+- **`PageHeader`** (`components/layout/page-header.tsx`): title, one line of context, hairline. Every application page starts with it.
+- **`Badge`** (in `features/admin/components/users-table.tsx`): `accent`, `muted`, `danger`. Move it to `components/ui` when a second feature needs it.
+- **Card**: there is no card component. A card is `rounded-xl border bg-surface shadow-card`; an empty state is `rounded-xl border border-dashed border-input`.
+- **Tables**: plain header row, 14px rows, no row hover (rows are not links). Below `sm`, secondary columns fold into the first cell rather than scrolling sideways.
 
 ### Logo
 
-- `LogoMark` (`components/brand/logo-mark.tsx`) is the icon as inline SVG with four variants: `primary`, `dark`, `light`, `mono`. The tile stays emerald; on neutral bars it is the one solid block of green.
-- The bookmark is a ribbon over the top of the left page (changed in 1A.1 from a ribbon below the spine), and the book is centred vertically on the tile. In the `light` and `mono` variants the ribbon takes a colour that contrasts with the page.
-- `Logo` is the lockup: mark plus the wordmark in live Playfair Display text.
+- `LogoMark` (`components/brand/logo-mark.tsx`) is the icon as inline SVG with four variants: `primary`, `dark`, `light`, `mono`. The tile stays emerald; on the neutral bar it is the one solid block of green.
+- The bookmark is a gold ribbon over the top of the left page, and the book is centred vertically on the tile. The ribbon is drawn as cloth, not a rectangle: its edges sway slightly, its top corners are soft, its tail is cut a little unevenly, and it casts a faint shadow on the page (omitted in the `mono` variant). It is shaded (black at 18%) where it folds over the page's top edge, and the two lines of text beside it stop short of it instead of running underneath. The owner wants it kept in this position.
+- `Logo` is the lockup: mark plus the wordmark in live Playfair Display, raised slightly (`-translate-y-[0.065em]`) so the midpoint of its capitals sits on the mark's centre and its text lines up with the navigation beside it. Playfair's baseline sits low in a `leading-none` box; judge this by measuring the glyphs, not the element's box.
+- `Ribbon` (`components/brand/ribbon.tsx`) is the bookmark from the mark as a UI marker. It is currently unused and kept for the Phase 2 library.
 - `public/brand/mark.svg` is the standalone primary mark. `src/app/icon.svg` is a simplified small-size version for the favicon. Keep all three in step.
-- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`. The share card is charcoal with a soft emerald glow.
+- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`. The share card is charcoal with the wordmark in Playfair Display.
 - If a designer-made vector is supplied, replace the paths in `LogoMark`, `mark.svg`, and `icon.svg`, then rerun the script.
 - Never substitute a generic icon or emoji for the logo.
 

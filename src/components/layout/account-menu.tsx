@@ -47,13 +47,13 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account menu"
-        className="grid size-9 place-items-center rounded-full border bg-surface text-xs font-semibold text-foreground shadow-card transition-colors duration-200 hover:border-primary/50 data-popup-open:border-primary/50"
+        className="grid size-9 place-items-center rounded-full border border-input bg-surface text-xs font-semibold text-foreground shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/70 data-popup-open:border-ring data-popup-open:shadow-focus pointer-coarse:size-11"
       >
         <span aria-hidden>{initials}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-60">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
             <span className="truncate text-sm font-semibold text-foreground">{name}</span>
             {email && email !== name && <span className="truncate">{email}</span>}
           </DropdownMenuLabel>

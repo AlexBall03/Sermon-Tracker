@@ -7,41 +7,45 @@ import { ProductPreview } from "./product-preview";
 
 export function Hero() {
   return (
-    <section className="relative isolate overflow-hidden">
-      <div aria-hidden className="bg-grid absolute inset-x-0 top-0 -z-10 h-[44rem]" />
-
-      <div className="container-page pt-16 pb-20 sm:pt-24 lg:pb-28">
-        <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
-          <p className="inline-flex animate-rise items-center gap-2 rounded-full border bg-surface px-3 py-1 text-xs font-semibold tracking-wide text-muted-foreground shadow-card">
-            <span className="size-1.5 rounded-full bg-gold" aria-hidden />
-            Invitation-only beta
-          </p>
-          <h1 className="mt-8 animate-rise font-display text-[clamp(3rem,10vw,7.5rem)] leading-[0.95] font-semibold tracking-[-0.03em] text-balance [animation-delay:60ms]">
-            {siteConfig.name}
-          </h1>
-          <p className="mt-6 animate-rise text-sm font-semibold tracking-[0.3em] text-primary uppercase [animation-delay:120ms] sm:text-base">
-            {siteConfig.tagline}
-          </p>
-          <p className="mt-6 max-w-2xl animate-rise text-lg leading-relaxed text-pretty text-muted-foreground [animation-delay:180ms] sm:text-xl">
+    // Clipped sideways: the glow behind the window reaches past the container.
+    <section className="overflow-x-clip">
+      <div className="container-page pt-10 pb-14 sm:pt-14 lg:pt-16 lg:pb-20">
+        <p className="flex animate-rise items-center gap-2.5 text-sm font-medium text-muted-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-primary" />
+          <span>
+            <span className="font-semibold text-foreground">{siteConfig.name}</span> is in
+            invitation-only beta
+          </span>
+        </p>
+        {/*
+         * The tagline is the headline: its three words are the product's three
+         * stages. `w-min` stacks them on small screens while keeping one text
+         * node; from `lg` they run as a single line.
+         */}
+        <h1 className="mt-5 w-min animate-rise font-display text-[clamp(3rem,13.5vw,4.5rem)] leading-[1.02] font-medium tracking-[-0.02em] [animation-delay:60ms] lg:w-auto lg:text-[4.5rem] lg:whitespace-nowrap xl:text-[5.25rem]">
+          {siteConfig.tagline}
+        </h1>
+        {/* One column: the actions sit directly under the copy they follow from. */}
+        <div className="mt-6 animate-rise [animation-delay:120ms] lg:mt-7">
+          <p className="max-w-[38rem] text-[1.0625rem] leading-relaxed text-pretty text-muted-foreground sm:text-lg">
             Sermon ideas rarely arrive at the desk. Keep every title, text, and single point in one
             place before it is forgotten, and develop it when the time comes.
           </p>
-          <div className="mt-10 flex animate-rise flex-wrap items-center justify-center gap-3 [animation-delay:240ms]">
+          <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link href={routes.signIn} className={buttonVariants({ size: "lg" })}>
               Sign in
               <ArrowRight />
             </Link>
-            <Link href="#preview" className={buttonVariants({ variant: "outline", size: "lg" })}>
-              See what is planned
+            <Link
+              href="#capabilities"
+              className={buttonVariants({ variant: "outline", size: "lg" })}
+            >
+              See how it works
             </Link>
           </div>
         </div>
 
-        <div className="relative mx-auto mt-16 max-w-5xl animate-rise [animation-delay:320ms] sm:mt-20">
-          {/* the one emerald glow on this page */}
-          <div aria-hidden className="glow-emerald absolute -inset-x-8 -top-20 bottom-8 -z-10" />
-          <ProductPreview />
-        </div>
+        <ProductPreview />
       </div>
     </section>
   );

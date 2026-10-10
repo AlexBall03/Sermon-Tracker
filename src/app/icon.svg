@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Small-size mark: two rows per page and heavier strokes so it holds at 16-32px. -->
+  <!-- Small-size mark: two rows per page, heavier strokes, and a wider ribbon so it holds at 16-32px. -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#12805f"/>
@@ -12,13 +12,14 @@
     <path d="M48.5 31C43 25.5 29 24 19 26.6V64c10-2.6 24-1.6 29.5 3.2z" fill="#f8f6ed"/>
     <path d="M51.5 31C57 25.5 71 24 81 26.6V64c-10-2.6-24-1.6-29.5 3.2z" fill="#f8f6ed"/>
     <g stroke="#a7b89f" stroke-width="4">
-      <path d="M26 38.5c6-1.5 11.5-1 16.5 1.5"/>
-      <path d="M26 50.5c6-1.5 11.5-1 16.5 1.5"/>
+      <path d="M26 38.500c1.500-.400 3-.600 4.500-.700"/>
+      <path d="M26 52.500c6-1.500 11.500-1 16.500 1.500"/>
     </g>
-    <path d="M34.5 22h8v24l-4-4-4 4z" fill="#d4af6b"/>
+    <path d="M34 22.600c0-1 .700-1.600 1.700-1.600h6.100c1 0 1.700.600 1.700 1.600 .700 6.900-.900 15.300-.100 23l-4.900-4.400-4.500 4.900c-.800-7.700.800-16.100 0-23.500z" fill="#d4af6b"/>
+    <path d="M34 22.600c0-1 .700-1.600 1.700-1.600h6.100c1 0 1.700.600 1.700 1.600l.100 4.600c-2.900-1-6.100-1.600-9.600-1.800z" fill="#000" opacity="0.18"/>
     <g stroke="#0b3d2e" stroke-width="4">
-      <path d="M56 39l2.5 2.6 4-5.2M68 39h7"/>
-      <path d="M56 51l2.5 2.6 4-5.2M68 51h7"/>
+      <path d="M56 39l2.500 2.600 4-5.200M68 39h7"/>
+      <path d="M56 51l2.500 2.600 4-5.200M68 51h7"/>
     </g>
   </g>
 </svg>

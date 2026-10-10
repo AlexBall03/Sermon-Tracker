@@ -1,9 +1,13 @@
-import { Link2 } from "lucide-react";
-
 import { cn } from "@/lib/utils";
-import { sampleIdeas, type SampleIdea } from "./sample-ideas";
+import { sampleLibrary, type SampleIdea } from "./sample-ideas";
 
-const [sermon, point, undecided] = sampleIdeas;
+const { points, sermons, undecided } = sampleLibrary;
+
+// Card height and gap, in pixels. The connector lines are drawn from these.
+const CARD = 92;
+const GAP = 14;
+const rowCentre = (row: number) => row * (CARD + GAP) + CARD / 2;
+const diagramHeight = sermons.length * CARD + (sermons.length - 1) * GAP;
 
 /** Static illustration of the planned library. Nothing here is interactive. */
 export function AppPreview() {
@@ -11,43 +15,75 @@ export function AppPreview() {
     <section
       id="preview"
       aria-labelledby="preview-heading"
-      className="container-page grid scroll-mt-16 items-center gap-12 py-20 lg:grid-cols-[0.85fr_1.15fr] lg:gap-20 lg:py-28"
+      className="container-page grid items-center gap-10 py-14 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20 lg:py-20"
     >
       <div>
-        <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">
-          In development
-        </p>
         <h2
           id="preview-heading"
-          className="mt-4 font-display text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-5xl"
+          className="font-display text-[2rem] leading-[1.12] font-medium tracking-[-0.015em] text-balance sm:text-[2.625rem]"
         >
           One library for every idea
         </h2>
-        <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-xl text-[1.0625rem] leading-relaxed text-muted-foreground">
           Sermon ideas, reusable points, and thoughts you have not classified yet will live
           together, so nothing is lost between separate lists. This is an idea tracker, not a
           manuscript editor.
         </p>
+        <p className="mt-4 max-w-xl text-[1.0625rem] leading-relaxed text-muted-foreground">
+          A point is its own record. Write it once, and link it to every sermon it serves.
+        </p>
       </div>
 
       <figure>
-        <div aria-hidden className="grid gap-4 sm:grid-cols-2">
-          <IdeaCard idea={sermon} className="sm:row-span-2">
-            <div className="mt-8 border-t pt-5">
-              <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                <Link2 className="size-3.5" />
-                Linked point
-              </p>
-              <p className="mt-3 flex gap-3 text-sm leading-relaxed">
-                <span className="font-display text-gold-ink italic">01</span>
-                {point.title}
-              </p>
+        {/*
+         * Points on the left, sermons on the right, joined by lines: the
+         * first point serves two sermons. Below `sm` the lines are dropped
+         * and the columns stack; each point still says how many sermons use it.
+         */}
+        <div
+          aria-hidden
+          className="grid gap-x-0 gap-y-8 select-none sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)]"
+        >
+          <div>
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">Point ideas</p>
+            <div className="flex flex-col" style={{ gap: GAP }}>
+              {points.map(({ idea }, index) => (
+                <IdeaCard key={idea.title} idea={idea} featured={index === 0} />
+              ))}
+              <IdeaCard idea={undecided} dashed />
             </div>
-          </IdeaCard>
-          <IdeaCard idea={point} />
-          <IdeaCard idea={undecided} className="border-dashed bg-transparent shadow-none" />
+          </div>
+
+          <svg
+            viewBox={`0 0 72 ${diagramHeight}`}
+            preserveAspectRatio="none"
+            fill="none"
+            className="mt-7 hidden w-full sm:block"
+            style={{ height: diagramHeight }}
+          >
+            {points.flatMap(({ idea, sermons: linked }, row) =>
+              linked.map((sermon) => (
+                <path
+                  key={`${idea.title}-${sermon}`}
+                  d={`M0 ${rowCentre(row)} C36 ${rowCentre(row)} 36 ${rowCentre(sermon)} 72 ${rowCentre(sermon)}`}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={1.5}
+                  className={row === 0 ? "stroke-primary" : "stroke-input"}
+                />
+              )),
+            )}
+          </svg>
+
+          <div>
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">Sermon ideas</p>
+            <div className="flex flex-col" style={{ gap: GAP }}>
+              {sermons.map((idea) => (
+                <IdeaCard key={idea.title} idea={idea} />
+              ))}
+            </div>
+          </div>
         </div>
-        <figcaption className="mt-5 text-sm text-muted-foreground">
+        <figcaption className="mt-6 text-sm text-muted-foreground">
           Illustrative preview of a planned feature. The finished library may look different.
         </figcaption>
       </figure>
@@ -57,26 +93,29 @@ export function AppPreview() {
 
 function IdeaCard({
   idea,
-  className,
-  children,
+  featured = false,
+  dashed = false,
 }: {
   idea: SampleIdea;
-  className?: string;
-  children?: React.ReactNode;
+  featured?: boolean;
+  dashed?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-surface p-6 shadow-card", className)}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold tracking-[0.14em] text-primary uppercase">
-          {idea.kind}
+    <div
+      style={{ height: CARD }}
+      className={cn(
+        "flex flex-col justify-center rounded-xl px-4",
+        dashed ? "border border-dashed border-input" : "border bg-surface shadow-card",
+        featured && "border-primary/45",
+      )}
+    >
+      <p className="line-clamp-2 font-serif text-base leading-[1.25] font-medium">{idea.title}</p>
+      <p className="mt-1.5 flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span className="truncate font-serif text-[0.8125rem] italic">{idea.scripture}</span>
+        <span className={cn("shrink-0 font-medium", featured && "text-primary")}>
+          {dashed ? "Undecided" : idea.note}
         </span>
-        <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {idea.note}
-        </span>
-      </div>
-      <p className="mt-5 font-display text-2xl leading-snug font-semibold">{idea.title}</p>
-      <p className="mt-2 text-sm text-muted-foreground">{idea.scripture}</p>
-      {children}
+      </p>
     </div>
   );
 }

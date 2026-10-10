@@ -35,11 +35,12 @@ describe("UsersTable", () => {
   it("shows each person's role, status, and date", () => {
     render(<UsersTable entries={entries} currentUserId="1" />);
     const row = screen.getByRole("row", { name: /Ada Admin/ });
-    expect(within(row).getByText("Admin")).toBeInTheDocument();
-    expect(within(row).getByText("Active")).toBeInTheDocument();
+    // Each badge is rendered twice: in its column, and folded under the name for narrow screens.
+    expect(within(row).getAllByText("Admin")).toHaveLength(2);
+    expect(within(row).getAllByText("Active")).toHaveLength(2);
     expect(within(row).getByText("Oct 1, 2026")).toBeInTheDocument();
     expect(screen.getByText("Sign-in identity removed")).toBeInTheDocument();
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getAllByText("Disabled")).toHaveLength(2);
   });
 
   it("offers actions for other people but not for the signed-in administrator", () => {

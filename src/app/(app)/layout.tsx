@@ -29,7 +29,7 @@ async function Shell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppHeader isAdmin={user.role === "admin"} />
-      <main id="main" className="flex-1 pt-16">
+      <main id="main" className="flex-1 pt-bar">
         {children}
       </main>
     </>
@@ -40,12 +40,12 @@ async function Shell({ children }: { children: React.ReactNode }) {
 function ShellFallback() {
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b glass">
-        <div className="container-page flex h-16 items-center">
+      <header className="fixed inset-x-0 top-0 z-50 glass-settle border-b glass">
+        <div className="container-page flex h-bar items-center">
           <Logo />
         </div>
       </header>
-      <main id="main" className="flex-1 pt-16">
+      <main id="main" className="flex-1 pt-bar">
         <PageLoading />
       </main>
     </>

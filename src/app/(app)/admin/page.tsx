@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { getDb } from "@/db";
+import { PageHeader } from "@/components/layout/page-header";
 import { requireAdmin } from "@/features/auth/access";
 import {
   listPendingInvitations,
@@ -36,44 +37,49 @@ export default async function AdminPage() {
   ];
 
   return (
-    <div className="container-page py-12 lg:py-16">
-      <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">
-        Administration
-      </p>
-      <h1 className="mt-4 font-display text-4xl leading-[1.1] font-semibold tracking-tight">
-        People and access
-      </h1>
+    <div className="container-page py-10 lg:py-12">
+      <PageHeader
+        title="People and access"
+        description="Sermon Tracker is invitation-only. Invite people here, and manage their roles and access."
+      />
 
-      <dl className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* One divided strip rather than four separate cards. */}
+      <dl className="mt-8 grid grid-cols-2 rounded-xl border bg-surface shadow-card lg:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border bg-surface p-5 shadow-card">
-            <dt className="text-sm text-muted-foreground">{stat.label}</dt>
-            <dd className="mt-2 text-3xl font-semibold tabular-nums">
-              {stat.value ?? <span className="text-base text-muted-foreground">Unavailable</span>}
+          <div
+            key={stat.label}
+            className="px-5 py-4 even:border-l nth-[n+3]:border-t lg:not-first:border-l lg:nth-[n+3]:border-t-0"
+          >
+            <dt className="text-[0.8125rem] font-medium text-muted-foreground">{stat.label}</dt>
+            <dd className="mt-1.5 text-[1.75rem] leading-none font-semibold tracking-[-0.02em] tabular-nums">
+              {stat.value ?? (
+                <span className="text-sm font-medium tracking-normal text-muted-foreground">
+                  Unavailable
+                </span>
+              )}
             </dd>
           </div>
         ))}
       </dl>
 
-      <section aria-labelledby="users-heading" className="mt-12">
-        <h2 id="users-heading" className="text-xl font-semibold">
+      <section aria-labelledby="users-heading" className="mt-10">
+        <h2 id="users-heading" className="text-lg font-semibold tracking-[-0.015em]">
           Users
         </h2>
         {!identified && (
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Names and email addresses could not be loaded from the sign-in provider.
           </p>
         )}
         <UsersTable entries={entries} currentUserId={admin.id} />
       </section>
 
-      <section aria-labelledby="invitations-heading" className="mt-12">
-        <h2 id="invitations-heading" className="text-xl font-semibold">
+      <section aria-labelledby="invitations-heading" className="mt-10">
+        <h2 id="invitations-heading" className="text-lg font-semibold tracking-[-0.015em]">
           Invitations
         </h2>
-        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          Sermon Tracker is invitation-only. An invited person receives an email with a link to
-          create their account.
+        <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
+          An invited person receives an email with a link to create their account.
         </p>
         <InvitationsPanel invitations={invitations} />
       </section>

@@ -16,11 +16,11 @@ type AuthNoticeProps = {
 export function AuthNotice({ eyebrow, title, children, actions }: AuthNoticeProps) {
   return (
     <div className="rounded-xl border bg-surface p-8 text-center shadow-raised sm:p-10">
-      <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">{eyebrow}</p>
-      <h1 className="mt-4 font-display text-3xl leading-tight font-semibold tracking-tight">
+      <p className="text-[0.8125rem] font-semibold text-primary">{eyebrow}</p>
+      <h1 className="mt-3 font-display text-[1.75rem] leading-tight font-medium tracking-[-0.01em] text-balance">
         {title}
       </h1>
-      <p className="mt-4 leading-relaxed text-muted-foreground">{children}</p>
+      <p className="mt-4 text-[0.9375rem] leading-relaxed text-muted-foreground">{children}</p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
         {actions ?? (
           <Link href={routes.home} className={buttonVariants({ variant: "outline" })}>
@@ -38,7 +38,7 @@ export function AuthFormFallback() {
   return (
     <div
       role="status"
-      className="h-[28rem] animate-pulse rounded-xl border bg-surface shadow-raised"
+      className="h-[23rem] animate-pulse rounded-xl border bg-surface shadow-raised"
     >
       <span className="sr-only">Loading</span>
     </div>

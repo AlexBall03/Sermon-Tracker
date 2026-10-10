@@ -14,14 +14,14 @@ const iconPage = (svg) =>
   `<style>html,body{margin:0;background:transparent}svg{display:block;width:100vw;height:100vh}</style>${svg}`;
 
 const sharePage = `
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&family=Playfair+Display:wght@600&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&family=Playfair+Display:wght@500&display=block">
 <style>
   html,body{margin:0}
   body{width:1200px;height:630px;display:flex;align-items:center;justify-content:center;gap:56px;
-    background:radial-gradient(60% 80% at 22% 50%,rgba(45,169,133,.22),transparent 70%),#101114;color:#f5f2ea}
+    background:radial-gradient(46% 60% at 22% 50%,rgba(45,169,133,.2),transparent 70%),#0e0f11;color:#efebe2}
   svg{width:230px;height:230px;filter:drop-shadow(0 18px 40px rgba(0,0,0,.35))}
-  h1{margin:0;font:600 104px/1 "Playfair Display",serif;letter-spacing:-.02em}
-  p{margin:26px 0 0;font:500 30px/1 Montserrat,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#d5b574}
+  h1{margin:0;font:500 100px/1 "Playfair Display",serif;letter-spacing:-.02em}
+  p{margin:28px 0 0;font:500 34px/1 "Montserrat",sans-serif;letter-spacing:-.01em;color:#a3a4a1}
 </style>
 ${mark}<div><h1>Sermon Tracker</h1><p>Capture. Develop. Preach.</p></div>`;
 

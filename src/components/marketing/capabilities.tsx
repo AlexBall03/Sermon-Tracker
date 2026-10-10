@@ -1,23 +1,67 @@
-import { CalendarCheck, Layers, PenLine } from "lucide-react";
+import { CalendarCheck, Link2, MapPin } from "lucide-react";
 
-const capabilities = [
+import { sampleJourney as journey } from "./sample-ideas";
+
+/**
+ * The three stages, told by following one idea through them: the passing
+ * thought, the sermon it became, and the Sunday it was preached. Each stage
+ * ends in that idea as it would look at that point.
+ */
+const stages = [
   {
-    step: "Capture",
-    icon: PenLine,
+    stage: "Capture",
     title: "Save the idea in seconds",
     body: "Note a sermon idea or a single point the moment it comes. Decide later whether it is a sermon, a point, or something still undecided.",
+    example: (
+      <div className="flex h-30 flex-col justify-center rounded-xl border border-dashed border-input px-4 py-3.5">
+        <p className="font-serif text-[1.0625rem] leading-snug">{journey.thought}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Undecided, captured {journey.capturedAt}
+        </p>
+      </div>
+    ),
   },
   {
-    step: "Develop",
-    icon: Layers,
+    stage: "Develop",
     title: "Organise and build over time",
     body: "Keep every idea in one library. Add Scripture references and notes, and connect a point to as many sermons as it serves.",
+    example: (
+      <div className="flex h-30 flex-col justify-center rounded-xl border bg-surface px-4 py-3.5 shadow-card">
+        <p className="font-serif text-[1.0625rem] leading-snug font-medium">{journey.sermon}</p>
+        <p className="mt-0.5 font-serif text-sm text-muted-foreground italic">
+          {journey.scripture}
+        </p>
+        <p className="mt-3 flex items-center gap-2 border-t pt-3 text-xs leading-5 text-muted-foreground">
+          <Link2 className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate font-serif text-sm leading-5 text-foreground">
+            {journey.point}
+          </span>
+        </p>
+      </div>
+    ),
   },
   {
-    step: "Preach",
-    icon: CalendarCheck,
+    stage: "Preach",
     title: "Preserve your preaching history",
     body: "Record when and where each sermon was preached, so the history stays alongside the ideas that produced it.",
+    example: (
+      <div className="flex h-30 flex-col justify-center rounded-xl border bg-surface px-4 py-3.5 shadow-card">
+        <p className="font-serif text-[1.0625rem] leading-snug font-medium">{journey.sermon}</p>
+        <p className="mt-0.5 font-serif text-sm text-muted-foreground italic">
+          {journey.scripture}
+        </p>
+        <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-3 text-xs leading-5 text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <CalendarCheck className="size-3.5 shrink-0 text-primary" />
+            {journey.preachedOn}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <MapPin className="size-3.5 shrink-0 text-primary" />
+            {journey.preachedAt}
+          </span>
+        </p>
+      </div>
+    ),
   },
 ];
 
@@ -26,59 +70,51 @@ export function Capabilities() {
     <section
       id="capabilities"
       aria-labelledby="capabilities-heading"
-      className="scroll-mt-16 border-y bg-surface"
+      className="container-page py-14 lg:py-20"
     >
-      <div className="container-page py-20 lg:py-28">
-        <div className="grid gap-6 lg:grid-cols-2 lg:items-end lg:gap-16">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.24em] text-primary uppercase">
-              How it works
-            </p>
-            <h2
-              id="capabilities-heading"
-              className="mt-4 font-display text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-5xl"
-            >
-              Built around how sermons actually take shape
-            </h2>
-          </div>
-          <p className="max-w-xl text-lg leading-relaxed text-muted-foreground lg:justify-self-end">
-            Three stages, one continuous record: from the first passing thought to the Sunday it was
-            preached.
-          </p>
-        </div>
+      <div className="max-w-2xl">
+        <h2
+          id="capabilities-heading"
+          className="font-display text-[2rem] leading-[1.12] font-medium tracking-[-0.015em] text-balance sm:text-[2.625rem]"
+        >
+          Built around how sermons actually take shape
+        </h2>
+        <p className="mt-4 max-w-xl text-[1.0625rem] leading-relaxed text-muted-foreground">
+          Three stages, one continuous record: from the first passing thought to the Sunday it was
+          preached.
+        </p>
+      </div>
 
-        <ol className="mt-14 grid gap-x-12 lg:mt-20 lg:grid-cols-3 xl:gap-x-16">
-          {capabilities.map(({ step, icon: Icon, title, body }, index) => (
-            <li key={step} className="group relative border-t pt-8 pb-10 lg:pb-0">
-              {/*
-               * Emerald rule: a short tick that draws across its own column on
-               * hover. Scaled rather than resized, so it can never leave the column.
-               */}
+      {/*
+       * Not cards: three columns hung from one thread. The rule after each
+       * numeral runs on to the next column, so the stages read as a single line.
+       */}
+      <ol className="mt-10 grid gap-x-10 gap-y-10 lg:mt-14 lg:grid-cols-3">
+        {stages.map(({ stage, title, body, example }, index) => (
+          <li key={stage} className="group/stage flex min-w-0 flex-col">
+            <p className="flex items-center gap-3">
+              <span aria-hidden className="font-serif text-xl leading-none text-gold-ink italic">
+                {index + 1}
+              </span>
+              <span className="font-serif text-xl leading-none font-medium">{stage}</span>
               <span
                 aria-hidden
-                className="absolute inset-x-0 -top-px h-px origin-left scale-x-[0.14] bg-primary transition-transform duration-500 ease-out group-hover:scale-x-100"
+                className="h-px flex-1 bg-border lg:-mr-10 lg:group-last/stage:mr-0"
               />
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="grid size-9 place-items-center rounded-lg border bg-background text-primary transition-shadow duration-300 group-hover:shadow-glow">
-                    <Icon className="size-4" aria-hidden />
-                  </span>
-                  <span className="text-xs font-semibold tracking-[0.24em] uppercase">{step}</span>
-                </div>
-                {/* pr-1 keeps the italic overhang inside the column */}
-                <span
-                  aria-hidden
-                  className="pr-1 font-display text-4xl leading-none text-gold-ink/70 italic transition-colors duration-300 group-hover:text-gold-ink"
-                >
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-              </div>
-              <h3 className="mt-8 font-display text-2xl leading-snug font-semibold">{title}</h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">{body}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
+            </p>
+            <h3 className="mt-6 text-[1.0625rem] font-semibold tracking-[-0.015em]">{title}</h3>
+            <p className="mt-2 mb-7 text-[0.9375rem] leading-relaxed text-muted-foreground">
+              {body}
+            </p>
+            <div aria-hidden className="mt-auto select-none">
+              {example}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-8 text-sm text-muted-foreground">
+        The examples follow one idea and are illustrative; these features are still being built.
+      </p>
     </section>
   );
 }

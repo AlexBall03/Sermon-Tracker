@@ -59,7 +59,7 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
       role="radiogroup"
       aria-label="Colour theme"
       onKeyDown={onKeyDown}
-      className={cn("inline-flex gap-0.5 rounded-lg border bg-muted p-0.5", className)}
+      className={cn("inline-flex gap-0.5 rounded-lg bg-secondary p-0.5", className)}
     >
       {options.map(({ value, label, icon: Icon }) => (
         <button
@@ -71,8 +71,8 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
           title={showLabels ? undefined : label}
           onClick={() => choose(value)}
           className={cn(
-            "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground aria-checked:bg-surface-raised aria-checked:text-foreground aria-checked:shadow-card dark:aria-checked:bg-accent",
-            showLabels ? "h-10 flex-1 px-3" : "size-7",
+            "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:text-foreground not-aria-checked:hover:bg-accent not-aria-checked:active:bg-foreground/10 aria-checked:cursor-default aria-checked:bg-surface-raised aria-checked:text-foreground aria-checked:shadow-card dark:aria-checked:bg-foreground/10",
+            showLabels ? "h-10 flex-1 px-3" : "size-8 pointer-coarse:size-10",
           )}
         >
           <Icon className="size-4" aria-hidden />

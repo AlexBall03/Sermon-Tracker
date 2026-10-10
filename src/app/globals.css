@@ -5,27 +5,34 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens
+ * Design tokens (Phase 1B.1)
  * 1. Brand palette: the only place raw brand hex values live.
  * 2. Semantic tokens: what components consume. Defined per theme.
  * 3. @theme mapping: exposes semantic tokens as Tailwind utilities.
- * Foundations are neutral; emerald is the accent, gold a small second accent.
- * See ARCHITECTURE.md > Design system.
+ * Foundations are neutral. Emerald is the signature: actions, selection,
+ * focus, the lit edge, and one glow behind the hero. Gold is a small
+ * editorial detail. See ARCHITECTURE.md > Design system.
  */
 
 :root {
   --brand-emerald: #127a5b;
   --brand-emerald-bright: #2da985;
+  --brand-lamp: #1fbf8f;
+  --brand-lamp-bright: #5ff0be;
   --brand-gold: #a47b35;
   --brand-gold-bright: #d5b574;
-  --brand-ink: #18191c;
-  --brand-paper: #f5f2ea;
+  --brand-ink: #17181b;
+  --brand-paper: #f7f5f0;
+  --brand-ivory: #efebe2;
+  --brand-charcoal: #0e0f11;
 
-  --radius: 0.625rem;
+  --radius: 0.5rem;
+  /* Height of the fixed bar. Shells offset `main` by it. */
+  --bar-h: 3.5rem;
 }
 
 :root {
-  --background: #f8f7f4;
+  --background: var(--brand-paper);
   --foreground: var(--brand-ink);
   --surface: #ffffff;
   --surface-raised: #ffffff;
@@ -33,68 +40,82 @@
   --card-foreground: var(--foreground);
   --popover: var(--surface-raised);
   --popover-foreground: var(--foreground);
-  --muted: #f0efeb;
-  --muted-foreground: #63666d;
-  --border: #e4e2dc;
-  --input: #d3d1ca;
+  /* Quiet fills are ink at low strength, so they sit on paper and on white alike. */
+  --muted: color-mix(in oklab, var(--brand-ink) 4.5%, transparent);
+  --muted-foreground: #5e6168;
+  --border: #e4e1d9;
+  --input: #d2cfc6;
   --primary: var(--brand-emerald);
+  --primary-hover: color-mix(in oklab, var(--brand-emerald) 88%, #000000);
   --primary-foreground: #ffffff;
-  --secondary: #f0efeb;
+  /* primary-soft = the emerald tint behind a selected or highlighted item */
+  --primary-soft: color-mix(in oklab, var(--brand-emerald) 9%, transparent);
+  --secondary: color-mix(in oklab, var(--brand-ink) 6%, transparent);
   --secondary-foreground: var(--brand-ink);
   /* accent = subtle interactive highlight (shadcn convention) */
-  --accent: #ebe9e4;
+  --accent: color-mix(in oklab, var(--brand-ink) 7%, transparent);
   --accent-foreground: var(--brand-ink);
-  /* gold = restrained brand accent; gold-ink is the text-safe tone */
+  /* lamp = bright emerald for lit edges and glow; never text or fills */
+  --lamp: var(--brand-lamp);
   --gold: var(--brand-gold);
   --gold-ink: #7d5f24;
-  --gold-foreground: #ffffff;
   --destructive: #b42318;
+  --destructive-foreground: #ffffff;
   --ring: var(--brand-emerald);
-  --nav: color-mix(in oklab, #ffffff 72%, transparent);
-  --nav-border: color-mix(in oklab, #000000 9%, transparent);
-  /* emerald illumination: soft tint in light, visible glow in dark */
-  --glow: color-mix(in oklab, var(--primary) 16%, transparent);
-  --grid-line: color-mix(in oklab, #000000 5%, transparent);
-  --elevation-card: 0 1px 2px rgb(24 25 28 / 0.05), 0 1px 1px rgb(24 25 28 / 0.03);
+  /* Glass: the bar, and floating layers (menus, dialogs). */
+  --nav: color-mix(in oklab, #fbfaf7 74%, transparent);
+  --nav-border: color-mix(in oklab, var(--brand-ink) 10%, transparent);
+  --float: color-mix(in oklab, #ffffff 82%, transparent);
+  --float-border: color-mix(in oklab, var(--brand-ink) 12%, transparent);
+  --float-edge: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  /* The one diffused light behind the hero window. Softer in light. */
+  --glow: color-mix(in oklab, var(--brand-lamp) 24%, transparent);
+  --elevation-card: 0 1px 2px rgb(23 24 27 / 0.05), 0 1px 1px rgb(23 24 27 / 0.03);
   --elevation-raised:
-    0 1px 2px rgb(24 25 28 / 0.05), 0 12px 32px -8px rgb(24 25 28 / 0.12),
-    0 32px 64px -24px rgb(18 122 91 / 0.14);
-  --elevation-glow: 0 6px 20px -6px color-mix(in oklab, var(--primary) 45%, transparent);
+    0 1px 2px rgb(23 24 27 / 0.06), 0 12px 32px -10px rgb(23 24 27 / 0.14),
+    0 36px 64px -28px rgb(23 24 27 / 0.18);
+  --elevation-focus: 0 0 0 3px color-mix(in oklab, var(--brand-emerald) 16%, transparent);
 }
 
 .dark {
-  --background: #101114;
-  --foreground: var(--brand-paper);
-  --surface: #1b1d22;
-  --surface-raised: #24262c;
+  --background: var(--brand-charcoal);
+  --foreground: var(--brand-ivory);
+  --surface: #17191c;
+  --surface-raised: #1f2125;
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface-raised);
   --popover-foreground: var(--foreground);
-  --muted: #24262c;
-  --muted-foreground: #a3a4aa;
+  --muted: color-mix(in oklab, #ffffff 5%, transparent);
+  --muted-foreground: #a3a4a1;
   --border: color-mix(in oklab, #ffffff 9%, transparent);
   --input: color-mix(in oklab, #ffffff 16%, transparent);
   --primary: var(--brand-emerald-bright);
-  --primary-foreground: #06140f;
-  --secondary: #24262c;
-  --secondary-foreground: var(--brand-paper);
-  --accent: #2a2d34;
-  --accent-foreground: var(--brand-paper);
+  /* Brighter, not paler: mixed towards the lamp green rather than white. */
+  --primary-hover: color-mix(in oklab, var(--brand-emerald-bright) 78%, var(--brand-lamp-bright));
+  --primary-foreground: #04140e;
+  --primary-soft: color-mix(in oklab, var(--brand-emerald-bright) 14%, transparent);
+  --secondary: color-mix(in oklab, #ffffff 7%, transparent);
+  --secondary-foreground: var(--brand-ivory);
+  --accent: color-mix(in oklab, #ffffff 8%, transparent);
+  --accent-foreground: var(--brand-ivory);
+  --lamp: var(--brand-lamp-bright);
   --gold: var(--brand-gold-bright);
   --gold-ink: var(--brand-gold-bright);
-  --gold-foreground: #17130a;
   --destructive: #f97066;
-  --ring: #3fbf98;
-  --nav: color-mix(in oklab, #101114 70%, transparent);
+  --destructive-foreground: #230806;
+  --ring: var(--brand-lamp-bright);
+  --nav: color-mix(in oklab, var(--brand-charcoal) 70%, transparent);
   --nav-border: color-mix(in oklab, #ffffff 9%, transparent);
-  --glow: color-mix(in oklab, var(--primary) 34%, transparent);
-  --grid-line: color-mix(in oklab, #ffffff 4%, transparent);
-  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --float: color-mix(in oklab, #1f2125 78%, transparent);
+  --float-border: color-mix(in oklab, #ffffff 12%, transparent);
+  --float-edge: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --glow: color-mix(in oklab, var(--brand-emerald-bright) 28%, transparent);
+  --elevation-card: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4);
   --elevation-raised:
-    0 1px 2px rgb(0 0 0 / 0.4), 0 24px 56px -16px rgb(0 0 0 / 0.6),
-    inset 0 1px 0 rgb(255 255 255 / 0.05);
-  --elevation-glow: 0 0 28px -6px color-mix(in oklab, var(--primary) 60%, transparent);
+    inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.5),
+    0 24px 56px -16px rgb(0 0 0 / 0.7);
+  --elevation-focus: 0 0 0 3px color-mix(in oklab, var(--lamp) 18%, transparent);
 }
 
 @theme inline {
@@ -111,36 +132,54 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-lamp: var(--lamp);
   --color-gold: var(--gold);
   --color-gold-ink: var(--gold-ink);
-  --color-gold-foreground: var(--gold-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
   --color-nav: var(--nav);
   --color-nav-border: var(--nav-border);
 
+  /* Montserrat runs the interface; Playfair Display carries headlines and sermon material. */
   --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-playfair), ui-serif, Georgia, serif;
+  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
   --font-heading: var(--font-sans);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* Radius follows hierarchy: chips 6, controls 8, cards 12, the hero window 16. */
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.4);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 2.5);
 
   --shadow-card: var(--elevation-card);
   --shadow-raised: var(--elevation-raised);
-  --shadow-glow: var(--elevation-glow);
+  --shadow-focus: var(--elevation-focus);
 
-  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  --animate-menu: menu 0.18s ease-out both;
+  --spacing-bar: var(--bar-h);
+
+  --animate-menu: menu 0.16s ease-out both;
+  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  /*
+   * The capture illustration: a thought is typed, then filed. It plays once
+   * and rests on the filed state. The four animations share one duration so
+   * they stay in step.
+   */
+  --animate-type: type 5s linear 0.6s both;
+  --animate-caret: caret 5s linear 0.6s both;
+  --animate-clear: clear 5s linear 0.6s both;
+  --animate-settle: settle 5s linear 0.6s both;
+  --animate-file: file 5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s both;
 
   @keyframes rise {
     from {
@@ -156,11 +195,90 @@
   @keyframes menu {
     from {
       opacity: 0;
-      transform: translateY(-0.375rem);
+      transform: translateY(-0.25rem);
     }
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /* typed text: revealed a character at a time between 12% and 46% */
+  @keyframes type {
+    0%,
+    12% {
+      clip-path: inset(0 100% 0 0);
+      animation-timing-function: steps(34, end);
+    }
+    46%,
+    100% {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+
+  @keyframes caret {
+    0%,
+    12% {
+      left: 0;
+      animation-timing-function: steps(34, end);
+    }
+    46%,
+    100% {
+      left: 100%;
+    }
+  }
+
+  /* typed text and caret: leave the bar once the thought is filed */
+  @keyframes clear {
+    0% {
+      opacity: 0;
+    }
+    10%,
+    58% {
+      opacity: 1;
+    }
+    64%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* placeholder: hidden while a thought is in the bar */
+  @keyframes settle {
+    0%,
+    8% {
+      opacity: 1;
+    }
+    11%,
+    64% {
+      opacity: 0;
+    }
+    72%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  /* the new row opens at the top of the list and stays */
+  @keyframes file {
+    0%,
+    60% {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+    76%,
+    100% {
+      grid-template-rows: 1fr;
+      opacity: 1;
+    }
+  }
+
+  /* the bar: clear at the top of the page, glass once content is under it */
+  @keyframes bar-settle {
+    from {
+      background-color: transparent;
+      border-color: transparent;
+      backdrop-filter: blur(0) saturate(1);
     }
   }
 }
@@ -168,7 +286,7 @@
 /* Shared page container: header, sections, and footer all align to this. */
 @utility container-page {
   width: 100%;
-  max-width: 80rem;
+  max-width: 76rem;
   margin-inline: auto;
   padding-inline: 1.25rem;
 
@@ -177,32 +295,83 @@
   }
 }
 
-/* Selective glass: navigation, menus, and dialogs only. Add your own border side. */
+/*
+ * Glass for the fixed bar: a neutral tint, blur, and a hairline. Add the
+ * border side you need. Without backdrop-filter it is simply opaque.
+ */
 @utility glass {
   background-color: var(--nav);
   border-color: var(--nav-border);
   backdrop-filter: blur(16px) saturate(1.5);
+
+  @supports not (backdrop-filter: blur(1px)) {
+    background-color: var(--background);
+  }
 }
 
 /*
- * Emerald illumination. Put on an absolutely positioned, aria-hidden element
- * behind one featured thing per view. Not for ordinary cards.
+ * Glass for layers that float above the page: menus and dialogs. Denser than
+ * the bar so text stays readable over anything. Do not nest it inside `glass`.
  */
-@utility glow-emerald {
-  background-image: radial-gradient(closest-side, var(--glow), transparent);
-  filter: blur(40px);
-  pointer-events: none;
+@utility glass-float {
+  background-color: var(--float);
+  border: 1px solid var(--float-border);
+  box-shadow: var(--float-edge), var(--elevation-raised);
+  backdrop-filter: blur(20px) saturate(1.6);
+
+  @supports not (backdrop-filter: blur(1px)) {
+    background-color: var(--surface-raised);
+  }
 }
 
-/* Faint neutral grid texture that fades out towards the edges. */
-@utility bg-grid {
-  background-image:
-    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-  background-size: 4rem 4rem;
-  background-position: center top;
-  mask-image: radial-gradient(ellipse 70% 75% at 50% 0%, #000 30%, transparent 100%);
-  pointer-events: none;
+/* Makes a `glass` bar clear at the very top of the page. No script; always glass where unsupported. */
+@utility glass-settle {
+  @supports (animation-timeline: scroll()) {
+    animation: bar-settle linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 3rem;
+  }
+}
+
+/*
+ * Lit edge, the signature: light catching the top of a featured surface. A
+ * short, static 1px emerald line with a bloom that stays within a few pixels.
+ * One per view.
+ */
+@utility lit-edge {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset-inline: 24%;
+    top: -1px;
+    height: 1px;
+    border-radius: 1px;
+    background-image: linear-gradient(to right, transparent, var(--lamp), transparent);
+    box-shadow: 0 0 8px 0 color-mix(in oklab, var(--lamp) 40%, transparent);
+    pointer-events: none;
+  }
+}
+
+/*
+ * The hero's one diffused emerald light, behind its focal visual. A plain
+ * radial gradient: nothing is blurred or animated. The auth card borrows it;
+ * nothing else should.
+ */
+@utility hero-glow {
+  position: relative;
+  isolation: isolate;
+
+  /* ::after, so it can share an element with lit-edge */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -14% -10% -6%;
+    z-index: -1;
+    background-image: radial-gradient(closest-side, var(--glow), transparent);
+    pointer-events: none;
+  }
 }
 
 @layer base {
@@ -210,16 +379,33 @@
     @apply border-border outline-ring;
   }
   html {
-    @apply scroll-smooth font-sans;
+    @apply scroll-smooth bg-background font-sans;
+    scroll-padding-top: var(--bar-h);
   }
   body {
     @apply bg-background text-foreground;
+    /* Montserrat sets wide; a touch of negative tracking keeps text compact. */
+    letter-spacing: -0.008em;
+    font-feature-settings: "lnum";
   }
   :focus-visible {
     @apply outline-2 outline-offset-2;
   }
   ::selection {
-    background-color: color-mix(in oklab, var(--primary) 28%, transparent);
+    background-color: color-mix(in oklab, var(--primary) 24%, transparent);
+  }
+  /*
+   * Anything that acts on a click shows the hand. Tailwind 4 leaves buttons on
+   * the default arrow; links already have it. Disabled controls keep the arrow,
+   * as does the theme option that is already selected (see ThemeToggle).
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="menuitemcheckbox"]:not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  summary {
+    cursor: pointer;
   }
 
   /* Theme changes cross-fade (see ThemeToggle). */
@@ -233,6 +419,7 @@
     ::before,
     ::after {
       animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;

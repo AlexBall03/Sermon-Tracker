@@ -10,7 +10,9 @@ test.describe("public landing page", () => {
   test("renders the brand, tagline, and SEO metadata", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Sermon Tracker/);
-    await expect(page.getByRole("heading", { level: 1, name: "Sermon Tracker" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Capture. Develop. Preach." }),
+    ).toBeVisible();
     await expect(page.getByText("Capture. Develop. Preach.").first()).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       "href",

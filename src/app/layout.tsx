@@ -8,16 +8,19 @@ import { isAuthConfigured, isIndexable } from "@/lib/env";
 import { routes, siteConfig } from "@/lib/site";
 import "./globals.css";
 
+// All interface text: navigation, controls, tables, forms, body copy.
 const montserrat = Montserrat({
   variable: "--font-montserrat",
   subsets: ["latin"],
   display: "swap",
 });
 
+// Headlines, page titles, and sermon material (idea titles, Scripture).
 const playfair = Playfair_Display({
   variable: "--font-playfair",
   subsets: ["latin"],
   display: "swap",
+  style: ["normal", "italic"],
 });
 
 const title = `${siteConfig.name} — ${siteConfig.tagline}`;
@@ -45,8 +48,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8f7f4" },
-    { media: "(prefers-color-scheme: dark)", color: "#101114" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f5f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e0f11" },
   ],
 };
 

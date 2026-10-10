@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,10 +36,7 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
 
   return (
     <>
-      <form
-        action={invite}
-        className="mt-4 flex flex-col gap-3 rounded-xl border bg-surface p-5 shadow-card sm:flex-row sm:items-end"
-      >
+      <form action={invite} className="mt-4 flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
           <Label htmlFor="invite-email">Email address</Label>
           <Input
@@ -52,7 +50,8 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
             aria-describedby="invite-status"
           />
         </div>
-        <Button type="submit" disabled={inviting}>
+        <Button type="submit" disabled={inviting} aria-busy={inviting}>
+          {inviting && <LoaderCircle className="animate-spin" aria-hidden />}
           {inviting ? "Sending…" : "Send invitation"}
         </Button>
       </form>
@@ -66,17 +65,19 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
           Pending invitations could not be loaded from the sign-in provider. Reload to try again.
         </p>
       ) : invitations.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">There are no pending invitations.</p>
+        <p className="mt-4 rounded-xl border border-dashed border-input px-5 py-6 text-sm text-muted-foreground">
+          No invitations are waiting. Enter an email address above to send one.
+        </p>
       ) : (
         <ul className="mt-4 divide-y rounded-xl border bg-surface shadow-card">
           {invitations.map((invitation) => (
             <li
               key={invitation.id}
-              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{invitation.email}</p>
-                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <p className="mt-1 flex items-center gap-2 text-[0.8125rem] text-muted-foreground tabular-nums">
                   <Badge tone="muted">Pending</Badge>
                   Sent {formatDate(invitation.createdAt)}
                 </p>
@@ -95,6 +96,7 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
                   variant="ghost"
                   size="sm"
                   disabled={busy}
+                  className="text-destructive hover:bg-destructive/10"
                   aria-label={`Revoke invitation to ${invitation.email}`}
                   onClick={() =>
                     setConfirmation({

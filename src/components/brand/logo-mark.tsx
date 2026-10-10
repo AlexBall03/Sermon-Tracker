@@ -2,7 +2,9 @@ import { useId } from "react";
 
 /**
  * Sermon Tracker icon mark: an open Bible with a checklist on the right-hand
- * page and a bookmark ribbon over the left, on a rounded-square tile.
+ * page and a bookmark ribbon over the top of the left, on a rounded-square
+ * tile. The ribbon is shaded where it folds over the page edge, and the two
+ * lines of text beside it stop short of it instead of running underneath.
  *
  * Redrawn as flat vector from the brand board (docs/brand/brand-board.png).
  * The mark is a fixed brand asset, so its colours are literal and do not
@@ -46,6 +48,10 @@ const palettes: Record<
   },
 };
 
+// The ribbon sways slightly along its length and its tail is cut unevenly, as cloth would be.
+const ribbon =
+  "M36 23.2c0-.8.6-1.2 1.400-1.200h4.900c.8 0 1.300.400 1.300 1.200 .6 6.800-.800 15.800-.100 23.300l-3.900-3.700-3.600 4.200c-.700-7.500.700-16.500 0-23.800z";
+
 type LogoMarkProps = {
   variant?: Variant;
   /** Accessible name. Omit when the mark sits beside the wordmark. */
@@ -85,12 +91,20 @@ export function LogoMark({ variant = "primary", title, className }: LogoMarkProp
         <path d="M51 31.5C56.5 26.5 70 25 80.5 27.6V64c-10.5-2.6-24-1.6-29.5 3.2z" fill={c.page} />
         {/* left page: flowing text */}
         <g stroke={c.script} strokeWidth="2.5">
-          <path d="M25 37c6.5-1.6 13-1 18.5 1.8" />
-          <path d="M25 45c6.5-1.6 13-1 18.5 1.8" />
+          <path d="M25 37c2.8-.7 5.6-1 8.3-.9" />
+          <path d="M25 45c2.8-.7 5.6-1 8.3-.9" />
           <path d="M25 53c6.5-1.6 13-1 18.5 1.8" />
         </g>
-        {/* bookmark: ribbon over the top of the left page */}
-        <path d="M36.5 23.5h6v19l-3-3-3 3z" fill={c.bookmark} />
+        {/* bookmark: ribbon over the top of the left page, darker where it folds over the edge, with a faint shadow on the page */}
+        {variant !== "mono" && (
+          <path d={ribbon} transform="translate(.9 .7)" fill="#000" opacity="0.1" />
+        )}
+        <path d={ribbon} fill={c.bookmark} />
+        <path
+          d="M36 23.2c0-.8.6-1.2 1.400-1.200h4.900c.8 0 1.300.400 1.300 1.200l.150 5.300c-2.300-.900-4.900-1.500-7.600-1.800z"
+          fill="#000"
+          opacity="0.18"
+        />
         {/* right page: checklist */}
         <g stroke={c.ink} strokeWidth="2.5">
           <path d="M55.5 37.6l2.2 2.3 3.8-4.8M65 37.5h10.5" />

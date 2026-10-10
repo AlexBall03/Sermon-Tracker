@@ -6,8 +6,10 @@ import HomePage from "./page";
 describe("landing page", () => {
   it("presents the product name and tagline", () => {
     render(<HomePage />);
-    expect(screen.getByRole("heading", { level: 1, name: "Sermon Tracker" })).toBeInTheDocument();
-    expect(screen.getByText("Capture. Develop. Preach.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Capture. Develop. Preach." }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Sermon Tracker")).toBeInTheDocument();
   });
 
   it("covers the three core capabilities", () => {

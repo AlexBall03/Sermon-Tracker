@@ -6,6 +6,8 @@ export const siteConfig = {
     "Sermon Tracker gives preachers one place to capture sermon and point ideas before they are forgotten, develop them over time, and keep a record of what has been preached.",
   /** Canonical production origin. Previews and local builds still point here. */
   url: "https://sermontracker.com",
+  /** Credited in the public footer. */
+  developer: { name: "Alexander D. Ball", url: "https://alexball.dev" },
 } as const;
 
 /**

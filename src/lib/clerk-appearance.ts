@@ -4,30 +4,84 @@ import type { ClerkProvider } from "@clerk/nextjs";
 /**
  * Maps Clerk's components onto the semantic tokens in globals.css. The values
  * are CSS variables, so light and dark follow the existing theme class with no
- * second theme mechanism.
+ * second theme mechanism. The card matches AuthNotice: same radius, hairline,
+ * and shadow, so a form and a notice look like the same object.
  */
 export const clerkAppearance: NonNullable<ComponentProps<typeof ClerkProvider>["appearance"]> = {
   variables: {
     colorPrimary: "var(--primary)",
     colorPrimaryForeground: "var(--primary-foreground)",
-    colorBackground: "var(--surface)",
+    colorBackground: "var(--surface-raised)",
     colorForeground: "var(--foreground)",
     colorMutedForeground: "var(--muted-foreground)",
     colorMuted: "var(--muted)",
     colorNeutral: "var(--foreground)",
-    colorInput: "var(--surface)",
+    colorInput: "var(--surface-raised)",
     colorInputForeground: "var(--foreground)",
     colorBorder: "var(--border)",
     colorRing: "var(--ring)",
     colorDanger: "var(--destructive)",
     fontFamily: "var(--font-montserrat), ui-sans-serif, system-ui, sans-serif",
-    borderRadius: "0.625rem",
+    borderRadius: "0.5rem",
   },
   elements: {
-    rootBox: "w-full",
-    cardBox: "w-full max-w-none rounded-xl border bg-surface shadow-raised",
-    card: "bg-surface shadow-none",
-    headerTitle: "font-display text-2xl font-semibold tracking-tight",
-    footer: "bg-surface",
+    rootBox: { width: "100%" },
+    // Style objects, because Clerk's own radius and shadow outrank utility classes.
+    cardBox: {
+      width: "100%",
+      maxWidth: "none",
+      borderRadius: "0.75rem",
+      border: "1px solid var(--border)",
+      boxShadow: "var(--elevation-raised)",
+      // Opaque, so the glow behind the card cannot tint Clerk's translucent footer strip.
+      backgroundColor: "var(--surface-raised)",
+    },
+    card: { borderRadius: 0, boxShadow: "none" },
+    headerTitle: {
+      fontFamily: "var(--font-playfair), ui-serif, Georgia, serif",
+      fontSize: "1.5rem",
+      fontWeight: 500,
+      letterSpacing: "-0.01em",
+    },
+    // Same height, weight, and hover as the application's primary Button.
+    formButtonPrimary: {
+      minHeight: "2.5rem",
+      fontSize: "0.875rem",
+      fontWeight: 600,
+      textTransform: "none",
+      boxShadow: "var(--elevation-card)",
+      transition: "background-color 200ms ease-out",
+      // Clerk's gradient sheen
+      "&::after": { display: "none" },
+      "&:hover": { backgroundColor: "var(--primary-hover)", boxShadow: "var(--elevation-card)" },
+    },
+    // Clerk draws an input's border as a box shadow. These mirror ui/input.tsx.
+    formFieldInput: {
+      minHeight: "2.5rem",
+      backgroundColor: "var(--surface)",
+      boxShadow: "0 0 0 1px var(--input), var(--elevation-card)",
+      transition: "box-shadow 200ms ease-out",
+      "&:hover": {
+        boxShadow:
+          "0 0 0 1px color-mix(in oklab, var(--foreground) 30%, transparent), var(--elevation-card)",
+      },
+      // Important: Clerk's own focus ring is a solid 4px band in the ring colour.
+      "&:focus, &:focus-visible, &:focus-within": {
+        boxShadow: "0 0 0 1px var(--ring), var(--elevation-focus) !important",
+        outline: "none",
+      },
+    },
+    formFieldLabel: { fontWeight: 500 },
+    // Matches the outline Button.
+    socialButtonsBlockButton: {
+      minHeight: "2.5rem",
+      boxShadow: "0 0 0 1px var(--input), var(--elevation-card)",
+      transition: "background-color 150ms ease-out, box-shadow 150ms ease-out",
+      "&:hover": {
+        backgroundColor: "var(--background)",
+        boxShadow:
+          "0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent), var(--elevation-card)",
+      },
+    },
   },
 };

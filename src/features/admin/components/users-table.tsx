@@ -31,12 +31,13 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold",
-        tone === "accent" && "border-primary/30 text-primary",
-        tone === "muted" && "text-muted-foreground",
-        tone === "danger" && "border-destructive/30 text-destructive",
+        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
+        tone === "accent" && "bg-primary-soft text-primary",
+        tone === "muted" && "bg-muted text-muted-foreground",
+        tone === "danger" && "bg-destructive/10 text-destructive",
       )}
     >
+      <span aria-hidden className="size-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
@@ -99,21 +100,21 @@ export function UsersTable({ entries, currentUserId }: UsersTableProps) {
       <div className="mt-4 overflow-x-auto rounded-xl border bg-surface shadow-card">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">People with access to Sermon Tracker</caption>
-          <thead className="border-b text-xs tracking-wide text-muted-foreground uppercase">
+          <thead className="border-b text-xs text-muted-foreground">
             <tr>
-              <th scope="col" className="px-4 py-3 font-semibold">
+              <th scope="col" className="px-4 py-2.5 font-medium sm:px-5">
                 Person
               </th>
-              <th scope="col" className="px-4 py-3 font-semibold">
+              <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">
                 Role
               </th>
-              <th scope="col" className="px-4 py-3 font-semibold">
+              <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">
                 Status
               </th>
-              <th scope="col" className="hidden px-4 py-3 font-semibold sm:table-cell">
+              <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">
                 Added
               </th>
-              <th scope="col" className="px-4 py-3">
+              <th scope="col" className="px-2 py-2.5 sm:px-3">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -122,9 +123,19 @@ export function UsersTable({ entries, currentUserId }: UsersTableProps) {
             {entries.map((entry) => {
               const label = entry.name ?? entry.email ?? "This person";
               const isSelf = entry.id === currentUserId;
+              const role = (
+                <Badge tone={entry.role === "admin" ? "accent" : "muted"}>
+                  {entry.role === "admin" ? "Admin" : "User"}
+                </Badge>
+              );
+              const status = (
+                <Badge tone={entry.status === "active" ? "muted" : "danger"}>
+                  {entry.status === "active" ? "Active" : "Disabled"}
+                </Badge>
+              );
               return (
                 <tr key={entry.id}>
-                  <th scope="row" className="max-w-56 px-4 py-3 font-normal">
+                  <th scope="row" className="max-w-0 px-4 py-3 font-normal sm:max-w-64 sm:px-5">
                     <span className="block truncate font-semibold">
                       {entry.name ?? entry.email ?? "Unknown"}
                       {isSelf && <span className="font-normal text-muted-foreground"> (you)</span>}
@@ -136,26 +147,23 @@ export function UsersTable({ entries, currentUserId }: UsersTableProps) {
                           ? entry.email
                           : null}
                     </span>
+                    {/* Narrow screens: the Role and Status columns fold in here. */}
+                    <span className="mt-2 flex gap-1.5 sm:hidden">
+                      {role}
+                      {status}
+                    </span>
                   </th>
-                  <td className="px-4 py-3">
-                    <Badge tone={entry.role === "admin" ? "accent" : "muted"}>
-                      {entry.role === "admin" ? "Admin" : "User"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone={entry.status === "active" ? "muted" : "danger"}>
-                      {entry.status === "active" ? "Active" : "Disabled"}
-                    </Badge>
-                  </td>
-                  <td className="hidden px-4 py-3 whitespace-nowrap text-muted-foreground sm:table-cell">
+                  <td className="hidden px-4 py-3 sm:table-cell">{role}</td>
+                  <td className="hidden px-4 py-3 sm:table-cell">{status}</td>
+                  <td className="hidden px-4 py-3 whitespace-nowrap text-muted-foreground tabular-nums sm:table-cell">
                     {formatDate(entry.createdAt)}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="w-px px-2 py-2 text-right sm:px-3">
                     {!isSelf && (
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           aria-label={`Actions for ${label}`}
-                          className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-foreground"
+                          className="inline-grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 data-popup-open:bg-accent data-popup-open:text-foreground pointer-coarse:size-11"
                         >
                           <MoreHorizontal className="size-4" aria-hidden />
                         </DropdownMenuTrigger>
