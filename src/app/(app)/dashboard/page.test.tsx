@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The access helper, Clerk, and the idea query are mocked: this covers what the page does with their answers.
 const state = vi.hoisted(() => ({
   ideas: [] as unknown[],
-  listIdeas: vi.fn(),
+  recentIdeas: vi.fn(),
   role: "user" as "user" | "admin",
   firstName: "Ada" as string | null,
   clerkDown: false,
@@ -33,8 +33,8 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 vi.mock("@/db", () => ({ getDb: () => "database" }));
 vi.mock("@/features/ideas/ideas", () => ({
-  listIdeas: async (...args: unknown[]) => {
-    state.listIdeas(...args);
+  recentIdeas: async (...args: unknown[]) => {
+    state.recentIdeas(...args);
     return state.ideas;
   },
 }));
@@ -72,7 +72,7 @@ beforeEach(() => {
     signedIn: true,
     ideas: [],
   });
-  state.listIdeas.mockClear();
+  state.recentIdeas.mockClear();
 });
 
 describe("DashboardPage", () => {
@@ -126,7 +126,7 @@ describe("DashboardPage", () => {
     render(await DashboardPage());
 
     // The owner comes from the session, and only a handful are read.
-    expect(state.listIdeas).toHaveBeenCalledWith("database", "1", 5);
+    expect(state.recentIdeas).toHaveBeenCalledWith("database", "1", 5);
     const recent = screen.getByRole("list", { name: "Recent ideas" });
     expect(within(recent).getByRole("link", { name: "His Grace is Sufficient" })).toHaveAttribute(
       "href",

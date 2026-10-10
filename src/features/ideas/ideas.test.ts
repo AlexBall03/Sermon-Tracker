@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ideas, ideaScriptureReferences, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
-import { createIdea, deleteIdea, getIdea, listIdeas, setIdeaKind, updateIdea } from "./ideas";
+import { createIdea, deleteIdea, getIdea, recentIdeas, setIdeaKind, updateIdea } from "./ideas";
 import { ideaInputSchema, type IdeaReference } from "./schemas";
 
 let db: Database;
@@ -85,7 +85,7 @@ describe("createIdea", () => {
     const second = await createIdea(db, me, input({ title: "Once, again" }), id);
     expect(second?.id).toBe(first?.id);
     expect(second?.title).toBe("Once");
-    expect(await listIdeas(db, me)).toHaveLength(1);
+    expect(await recentIdeas(db, me, 10)).toHaveLength(1);
   });
 
   it("does not reveal or overwrite another account's idea with the same ID", async () => {
@@ -102,7 +102,7 @@ describe("ownership", () => {
     const id = theirs!.id;
 
     expect(await getIdea(db, me, id)).toBeNull();
-    expect(await listIdeas(db, me)).toEqual([]);
+    expect(await recentIdeas(db, me, 10)).toEqual([]);
     expect(await updateIdea(db, me, id, input({ title: "Taken" }))).toBeNull();
     expect(await setIdeaKind(db, me, id, "sermon")).toBeNull();
     expect(await deleteIdea(db, me, id)).toBe(false);
@@ -123,8 +123,8 @@ describe("ownership", () => {
       .update(ideas)
       .set({ updatedAt: new Date(Date.now() + 60_000) })
       .where(eq(ideas.id, first!.id));
-    expect((await listIdeas(db, me)).map((idea) => idea.title)).toEqual(["First", "Second"]);
-    expect(await listIdeas(db, me, 1)).toHaveLength(1);
+    expect((await recentIdeas(db, me, 10)).map((idea) => idea.title)).toEqual(["First", "Second"]);
+    expect(await recentIdeas(db, me, 1)).toHaveLength(1);
   });
 });
 

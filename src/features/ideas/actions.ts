@@ -10,12 +10,15 @@ import { routes } from "@/lib/site";
 import * as service from "./ideas";
 import { ideaKindLabels } from "./model";
 import { ideaIdSchema, ideaInputSchema, ideaKindSchema } from "./schemas";
+import { UnknownTagError } from "./tags";
 
 export type IdeaActionResult = ActionResult & { id?: string };
 
 const invalid: ActionResult = { ok: false, message: "That request was not valid." };
 // The same answer whether the idea is missing or belongs to someone else.
 const missing: ActionResult = { ok: false, message: "That idea no longer exists." };
+// A tag that is missing or someone else's. Nothing was saved.
+const unknownTag: ActionResult = { ok: false, message: "One of those tags no longer exists." };
 
 function firstIssue(error: { issues: { message: string }[] }, fallback: string): ActionResult {
   return { ok: false, message: error.issues[0]?.message ?? fallback };
@@ -49,6 +52,7 @@ export async function createIdea(input: unknown, id?: unknown): Promise<IdeaActi
     refresh();
     return { ok: true, message: "Saved to your library.", id: idea.id };
   } catch (error) {
+    if (error instanceof UnknownTagError) return unknownTag;
     console.error("Idea create failed:", describeDatabaseError(error));
     return { ok: false, message: "The idea could not be saved. Try again." };
   }
@@ -67,6 +71,7 @@ export async function updateIdea(id: unknown, input: unknown): Promise<ActionRes
     const idea = await service.updateIdea(getDb(), actor.user.id, ideaId.data, parsed.data);
     if (!idea) return missing;
   } catch (error) {
+    if (error instanceof UnknownTagError) return unknownTag;
     console.error("Idea update failed:", describeDatabaseError(error));
     return { ok: false, message: "Your changes could not be saved. Try again." };
   }

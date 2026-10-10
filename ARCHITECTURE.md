@@ -41,7 +41,8 @@ src/
     auth/                   Provisioning and the access helpers
     admin/                  User and invitation services, server actions, components
     dashboard/              Dashboard view, greeting, and the summary figures to come
-    ideas/                  The idea model, queries, server actions, quick capture, list, editor
+    ideas/                  The idea model, queries, tags, the library query contract, server actions,
+                            quick capture, list, editor
     scripture/              Books, references, chapter and search reads, and every Scripture component
     settings/               Account management: schemas, server action, Clerk hooks, components
   components/
@@ -86,7 +87,7 @@ Conventions:
 | `/dashboard`         | Authenticated home                         | 1C.1  | No      |
 | `/settings`          | Account management and appearance          | 1C.1  | No      |
 | `/admin`             | Restricted administration                  | 1B    | No      |
-| `/library`           | The owner's ideas                          | 2A    | No      |
+| `/library`           | The owner's ideas, a page at a time        | 2B.1  | No      |
 | `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
 | `/api/bible/…`       | A chapter, or a word search (JSON)         | 2A    | No      |
 | `/history`           | Preaching history                          | 3     | No      |
@@ -151,11 +152,56 @@ Disabling an account takes effect on that person's next request, because status 
 
 One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, statuses, sermon types, length limits) as plain values, so the schema, the actions, and the browser read one list.
 
-- **Service** (`ideas.ts`): `createIdea`, `getIdea`, `listIdeas`, `updateIdea`, `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
+- **Service** (`ideas.ts`): `createIdea`, `getIdea`, `recentIdeas` (the dashboard's five), `searchIdeas` (the library), `updateIdea`, `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
 - **Actions** (`actions.ts`): `createIdea`, `updateIdea`, `changeIdeaKind`, `deleteIdea`. Each calls `authorize("active")`, validates with Zod, and takes the owner from the session. No input can name an owner: the schema drops unknown keys and the service names each column it writes.
 - **Create is idempotent.** The browser generates the UUID before the first attempt; the insert is `ON CONFLICT (id) DO NOTHING` followed by an owner-scoped read. A double submit or a retry is one idea; an ID that exists under another account fails without revealing it.
 - **Reclassifying changes only `kind`.** A sermon's type and subject stay in their columns when it becomes a point or undecided, and return when it becomes a sermon again. The editor applies a reclassification at once, separately from Save.
-- **Pages**: `/library` lists the owner's ideas by `updated_at` (200 at most; paging comes with search in 2B). `/library/<id>` validates the ID as a UUID before querying and calls `notFound()` for anything the owner-scoped query does not return.
+- **Pages**: `/library` reads its query from the URL and shows one page of results (see "Library" below). `/library/<id>` validates the ID as a UUID before querying and calls `notFound()` for anything the owner-scoped query does not return.
+
+### Library
+
+The data layer is Phase 2B.1; the controls that drive it are Phase 2B.2. Today `/library` shows the result, a count, and Previous / Next links. There is no search box or filter control yet: the query can only be set by URL.
+
+**The query is the URL.** `features/ideas/library-query.ts` is the contract, with no server code in it, so the browser can build links with it:
+
+| Parameter                    | Values                                                                                  | Default        |
+| ---------------------------- | --------------------------------------------------------------------------------------- | -------------- |
+| `q`                          | Search text, cut to 200 characters; the first 8 words are used                          | none           |
+| `kind`                       | `sermon`, `point`, `undecided`                                                          | all            |
+| `status`                     | `captured`, `developing`, `ready`                                                       | all            |
+| `type`                       | `topical`, `expository`                                                                 | all            |
+| `tag`                        | A tag ID; repeat it for several (20 at most)                                            | none           |
+| `created_from`, `created_to` | `YYYY-MM-DD`                                                                            | none           |
+| `updated_from`, `updated_to` | `YYYY-MM-DD`                                                                            | none           |
+| `sort`                       | `updated-desc`, `updated-asc`, `created-desc`, `created-asc`, `title-asc`, `title-desc` | `updated-desc` |
+| `page`                       | A whole number from 1                                                                   | 1              |
+
+- `parseLibraryQuery` never throws. A missing, malformed, or out-of-range value becomes its default, unknown parameters are ignored, and where one value is expected the first is used. `serializeLibraryQuery` and `libraryHref` write a query back with every default left out, in a fixed order, so one query has one address. A control that changes a filter should set `page` back to 1.
+- The URL holds nothing about the account. A shared link shows the person who opens it their own ideas; a tag ID that is not theirs simply matches nothing.
+
+**`searchIdeas(db, ownerId, query)`** returns `{ items, total, page, pageSize, totalPages }`. PostgreSQL does the filtering, ordering, counting, and paging; only the 24 ideas on the page are read, and their references and tags come in two further queries however many ideas there are.
+
+- **Search** is case-insensitive and matches part of a word (`ILIKE '%word%'`). Every word must be found, each in the title, the notes, or the subject; they need not be in the same field. `%`, `_`, and `\` in the text are escaped and mean themselves. There are no operators.
+- **A subject or sermon type counts only on a sermon.** Both columns are kept when an idea is reclassified, but a point shows neither, so the subject is not searched and the `type` filter does not match there.
+- **Filters** of different kinds must all hold. Several tags are alternatives: an idea with any one of them matches, and is returned once (`EXISTS`, not a join).
+- **Dates** are calendar days read as UTC days, the zone every date is shown in. Both ends are inclusive: "to 31 January" includes the whole of that day.
+- **Sorting** goes through a fixed map from the six keys to SQL; nothing from the request becomes a column name. Every order ends with the ID in the same direction, so ideas with equal timestamps or equal titles keep one order across pages. Titles sort without regard to case.
+- **Paging** is by offset. A page past the end returns the last page, and `page` in the result says which one that was. A library that changes between two requests can shift an idea across a page boundary; that is the accepted cost of offset paging.
+- **No trigram index.** The owner is always in the WHERE clause, so a search scans one account's rows (hundreds or thousands), not the table. `pg_trgm` would need an extension in a migration, and a GIN index over 20,000-character notes would be paid for on every save. If an account ever outgrows this, that is the next step.
+
+### Tags
+
+A tag belongs to one account and can go on any of that account's ideas, of any kind. `features/ideas/tags.ts` is the service and `tag-actions.ts` the server actions. **There is no interface for tags yet** (Phase 2B.2).
+
+- **Service**: `listTags` (alphabetical, with how many ideas carry each), `createTag`, `renameTag`, `deleteTag`, `getIdeaTags`, `setIdeaTags` (replace), `addIdeaTags`, `removeIdeaTags`, and `tagsForIdeas` (the batch read). Every statement has the owner in its WHERE clause, as in `ideas.ts`.
+- **Actions**: `createTag`, `renameTag`, `deleteTag`, `setIdeaTags`, `addIdeaTags`, `removeIdeaTags`. Same rules as the idea actions: `authorize("active")`, Zod, the owner from the session, fixed messages.
+- **Names** are trimmed, inner whitespace is reduced to single spaces, and the limit is 50 characters. A name is unique within an account whatever its case (a unique index on `lower(name)`); two accounts may use the same name. An idea holds 20 tags at most.
+- **Isolation is in the database too.** `idea_tags` repeats the owner and both of its foreign keys include it, so a row joining one account's tag to another's idea cannot exist, whatever the code does.
+- **A tag that is missing and one that is someone else's are the same answer** ("One of those tags no longer exists."), and an idea likewise. The idea is checked first.
+- **All or nothing.** Assignment runs in a transaction; one unknown tag in a list undoes the whole change, including an idea being created or updated at the same time.
+- **Saving an idea with tags.** `ideaInputSchema` has an optional `tagIds`. Left out, the idea's tags are untouched, which is what quick capture and the editor do today. Given, they replace what was there, in the same transaction as the idea. A repeated create returns the first idea with the tags it was first given.
+- **Tagging is not an edit.** `setIdeaTags`, `addIdeaTags`, `removeIdeaTags`, renaming, and deleting a tag leave `ideas.updated_at` alone, so tidying tags does not reorder the library.
+- Every idea read (`getIdea`, `recentIdeas`, `searchIdeas`) returns its `tags` as `{ id, name }`, alphabetically. Nothing displays them yet.
 
 ### Quick capture
 
@@ -408,7 +454,7 @@ These are settled and constrain later phases. The first and fourth are implement
 
 ## Testing
 
-- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, and Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, and Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
@@ -457,3 +503,9 @@ These are settled and constrain later phases. The first and fourth are implement
 | Splash and progress state live in a DOM attribute      | Set before paint by an inline script; no render can disagree with it                    |
 | Leave guard reverses history moves after the fact      | The App Router has no way to refuse a navigation                                        |
 | Administration only in the account menu                | The owner wants main navigation kept for the work: library, Bible, outlines             |
+| Library search is `ILIKE`, with no trigram index       | Every search is inside one account's rows; the index would cost every save              |
+| Library state lives in the URL, parsed leniently       | Links can be shared and bookmarked; a bad parameter falls back instead of failing       |
+| Offset paging, clamped to the last page                | Numbered pages need a total anyway; a stale link still lands on real ideas              |
+| `idea_tags` repeats the owner in both foreign keys     | A cross-account tag cannot exist even if application code is wrong                      |
+| `tagIds` optional on an idea's input                   | Existing forms save without disturbing tags; the 2B.2 forms opt in                      |
+| A retained subject or sermon type is not matched       | A point shows neither, so a match on them would have no visible reason                  |

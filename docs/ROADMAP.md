@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 9 October 2026: **Phase 1 through 1C.1 and Phase 2A are implemented. Phase 2A's migrations and Bible load ran against the development database; its signed-in screens were tried by the owner during the work but not verified end to end ([handoff](HANDOFF-2A.md)). Phase 2B is next. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
+Status as of 10 October 2026: **Phase 1 through 1C.1, Phase 2A, and Phase 2B.1 are implemented. Phase 2B.1's migration ran against the development database; its signed-in page was not verified in a session ([handoff](HANDOFF-2B.1.md)). Phase 2B.2 is next. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -19,9 +19,12 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 ## Phase 2 — Core Idea Tracker
 
 - **2A: Data model, idea CRUD, quick capture, King James Bible and Scripture components** — implemented ([handoff](HANDOFF-2A.md)). Sermon, point, and undecided ideas; statuses; structured Scripture references; the Scripture preview and panel; Bible text search (brought forward at the owner's request)
-- **2B: Idea library** — next. Search, filters, tags, paging, list options
-- **2B or 2C: Bible reader** — a dedicated page reusing the Scripture components, added to the main navigation; attaching a passage to a chosen idea; psalm titles
-- **2C: Sermon-point associations**
+- **2B: Idea library** — in progress
+  - **2B.1: Library data, search, filtering, tags, pagination** — implemented ([handoff](HANDOFF-2B.1.md)). The paged, searchable, filterable library query; reusable tags and their actions; the URL query contract. `/library` is paged with Previous and Next
+  - **2B.2: Library interface** — next. Search bar and filter panel, card and list views with a remembered preference, numbered pages, tag management, tag selection in quick capture and the editor, returning to the same place in the library
+- **2C: Bible reader and associations**
+  - **2C.1: Dedicated King James Bible page** — a full reader with book, chapter, and verse navigation, added to the main navigation; the existing text search; selecting a verse or passage and attaching it to an existing idea; psalm titles; favourite verses and highlighting in several colours, stored per user without copying or changing the shared text; browsing and searching favourites
+  - **2C.2: Sermon-point associations** — linking reusable point ideas to sermon ideas, with order and relationships
 
 ## Phase 3 — Preaching History
 

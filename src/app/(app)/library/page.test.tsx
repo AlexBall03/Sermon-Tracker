@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   signedIn: true,
   ideas: [] as unknown[],
+  // What the query reports beyond the ideas themselves; by default one page holding them all.
+  paging: {} as { total?: number; page?: number; totalPages?: number },
   idea: null as unknown,
-  listIdeas: vi.fn(),
+  searchIdeas: vi.fn(),
   getIdea: vi.fn(),
 }));
 
@@ -30,10 +32,16 @@ vi.mock("@/features/ideas/actions", () => ({
   createIdea: vi.fn(),
 }));
 vi.mock("@/features/ideas/ideas", () => ({
-  libraryLimit: 200,
-  listIdeas: async (...args: unknown[]) => {
-    state.listIdeas(...args);
-    return state.ideas;
+  searchIdeas: async (...args: unknown[]) => {
+    state.searchIdeas(...args);
+    return {
+      items: state.ideas,
+      total: state.ideas.length,
+      page: 1,
+      pageSize: 24,
+      totalPages: state.ideas.length ? 1 : 0,
+      ...state.paging,
+    };
   },
   getIdea: async (...args: unknown[]) => {
     state.getIdea(...args);
@@ -42,6 +50,7 @@ vi.mock("@/features/ideas/ideas", () => ({
 }));
 
 import IdeaPage from "./[id]/page";
+import { defaultLibraryQuery } from "@/features/ideas/library-query";
 import LibraryPage from "./page";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -70,17 +79,19 @@ const sermon = {
 };
 
 const open = (value: string) => IdeaPage({ params: Promise.resolve({ id: value }) });
+const library = (searchParams: Record<string, string | string[]>) =>
+  LibraryPage({ searchParams: Promise.resolve(searchParams) });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.assign(state, { signedIn: true, ideas: [], idea: null });
+  Object.assign(state, { signedIn: true, ideas: [], paging: {}, idea: null });
 });
 
 describe("LibraryPage", () => {
   it("refuses to render without an active account", async () => {
     state.signedIn = false;
     await expect(LibraryPage()).rejects.toThrow("redirect:/sign-in");
-    expect(state.listIdeas).not.toHaveBeenCalled();
+    expect(state.searchIdeas).not.toHaveBeenCalled();
   });
 
   it("invites a first capture when the library is empty", async () => {
@@ -97,7 +108,8 @@ describe("LibraryPage", () => {
     ];
     render(await LibraryPage());
 
-    expect(state.listIdeas).toHaveBeenCalledWith("database", "owner-1");
+    // The owner comes from the session; with no parameters the query is the default one.
+    expect(state.searchIdeas).toHaveBeenCalledWith("database", "owner-1", defaultLibraryQuery);
     const [first, second] = within(screen.getByRole("list", { name: "Your ideas" })).getAllByRole(
       "listitem",
     );
@@ -116,6 +128,77 @@ describe("LibraryPage", () => {
     ).toEqual(["2 Corinthians 12:7–10", "Psalm 23"]);
     expect(second).toHaveTextContent("Undecided");
     expect(screen.getByText("2 ideas, most recently changed first")).toBeVisible();
+    expect(screen.queryByRole("navigation", { name: "Library pages" })).not.toBeInTheDocument();
+  });
+
+  it("reads the search, filters, order, and page from the URL", async () => {
+    state.ideas = [sermon];
+    await library({
+      q: "  grace   alone ",
+      kind: "sermon",
+      status: "ready",
+      type: "expository",
+      sort: "title-asc",
+      page: "3",
+      owner: "someone-else",
+    });
+    expect(state.searchIdeas).toHaveBeenCalledWith("database", "owner-1", {
+      ...defaultLibraryQuery,
+      q: "grace alone",
+      kind: "sermon",
+      status: "ready",
+      sermonType: "expository",
+      sort: "title-asc",
+      page: 3,
+    });
+  });
+
+  it("falls back to the defaults for parameters that make no sense", async () => {
+    render(
+      await library({ kind: "series", sort: "id; drop table ideas", page: "-4", tag: ["x", "y"] }),
+    );
+    expect(state.searchIdeas).toHaveBeenCalledWith("database", "owner-1", defaultLibraryQuery);
+    expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeVisible();
+  });
+
+  it("says so when nothing matches, and offers the whole library", async () => {
+    render(await library({ q: "nothing like this" }));
+    expect(screen.getByRole("heading", { name: "No ideas match" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Nothing here yet" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Show all ideas" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+  });
+
+  it("links to the pages on either side, keeping the search and filters", async () => {
+    state.ideas = [sermon];
+    state.paging = { total: 120, page: 2, totalPages: 5 };
+    const { unmount } = render(await library({ q: "grace", kind: "sermon", page: "2" }));
+
+    expect(screen.getByText(/^120 ideas found/)).toBeVisible();
+    const pages = screen.getByRole("navigation", { name: "Library pages" });
+    expect(pages).toHaveTextContent("Page 2 of 5");
+    // Page 1 is the address without a page.
+    expect(within(pages).getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/library?q=grace&kind=sermon",
+    );
+    expect(within(pages).getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/library?q=grace&kind=sermon&page=3",
+    );
+    unmount();
+
+    // The page shown is the one the query returned, here the last, whatever was asked for.
+    state.paging = { total: 120, page: 5, totalPages: 5 };
+    render(await library({ page: "99" }));
+    const last = screen.getByRole("navigation", { name: "Library pages" });
+    expect(within(last).getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/library?page=4",
+    );
+    expect(within(last).queryByRole("link", { name: "Next" })).not.toBeInTheDocument();
   });
 });
 

@@ -12,6 +12,7 @@ import {
   ideaLimits,
   ideaStatuses,
   sermonTypes,
+  tagLimits,
   type IdeaKind,
   type IdeaStatus,
   type SermonType,
@@ -36,6 +37,25 @@ const optionalText = (limit: number) =>
 
 export const ideaIdSchema = z.uuid();
 export const ideaKindSchema = z.enum(ideaKinds);
+
+export const tagIdSchema = z.uuid();
+
+/** A tag's name: trimmed, with runs of whitespace inside it reduced to one space. */
+export const tagNameSchema = z
+  .string("Give the tag a name.")
+  .transform((value) => value.replace(/\s+/g, " ").trim())
+  .pipe(
+    z
+      .string()
+      .min(1, "Give the tag a name.")
+      .max(tagLimits.name, `Keep a tag to ${tagLimits.name} characters or fewer.`),
+  );
+
+/** The tags chosen for an idea. The same tag twice is one tag. */
+export const tagIdsSchema = z
+  .array(tagIdSchema)
+  .max(tagLimits.perIdea, `An idea can hold up to ${tagLimits.perIdea} tags.`)
+  .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
 
 /**
  * Everything a person may set on an idea. There is no owner here and no
@@ -76,6 +96,8 @@ export const ideaInputSchema = z.object({
     .refine((references) => references.filter((reference) => reference.isPrimary).length <= 1, {
       message: "Only one reference can be the main text.",
     }),
+  /** Left out, the idea's tags stay as they are; given, they replace what was there. */
+  tagIds: tagIdsSchema.optional(),
 });
 export type IdeaInput = z.infer<typeof ideaInputSchema>;
 

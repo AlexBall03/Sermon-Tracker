@@ -19,7 +19,7 @@ vi.mock("@/features/auth/access", () => ({
 }));
 
 import { changeIdeaKind, createIdea, deleteIdea, updateIdea } from "./actions";
-import { getIdea, listIdeas } from "./ideas";
+import { getIdea, recentIdeas } from "./ideas";
 
 let db: Database;
 let me: string;
@@ -68,7 +68,7 @@ describe("idea actions", () => {
         expect(result).toEqual({ ok: false, message });
       }
     }
-    expect(await listIdeas(db, me)).toEqual([]);
+    expect(await recentIdeas(db, me, 10)).toEqual([]);
   });
 
   it("create an idea for the signed-in account and nobody else", async () => {
@@ -76,7 +76,7 @@ describe("idea actions", () => {
     const result = await createIdea({ title: "Mine", ownerId: other, owner_id: other });
     expect(result).toMatchObject({ ok: true, message: "Saved to your library." });
     expect(await getIdea(db, me, result.id!)).toMatchObject({ ownerId: me, title: "Mine" });
-    expect(await listIdeas(db, other)).toEqual([]);
+    expect(await recentIdeas(db, other, 10)).toEqual([]);
   });
 
   it("save a double submission once", async () => {
@@ -88,7 +88,7 @@ describe("idea actions", () => {
     ]);
     expect(first).toMatchObject({ ok: true, id });
     expect(second).toMatchObject({ ok: true, id });
-    expect(await listIdeas(db, me)).toHaveLength(1);
+    expect(await recentIdeas(db, me, 10)).toHaveLength(1);
   });
 
   it("report invalid input in plain words and save nothing", async () => {
@@ -108,7 +108,7 @@ describe("idea actions", () => {
         ],
       }),
     ).toMatchObject({ ok: false, message: expect.stringMatching(/36 verses/) });
-    expect(await listIdeas(db, me)).toEqual([]);
+    expect(await recentIdeas(db, me, 10)).toEqual([]);
   });
 
   it("give the same answer for another account's idea as for one that does not exist", async () => {

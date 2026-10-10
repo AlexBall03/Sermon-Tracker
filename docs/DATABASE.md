@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1.
 
 ## Layout
 
@@ -53,7 +53,41 @@ One row per idea, of any kind, owned by one user. The allowed values and limits 
 | `created_at`  | `timestamptz` | Default `now()`                                                         |
 | `updated_at`  | `timestamptz` | Default `now()`, set by the application on update                       |
 
-Index `ideas_owner_updated_idx (owner_id, updated_at desc)` serves the library list. `sermon_type` and `subject` are not tied to `kind`: they are kept when an idea is reclassified.
+Indexes `ideas_owner_updated_idx (owner_id, updated_at desc)` and `ideas_owner_created_idx (owner_id, created_at desc)` serve the library's two date orders, and the first narrows every library query to one account. `UNIQUE (id, owner_id)` (`ideas_id_owner_key`) adds nothing to the primary key by itself; it exists so `idea_tags` can reference an idea together with its owner. `sermon_type` and `subject` are not tied to `kind`: they are kept when an idea is reclassified.
+
+**Library search uses no special index.** It is `ILIKE '%word%'` on `title`, `notes`, and `subject`, always behind `owner_id = …`, so PostgreSQL reads one account's rows and no more. A trigram (`pg_trgm`) GIN index was considered and left out: it needs `CREATE EXTENSION` in a migration (and loading into PGlite for tests), it is not scoped to an owner, and on 20,000-character notes it would slow every save to speed a scan of a few thousand rows. Add it in its own migration if a single account ever grows large enough to notice.
+
+### `tags`
+
+A label one user can put on their ideas.
+
+| Column       | Type          | Notes                                                 |
+| ------------ | ------------- | ----------------------------------------------------- |
+| `id`         | `uuid`        | Primary key, `gen_random_uuid()`                      |
+| `owner_id`   | `uuid`        | Not null, references `users.id`, `ON DELETE RESTRICT` |
+| `name`       | `text`        | Not null, 1 to 50 characters after trimming (CHECK)   |
+| `created_at` | `timestamptz` | Default `now()`                                       |
+| `updated_at` | `timestamptz` | Default `now()`, set by the application on update     |
+
+`tags_owner_name_key` is a unique index on `(owner_id, lower(name))`: one name per account whatever its case, and the index that lists an account's tags. `UNIQUE (id, owner_id)` (`tags_id_owner_key`) is the target of `idea_tags`' foreign key. There is no colour column.
+
+### `idea_tags`
+
+Which tags are on which ideas.
+
+| Column       | Type          | Notes                       |
+| ------------ | ------------- | --------------------------- |
+| `idea_id`    | `uuid`        | Not null                    |
+| `tag_id`     | `uuid`        | Not null                    |
+| `owner_id`   | `uuid`        | Not null; the owner of both |
+| `created_at` | `timestamptz` | Default `now()`             |
+
+- Primary key `(idea_id, tag_id)`: a tag is on an idea once.
+- `idea_tags_idea_fk`: `(idea_id, owner_id)` references `ideas (id, owner_id)`, `ON DELETE CASCADE`.
+- `idea_tags_tag_fk`: `(tag_id, owner_id)` references `tags (id, owner_id)`, `ON DELETE CASCADE`.
+- `idea_tags_tag_idx (tag_id)` serves the tag filter, the per-tag counts, and the cascade when a tag is deleted.
+
+Because one `owner_id` must satisfy both foreign keys, a row can only join a tag and an idea that belong to the same account. Deleting an idea or a tag removes its rows here and nothing else.
 
 ### `idea_scripture_references`
 
@@ -193,7 +227,7 @@ Database tests use PGlite, an in-process PostgreSQL, and apply the committed mig
 
 See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
-- **Ideas** — implemented in Phase 2A (above).
+- **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above).
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Preaching occurrences** (Phase 3) — when, where, and in what context a sermon was preached.

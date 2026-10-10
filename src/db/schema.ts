@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -91,10 +92,71 @@ export const ideas = pgTable(
     ),
     check("ideas_notes_check", sql`${table.notes} is null or char_length(${table.notes}) <= 20000`),
     index("ideas_owner_updated_idx").on(table.ownerId, table.updatedAt.desc()),
+    index("ideas_owner_created_idx").on(table.ownerId, table.createdAt.desc()),
+    // What idea_tags points at, so a tag can only ever join an idea of the same owner.
+    unique("ideas_id_owner_key").on(table.id, table.ownerId),
   ],
 );
 
 export type Idea = typeof ideas.$inferSelect;
+
+/**
+ * Tags. Each belongs to one account and can be put on any of that account's
+ * ideas, whatever their kind. A name is unique within the account without
+ * regard to case; two accounts may use the same name.
+ */
+export const tags = pgTable(
+  "tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check("tags_name_check", sql`char_length(btrim(${table.name})) between 1 and 50`),
+    uniqueIndex("tags_owner_name_key").on(table.ownerId, sql`lower(${table.name})`),
+    unique("tags_id_owner_key").on(table.id, table.ownerId),
+  ],
+);
+
+export type Tag = typeof tags.$inferSelect;
+
+/**
+ * Which tags are on which ideas. The owner is repeated here and is part of
+ * both foreign keys, so the database itself refuses to join one account's tag
+ * to another account's idea. Deleting either side removes the row and leaves
+ * the other side alone.
+ */
+export const ideaTags = pgTable(
+  "idea_tags",
+  {
+    ideaId: uuid("idea_id").notNull(),
+    tagId: uuid("tag_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ideaId, table.tagId] }),
+    foreignKey({
+      name: "idea_tags_idea_fk",
+      columns: [table.ideaId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "idea_tags_tag_fk",
+      columns: [table.tagId, table.ownerId],
+      foreignColumns: [tags.id, tags.ownerId],
+    }).onDelete("cascade"),
+    index("idea_tags_tag_idx").on(table.tagId),
+  ],
+);
 
 /**
  * A passage attached to an idea, as numbers only: book 1 to 66 in canonical
