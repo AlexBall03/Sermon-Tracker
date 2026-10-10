@@ -13,5 +13,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
+    // Database tests start an in-memory PostgreSQL per test; allow for a busy machine.
+    hookTimeout: 30_000,
+    testTimeout: 15_000,
   },
 });

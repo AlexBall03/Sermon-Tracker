@@ -7,6 +7,9 @@
 // `migrate deploy` is the build step: it migrates production inside the Vercel
 // production deployment, without a prompt, and does nothing anywhere else.
 //
+// `migrate` also loads the King James Bible (seed-bible.mjs) when the database
+// does not already hold the committed edition.
+//
 // Every command identifies its target before changing anything and refuses
 // when the identity is missing or does not match (see guard.mjs).
 
@@ -26,6 +29,8 @@ import {
   redact,
   resolveTarget,
 } from "./guard.mjs";
+import { readDataset } from "../bible/dataset.mjs";
+import { bibleIsCurrent, seedBible } from "./seed-bible.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const migrationsFolder = `${root}drizzle`;
@@ -150,11 +155,25 @@ async function inspect(pool, target, declared) {
   return { stamp, verdict };
 }
 
+/** Loads the Bible text on one connection, since the load is a transaction. */
+async function loadBible(pool, books) {
+  const client = await pool.connect();
+  try {
+    await seedBible(client, books);
+  } finally {
+    client.release();
+  }
+}
+
 async function runMigrate(pool, target, { url, declared }, automated) {
   const { verdict } = await inspect(pool, target, declared);
   if (!verdict.ok) throw new Refusal(verdict.reason);
 
   const { pending } = await readPending(pool);
+  const books = readDataset();
+  const bibleCurrent = await bibleIsCurrent(pool, books);
+  const upToDate = pending.length === 0 && bibleCurrent;
+
   if (target === "production") {
     console.log(`Target:   PRODUCTION  ${describeTarget(url)}`);
     console.log(
@@ -162,18 +181,25 @@ async function runMigrate(pool, target, { url, declared }, automated) {
         ? `Pending:  ${pending.length}\n${pending.map((tag) => `  - ${tag}`).join("\n")}`
         : "Pending:  none",
     );
-    if (pending.length === 0) return;
-    console.log("Migrations are not rolled back automatically if one fails.");
+    console.log(`Bible:    ${bibleCurrent ? "loaded" : "to be loaded"}`);
+    if (upToDate) return;
+    if (pending.length) console.log("Migrations are not rolled back automatically if one fails.");
     // A deployment has no terminal; pushing to the production branch is the confirmation.
     if (!automated) await confirm("migrate production");
-  } else if (pending.length === 0) {
+  } else if (upToDate) {
     console.log("Database: development, up to date.");
     return;
   }
 
   if (verdict.needsStamp) await writeStamp(pool, target);
-  await migrate(drizzle({ client: pool }), { migrationsFolder });
-  console.log(`Database: applied ${pending.length} migration(s) to ${target}.`);
+  if (pending.length) {
+    await migrate(drizzle({ client: pool }), { migrationsFolder });
+    console.log(`Database: applied ${pending.length} migration(s) to ${target}.`);
+  }
+  if (!bibleCurrent) {
+    await loadBible(pool, books);
+    console.log(`Database: loaded the King James Bible into ${target}.`);
+  }
 }
 
 async function runStamp(pool, target, { url }, force) {
@@ -199,6 +225,9 @@ async function runStatus(pool, target, { url, declared }) {
   console.log(`Stamp:      ${stamp ?? "(none)"}`);
   console.log(`Migrations: ${total - pending.length} applied, ${pending.length} pending`);
   for (const tag of pending) console.log(`  - ${tag}`);
+  console.log(
+    `Bible:      ${(await bibleIsCurrent(pool, readDataset())) ? "loaded" : "not loaded"}`,
+  );
   console.log(verdict.ok ? "Check:      ok" : `Check:      refused. ${verdict.reason}`);
 }
 

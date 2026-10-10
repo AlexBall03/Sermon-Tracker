@@ -6,9 +6,14 @@ const state = vi.hoisted(() => ({
   pathname: "/admin",
   openUserProfile: vi.fn(),
   signOut: vi.fn(),
+  captureOpened: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
+// The capture dialog has its own tests; here it only has to be opened.
+vi.mock("@/features/ideas/components/quick-capture", () => ({
+  useQuickCapture: () => ({ open: state.captureOpened }),
+}));
 vi.mock("@clerk/nextjs", () => ({
   useUser: () => ({
     user: {
@@ -43,18 +48,20 @@ beforeEach(() => {
 });
 
 describe("AppHeader", () => {
-  it("shows the admin link only to administrators", () => {
-    const { unmount } = render(<AppHeader isAdmin={false} />);
-    const nav = () => screen.getByRole("navigation", { name: "Application" });
-    expect(within(nav()).getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
-    expect(within(nav()).queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
-    unmount();
-
+  it("keeps administration out of the main navigation, for administrators too", () => {
     render(<AppHeader isAdmin />);
-    expect(within(nav()).getByRole("link", { name: "Admin" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    const nav = screen.getByRole("navigation", { name: "Application" });
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Dashboard", "Library"]);
+    // It is reached from the account menu instead (see the account tests below).
+    expect(
+      within(screen.getByRole("navigation", { name: "Sections" })).queryByRole("link", {
+        name: /admin/i,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("has labelled account controls for both layouts", () => {
@@ -68,26 +75,50 @@ describe("AppHeader", () => {
 
   it("lists only destinations that exist", () => {
     render(<AppHeader isAdmin />);
-    for (const name of [/library/i, /history/i, /analytics/i]) {
+    const nav = screen.getByRole("navigation", { name: "Application" });
+    expect(within(nav).getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+    for (const name of [/history/i, /analytics/i, /bible/i]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
     }
   });
 
-  it("shows the tab bar only when there is more than one destination", () => {
-    const { unmount } = render(<AppHeader isAdmin={false} />);
-    expect(screen.queryByRole("navigation", { name: "Sections" })).not.toBeInTheDocument();
-    unmount();
-
-    render(<AppHeader isAdmin />);
-    const tabs = screen.getByRole("navigation", { name: "Sections" });
-    expect(within(tabs).getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-      "href",
-      "/dashboard",
-    );
-    expect(within(tabs).getByRole("link", { name: "Admin" })).toHaveAttribute(
+  it("marks the library as current on an idea's own page", () => {
+    state.pathname = "/library/11111111-1111-4111-8111-111111111111";
+    render(<AppHeader isAdmin={false} />);
+    const nav = screen.getByRole("navigation", { name: "Application" });
+    expect(within(nav).getByRole("link", { name: "Library" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+  });
+
+  it("shows the tab bar to everyone, with quick capture among the destinations", () => {
+    const { unmount } = render(<AppHeader isAdmin={false} />);
+    const items = () =>
+      within(screen.getByRole("navigation", { name: "Sections" }))
+        .getAllByRole("listitem")
+        .map((item) => {
+          const control = item.querySelector("a, button")!;
+          return control.getAttribute("aria-label") ?? control.textContent;
+        });
+    expect(items()).toEqual(["Dashboard", "Capture an idea", "Library"]);
+    unmount();
+
+    state.pathname = "/library";
+    render(<AppHeader isAdmin />);
+    expect(items()).toEqual(["Dashboard", "Capture an idea", "Library"]);
+    const tabs = screen.getByRole("navigation", { name: "Sections" });
+    expect(within(tabs).getByRole("link", { name: "Library" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("opens quick capture from the bar and from the tab bar", () => {
+    render(<AppHeader isAdmin={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    fireEvent.click(screen.getByRole("button", { name: "Capture an idea" }));
+    expect(state.captureOpened).toHaveBeenCalledTimes(2);
   });
 
   it("offers administration from the mobile account sheet to administrators only", () => {

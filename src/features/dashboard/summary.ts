@@ -1,9 +1,9 @@
 import type { Stat } from "@/components/ui/stat-strip";
 
 /**
- * The four figures the dashboard will summarise. None of them can be counted
- * until the library (Phase 2) and preaching history (Phase 3) exist, so each
- * says what it will measure instead of showing a number. Give an entry a
+ * The four figures the dashboard will summarise. They are shown together once
+ * preaching history (Phase 3) exists and the summary is built (Phase 5), so
+ * for now each says what it will measure instead of showing a number. Give an entry a
  * `value` in place of `pending` once its data is real.
  */
 export const summaryStats: Stat[] = [

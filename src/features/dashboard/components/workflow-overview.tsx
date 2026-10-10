@@ -32,19 +32,18 @@ const kinds = [
 ];
 
 /**
- * How the workspace will be used, for someone arriving before the library
- * exists. It follows the landing page's three stages: columns hung from one
+ * How the workspace is used, for someone new to it. It follows the landing page's three stages: columns hung from one
  * rule, not cards, and nothing here is interactive.
  */
 export function WorkflowOverview() {
   return (
     <section aria-labelledby="workflow-heading">
       <h2 id="workflow-heading" className="text-lg font-semibold tracking-[-0.015em]">
-        How your workspace will work
+        How your workspace works
       </h2>
       <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-        The idea library is the next thing being built. This is the path an idea will take through
-        it.
+        The path an idea takes. Capture and the library are open; the preaching record is still to
+        come.
       </p>
 
       <ol className="mt-7 grid gap-x-10 gap-y-8 md:grid-cols-3">

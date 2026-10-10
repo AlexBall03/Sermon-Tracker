@@ -4,7 +4,7 @@ The primary technical reference for Sermon Tracker. Update it when a decision ch
 
 ## Overview
 
-One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (theme, navigation menus, and the admin tables and forms). Clerk handles identity; PostgreSQL handles application authorization.
+One full-stack Next.js application deployed to Vercel. No separate backend, queues, caches, or global client state. Server Components by default; Client Components only where interaction requires them (theme, navigation menus, the admin tables and forms, quick capture, the idea editor, and the Scripture components). Clerk handles identity; PostgreSQL handles application authorization.
 
 | Concern       | Choice                                                         |
 | ------------- | -------------------------------------------------------------- |
@@ -28,7 +28,8 @@ src/
     (marketing)/            Public, indexable pages (header + footer shell)
       page.tsx              Landing page  /
     (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
-    (app)/                  Authenticated shell: dashboard, settings, admin
+    (app)/                  Authenticated shell: dashboard, library, settings, admin
+    api/bible/              Route handlers: one chapter, and word search
     icon.svg                Favicon (small-size mark)
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
@@ -39,10 +40,13 @@ src/
     auth/                   Provisioning and the access helpers
     admin/                  User and invitation services, server actions, components
     dashboard/              Dashboard view, greeting, and the summary figures to come
+    ideas/                  The idea model, queries, server actions, quick capture, list, editor
+    scripture/              Books, references, chapter and search reads, and every Scripture component
     settings/               Account management: schemas, server action, Clerk hooks, components
   components/
     ui/                     shadcn primitives restyled to the tokens, and small shared pieces
-                            (Badge, Avatar, StatStrip, ActionStatus, ConfirmDialog)
+                            (Badge, Avatar, StatStrip, ActionStatus, ConfirmDialog, Dialog,
+                            Popover, Select, Segmented, Textarea, Toast)
     brand/                  LogoMark, Logo, Ribbon
     layout/                 SiteHeader, MobileNav, AppHeader (with its tab bar and account sheet), app-links, AccountMenu, PageHeader, SiteFooter, ThemeProvider, ThemeToggle
     marketing/              Landing-page sections and their sample content
@@ -52,9 +56,12 @@ src/
     format.ts               Date formatting that is identical on server and browser
     env.ts                  Zod-validated environment access
     clerk-appearance.ts     Clerk components mapped to the design tokens
+    use-media-query.ts      Whether a media query matches, for choosing a surface
     utils.ts                cn()
 public/brand/               mark.svg, icon-192.png, icon-512.png
-scripts/                    generate-brand-assets.mjs, db/ (migration commands)
+scripts/                    generate-brand-assets.mjs, db/ (migration commands and the Bible
+                            loader), bible/ (dataset reader and its builder)
+data/bible/                 kjv.json, the King James text, and where it came from
 drizzle/                    Generated SQL migrations (committed)
 tests/e2e/                  Playwright specs
 docs/                       Roadmap, database, environments, handoff, brand board
@@ -78,7 +85,9 @@ Conventions:
 | `/dashboard`         | Authenticated home                         | 1C.1  | No      |
 | `/settings`          | Account management and appearance          | 1C.1  | No      |
 | `/admin`             | Restricted administration                  | 1B    | No      |
-| `/library`           | Unified idea library                       | 2     | No      |
+| `/library`           | The owner's ideas                          | 2A    | No      |
+| `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
+| `/api/bible/…`       | A chapter, or a word search (JSON)         | 2A    | No      |
 | `/history`           | Preaching history                          | 3     | No      |
 | `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
 
@@ -86,7 +95,7 @@ Route groups separate the three shells without affecting URLs:
 
 - `(marketing)` exists. Public header and footer.
 - `(auth)` exists. Minimal centred layout.
-- `(app)` exists. Authenticated shell with the application bar; `robots: noindex` in its layout. Quick capture (Phase 2) goes in the bar, before the account button.
+- `(app)` exists. Authenticated shell with the application bar; `robots: noindex` in its layout. Its layout mounts one `ToastProvider`, one `ScriptureProvider`, and one `QuickCaptureProvider` for every page.
 
 The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`, `appRoutes`), which also drives `robots.txt` and the proxy.
 
@@ -135,7 +144,55 @@ Disabling an account takes effect on that person's next request, because status 
 
 ### Dashboard
 
-`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: an empty state where recent ideas will go, shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) have no data until Phases 2 and 3, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page is Phase 5.
+`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: the five most recently changed ideas (or an invitation to capture the first), shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) wait for preaching history and the summary itself, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page is Phase 5.
+
+### Ideas
+
+One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, statuses, sermon types, length limits) as plain values, so the schema, the actions, and the browser read one list.
+
+- **Service** (`ideas.ts`): `createIdea`, `getIdea`, `listIdeas`, `updateIdea`, `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
+- **Actions** (`actions.ts`): `createIdea`, `updateIdea`, `changeIdeaKind`, `deleteIdea`. Each calls `authorize("active")`, validates with Zod, and takes the owner from the session. No input can name an owner: the schema drops unknown keys and the service names each column it writes.
+- **Create is idempotent.** The browser generates the UUID before the first attempt; the insert is `ON CONFLICT (id) DO NOTHING` followed by an owner-scoped read. A double submit or a retry is one idea; an ID that exists under another account fails without revealing it.
+- **Reclassifying changes only `kind`.** A sermon's type and subject stay in their columns when it becomes a point or undecided, and return when it becomes a sermon again. The editor applies a reclassification at once, separately from Save.
+- **Pages**: `/library` lists the owner's ideas by `updated_at` (200 at most; paging comes with search in 2B). `/library/<id>` validates the ID as a UUID before querying and calls `notFound()` for anything the owner-scoped query does not return.
+
+### Quick capture
+
+`QuickCaptureProvider` (`features/ideas/components/quick-capture.tsx`) is one dialog for the whole shell; `useQuickCapture().open()` opens it from the bar, the tab bar, the dashboard, and the library.
+
+- Only the idea is required. Kind starts as Undecided, Scripture is always visible, and notes, status, and sermon details are behind "More details".
+- Enter saves from the idea field. In notes, Enter is a new line and Ctrl or Command with Enter saves. Enter in the Scripture field adds the reference and never submits.
+- A failed save changes nothing on screen. Closing with something written (the X, Escape, a click outside) asks "Discard this idea?"; discarding empties the form, and any close clears its validation messages. Leaving the page while something is written goes through `useLeaveGuard`. A save in flight cannot be closed or submitted again.
+- Success closes the dialog and shows a toast linking to the idea.
+
+### Unsaved changes
+
+`useLeaveGuard(dirty, description)` (`components/layout/leave-guard.tsx`) asks before unsaved work is left, by any route. The App Router cannot refuse a navigation, so the guard works around it: a click on a link to another page is caught in the capture phase and held behind a dialog; a Back or Forward move is reversed after the fact (it adds one same-page history entry so that Back is reversible, and stops the router's `popstate` listener from acting on the move); closing, reloading, or leaving the site uses `beforeunload`. Code that navigates on purpose clears `dirty` or calls `allowLeaving()` first. Its third argument, `onLeave`, runs when leaving is confirmed and must throw the unsaved work away: Next keeps a page it has left, state and all, and would otherwise show the abandoned edits again on return. Use the guard for anything that holds edits; the idea editor and quick capture do.
+
+### Scripture
+
+The King James Bible is in the database (see docs/DATABASE.md) and `features/scripture` is the only code that knows about it. Everything that shows or chooses Scripture uses these pieces; do not build a second way.
+
+**A reference** is numbers: `{ book, chapterStart, verseStart, chapterEnd, verseEnd }`, book 1 to 66. It is the same shape in the table, the actions, and the components. `reference.ts` parses what is typed ("Romans 12:1-2", "Psalm 23", "Jude 5"), formats it, and validates it against `versification.ts`, the real verse count of every chapter, which is generated from the dataset. Validation therefore needs no request, and the server repeats it.
+
+**Text** is fetched a chapter at a time: `GET /api/bible/<book>/<chapter>`, for active accounts. `getChapter` is the application's one `use cache` function: the text is the same for everyone and never changes. It throws, and so is not cached, if a chapter is missing or short. The browser keeps the chapters it has opened (`use-chapter.ts`) and never holds more.
+
+**Search** is `GET /api/bible/search?q=&in=&offset=`: PostgreSQL full-text search with the `simple` configuration, so words match exactly as written (a concordance, not a search engine), in canonical order, 40 to a page. `buildSearchQuery` (`search.ts`) turns the input into a query by hand, admitting only letters and digits: `grace mercy` (both), `"living water"` (phrase), `faith OR hope`, `-law` (without), `lov*` (beginning with). The query lives in `search-verses.ts`, apart from the cached read, deliberately.
+
+**Components**, one system at three levels of depth:
+
+| Level           | Opens from                                          | Container                                                                                                         |
+| --------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Quick Preview   | Clicking any `ReferenceChip`                        | Popover where the window is at least 48rem wide; a sheet from the foot of the screen below that                   |
+| Scripture Panel | "Read" in a preview; "Browse" in a `ScriptureField` | A panel down the right edge when wide; a full-height sheet when narrow; inside quick capture, part of that dialog |
+| Bible reader    | Not built                                           | A page that hosts the same `ScriptureBrowser`                                                                     |
+
+- `PassageText` is the only renderer of Bible text: serif, one verse to a line, the number in the margin, selected verses on `primary-soft` with an emerald number.
+- `ScriptureBrowser` is the panel's content and is identical in every container: a search box, Book / Chapter / Verse filters with previous and next, the text, and a footer with the selection and one action. Verses are chosen by tapping, any number, and unselected by tapping again; none chosen means the whole chapter. Verses that are not adjacent become separate references. When the idea is still on screen beside the panel (`besideIdea`) and the action can be repeated (adding, not replacing), attaching leaves the panel open for the next passage; where the panel covers the idea, attaching returns to it.
+- `ScriptureProvider` owns the one panel. `useScripture().openPanel({ reference, attach })` opens it on a passage; `attach` is what choosing does there ("Add to idea", "Update reference"), and its absence means reading only. A surface that shows the panel within itself wraps its content in `ScriptureHost`.
+- `ScriptureField` is the form control: chips, a box that adds a typed reference on Enter, and Browse. It applies each change to the list as it stands when the change lands, because the form beside an open panel stays live.
+- The container is chosen from the space available (`useMediaQuery`), never from the device. Surfaces mount on interaction, so there is nothing to mismatch at hydration.
+- **One modal layer at a time.** A preview closes before the panel opens. Inside quick capture the panel sits beside the form when wide and replaces it when narrow, and a narrow-screen chip goes straight to the panel.
 
 ### Account management
 
@@ -156,7 +213,7 @@ Disabling an account takes effect on that person's next request, because status 
 
 ### Caching
 
-Cache Components is on. Nothing user-specific uses `use cache`. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
+Cache Components is on. Nothing user-specific uses `use cache`; the one cached function is `getChapter`, which returns Bible text and knows nothing about the caller. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
 
 ## Design system
 
@@ -203,7 +260,7 @@ Rules:
 Glass is for things that float over other content, and nothing else:
 
 - `glass` — the fixed bar. Neutral tint, 16px blur, hairline; add the border side you need. `glass-settle` makes it clear at the very top of the page and glass once content is under it, with a CSS scroll-driven animation (no script; always glass where unsupported).
-- `glass-float` — dropdown menus and dialogs. Denser than the bar so text stays readable over anything, with its own border, inner highlight, and raised shadow. Dialogs raise the opacity further (`--float` override in `ui/alert-dialog.tsx`).
+- `glass-float` — dropdown menus, popovers, selects, dialogs, sheets, and the toast. Denser than the bar so text stays readable over anything, with its own border, inner highlight, and raised shadow. Dialogs raise the opacity further (`--float` override in `ui/alert-dialog.tsx`).
 - Both fall back to an opaque surface when `backdrop-filter` is unavailable.
 - Cards, tables, forms, and the mobile navigation panels are opaque. Do not nest glass inside glass: a backdrop filter inside the blurred bar cannot see the page.
 
@@ -219,6 +276,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 ### Other utilities
 
+- `scroll-quiet` — a thin neutral scrollbar for scrolling areas inside floating layers.
 - `container-page` — the shared content container (76rem max, responsive gutters). Header, sections, and footer all use it so edges align.
 - `h-bar` / `pt-bar` — the bar height (`--bar-h`, 56px). A shell that renders the fixed header offsets `main` with `pt-bar`. `html` has `scroll-padding-top` of the same value, so in-page anchors need no offset of their own.
 - `animate-menu` — short entrance for status messages. `animate-sheet` unrolls the mobile sheets from the bar, `animate-menu-row` staggers their rows (`--i`), and `animate-sheet-out` is the exit, all applied through `useNavPanel` (`components/layout/use-nav-panel.ts`), which keeps a closing panel mounted and inert until the animation ends.
@@ -259,7 +317,7 @@ Buttons do not glow. The primary button's hover is a colour step to `primary-hov
 
 `SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button (two lines that cross into an X) and an opaque sheet that unrolls under the bar, set like a contents page: section links in Playfair with hairlines between, Sign in, and the theme control. The page dims behind it; tapping the dimmed area or pressing Escape closes it, and widening the window past `md` removes it. Section links (`#…`) are plain anchors, not `next/link`, which does not scroll again to a hash already in the URL. While the panel is open the bar turns opaque to match it (the panel carries `data-nav-panel`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and (for administrators) Admin links, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, shown once there are two or more (`showsTabBar`); the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five. Quick capture takes the tab bar's centre place in Phase 2. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round emerald button in its centre; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. **The Bible reader and the outline builder each join that list when their pages are built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`.
 
 The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
 
@@ -272,6 +330,12 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - **Button**: `default` (emerald; hover is a colour step only), `secondary`, `outline`, `ghost`, `destructive`, `link`. `outline` is the secondary action beside a primary one; on hover its hairline turns emerald (`border-primary/70`), as does the account trigger's and Clerk's social button. For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
 - **Input**: white surface, hairline, darker border on hover, emerald border and `shadow-focus` on focus, `aria-invalid` in destructive.
 - **Dropdown menu, alert dialog**: `glass-float`. Destructive items and confirmations use the destructive colour.
+- **`Dialog`** (`ui/dialog.tsx`): every other modal layer, with a `placement`: `top` (a form, clear of the on-screen keyboard), `bottom` (a short sheet), `side` (a panel down the right edge), `full` (a whole narrow screen).
+- **`Popover`**: a small floating panel anchored to its trigger.
+- **`Select`** (`ui/select.tsx`): the dropdown for a known set of options. Native `<select>` is not used, because its menu cannot be styled. `layout="grid"` sets short options (chapter and verse numbers) in rows. The selected option is emerald; group headings stay neutral.
+- **`Segmented`**: a choice between a few options, side by side, built on native radio buttons.
+- **`Textarea`**: styled as `Input`.
+- **Toast** (`ui/toast.tsx`): `useToast()` shows one short confirmation at the foot of the screen, with an optional link. It is a status region and never takes focus.
 - **`PageHeader`** (`components/layout/page-header.tsx`): title, one line of context, hairline. Every application page starts with it.
 - **`Badge`** (`ui/badge.tsx`): `accent`, `muted`, `danger`.
 - **`StatStrip`** (`ui/stat-strip.tsx`): summary figures as one divided strip. A stat is a number, "Unavailable" when it could not be loaded, or a sentence (`pending`) when the measure does not exist yet.
@@ -302,7 +366,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 
 ## Domain decisions
 
-These are settled and constrain later phases. None are implemented yet.
+These are settled and constrain later phases. The first and fourth are implemented (Phase 2A); the rest are not.
 
 **Unified ideas.** One library holds sermon ideas, reusable point ideas, and undecided ideas. They are one kind of record distinguished by type, not separate systems. An undecided idea can later become a sermon or a point.
 
@@ -318,7 +382,7 @@ These are settled and constrain later phases. None are implemented yet.
 
 ## Testing
 
-- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, and the auth, admin, dashboard, and settings code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, and Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
@@ -332,23 +396,36 @@ These are settled and constrain later phases. None are implemented yet.
 
 ## Decisions log
 
-| Decision                                            | Reason                                                                             |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Route groups for marketing, auth, and app shells    | Each shell has its own layout; auth can wrap `(app)` without touching public pages |
-| Hex values taken from the written brief             | The brand board labels differ by a character in places; the brief is authoritative |
-| Canonical origin is a constant, not an env variable | Previews should still canonicalise to production                                   |
-| Static generated share image rather than `next/og`  | Uses the real fonts and mark with no build-time network dependency                 |
-| No manifest in Phase 1                              | Installability is Phase 7 scope                                                    |
-| `@vitejs/plugin-react` not installed                | Vitest transforms JSX itself; the plugin conflicted on peer dependencies           |
-| Playwright serves a production build on port 3100   | Tests what ships, and avoids a dev server on 3000                                  |
-| Neon WebSocket pool, not the HTTP driver            | The last-administrator check needs an interactive transaction                      |
-| Role and status as text with CHECK constraints      | Adding a value is a plain migration; no enum type to alter                         |
-| Provision on first request, no Clerk webhook        | Nothing in this phase needs lifecycle events; one less public endpoint             |
-| Database identity stamp plus a declared environment | A hostname is not proof; a mismatch anywhere stops the command                     |
-| Previews share the development database and Clerk   | No production credentials outside production; one fewer environment to migrate     |
-| Access denial is a redirect to `/access-denied`     | `forbidden()` is still experimental in Next.js 16                                  |
-| Own account UI instead of Clerk's `UserProfile`     | Settings should look like the application; Clerk still does all identity work      |
-| Credential changes call Clerk from the browser      | Only the Frontend API enforces current password, emailed code, and reverification  |
-| Name changes go through a server action             | Our validation and access check; works whatever the instance's profile settings    |
-| Settings is one page with no settings table         | Nothing to store: identity is Clerk's and the theme is already in `localStorage`   |
-| Unavailable figures are described, not shown as 0   | A zero would be a false statement about the person's work                          |
+| Decision                                               | Reason                                                                             |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Route groups for marketing, auth, and app shells       | Each shell has its own layout; auth can wrap `(app)` without touching public pages |
+| Hex values taken from the written brief                | The brand board labels differ by a character in places; the brief is authoritative |
+| Canonical origin is a constant, not an env variable    | Previews should still canonicalise to production                                   |
+| Static generated share image rather than `next/og`     | Uses the real fonts and mark with no build-time network dependency                 |
+| No manifest in Phase 1                                 | Installability is Phase 7 scope                                                    |
+| `@vitejs/plugin-react` not installed                   | Vitest transforms JSX itself; the plugin conflicted on peer dependencies           |
+| Playwright serves a production build on port 3100      | Tests what ships, and avoids a dev server on 3000                                  |
+| Neon WebSocket pool, not the HTTP driver               | The last-administrator check needs an interactive transaction                      |
+| Role and status as text with CHECK constraints         | Adding a value is a plain migration; no enum type to alter                         |
+| Provision on first request, no Clerk webhook           | Nothing in this phase needs lifecycle events; one less public endpoint             |
+| Database identity stamp plus a declared environment    | A hostname is not proof; a mismatch anywhere stops the command                     |
+| Previews share the development database and Clerk      | No production credentials outside production; one fewer environment to migrate     |
+| Access denial is a redirect to `/access-denied`        | `forbidden()` is still experimental in Next.js 16                                  |
+| Own account UI instead of Clerk's `UserProfile`        | Settings should look like the application; Clerk still does all identity work      |
+| Credential changes call Clerk from the browser         | Only the Frontend API enforces current password, emailed code, and reverification  |
+| Name changes go through a server action                | Our validation and access check; works whatever the instance's profile settings    |
+| Settings is one page with no settings table            | Nothing to store: identity is Clerk's and the theme is already in `localStorage`   |
+| Unavailable figures are described, not shown as 0      | A zero would be a false statement about the person's work                          |
+| Scripture references in a child table, as numbers      | Constraints, and later lookup by book; no verse text is copied onto an idea        |
+| Sermon details kept when an idea is reclassified       | Turning it back into a sermon loses nothing                                        |
+| Idea IDs may be generated in the browser               | A retry or double submit saves one idea; ready for offline capture                 |
+| Bible text loaded by the migrate command               | A 4 MB migration would run for every test database; a checksum versions the text   |
+| Bible table has no translation column                  | One translation; adding one later is an additive change to read-only data          |
+| Bible read by chapter, through a route handler         | Reads are parallel and cacheable; the browser never holds the whole text           |
+| Word search uses the `simple` text configuration       | Exact words, like a concordance; the archaic forms defeat English stemming anyway  |
+| Search query built by hand, not `websearch_to_tsquery` | It has no prefix operator; ours admits only letters and digits                     |
+| Non-adjacent verses become separate references         | A reference is one unbroken passage; no schema change was needed                   |
+| Panel shares the capture dialog instead of stacking    | One modal layer at a time                                                          |
+| Custom `Select` instead of the native control          | The native menu cannot be styled; the owner disliked it                            |
+| Leave guard reverses history moves after the fact      | The App Router has no way to refuse a navigation                                   |
+| Administration only in the account menu                | The owner wants main navigation kept for the work: library, Bible, outlines        |

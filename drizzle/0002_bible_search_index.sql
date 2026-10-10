@@ -1,0 +1,1 @@
+CREATE INDEX "bible_verses_search_idx" ON "bible_verses" USING gin (to_tsvector('simple', "text"));

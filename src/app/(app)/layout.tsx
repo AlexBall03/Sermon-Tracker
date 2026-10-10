@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 
 import { Logo } from "@/components/brand/logo";
 import { AppHeader } from "@/components/layout/app-header";
-import { showsTabBar } from "@/components/layout/app-links";
 import { BackToTop } from "@/components/layout/back-to-top";
 import { PageLoading } from "@/components/layout/page-loading";
+import { ToastProvider } from "@/components/ui/toast";
 import { requireActiveUser } from "@/features/auth/access";
-import { cn } from "@/lib/utils";
+import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture";
+import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -29,22 +30,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function Shell({ children }: { children: React.ReactNode }) {
   const user = await requireActiveUser();
-  const isAdmin = user.role === "admin";
   return (
-    <>
-      <AppHeader isAdmin={isAdmin} />
-      {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
-      <main
-        id="main"
-        className={cn(
-          "flex-1 pt-bar",
-          showsTabBar(isAdmin) && "max-md:pb-[calc(var(--bar-h)+env(safe-area-inset-bottom))]",
-        )}
-      >
-        {children}
-      </main>
-      <BackToTop aboveTabBar={showsTabBar(isAdmin)} />
-    </>
+    // One of each for the whole shell: confirmations, the Scripture Panel, and
+    // quick capture, which uses both. They hold no account data.
+    <ToastProvider aboveTabBar>
+      <ScriptureProvider>
+        <QuickCaptureProvider>
+          <AppHeader isAdmin={user.role === "admin"} />
+          {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+          <main
+            id="main"
+            className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+env(safe-area-inset-bottom))]"
+          >
+            {children}
+          </main>
+          <BackToTop aboveTabBar />
+        </QuickCaptureProvider>
+      </ScriptureProvider>
+    </ToastProvider>
   );
 }
 

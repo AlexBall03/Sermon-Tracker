@@ -7,7 +7,14 @@ import { expect, test } from "@playwright/test";
  * docs/ENVIRONMENTS.md.
  */
 test.describe("guests and application routes", () => {
-  for (const path of ["/dashboard", "/admin", "/admin/anything", "/settings"]) {
+  for (const path of [
+    "/dashboard",
+    "/admin",
+    "/admin/anything",
+    "/settings",
+    "/library",
+    "/library/00000000-0000-4000-8000-000000000000",
+  ]) {
     test(`${path} sends a guest to sign-in`, async ({ page }) => {
       await page.goto(path);
       await expect(page).toHaveURL(/\/sign-in(\?|$)/);

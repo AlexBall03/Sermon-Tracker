@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The access helper and Clerk are mocked: this covers what the page does with their answers.
+// The access helper, Clerk, and the idea query are mocked: this covers what the page does with their answers.
 const state = vi.hoisted(() => ({
+  ideas: [] as unknown[],
+  listIdeas: vi.fn(),
   role: "user" as "user" | "admin",
   firstName: "Ada" as string | null,
   clerkDown: false,
@@ -29,10 +31,48 @@ vi.mock("@clerk/nextjs/server", () => ({
   },
 }));
 
+vi.mock("@/db", () => ({ getDb: () => "database" }));
+vi.mock("@/features/ideas/ideas", () => ({
+  listIdeas: async (...args: unknown[]) => {
+    state.listIdeas(...args);
+    return state.ideas;
+  },
+}));
+
 import DashboardPage from "./page";
 
+const idea = (id: string, title: string, kind: string) => ({
+  id,
+  ownerId: "1",
+  kind,
+  title,
+  notes: null,
+  status: "captured",
+  sermonType: null,
+  subject: null,
+  createdAt: new Date("2026-10-01T10:00:00Z"),
+  updatedAt: new Date("2026-10-02T10:00:00Z"),
+  references: [
+    {
+      book: 43,
+      chapterStart: 3,
+      verseStart: 16,
+      chapterEnd: null,
+      verseEnd: null,
+      isPrimary: false,
+    },
+  ],
+});
+
 beforeEach(() => {
-  Object.assign(state, { role: "user", firstName: "Ada", clerkDown: false, signedIn: true });
+  Object.assign(state, {
+    role: "user",
+    firstName: "Ada",
+    clerkDown: false,
+    signedIn: true,
+    ideas: [],
+  });
+  state.listIdeas.mockClear();
 });
 
 describe("DashboardPage", () => {
@@ -69,6 +109,38 @@ describe("DashboardPage", () => {
     state.role = "admin";
     render(await DashboardPage());
     expect(screen.getByRole("link", { name: /Administration/ })).toHaveAttribute("href", "/admin");
+  });
+
+  it("invites a first capture when there are no ideas", async () => {
+    render(await DashboardPage());
+    expect(screen.getByRole("heading", { name: "No ideas yet" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Capture an idea" })).toBeVisible();
+    expect(screen.queryByRole("list", { name: "Recent ideas" })).not.toBeInTheDocument();
+  });
+
+  it("lists the signed-in person's latest ideas, each linked to its page", async () => {
+    state.ideas = [
+      idea("a1", "His Grace is Sufficient", "sermon"),
+      idea("b2", "Faith speaks", "point"),
+    ];
+    render(await DashboardPage());
+
+    // The owner comes from the session, and only a handful are read.
+    expect(state.listIdeas).toHaveBeenCalledWith("database", "1", 5);
+    const recent = screen.getByRole("list", { name: "Recent ideas" });
+    expect(within(recent).getByRole("link", { name: "His Grace is Sufficient" })).toHaveAttribute(
+      "href",
+      "/library/a1",
+    );
+    expect(within(recent).getByRole("link", { name: "Faith speaks" })).toHaveAttribute(
+      "href",
+      "/library/b2",
+    );
+    expect(within(recent).getAllByRole("button", { name: /John 3:16/ })).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Open the library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
   });
 
   it("names the future figures without showing any number", async () => {

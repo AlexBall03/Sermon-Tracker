@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 9 October 2026: **Phases 1A, 1A.1, 1B, 1B.1, 1B.2, and 1C.1 are implemented. Nothing signed-in has been verified against live Clerk and Neon yet; that check, with deployment and hardening, is Phase 1C.2 and is next ([handoff](HANDOFF-1C.1.md)).**
+Status as of 9 October 2026: **Phase 1 through 1C.1 and Phase 2A are implemented. Phase 2A's migrations and Bible load ran against the development database; its signed-in screens were tried by the owner during the work but not verified end to end ([handoff](HANDOFF-2A.md)). Phase 2B is next. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -18,14 +18,10 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 
 ## Phase 2 — Core Idea Tracker
 
-- Unified idea library
-- Quick capture
-- Sermon ideas
-- Reusable point ideas
-- Undecided ideas
-- Scripture references
-- Tags, statuses, search
-- Sermon-point associations
+- **2A: Data model, idea CRUD, quick capture, King James Bible and Scripture components** — implemented ([handoff](HANDOFF-2A.md)). Sermon, point, and undecided ideas; statuses; structured Scripture references; the Scripture preview and panel; Bible text search (brought forward at the owner's request)
+- **2B: Idea library** — next. Search, filters, tags, paging, list options
+- **2B or 2C: Bible reader** — a dedicated page reusing the Scripture components, added to the main navigation; attaching a passage to a chosen idea; psalm titles
+- **2C: Sermon-point associations**
 
 ## Phase 3 — Preaching History
 
@@ -41,6 +37,7 @@ Work stays inside the current phase. Do not implement later-phase functionality 
 - Main points and subpoints
 - Reusable point associations
 - Sermon-specific customisations
+- The outline page joins the main navigation
 
 ## Phase 5 — Productivity & Insights
 

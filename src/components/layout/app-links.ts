@@ -1,26 +1,21 @@
-import { LayoutDashboard, ShieldCheck, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, LibraryBig, type LucideIcon } from "lucide-react";
 
 import { routes } from "@/lib/site";
 
 export type AppLink = { href: string; label: string; icon: LucideIcon };
 
 /**
- * The application's destinations for a role, in order. One list feeds the
- * desktop link row and the small-screen tab bar, so a destination is added
- * here once, when its page exists. Hiding a link is presentation; the pages
- * enforce access.
+ * The application's main destinations, in order. One list feeds the desktop
+ * link row and the small-screen tab bar, so a destination is added here once,
+ * when its page exists. The Bible reader and the outline builder each take a
+ * place here when they are built; keep the tab bar to five with quick capture.
+ *
+ * Administration is not a destination: administrators reach it from the
+ * account menu, with settings.
  */
-export function appLinks(isAdmin: boolean): AppLink[] {
+export function appLinks(): AppLink[] {
   return [
     { href: routes.dashboard, label: "Dashboard", icon: LayoutDashboard },
-    ...(isAdmin ? [{ href: routes.admin, label: "Admin", icon: ShieldCheck }] : []),
+    { href: routes.library, label: "Library", icon: LibraryBig },
   ];
-}
-
-/**
- * A tab bar with a single tab is noise, so it appears once there are two
- * destinations. The shell uses this to leave room for it below the page.
- */
-export function showsTabBar(isAdmin: boolean) {
-  return appLinks(isAdmin).length > 1;
 }

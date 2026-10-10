@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, ShieldCheck } from "lucide-react";
+import { LogOut, Plus, Settings, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { useQuickCapture } from "@/features/ideas/components/quick-capture";
 import { routes } from "@/lib/site";
 import { AccountMenu, useAccountActions, useAccountIdentity } from "./account-menu";
-import { appLinks, showsTabBar, type AppLink } from "./app-links";
+import { appLinks, type AppLink } from "./app-links";
 import { ThemeToggle } from "./theme-toggle";
 import { row, useNavPanel } from "./use-nav-panel";
 
@@ -17,17 +18,17 @@ type IsCurrent = (href: string) => boolean;
 
 /**
  * Application bar: the same fixed, full-width glass bar as the public header.
- * Shells that render it must offset `main` by `pt-bar`. The space before the
- * account button is where quick capture goes in Phase 2; the theme lives in
- * the account menu.
+ * Shells that render it must offset `main` by `pt-bar`. Quick capture sits
+ * before the account button; the theme lives in the account menu.
  *
  * Below `md` the bar keeps only the logo and the account button. Destinations
- * move to the tab bar at the foot of the screen, and everything about the
+ * and quick capture move to the tab bar at the foot of the screen, and everything about the
  * account (settings, administration, theme, sign out) opens from the avatar.
  */
 export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
-  const links = appLinks(isAdmin);
+  const capture = useQuickCapture();
+  const links = appLinks();
   const isCurrent: IsCurrent = (href) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
@@ -60,43 +61,75 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
                 </li>
               ))}
             </ul>
-            <AccountMenu isAdmin={isAdmin} />
+            <div className="flex items-center gap-3">
+              {/* A sibling of the account button: same height, hairline, and hover. Only the plus is emerald. */}
+              <button
+                type="button"
+                onClick={capture.open}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-input bg-surface pr-4 pl-3 text-sm font-semibold shadow-card transition-[border-color,background-color,scale] duration-200 hover:border-primary/70 active:scale-[0.98] active:bg-foreground/5"
+              >
+                <Plus className="size-4 text-primary" aria-hidden />
+                Capture
+              </button>
+              <AccountMenu isAdmin={isAdmin} />
+            </div>
           </nav>
 
           <AccountSheet isAdmin={isAdmin} isCurrent={isCurrent} />
         </div>
       </header>
 
-      {showsTabBar(isAdmin) && <TabBar links={links} isCurrent={isCurrent} />}
+      <TabBar links={links} isCurrent={isCurrent} onCapture={capture.open} />
     </>
   );
 }
 
 /**
  * Small-screen destinations, within thumb reach. Shells that render it leave
- * room below `main` (see `showsTabBar`). It sits under the bar's layer so the
- * account sheet's scrim covers it. Quick capture takes the centre place in
- * Phase 2; keep the list to five.
+ * room below `main`. It sits under the bar's layer so the
+ * account sheet's scrim covers it. Quick capture takes the centre place, as
+ * the one action among the destinations; keep the list to five in all.
  */
-function TabBar({ links, isCurrent }: { links: AppLink[]; isCurrent: IsCurrent }) {
+function TabBar({
+  links,
+  isCurrent,
+  onCapture,
+}: {
+  links: AppLink[];
+  isCurrent: IsCurrent;
+  onCapture: () => void;
+}) {
+  const middle = Math.ceil(links.length / 2);
+  const tab = ({ href, label, icon: Icon }: AppLink) => (
+    <li key={href} className="flex-1">
+      <Link
+        href={href}
+        aria-current={isCurrent(href) ? "page" : undefined}
+        className="flex h-full flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground aria-[current=page]:text-primary"
+      >
+        <Icon className="size-5" aria-hidden />
+        {label}
+      </Link>
+    </li>
+  );
   return (
     <nav
       aria-label="Sections"
       className="fixed inset-x-0 bottom-0 z-40 border-t glass pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <ul className="container-page flex h-bar items-stretch">
-        {links.map(({ href, label, icon: Icon }) => (
-          <li key={href} className="flex-1">
-            <Link
-              href={href}
-              aria-current={isCurrent(href) ? "page" : undefined}
-              className="flex h-full flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground aria-[current=page]:text-primary"
-            >
-              <Icon className="size-5" aria-hidden />
-              {label}
-            </Link>
-          </li>
-        ))}
+        {links.slice(0, middle).map(tab)}
+        <li className="flex flex-1 items-center justify-center">
+          <button
+            type="button"
+            aria-label="Capture an idea"
+            onClick={onCapture}
+            className="grid size-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-card transition-[background-color,scale] duration-200 hover:bg-primary-hover active:scale-[0.96]"
+          >
+            <Plus className="size-5" aria-hidden />
+          </button>
+        </li>
+        {links.slice(middle).map(tab)}
       </ul>
     </nav>
   );

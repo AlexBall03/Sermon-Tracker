@@ -1,19 +1,21 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A.
 
 ## Layout
 
-| Path                   | Purpose                                                           |
-| ---------------------- | ----------------------------------------------------------------- |
-| `src/db/schema.ts`     | Tables, in TypeScript. The single place the schema is defined     |
-| `src/db/index.ts`      | `getDb()`: the server-only connection (pooled WebSocket driver)   |
-| `src/db/types.ts`      | `Database` type and log-safe error text                           |
-| `src/db/testing.ts`    | In-memory PostgreSQL (PGlite) with the real migrations, for tests |
-| `drizzle/`             | Generated SQL migrations and Drizzle's journal. Committed         |
-| `drizzle.config.ts`    | Drizzle Kit configuration (generation only)                       |
-| `scripts/db/cli.mjs`   | `migrate`, `stamp`, `status` commands                             |
-| `scripts/db/guard.mjs` | The rules that decide whether a command may touch a database      |
+| Path                        | Purpose                                                           |
+| --------------------------- | ----------------------------------------------------------------- |
+| `src/db/schema.ts`          | Tables, in TypeScript. The single place the schema is defined     |
+| `src/db/index.ts`           | `getDb()`: the server-only connection (pooled WebSocket driver)   |
+| `src/db/types.ts`           | `Database` type and log-safe error text                           |
+| `src/db/testing.ts`         | In-memory PostgreSQL (PGlite) with the real migrations, for tests |
+| `drizzle/`                  | Generated SQL migrations and Drizzle's journal. Committed         |
+| `drizzle.config.ts`         | Drizzle Kit configuration (generation only)                       |
+| `scripts/db/cli.mjs`        | `migrate`, `stamp`, `status` commands                             |
+| `scripts/db/seed-bible.mjs` | Loads the King James text when a database lacks it                |
+| `data/bible/kjv.json`       | The King James text, with its source in `data/bible/README.md`    |
+| `scripts/db/guard.mjs`      | The rules that decide whether a command may touch a database      |
 
 The pooled WebSocket driver (`@neondatabase/serverless` `Pool`) is used rather than the HTTP driver because role and status changes need interactive transactions. Use Neon's **pooled** connection string.
 
@@ -34,6 +36,72 @@ One row per person allowed into the application. Clerk owns the identity; this t
 
 Role and status are text with CHECK constraints, not PostgreSQL enums, so adding a value is an ordinary migration. Names and email addresses are not stored; they are read from Clerk when needed.
 
+### `ideas`
+
+One row per idea, of any kind, owned by one user. The allowed values and limits are in `src/features/ideas/model.ts`.
+
+| Column        | Type          | Notes                                                                   |
+| ------------- | ------------- | ----------------------------------------------------------------------- |
+| `id`          | `uuid`        | Primary key. Defaults to `gen_random_uuid()`; the browser may supply it |
+| `owner_id`    | `uuid`        | Not null, references `users.id`, `ON DELETE RESTRICT`                   |
+| `kind`        | `text`        | `sermon`, `point`, or `undecided` (CHECK), default `undecided`          |
+| `title`       | `text`        | Not null, 1 to 200 characters after trimming (CHECK)                    |
+| `notes`       | `text`        | Optional, up to 20,000 characters (CHECK)                               |
+| `status`      | `text`        | `captured`, `developing`, or `ready` (CHECK), default `captured`        |
+| `sermon_type` | `text`        | Optional: `topical` or `expository` (CHECK)                             |
+| `subject`     | `text`        | Optional, 1 to 200 characters (CHECK)                                   |
+| `created_at`  | `timestamptz` | Default `now()`                                                         |
+| `updated_at`  | `timestamptz` | Default `now()`, set by the application on update                       |
+
+Index `ideas_owner_updated_idx (owner_id, updated_at desc)` serves the library list. `sermon_type` and `subject` are not tied to `kind`: they are kept when an idea is reclassified.
+
+### `idea_scripture_references`
+
+The passages attached to an idea, in order, as numbers. No verse text is stored here and there is no foreign key to `bible_verses`.
+
+| Column          | Type       | Notes                                                             |
+| --------------- | ---------- | ----------------------------------------------------------------- |
+| `id`            | `uuid`     | Primary key                                                       |
+| `idea_id`       | `uuid`     | Not null, references `ideas.id`, `ON DELETE CASCADE`              |
+| `position`      | `smallint` | Order within the idea; unique with `idea_id`                      |
+| `is_primary`    | `boolean`  | A sermon's main text; at most one per idea (partial unique index) |
+| `book`          | `smallint` | 1 to 66, canonical order (CHECK)                                  |
+| `chapter_start` | `smallint` | At least 1                                                        |
+| `verse_start`   | `smallint` | Null for a whole chapter                                          |
+| `chapter_end`   | `smallint` | Set only when the passage leaves its first chapter                |
+| `verse_end`     | `smallint` | Set only when the passage covers more than one verse              |
+
+CHECK constraints keep the four range columns coherent (an end after its start; a verse at both ends of a cross-chapter range or at neither). Whether the chapter and verse exist is validated by the application against the real verse counts.
+
+### `bible_verses`
+
+The King James Bible, one row per verse: 31,102 rows. Shared, read-only reference data with no owner. The application never writes to it.
+
+| Column    | Type       | Notes            |
+| --------- | ---------- | ---------------- |
+| `book`    | `smallint` | 1 to 66          |
+| `chapter` | `smallint` |                  |
+| `verse`   | `smallint` |                  |
+| `text`    | `text`     | Plain verse text |
+
+The primary key `(book, chapter, verse)` serves verse, passage, and chapter reads. `bible_verses_search_idx` is a GIN index on `to_tsvector('simple', text)` for word search; a query must use exactly that expression to use it.
+
+### `reference_datasets`
+
+Which edition of each reference dataset a database holds: `name` (`kjv`), `checksum`, `row_count`, `loaded_at`.
+
+## Bible text
+
+The text is data, not a migration. It lives in `data/bible/kjv.json` and every `migrate` command loads it when needed, after any pending migrations and under the same identity checks:
+
+- The command compares the checksum of the committed text with `reference_datasets`. If they match and the row count is 31,102, it does nothing. This is one small query on every `npm run dev`.
+- Otherwise it replaces the contents of `bible_verses` in **one transaction on one connection**: delete, insert book by book, count, record the edition. Readers see the old text or the new, never part of each. Any failure rolls back, changes nothing, and fails the command, so a production build fails and the previous deployment keeps serving.
+- A first load takes about ten seconds against Neon.
+- `npm run db:status` reports `Bible: loaded` or `not loaded`.
+- A manual production migration (`db:migrate:prod`) asks for its confirmation when either a migration or the Bible load is pending.
+
+To change the text, see `data/bible/README.md`. Tests load the real dataset into an in-memory PostgreSQL to prove the loader; other database tests insert the few verses they need.
+
 ## Changing the schema
 
 1. Edit `src/db/schema.ts`.
@@ -45,16 +113,16 @@ Never edit a migration that has been applied anywhere, and never use `drizzle-ki
 
 ## Commands
 
-| Command                   | What it does                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run dev`             | Applies pending migrations to the development database, then starts Next. Aborts if migration fails |
-| `npm run dev:next`        | Starts Next without touching a database (interface work only)                                       |
-| `npm run db:generate`     | Writes a migration from schema changes                                                              |
-| `npm run db:migrate:dev`  | Applies pending migrations to development                                                           |
-| `npm run build`           | Builds; in the Vercel production deployment only, then applies pending migrations to production     |
-| `npm run db:migrate:prod` | Applies pending migrations to production by hand, after confirmation                                |
-| `npm run db:status`       | Target, stamp, applied and pending migrations (`-- prod` for production)                            |
-| `npm run db:stamp -- dev` | Identifies a database as development (`-- prod` for production)                                     |
+| Command                   | What it does                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`             | Applies pending migrations to the development database and loads the Bible if it is missing, then starts Next. Aborts if either fails |
+| `npm run dev:next`        | Starts Next without touching a database (interface work only)                                                                         |
+| `npm run db:generate`     | Writes a migration from schema changes                                                                                                |
+| `npm run db:migrate:dev`  | Applies pending migrations to development                                                                                             |
+| `npm run build`           | Builds; in the Vercel production deployment only, then applies pending migrations to production and loads the Bible if it is missing  |
+| `npm run db:migrate:prod` | Applies pending migrations to production by hand, after confirmation                                                                  |
+| `npm run db:status`       | Target, stamp, applied and pending migrations (`-- prod` for production)                                                              |
+| `npm run db:stamp -- dev` | Identifies a database as development (`-- prod` for production)                                                                       |
 
 ## How a database is identified
 
@@ -125,7 +193,7 @@ Database tests use PGlite, an in-process PostgreSQL, and apply the committed mig
 
 See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
-- **Ideas** — one table for sermon ideas, point ideas, and undecided ideas, distinguished by type and owned by a user.
+- **Ideas** — implemented in Phase 2A (above).
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Preaching occurrences** (Phase 3) — when, where, and in what context a sermon was preached.

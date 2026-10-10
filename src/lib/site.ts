@@ -13,8 +13,8 @@ export const siteConfig = {
 } as const;
 
 /**
- * Route map. `library` and `history` are the agreed paths for later phases
- * and are listed so links and robots rules have one source.
+ * Route map. `history` is the agreed path for a later phase and is listed so
+ * links and robots rules have one source. An idea is at `/library/<id>`.
  */
 export const routes = {
   home: "/",

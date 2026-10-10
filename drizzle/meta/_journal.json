@@ -8,6 +8,20 @@
       "when": 1791574177247,
       "tag": "0000_create_users",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791608082123,
+      "tag": "0001_create_ideas_and_bible",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791609503044,
+      "tag": "0002_bible_search_index",
+      "breakpoints": true
     }
   ]
 }
