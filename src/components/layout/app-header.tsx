@@ -18,7 +18,8 @@ type IsCurrent = (href: string) => boolean;
 /**
  * Application bar: the same fixed, full-width glass bar as the public header.
  * Shells that render it must offset `main` by `pt-bar`. The space before the
- * theme control is where quick capture goes in Phase 2.
+ * account button is where quick capture goes in Phase 2; the theme lives in
+ * the account menu.
  *
  * Below `md` the bar keeps only the logo and the account button. Destinations
  * move to the tab bar at the foot of the screen, and everything about the
@@ -59,10 +60,7 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
                 </li>
               ))}
             </ul>
-            <div className="flex items-center gap-2.5">
-              <ThemeToggle />
-              <AccountMenu isAdmin={isAdmin} />
-            </div>
+            <AccountMenu isAdmin={isAdmin} />
           </nav>
 
           <AccountSheet isAdmin={isAdmin} isCurrent={isCurrent} />

@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 
 import { cn } from "@/lib/utils";
 
-const options = [
+export const themeOptions = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
 ] as const;
@@ -21,10 +21,11 @@ type ThemeToggleProps = {
 };
 
 /**
- * Light / Dark selector. With no stored choice the site follows the operating
- * system, and the matching option shows as selected; picking one persists it.
+ * The theme in effect and how to change it, shared by the toggle and the
+ * account menu. With no stored choice the site follows the operating system;
+ * picking one persists it.
  */
-export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps) {
+export function useThemeChoice() {
   const { resolvedTheme, setTheme } = useTheme();
   // The active theme is unknown on the server, so nothing is marked
   // checked until after hydration.
@@ -42,6 +43,13 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
     }
     document.startViewTransition(() => flushSync(() => setTheme(value)));
   }
+
+  return { current: mounted ? resolvedTheme : undefined, choose };
+}
+
+/** Light / Dark selector. The option in effect shows as selected. */
+export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps) {
+  const { current, choose } = useThemeChoice();
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
@@ -61,12 +69,12 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
       onKeyDown={onKeyDown}
       className={cn("inline-flex gap-0.5 rounded-lg bg-secondary p-0.5", className)}
     >
-      {options.map(({ value, label, icon: Icon }) => (
+      {themeOptions.map(({ value, label, icon: Icon }) => (
         <button
           key={value}
           type="button"
           role="radio"
-          aria-checked={mounted && resolvedTheme === value}
+          aria-checked={current === value}
           aria-label={showLabels ? undefined : label}
           title={showLabels ? undefined : label}
           onClick={() => choose(value)}

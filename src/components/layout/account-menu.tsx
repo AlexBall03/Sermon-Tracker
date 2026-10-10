@@ -11,10 +11,13 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { routes } from "@/lib/site";
+import { themeOptions, useThemeChoice } from "./theme-toggle";
 
 /** Up to two initials from a name or email address. */
 export function initialsOf(name: string) {
@@ -44,10 +47,14 @@ export function useAccountActions() {
   };
 }
 
-/** Desktop account menu in the application bar. */
+/**
+ * Desktop account menu in the application bar. It also holds the theme, as
+ * menu radio items, so the bar keeps its space for navigation and capture.
+ */
 export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
   const { name, email, initials, imageUrl } = useAccountIdentity();
   const { signOut } = useAccountActions();
+  const theme = useThemeChoice();
 
   return (
     <DropdownMenu>
@@ -75,6 +82,19 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
             Administration
           </DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          aria-label="Colour theme"
+          value={theme.current}
+          onValueChange={theme.choose}
+        >
+          {themeOptions.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden className="text-muted-foreground" />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={signOut}>
           <LogOut aria-hidden />

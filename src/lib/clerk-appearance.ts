@@ -83,5 +83,25 @@ export const clerkAppearance: NonNullable<ComponentProps<typeof ClerkProvider>["
           "0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent), var(--elevation-card)",
       },
     },
+    // Clerk hangs "Last used" over the button's top corner. Here it is an ordinary
+    // badge in the button's own row, after the label, like ui/badge.tsx in its muted tone.
+    lastAuthenticationStrategyBadge: {
+      position: "static",
+      transform: "none",
+      order: 2,
+      flex: "none",
+      marginLeft: "0.5rem",
+      padding: "0.125rem 0.375rem",
+      borderRadius: "0.375rem",
+      border: 0,
+      boxShadow: "none",
+      backgroundColor: "var(--muted)",
+      color: "var(--muted-foreground)",
+      fontSize: "0.6875rem",
+      fontWeight: 600,
+      lineHeight: 1.45,
+      // Below this the button cannot hold its label and the badge on one line.
+      "@media (max-width: 25.99rem)": { display: "none" },
+    },
   },
 };

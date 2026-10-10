@@ -74,6 +74,8 @@ Do not rely on the absence of a sign-up link. Confirm the mode is set in both in
 
 With Restricted mode on, a Google account that has not been invited cannot create an account.
 
+One account can be opened with more than one Google account. Clerk links a Google sign-in to the account that holds the same verified email address, so a person adds the second address under Settings → Email addresses and then signs in with that Google account. The bar shows the account's primary email whichever way they signed in.
+
 ### 4. Neon branches (dashboard)
 
 Create one Neon project. Keep the default branch as **production** and create a second branch named **development**. Create the development branch before production holds real data, or expect to relabel it (see "How a database is identified" in [DATABASE.md](DATABASE.md)).
@@ -150,4 +152,4 @@ Account management (Phase 1C.1; none of this has been run against live Clerk):
 - [ ] Connect Google goes to Google and returns to `/settings` with the account listed; Disconnect removes it.
 - [ ] A second browser appears under Devices and can be signed out from the first.
 - [ ] A sensitive change after a long-lived session opens Clerk's confirmation dialog, styled to match; cancelling it changes nothing.
-- [ ] The theme control in settings and the one in the bar always agree; "Use device setting" returns to the system theme.
+- [ ] The theme control in settings and the one in the account menu always agree; "Use device setting" returns to the system theme.

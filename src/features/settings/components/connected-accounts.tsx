@@ -93,6 +93,10 @@ export function ConnectedAccounts({ user }: { user: AccountUser }) {
           </li>
         ))}
       </ul>
+      <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted-foreground">
+        To sign in with another Google account, add its email address above, then sign in with that
+        Google account.
+      </p>
       <ActionStatus result={result} />
 
       <ConfirmDialog

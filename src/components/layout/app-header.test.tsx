@@ -57,10 +57,9 @@ describe("AppHeader", () => {
     );
   });
 
-  it("has labelled account, theme, and mobile account controls", () => {
+  it("has labelled account controls for both layouts", () => {
     render(<AppHeader isAdmin />);
     expect(screen.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
-    expect(screen.getByRole("radiogroup", { name: "Colour theme" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open account menu" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -181,6 +180,10 @@ describe("AppHeader", () => {
       "/admin",
     );
     expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    // The theme is chosen here on desktop; the bar has no separate control.
+    expect(screen.getByRole("menuitemradio", { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "Dark" })).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Colour theme" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /manage account/i })).not.toBeInTheDocument();
   });
 });
