@@ -64,21 +64,19 @@ export function MobileNav({ links }: MobileNavProps) {
                   </li>
                 ))}
               </ul>
-              <div style={row(links.length)} className="animate-menu-row pt-5">
+              {/* The theme control needs no label: it sits beside the one action, sun and moon showing. */}
+              <div
+                style={row(links.length)}
+                className="flex animate-menu-row items-center gap-3 pt-5"
+              >
                 <Link
                   href={routes.signIn}
                   onClick={close}
-                  className={buttonVariants({ size: "lg", className: "w-full" })}
+                  className={buttonVariants({ size: "lg", className: "flex-1" })}
                 >
                   Sign in
                 </Link>
-              </div>
-              <div
-                style={row(links.length + 1)}
-                className="flex animate-menu-row items-center justify-between pt-5"
-              >
-                <p className="text-sm font-medium text-muted-foreground">Theme</p>
-                <ThemeToggle />
+                <ThemeToggle className="shrink-0" />
               </div>
             </nav>
           </div>

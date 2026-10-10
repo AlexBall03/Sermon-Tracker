@@ -168,13 +168,15 @@
 
   --spacing-bar: var(--bar-h);
 
+  /* Short entrance for status messages. */
+  --animate-menu: menu 0.16s ease-out both;
   /*
-   * The mobile menu: the sheet unrolls from the bar, its rows follow in a short
+   * The mobile sheets: the sheet unrolls from the bar, its rows follow in a short
    * stagger (`--i` is the row's position), and the page dims behind it.
-   * `--animate-menu-out` must match `exitMs` in use-nav-panel.ts.
+   * `--animate-sheet-out` must match `exitMs` in use-nav-panel.ts.
    */
-  --animate-menu: menu 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  --animate-menu-out: panel-leave 0.14s ease-in both;
+  --animate-sheet: sheet 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-sheet-out: panel-leave 0.14s ease-in both;
   --animate-menu-row: menu-row 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--i, 0) * 35ms + 50ms)
     both;
   --animate-scrim: scrim 0.2s ease-out both;
@@ -202,8 +204,19 @@
     }
   }
 
-  /* the sheet unrolls downward; the negative inset leaves room for its shadow */
   @keyframes menu {
+    from {
+      opacity: 0;
+      transform: translateY(-0.25rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* the sheet unrolls downward; the negative inset leaves room for its shadow */
+  @keyframes sheet {
     from {
       clip-path: inset(0 0 100% 0);
     }

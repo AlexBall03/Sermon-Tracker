@@ -3,8 +3,11 @@ import type { Metadata } from "next";
 
 import { Logo } from "@/components/brand/logo";
 import { AppHeader } from "@/components/layout/app-header";
+import { showsTabBar } from "@/components/layout/app-links";
+import { BackToTop } from "@/components/layout/back-to-top";
 import { PageLoading } from "@/components/layout/page-loading";
 import { requireActiveUser } from "@/features/auth/access";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -26,12 +29,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function Shell({ children }: { children: React.ReactNode }) {
   const user = await requireActiveUser();
+  const isAdmin = user.role === "admin";
   return (
     <>
-      <AppHeader isAdmin={user.role === "admin"} />
-      <main id="main" className="flex-1 pt-bar">
+      <AppHeader isAdmin={isAdmin} />
+      {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+      <main
+        id="main"
+        className={cn(
+          "flex-1 pt-bar",
+          showsTabBar(isAdmin) && "max-md:pb-[calc(var(--bar-h)+env(safe-area-inset-bottom))]",
+        )}
+      >
         {children}
       </main>
+      <BackToTop aboveTabBar={showsTabBar(isAdmin)} />
     </>
   );
 }

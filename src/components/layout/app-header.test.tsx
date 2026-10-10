@@ -57,11 +57,11 @@ describe("AppHeader", () => {
     );
   });
 
-  it("has labelled account, theme, and mobile menu controls", () => {
+  it("has labelled account, theme, and mobile account controls", () => {
     render(<AppHeader isAdmin />);
     expect(screen.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
     expect(screen.getByRole("radiogroup", { name: "Colour theme" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Open account menu" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -74,10 +74,38 @@ describe("AppHeader", () => {
     }
   });
 
-  it("sends account management to our settings page from the mobile menu", () => {
+  it("shows the tab bar only when there is more than one destination", () => {
+    const { unmount } = render(<AppHeader isAdmin={false} />);
+    expect(screen.queryByRole("navigation", { name: "Sections" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<AppHeader isAdmin />);
+    const tabs = screen.getByRole("navigation", { name: "Sections" });
+    expect(within(tabs).getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
+    expect(within(tabs).getByRole("link", { name: "Admin" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("offers administration from the mobile account sheet to administrators only", () => {
+    const { unmount } = render(<AppHeader isAdmin={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
+    expect(screen.queryByRole("link", { name: "Administration" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<AppHeader isAdmin />);
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
+    expect(screen.getByRole("link", { name: "Administration" })).toHaveAttribute("href", "/admin");
+  });
+
+  it("sends account management to our settings page from the mobile account sheet", () => {
     state.pathname = "/settings";
     render(<AppHeader isAdmin={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
 
     const settings = screen.getByRole("link", { name: "Settings" });
     expect(settings).toHaveAttribute("href", "/settings");
@@ -89,54 +117,54 @@ describe("AppHeader", () => {
     fireEvent.click(settings);
     expect(state.openUserProfile).not.toHaveBeenCalled();
     // Following the link closes the panel.
-    expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open account menu" })).toBeInTheDocument();
   });
 
-  it("still signs out from the mobile menu, and Escape closes it", () => {
+  it("still signs out from the mobile account sheet, and Escape closes it", () => {
     render(<AppHeader isAdmin={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(state.signOut).toHaveBeenCalledWith({ redirectUrl: "/" });
 
     fireEvent.keyDown(document, { key: "Escape" });
-    const toggle = screen.getByRole("button", { name: "Open menu" });
+    const toggle = screen.getByRole("button", { name: "Open account menu" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveFocus();
   });
 
-  it("keeps a closing mobile menu inert until its exit animation ends", () => {
+  it("keeps a closing mobile sheet inert until its exit animation ends", () => {
     vi.useFakeTimers();
     render(<AppHeader isAdmin={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    const panel = document.getElementById("app-mobile-nav")!;
-    expect(panel).toHaveClass("animate-menu");
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
+    const panel = document.getElementById("app-account-sheet")!;
+    expect(panel).toHaveClass("animate-sheet");
     expect(panel).not.toHaveAttribute("inert");
 
-    fireEvent.click(screen.getByRole("button", { name: "Close menu" }));
-    expect(panel).toHaveClass("animate-menu-out");
+    fireEvent.click(screen.getByRole("button", { name: "Close account menu" }));
+    expect(panel).toHaveClass("animate-sheet-out");
     expect(panel).toHaveAttribute("inert");
 
     // Reopening mid-exit keeps the same panel and cancels the removal.
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
     act(() => void vi.advanceTimersByTime(500));
     expect(panel).toBeInTheDocument();
     expect(panel).not.toHaveAttribute("inert");
 
-    fireEvent.click(screen.getByRole("button", { name: "Close menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close account menu" }));
     act(() => void vi.advanceTimersByTime(500));
     expect(panel).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
-  it("closes the mobile menu when the window widens past the breakpoint", () => {
+  it("closes the mobile account sheet when the window widens past the breakpoint", () => {
     render(<AppHeader isAdmin={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    expect(document.getElementById("app-mobile-nav")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
+    expect(document.getElementById("app-account-sheet")).toBeInTheDocument();
 
     act(() => mediaListeners.forEach((listener) => listener({ matches: true })));
     // Removed at once: a hidden panel would keep the bar opaque.
-    expect(document.getElementById("app-mobile-nav")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute(
+    expect(document.getElementById("app-account-sheet")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open account menu" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );

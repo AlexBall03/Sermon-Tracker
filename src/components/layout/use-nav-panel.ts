@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** Matches `--animate-menu-out` in globals.css. */
+/** Matches `--animate-sheet-out` in globals.css. */
 const exitMs = 140;
 
 /** Tailwind's `md`, where the panel's wrapper becomes `md:hidden`. */
@@ -63,7 +63,7 @@ export function useNavPanel() {
     panelProps: {
       "data-nav-panel": "",
       inert: phase === "closing",
-      className: phase === "closing" ? "animate-menu-out" : "animate-menu",
+      className: phase === "closing" ? "animate-sheet-out" : "animate-sheet",
     },
     /** Spread onto the layer that dims the page behind the panel. Tapping it closes the panel. */
     scrimProps: {
