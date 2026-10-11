@@ -7,6 +7,7 @@ import {
   noSelection,
   selectedVerses,
   selectionReferences,
+  selectRange,
   selectVerses,
   toggleVerse,
   wholeChapter,
@@ -46,6 +47,27 @@ describe("toggleVerse", () => {
     expect([1, 2, 3].reduce((s, verse) => toggleVerse(s, verse, 3), noSelection)).toEqual(
       wholeChapter,
     );
+  });
+});
+
+describe("selectRange", () => {
+  it("takes every verse between the two, whichever is given first", () => {
+    expect(named(selectRange(pick([16]), 16, 18, john3))).toBe("John 3:16–18");
+    expect(named(selectRange(pick([18]), 18, 16, john3))).toBe("John 3:16–18");
+  });
+
+  it("adds to what is selected and takes nothing out", () => {
+    expect(named(selectRange(pick([3, 10]), 10, 8, john3))).toBe("John 3:3, 8–10");
+    expect(named(selectRange(pick([16, 17, 18]), 17, 17, john3))).toBe("John 3:16–18");
+  });
+
+  it("keeps to the verses the chapter has", () => {
+    expect(named(selectRange(pick([35]), 35, 40, john3))).toBe("John 3:35–36");
+    expect(selectRange(noSelection, 40, 45, john3)).toEqual(noSelection);
+  });
+
+  it("is the whole chapter when it reaches from the first verse to the last", () => {
+    expect(selectRange(pick([1]), 1, john3, john3)).toEqual(wholeChapter);
   });
 });
 

@@ -135,7 +135,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
                   setEntry(event.target.value);
                   search.clearProblem();
                 }}
-                placeholder="Words, or Romans 8:28"
+                placeholder="Words or a reference"
                 autoComplete="off"
                 spellCheck={false}
                 enterKeyHint="search"

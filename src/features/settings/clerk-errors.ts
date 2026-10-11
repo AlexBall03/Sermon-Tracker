@@ -20,12 +20,12 @@ const messages: Record<string, string> = {
   verification_failed: "Too many incorrect attempts. Send a new code and try again.",
   too_many_requests: "Too many attempts. Wait a moment, then try again.",
   external_account_exists: "That account is already connected to someone else.",
-  oauth_access_denied: "The connection was cancelled.",
+  oauth_access_denied: "The connection was canceled.",
   session_reverification_required: "Confirm it is you, then try again.",
   authentication_invalid: "Your session has ended. Sign in again.",
 };
 
-export const cancelledMessage = "Cancelled. Nothing was changed.";
+export const cancelledMessage = "Canceled. Nothing was changed.";
 
 /** A message safe to show the account owner, without provider internals. */
 export function describeAccountError(error: unknown, fallback: string) {

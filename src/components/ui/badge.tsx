@@ -5,7 +5,7 @@ type BadgeProps = {
   children: string;
 };
 
-/** A small status marker. The dot means tone is never carried by colour alone. */
+/** A small status marker. The dot means tone is never carried by color alone. */
 export function Badge({ tone, children }: BadgeProps) {
   return (
     <span

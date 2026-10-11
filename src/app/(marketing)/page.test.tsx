@@ -16,7 +16,7 @@ describe("landing page", () => {
     render(<HomePage />);
     for (const name of [
       "Save the idea in seconds",
-      "Organise and build over time",
+      "Organize and build over time",
       "Preserve your preaching history",
     ]) {
       expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();

@@ -8,6 +8,7 @@ import { requireActiveUser } from "@/features/auth/access";
 import { FilterChips } from "@/features/ideas/components/library/filter-chips";
 import { IdeaResults } from "@/features/ideas/components/library/idea-results";
 import { LibraryFilters } from "@/features/ideas/components/library/library-filters";
+import { LibrarySections } from "@/features/ideas/components/library/library-sections";
 import { LibrarySearch } from "@/features/ideas/components/library/library-search";
 import { LibraryProvider, LibraryResults } from "@/features/ideas/components/library/library-state";
 import { LibraryToolbar } from "@/features/ideas/components/library/library-toolbar";
@@ -72,7 +73,7 @@ export default async function LibraryPage({
   const header = (
     <PageHeader
       title="Library"
-      description="Every idea you have captured: sermons, points, and thoughts you have not sorted yet."
+      description="Every idea you have captured, and the Scripture you have saved."
       action={<CaptureButton className="max-md:hidden" />}
     />
   );
@@ -82,6 +83,7 @@ export default async function LibraryPage({
     return (
       <div className="container-page py-10 lg:py-12">
         {header}
+        <LibrarySections current="ideas" />
         <section aria-labelledby="empty-heading" className={emptyState}>
           <h2 id="empty-heading" className={emptyHeading}>
             Nothing here yet
@@ -100,9 +102,10 @@ export default async function LibraryPage({
     <div className="container-page py-10 lg:py-12">
       <LibraryViewScript />
       {header}
+      <LibrarySections current="ideas" />
 
       <LibraryProvider query={query} tags={tags}>
-        <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
           <LibrarySearch className="lg:flex-1" />
           <LibraryToolbar className="lg:flex-none" />
         </div>

@@ -65,7 +65,7 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
   return (
     <div
       role="radiogroup"
-      aria-label="Colour theme"
+      aria-label="Color theme"
       onKeyDown={onKeyDown}
       className={cn("inline-flex gap-0.5 rounded-lg bg-secondary p-0.5", className)}
     >

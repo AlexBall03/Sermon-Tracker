@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, sermonTypes } from "../features/ideas/model";
+import { highlightColors, translationIds } from "../features/scripture/saved/model";
 
 /**
  * Application roles and account statuses. Stored as text with CHECK
@@ -255,5 +256,140 @@ export const biblePsalmTitles = pgTable(
   (table) => [
     check("bible_psalm_titles_psalm_check", sql`${table.psalm} between 1 and 150`),
     check("bible_psalm_titles_text_check", sql`char_length(btrim(${table.text})) > 0`),
+  ],
+);
+
+/**
+ * A saved passage: any verses a person chose to keep, with an optional label
+ * and notes. The verses are in `bible_favorite_verses`; the text is read from
+ * `bible_verses` when shown and is never copied here.
+ *
+ * What makes a favorite itself is its verses and its translation, never its
+ * label or notes: `selection_key` is a digest of the verses in canonical
+ * order, and it is unique within an account and a translation, so the same
+ * passage cannot be saved twice however the requests arrive. `reference` is
+ * the passage as it is written ("Romans 3:10, 23; 6:23") and the `first_*`
+ * columns are where it begins; all are rewritten with the verses, and exist
+ * so the library can search and order in SQL.
+ */
+export const bibleFavorites = pgTable(
+  "bible_favorites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    translation: text("translation", { enum: translationIds }).notNull(),
+    selectionKey: text("selection_key").notNull(),
+    reference: text("reference").notNull(),
+    firstBook: smallint("first_book").notNull(),
+    firstChapter: smallint("first_chapter").notNull(),
+    firstVerse: smallint("first_verse").notNull(),
+    label: text("label"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check("bible_favorites_translation_check", sql`${table.translation} in ('kjv')`),
+    check(
+      "bible_favorites_label_check",
+      sql`${table.label} is null or char_length(btrim(${table.label})) between 1 and 120`,
+    ),
+    check(
+      "bible_favorites_notes_check",
+      sql`${table.notes} is null or char_length(${table.notes}) <= 2000`,
+    ),
+    check("bible_favorites_first_check", sql`${table.firstBook} between 1 and 66`),
+    unique("bible_favorites_selection_key").on(
+      table.ownerId,
+      table.translation,
+      table.selectionKey,
+    ),
+    // What bible_favorite_verses points at, so a verse row can only belong to its favorite's owner.
+    unique("bible_favorites_id_owner_key").on(table.id, table.ownerId),
+    index("bible_favorites_owner_created_idx").on(table.ownerId, table.createdAt.desc()),
+    index("bible_favorites_owner_updated_idx").on(table.ownerId, table.updatedAt.desc()),
+    index("bible_favorites_owner_place_idx").on(
+      table.ownerId,
+      table.firstBook,
+      table.firstChapter,
+      table.firstVerse,
+    ),
+  ],
+);
+
+export type BibleFavorite = typeof bibleFavorites.$inferSelect;
+
+/**
+ * The verses of a favorite, one row each, in canonical order (`position`).
+ * The owner is repeated and is part of the foreign key, as in `idea_tags`.
+ * Deleting the favorite removes its rows and nothing else.
+ */
+export const bibleFavoriteVerses = pgTable(
+  "bible_favorite_verses",
+  {
+    favoriteId: uuid("favorite_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    position: smallint("position").notNull(),
+    book: smallint("book").notNull(),
+    chapter: smallint("chapter").notNull(),
+    verse: smallint("verse").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.favoriteId, table.book, table.chapter, table.verse] }),
+    unique("bible_favorite_verses_position_key").on(table.favoriteId, table.position),
+    foreignKey({
+      name: "bible_favorite_verses_favorite_fk",
+      columns: [table.favoriteId, table.ownerId],
+      foreignColumns: [bibleFavorites.id, bibleFavorites.ownerId],
+    }).onDelete("cascade"),
+    check(
+      "bible_favorite_verses_place_check",
+      sql`${table.book} between 1 and 66 and ${table.chapter} >= 1 and ${table.verse} >= 1`,
+    ),
+    index("bible_favorite_verses_owner_place_idx").on(table.ownerId, table.book, table.chapter),
+  ],
+);
+
+/**
+ * Highlighted verses. The primary key is the account, the translation, and
+ * the verse, so a verse has one color or none, and a chapter's highlights
+ * are one index range. They know nothing of favorites: either can exist
+ * without the other.
+ */
+export const bibleHighlights = pgTable(
+  "bible_highlights",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    translation: text("translation", { enum: translationIds }).notNull(),
+    book: smallint("book").notNull(),
+    chapter: smallint("chapter").notNull(),
+    verse: smallint("verse").notNull(),
+    color: text("color", { enum: highlightColors }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.ownerId, table.translation, table.book, table.chapter, table.verse],
+    }),
+    check("bible_highlights_translation_check", sql`${table.translation} in ('kjv')`),
+    check(
+      "bible_highlights_color_check",
+      sql`${table.color} in ('yellow', 'green', 'blue', 'red')`,
+    ),
+    check(
+      "bible_highlights_place_check",
+      sql`${table.book} between 1 and 66 and ${table.chapter} >= 1 and ${table.verse} >= 1`,
+    ),
   ],
 );

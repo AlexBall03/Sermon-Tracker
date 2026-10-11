@@ -19,6 +19,8 @@ test.describe("guests and application routes", () => {
     "/settings",
     "/library",
     "/library/00000000-0000-4000-8000-000000000000",
+    "/library/scripture",
+    "/library/scripture?q=grace&book=45&color=yellow",
     "/bible",
     "/bible?book=43&chapter=3&verse=16",
   ]) {

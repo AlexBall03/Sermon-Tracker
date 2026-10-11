@@ -215,7 +215,7 @@ describe("AppHeader", () => {
     // The theme is chosen here on desktop; the bar has no separate control.
     expect(screen.getByRole("menuitemradio", { name: "Light" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "Dark" })).toBeInTheDocument();
-    expect(screen.queryByRole("radiogroup", { name: "Colour theme" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Color theme" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /manage account/i })).not.toBeInTheDocument();
   });
 });

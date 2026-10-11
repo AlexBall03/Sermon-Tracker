@@ -4,7 +4,7 @@ import type { ActionResult } from "@/lib/action-result";
 
 /**
  * Announces the result of the last action to everyone, including screen
- * readers. The icon means success and failure do not differ by colour alone.
+ * readers. The icon means success and failure do not differ by color alone.
  */
 export function ActionStatus({ result }: { result: ActionResult | null }) {
   const Icon = result?.ok ? CircleCheck : CircleAlert;

@@ -50,6 +50,21 @@ export function toggleVerse(
 }
 
 /**
+ * Adds every verse from one to another, in either direction, to what is
+ * selected: a click, then Shift and a click further on. Nothing is taken out.
+ */
+export function selectRange(
+  selection: VerseSelection,
+  from: number,
+  to: number,
+  verseCount: number,
+): VerseSelection {
+  const [first, last] = from <= to ? [from, to] : [to, from];
+  const run = Array.from({ length: last - first + 1 }, (_, index) => first + index);
+  return selectVerses([...selectedVerses(selection, verseCount), ...run], verseCount);
+}
+
+/**
  * The selection as references: none for nothing, one for the whole chapter,
  * and otherwise one for each unbroken run of verses.
  */

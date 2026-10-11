@@ -7,7 +7,7 @@ import { useId } from "react";
  * lines of text beside it stop short of it instead of running underneath.
  *
  * Redrawn as flat vector from the brand board (docs/brand/brand-board.png).
- * The mark is a fixed brand asset, so its colours are literal and do not
+ * The mark is a fixed brand asset, so its colors are literal and do not
  * follow the UI theme. Keep public/brand/mark.svg and src/app/icon.svg in
  * step with any change to the geometry here.
  */

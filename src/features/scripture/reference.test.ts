@@ -94,9 +94,9 @@ describe("parseReference", () => {
       ["John 4-3", /end after it starts/],
       ["John 3-4:2", /starting verse/],
       ["John", /Add a chapter/],
-      ["Hezekiah 3:16", /not recognised/],
+      ["Hezekiah 3:16", /not recognized/],
       ["", /Type a reference/],
-      ["John three", /not recognised/],
+      ["John three", /not recognized/],
     ] as const) {
       const result = parseReference(typed);
       expect(result.ok, typed).toBe(false);

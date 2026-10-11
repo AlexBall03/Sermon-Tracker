@@ -10,12 +10,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Sermon Tracker project notes
 
-- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`.
+- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`, `docs/HANDOFF-2C.1B.md`.
 - Stay inside the current phase. Do not build later-phase features early.
 - The repository owner manages Git. Run read-only Git commands only: no commit, stage, branch, push, pull, or config changes.
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.
 - The repository is public. No secrets anywhere.
-- Use semantic design tokens from `src/app/globals.css`; no hardcoded brand colours in components. The interface is neutral: emerald is for actions, selection, and focus, not for surfaces.
+- Use semantic design tokens from `src/app/globals.css`; no hardcoded brand colors in components. The interface is neutral: emerald is for actions, selection, and focus, not for surfaces.
 - Schema changes: edit `src/db/schema.ts`, run `npm run db:generate`, commit the SQL. Never `drizzle-kit push`, never hand-edit an applied migration, never run `db:migrate:prod` or `db:stamp`. Production is migrated by its own deployment during `npm run build` (see `docs/DATABASE.md`), so every migration must work with the code already live.
 - Every page under `(app)` and every server action checks access itself with the helpers in `src/features/auth/access.ts`. The proxy is routing only.
 - `npm run dev` needs a development database. Use `npm run dev:next` when none is configured.
@@ -25,5 +25,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Anything that shows, picks, or searches Scripture uses `src/features/scripture`. Bible text and the psalm titles are loaded by the migrate command from `data/bible/kjv.json` and `data/bible/kjv-psalm-titles.json`; never edit either file by hand (see `data/bible/README.md`). A psalm's title is never part of a verse.
 - The Bible reader's place is its address. Read and write it only through `src/features/scripture/reader-location.ts`, and move within the reader with `window.history.pushState`, not the router.
 - In the Bible reader no selection means no verses, never the whole chapter. Use `src/features/scripture/selection.ts`, and add actions on a selection as children of `SelectionToolbar`. The Scripture Panel (`ScriptureBrowser`) keeps its own rule, where an empty choice is the whole chapter; do not change either to match the other.
+- Favorites and highlights are `src/features/scripture/saved`. Every query there filters by owner in its WHERE clause, and every one carries a translation (`translation.id`); keep both. A favorite is its verses and its translation, never its label: do not add a second way to save one that goes round `createFavorite`. A verse has one highlight color; a highlight is never stored on a favorite.
+- In the reader, an account's marks are read and changed only through `src/features/scripture/use-chapter-marks.ts`, which shows a change at once and takes it back if the server refuses it. `PassageText` draws a highlight behind the words and a selection across the row; keep them apart, a verse can be both.
+- Saved Scripture is a section of the library (`/library/scripture`), reached from `LibrarySections`, and is not in the main navigation. Its search, filters, order, and page are URL parameters read and written only through `src/features/scripture/saved/saved-query.ts`, and its controls change the address only through `useSavedScripture().apply`.
 - Main navigation is `src/components/layout/app-links.ts`. Add the outline page there when it exists. Administration stays in the account menu.
 - Dropdowns use `src/components/ui/select.tsx`, not a native `<select>`.

@@ -9,7 +9,7 @@ type LogoProps = {
   markClassName?: string;
   /** Sizes the wordmark; its optical offset is in ems, so it scales with it. */
   textClassName?: string;
-  /** Mark colourway; defaults to the primary emerald tile. */
+  /** Mark colorway; defaults to the primary emerald tile. */
   markVariant?: ComponentProps<typeof LogoMark>["variant"];
 };
 

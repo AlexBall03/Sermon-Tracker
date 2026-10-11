@@ -32,7 +32,7 @@ import { filtersPanelId } from "./library-toolbar";
 /** With more tags than this, the panel offers a box to find one. */
 const tagSearchFrom = 12;
 
-/** A value that is in the filter or not. The tick means it never rests on colour alone. */
+/** A value that is in the filter or not. The tick means it never rests on color alone. */
 function Toggle({
   pressed,
   onToggle,

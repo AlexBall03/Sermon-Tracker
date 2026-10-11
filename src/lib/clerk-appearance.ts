@@ -65,7 +65,7 @@ export const clerkAppearance: NonNullable<ComponentProps<typeof ClerkProvider>["
         boxShadow:
           "0 0 0 1px color-mix(in oklab, var(--foreground) 30%, transparent), var(--elevation-card)",
       },
-      // Important: Clerk's own focus ring is a solid 4px band in the ring colour.
+      // Important: Clerk's own focus ring is a solid 4px band in the ring color.
       "&:focus, &:focus-visible, &:focus-within": {
         boxShadow: "0 0 0 1px var(--ring), var(--elevation-focus) !important",
         outline: "none",

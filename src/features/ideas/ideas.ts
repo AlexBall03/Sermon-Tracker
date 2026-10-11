@@ -161,7 +161,7 @@ const sortOrders: Record<LibrarySort, SQL[]> = {
 };
 
 /** A search word as a LIKE pattern that matches it anywhere, with its own %, _ and \ taken literally. */
-function containing(term: string) {
+export function containing(term: string) {
   return `%${term.replace(/[\\%_]/g, "\\$&")}%`;
 }
 

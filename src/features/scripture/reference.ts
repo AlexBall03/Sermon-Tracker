@@ -123,7 +123,7 @@ export function parseReference(input: string): ParsedReference {
   const split = /^(.*?[a-z.]) ?(\d[\d:.-]*)?$/i.exec(text);
   const book = split ? findBook(split[1]) : undefined;
   if (!split || !book) {
-    return { ok: false, message: "That book was not recognised. Try John 3:16 or Psalm 23." };
+    return { ok: false, message: "That book was not recognized. Try John 3:16 or Psalm 23." };
   }
 
   const single = chaptersIn(book.id) === 1;

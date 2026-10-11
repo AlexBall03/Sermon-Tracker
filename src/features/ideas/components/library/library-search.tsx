@@ -8,12 +8,39 @@ import { cn } from "@/lib/utils";
 import { normaliseSearch } from "../../library-query";
 import { searchLimits } from "../../model";
 import { useLibrary } from "./library-state";
+import type { ApplyQuery } from "./query-navigation";
 
 /** How long typing must pause before the search is run. */
 export const searchDebounceMs = 300;
 
+type SearchBoxProps = {
+  /** The search in the query the controls are showing. */
+  q: string;
+  apply: ApplyQuery<{ q: string; page: number }>;
+  /** Names the box, and the search landmark around it. */
+  label: string;
+  landmark: string;
+  placeholder: string;
+  className?: string;
+};
+
+/** The ideas' search box. */
+export function LibrarySearch({ className }: { className?: string }) {
+  const { query, apply } = useLibrary();
+  return (
+    <SearchBox
+      q={query.q}
+      apply={apply as SearchBoxProps["apply"]}
+      label="Search ideas"
+      landmark="Search your library"
+      placeholder="Search titles, subjects, and notes..."
+      className={className}
+    />
+  );
+}
+
 /**
- * The library's search box. The database does the searching: this only
+ * A search box for a section of the library. The database does the searching: this only
  * decides when to ask.
  *
  * - Typing asks after a pause of `searchDebounceMs`, not on every key.
@@ -24,22 +51,21 @@ export const searchDebounceMs = 300;
  * - When the address changes from outside (Back, Forward, a cleared filter
  *   bar), the box follows it.
  */
-export function LibrarySearch({ className }: { className?: string }) {
+export function SearchBox({ q, apply, label, landmark, placeholder, className }: SearchBoxProps) {
   const id = useId();
-  const { query, apply } = useLibrary();
-  const [text, setText] = useState(query.q);
+  const [text, setText] = useState(q);
   // What this box last asked for. A query that differs came from elsewhere.
-  const [sent, setSent] = useState(query.q);
-  const [seen, setSeen] = useState(query.q);
+  const [sent, setSent] = useState(q);
+  const [seen, setSeen] = useState(q);
   // True until this spell of typing has added its history entry.
   const fresh = useRef(true);
   const input = useRef<HTMLInputElement>(null);
 
-  if (query.q !== seen) {
-    setSeen(query.q);
-    if (query.q !== sent) {
-      setSent(query.q);
-      setText(query.q);
+  if (q !== seen) {
+    setSeen(q);
+    if (q !== sent) {
+      setSent(q);
+      setText(q);
     }
   }
 
@@ -66,7 +92,7 @@ export function LibrarySearch({ className }: { className?: string }) {
   return (
     <form
       role="search"
-      aria-label="Search your library"
+      aria-label={landmark}
       onSubmit={(event) => {
         event.preventDefault();
         submit(text, "push");
@@ -75,7 +101,7 @@ export function LibrarySearch({ className }: { className?: string }) {
       className={cn("relative min-w-0", className)}
     >
       <label htmlFor={id} className="sr-only">
-        Search ideas
+        {label}
       </label>
       <Search
         className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -89,7 +115,7 @@ export function LibrarySearch({ className }: { className?: string }) {
         value={text}
         onChange={(event) => setText(event.target.value)}
         onBlur={() => (fresh.current = true)}
-        placeholder="Search titles, subjects, and notes..."
+        placeholder={placeholder}
         maxLength={searchLimits.query}
         autoComplete="off"
         spellCheck={false}

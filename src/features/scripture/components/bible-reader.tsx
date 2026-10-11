@@ -50,22 +50,36 @@ import {
   subscribeSidebar,
 } from "../reader-sidebar";
 import { formatReference, formatReferences } from "../reference";
+import { noMarks, type ChapterMarks, type FavoriteSummary } from "../saved/model";
+import { versesInChapter } from "../saved/verse-set";
 import {
   formatSelectionText,
   noSelection,
   selectedVerses,
   selectionReferences,
+  selectRange,
   toggleVerse,
   wholeChapter,
   type VerseSelection,
 } from "../selection";
 import { keepChapter, loadChapter, useChapter, type ChapterText } from "../use-chapter";
+import { keepMarks, loadMarks, useChapterMarks } from "../use-chapter-marks";
 import { PassageError, PassageSkeleton, PassageText } from "./passage-text";
 import { ReaderNavigator, useReaderNavigation } from "./reader-navigator";
+import { FavoriteEditor } from "./saved/favorite-editor";
+import { SelectionActions, SelectionFavorites } from "./saved/selection-actions";
 import { SelectionToolbar } from "./selection-toolbar";
 
-/** A chapter the server sent with the page, so a link to it arrives with its text. */
-export type InitialChapter = { book: number; chapter: number; text: ChapterText };
+/**
+ * A chapter the server sent with the page, so a link to it arrives with its
+ * text, and with what the reader has marked in it where that could be read.
+ */
+export type InitialChapter = {
+  book: number;
+  chapter: number;
+  text: ChapterText;
+  marks?: ChapterMarks;
+};
 
 const sidebarId = "bible-navigation";
 
@@ -388,6 +402,26 @@ function ChapterView({
   const fetched = useChapter(book, chapter);
   const text = sent ?? (fetched.status === "ready" ? fetched : null);
 
+  // What this account has marked here: highlights, and the favorites that
+  // touch the chapter. Marks that came with the page are shown from the first
+  // frame; after that the store is the truth, and it asks again on its own.
+  const sentMarks = sent ? initial?.marks : undefined;
+  useEffect(() => {
+    if (sentMarks) keepMarks(book, chapter, sentMarks);
+  }, [book, chapter, sentMarks]);
+  const held = useChapterMarks(book, chapter);
+  const marks = held.ready ? held.marks : (sentMarks ?? noMarks);
+  const favoriteVerses = useMemo(
+    () =>
+      new Set(
+        marks.favorites.flatMap((favorite) => versesInChapter(favorite.verses, book, chapter)),
+      ),
+    [marks.favorites, book, chapter],
+  );
+  const [managing, setManaging] = useState<FavoriteSummary | null>(null);
+  // The verse last clicked, which Shift and a click reach from.
+  const anchor = useRef<number | null>(null);
+
   // With this chapter in hand, fetch the ones either side, so turning to them
   // shows their text at once and never the loading lines in between.
   const has = text !== null;
@@ -400,6 +434,8 @@ function ChapterView({
       const [nearBook, nearChapter] = neighbour.split(".").map(Number);
       // A failure here is nobody's concern: the chapter is asked for again when it is opened.
       void loadChapter(nearBook, nearChapter).catch(() => {});
+      // Its marks too, so its highlights are there as it slides in.
+      void loadMarks(nearBook, nearChapter);
     }
   }, [has, before, after]);
 
@@ -578,8 +614,24 @@ function ChapterView({
               verses={text.verses}
               superscription={text.title}
               selected={chosen}
+              highlights={marks.highlights}
+              favorites={favoriteVerses}
               located={verse}
-              onSelectVerse={(picked) => change(toggleVerse(selection, picked, verseCount))}
+              onSelectVerse={(picked) => {
+                anchor.current = picked;
+                change(toggleVerse(selection, picked, verseCount));
+              }}
+              // Shift reaches from the verse last clicked to this one. With nothing
+              // selected to reach from, it is a click like any other.
+              onSelectThrough={(picked) => {
+                const from = selection.kind === "none" ? null : anchor.current;
+                anchor.current = picked;
+                change(
+                  from === null
+                    ? toggleVerse(selection, picked, verseCount)
+                    : selectRange(selection, from, picked, verseCount),
+                );
+              }}
             />
           </div>
         ) : fetched.status === "error" ? (
@@ -596,7 +648,7 @@ function ChapterView({
        * says in words which way it goes, and its arrow leans that way under the pointer.
        */}
       <nav
-        aria-label="Neighbouring chapters"
+        aria-label="Neighboring chapters"
         className="mt-10 flex items-stretch justify-between gap-3 border-t pt-4"
       >
         {previous ? (
@@ -646,7 +698,26 @@ function ChapterView({
         onCopyReference={() => void copy("reference")}
         onCopyLink={() => void copy("link")}
         onClear={() => change(noSelection)}
-      />
+        footer={
+          <SelectionFavorites
+            book={book}
+            chapter={chapter}
+            verses={chosen}
+            marks={marks}
+            onManage={setManaging}
+          />
+        }
+      >
+        <SelectionActions
+          book={book}
+          chapter={chapter}
+          verses={chosen}
+          marks={marks}
+          onProblem={setProblem}
+          onManage={setManaging}
+        />
+      </SelectionToolbar>
+      <FavoriteEditor favorite={managing} onClose={() => setManaging(null)} />
     </article>
   );
 }

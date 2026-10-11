@@ -102,7 +102,7 @@ test.describe("theme", () => {
     const lightBackground = await background();
 
     await openMenuIfCollapsed(page);
-    const themes = page.getByRole("radiogroup", { name: "Colour theme" });
+    const themes = page.getByRole("radiogroup", { name: "Color theme" });
     // No stored choice yet: the option matching the system preference is selected.
     await expect(themes.getByRole("radio", { name: "Light" })).toBeChecked();
     await expect(themes.getByRole("radio")).toHaveCount(2);

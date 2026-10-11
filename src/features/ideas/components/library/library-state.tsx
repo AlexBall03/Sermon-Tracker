@@ -1,22 +1,10 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useOptimistic,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useContext, useMemo, useState } from "react";
 
 import { libraryHref, type LibraryQuery } from "../../library-query";
 import type { TagSummary } from "../../tags";
-
-type Change = Partial<LibraryQuery> | ((query: LibraryQuery) => Partial<LibraryQuery>);
+import { useQueryNavigation, type ApplyQuery } from "./query-navigation";
 
 type LibraryState = {
   /**
@@ -33,7 +21,7 @@ type LibraryState = {
    * the change names one. `replace` rewrites the current history entry
    * instead of adding one (typing in the search box).
    */
-  apply: (change: Change, options?: { history?: "push" | "replace" }) => void;
+  apply: ApplyQuery<LibraryQuery>;
   filtersOpen: boolean;
   setFiltersOpen: (open: boolean) => void;
   managingTags: boolean;
@@ -57,7 +45,8 @@ export function useLibrary() {
  * Every change is built on the query last asked for, not on the one the page
  * is still showing. A filter chosen while a search is on its way, or a
  * debounced search landing just after a filter, therefore adds to the other
- * instead of undoing it.
+ * instead of undoing it. That part is `useQueryNavigation`, which the saved
+ * Scripture section shares.
  */
 export function LibraryProvider({
   query,
@@ -69,39 +58,9 @@ export function LibraryProvider({
   tags: TagSummary[];
   children: React.ReactNode;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [shown, setShown] = useOptimistic(query);
+  const { query: shown, pending, apply } = useQueryNavigation(query, libraryHref);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [managingTags, setManagingTags] = useState(false);
-
-  const latest = useRef(query);
-  const address = libraryHref(query);
-  useEffect(() => {
-    // Once nothing is on its way, the page is the truth again: this is also
-    // how Back and Forward, which arrive from outside, are taken up.
-    if (!pending) latest.current = query;
-    // `address` stands for `query`, which is a new object on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, pending]);
-
-  const apply = useCallback<LibraryState["apply"]>(
-    (change, options) => {
-      const base = latest.current;
-      const changed = typeof change === "function" ? change(base) : change;
-      const next: LibraryQuery = { ...base, page: 1, ...changed };
-      const href = libraryHref(next);
-      if (href === libraryHref(base)) return;
-      latest.current = next;
-      startTransition(() => {
-        setShown(next);
-        // The results change in place; the person stays where they were on the page.
-        if (options?.history === "replace") router.replace(href, { scroll: false });
-        else router.push(href, { scroll: false });
-      });
-    },
-    [router, setShown],
-  );
 
   const value = useMemo(
     () => ({

@@ -165,7 +165,7 @@ function tagList(values: readonly string[]) {
  * Reads the library's query from URL parameters. It never throws: anything
  * missing, malformed, or out of range becomes its default, and parameters it
  * does not know are ignored. A filter may repeat its parameter; values that
- * are not recognised are dropped and the rest kept. Where a single value is
+ * are not recognized are dropped and the rest kept. Where a single value is
  * expected and several are given, the first is used.
  */
 export function parseLibraryQuery(params: LibrarySearchParams): LibraryQuery {

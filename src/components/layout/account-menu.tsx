@@ -84,7 +84,7 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
         )}
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup
-          aria-label="Colour theme"
+          aria-label="Color theme"
           value={theme.current}
           onValueChange={theme.choose}
         >

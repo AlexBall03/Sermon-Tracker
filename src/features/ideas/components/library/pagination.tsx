@@ -35,20 +35,27 @@ const number =
  */
 export function Pagination({
   query,
+  hrefAt,
+  label = "Library pages",
   page,
   totalPages,
 }: {
-  query: LibraryQuery;
+  /** The ideas' query. Another section of the library gives `hrefAt` instead. */
+  query?: LibraryQuery;
+  /** The address of a page, for a section with a query of its own. */
+  hrefAt?: (page: number) => string;
+  label?: string;
   /** The page shown, which the query may have clamped. */
   page: number;
   totalPages: number;
 }) {
-  if (totalPages <= 1) return null;
-  const at = (target: number) => libraryHref({ ...query, page: target });
+  if (totalPages <= 1 || (!query && !hrefAt)) return null;
+  const at = (target: number) =>
+    hrefAt ? hrefAt(target) : libraryHref({ ...query!, page: target });
 
   return (
     <nav
-      aria-label="Library pages"
+      aria-label={label}
       className="mt-8 flex items-center justify-between gap-2 sm:justify-center"
     >
       {page > 1 ? (

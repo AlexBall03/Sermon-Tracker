@@ -99,7 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <AuthProvider>
           <ThemeProvider>
-            {/* After the theme's own script, so both are painted in the right colours first time. */}
+            {/* After the theme's own script, so both are painted in the right colors first time. */}
             <SplashScreen />
             <NavigationProgress />
             {children}

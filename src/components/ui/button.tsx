@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * shadcn/ui Button, restyled for Sermon Tracker.
  * For navigation, apply `buttonVariants()` to a `<Link>` instead of nesting.
- * Hover changes colour and shadow only, in 200ms; every variant presses in
+ * Hover changes color and shadow only, in 200ms; every variant presses in
  * slightly on click. A trailing icon marked `data-trailing` nudges forward on
  * hover; it is opt-in because CSS cannot tell a leading icon from a trailing
  * one when the label is plain text.
@@ -17,7 +17,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          // Hover is a colour step only: no ring and no glow.
+          // Hover is a color step only: no ring and no glow.
           "bg-primary text-primary-foreground shadow-card inset-shadow-[0_1px_0_rgb(255_255_255/0.16)] hover:bg-primary-hover",
         secondary: "bg-secondary text-secondary-foreground hover:bg-foreground/12",
         outline:

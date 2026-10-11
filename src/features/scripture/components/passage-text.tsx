@@ -1,8 +1,12 @@
 "use client";
 
+import { Star } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { referenceSpans, type ChapterSpan, type ScriptureReference } from "../reference";
+import { highlightBackground } from "../saved/highlight-style";
+import { highlightColorLabels, type HighlightColor } from "../saved/model";
 import { useChapter } from "../use-chapter";
 
 type VerseRange = { from: number; to: number };
@@ -16,6 +20,21 @@ type PassageTextProps = {
   selected?: readonly number[];
   /** Makes each verse a button, for choosing a passage. */
   onSelectVerse?: (verse: number) => void;
+  /**
+   * Called instead of `onSelectVerse` when Shift is held for the click, for a
+   * surface that takes every verse from the last one chosen to this one.
+   * Without it, Shift changes nothing.
+   */
+  onSelectThrough?: (verse: number) => void;
+  /**
+   * Verses the reader has highlighted, by number, each in its one color. A
+   * highlight is kept; a selection is of the moment. They are drawn apart,
+   * the highlight behind the words and the selection across the row, so a
+   * verse that is both shows both.
+   */
+  highlights?: Readonly<Record<number, HighlightColor>>;
+  /** Verses that are in a saved passage, marked with a small star by the number. */
+  favorites?: ReadonlySet<number>;
   /**
    * The chapter's title, set above verse 1 when verse 1 is shown: a psalm's
    * "A Psalm of David." It is not a verse, so it has no number and cannot be
@@ -35,8 +54,11 @@ type PassageTextProps = {
 
 // The scroll margins keep a verse that is gone to clear of the bars fixed above and below.
 const verseRow = "flex w-full scroll-mt-32 scroll-mb-32 gap-3 rounded-md px-2 py-1 text-left";
-const verseNumber =
-  "w-6 shrink-0 pt-[0.4em] text-right font-sans text-[0.6875rem] leading-none font-semibold tabular-nums";
+const verseMargin = "flex w-6 shrink-0 flex-col items-end gap-0.5 pt-[0.4em]";
+const verseNumber = "font-sans text-[0.6875rem] leading-none font-semibold tabular-nums";
+// The highlighter's stroke: behind the words alone, line by line, and it comes and goes gently.
+const verseWords =
+  "rounded-[0.2em] box-decoration-clone px-[0.12em] py-[0.08em] transition-colors duration-200";
 
 /**
  * Scripture, set to be read: the serif face, one verse to a line, the number
@@ -50,6 +72,9 @@ export function PassageText({
   show,
   selected,
   onSelectVerse,
+  onSelectThrough,
+  highlights,
+  favorites,
   superscription,
   located,
   size = "default",
@@ -68,14 +93,34 @@ export function PassageText({
       isSelected && chosen.has(verse - 1) && verse > from && "rounded-t-none",
       isSelected && chosen.has(verse + 1) && verse < to && "rounded-b-none",
     );
+    const highlight = highlights?.[verse];
+    const favorite = favorites?.has(verse) ?? false;
     const content = (
       <>
-        <span className={cn(verseNumber, isSelected ? "text-primary" : "text-muted-foreground")}>
-          {verse}
+        <span className={verseMargin}>
+          <span className={cn(verseNumber, isSelected ? "text-primary" : "text-muted-foreground")}>
+            {verse}
+          </span>
+          {favorite && <Star className="size-2.5 fill-current text-gold" aria-hidden />}
         </span>
-        <span className="min-w-0 flex-1">{verses[verse - 1]}</span>
+        <span className="min-w-0 flex-1">
+          <span className={cn(verseWords, highlight && highlightBackground[highlight])}>
+            {verses[verse - 1]}
+          </span>
+          {/* Said as well as shown: neither mark rests on color or a glyph alone. */}
+          {(highlight || favorite) && (
+            <span className="sr-only">
+              {highlight && ` Highlighted ${highlightColorLabels[highlight].toLowerCase()}.`}
+              {favorite && " In your favorites."}
+            </span>
+          )}
+        </span>
       </>
     );
+    const marks = {
+      "data-highlight": highlight,
+      "data-favorite": favorite ? "" : undefined,
+    };
     rows.push(
       onSelectVerse ? (
         <button
@@ -85,7 +130,10 @@ export function PassageText({
           aria-current={verse === located ? "location" : undefined}
           data-located={verse === located ? "" : undefined}
           data-verse={verse}
-          onClick={() => onSelectVerse(verse)}
+          {...marks}
+          onClick={(event) =>
+            event.shiftKey && onSelectThrough ? onSelectThrough(verse) : onSelectVerse(verse)
+          }
           className={cn(
             verseRow,
             "transition-colors duration-150 hover:bg-accent active:bg-foreground/10",
@@ -99,6 +147,7 @@ export function PassageText({
         <p
           key={verse}
           data-verse={verse}
+          {...marks}
           aria-current={verse === located ? "location" : undefined}
           data-located={verse === located ? "" : undefined}
           className={cn(verseRow, isSelected && "bg-primary-soft", joined)}

@@ -62,6 +62,15 @@
   --primary-foreground: #ffffff;
   /* primary-soft = the emerald tint behind a selected or highlighted item */
   --primary-soft: color-mix(in oklab, var(--brand-emerald) 9%, transparent);
+  /*
+   * highlight-* = the Scripture highlighter's four inks, drawn behind a verse's
+   * words. They are the only place these hues appear. On paper they are laid on
+   * a little thin, so the page reads as marked and not as colored in.
+   */
+  --highlight-yellow: color-mix(in oklab, #fde68a 72%, transparent);
+  --highlight-green: color-mix(in oklab, #86efac 52%, transparent);
+  --highlight-blue: color-mix(in oklab, #93c5fd 52%, transparent);
+  --highlight-red: color-mix(in oklab, #fca5a5 54%, transparent);
   --secondary: color-mix(in oklab, var(--brand-ink) 6%, transparent);
   --secondary-foreground: var(--brand-ink);
   /* accent = subtle interactive highlight (shadcn convention) */
@@ -107,6 +116,11 @@
   --primary-hover: color-mix(in oklab, var(--brand-emerald-bright) 78%, var(--brand-lamp-bright));
   --primary-foreground: #04140e;
   --primary-soft: color-mix(in oklab, var(--brand-emerald-bright) 14%, transparent);
+  /* The same inks on charcoal: thinner still, so ivory text stays the brightest thing in the line. */
+  --highlight-yellow: color-mix(in oklab, #fde68a 30%, transparent);
+  --highlight-green: color-mix(in oklab, #86efac 27%, transparent);
+  --highlight-blue: color-mix(in oklab, #93c5fd 30%, transparent);
+  --highlight-red: color-mix(in oklab, #fca5a5 30%, transparent);
   --secondary: color-mix(in oklab, #ffffff 7%, transparent);
   --secondary-foreground: var(--brand-ivory);
   --accent: color-mix(in oklab, #ffffff 8%, transparent);
@@ -159,6 +173,10 @@
   --color-ring: var(--ring);
   --color-nav: var(--nav);
   --color-nav-border: var(--nav-border);
+  --color-highlight-yellow: var(--highlight-yellow);
+  --color-highlight-green: var(--highlight-green);
+  --color-highlight-blue: var(--highlight-blue);
+  --color-highlight-red: var(--highlight-red);
 
   /*
    * Figtree runs the interface. Playfair Display is for headlines alone; it is
@@ -404,7 +422,7 @@
 
 /*
  * A text link's hover underline. The line is always there in a transparent
- * colour, so it fades in with the text colour; `hover:underline` switches the
+ * color, so it fades in with the text color; `hover:underline` switches the
  * line itself on, which cannot be animated.
  */
 @utility link-underline {

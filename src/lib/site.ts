@@ -24,6 +24,8 @@ export const routes = {
   accessDenied: "/access-denied",
   dashboard: "/dashboard",
   library: "/library",
+  /** A section of the library, not a destination of its own: it has no place in the navigation. */
+  savedScripture: "/library/scripture",
   bible: "/bible",
   history: "/history",
   settings: "/settings",
@@ -37,6 +39,7 @@ export const privateRoutes = [
   routes.accessDenied,
   routes.dashboard,
   routes.library,
+  routes.savedScripture,
   routes.bible,
   routes.history,
   routes.settings,
@@ -47,6 +50,7 @@ export const privateRoutes = [
 export const appRoutes = [
   routes.dashboard,
   routes.library,
+  routes.savedScripture,
   routes.bible,
   routes.history,
   routes.settings,

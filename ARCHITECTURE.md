@@ -44,7 +44,8 @@ src/
     ideas/                  The idea model, queries, tags, the library query contract, server actions,
                             quick capture, list, editor, tag picker, and components/library/ (the
                             library's controls, results, pager, and tag management)
-    scripture/              Books, references, chapter and search reads, and every Scripture component
+    scripture/              Books, references, chapter and search reads, and every Scripture component;
+                            saved/ holds favorites and highlights (model, services, actions, URL query)
     settings/               Account management: schemas, server action, Clerk hooks, components
   components/
     ui/                     shadcn primitives restyled to the tokens, and small shared pieces
@@ -90,8 +91,9 @@ Conventions:
 | `/admin`             | Restricted administration                  | 1B    | No      |
 | `/library`           | The owner's ideas: search, filter, browse  | 2B.2  | No      |
 | `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
+| `/library/scripture` | Saved Scripture, a section of the library  | 2C.1B | No      |
 | `/bible`             | The Bible reader                           | 2C.1A | No      |
-| `/api/bible/…`       | A chapter, or a word search (JSON)         | 2A    | No      |
+| `/api/bible/…`       | A chapter, its marks, or a word search     | 2A    | No      |
 | `/history`           | Preaching history                          | 3     | No      |
 | `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
 
@@ -162,6 +164,8 @@ One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, 
 
 ### Library
 
+The library has two sections, chosen between under its heading by `LibrarySections` (`features/ideas/components/library/library-sections.tsx`): **Ideas** at `/library`, described here, and **Saved Scripture** at `/library/scripture` (see "Saved Scripture" below). Each has its own address and its own query; neither is in the main navigation beyond the one Library link.
+
 The data layer is Phase 2B.1 and the interface Phase 2B.2. `/library` is a search box, a toolbar (filters, order, cards or list, tag management), an expandable filter panel, the filters in force as removable chips, a count, the results, and numbered pages.
 
 **The query is the URL.** `features/ideas/library-query.ts` is the contract, with no server code in it, so the browser can build links with it:
@@ -210,7 +214,7 @@ The data layer is Phase 2B.1 and the interface Phase 2B.2. `/library` is a searc
 | `TagManager`                          | client | The Manage tags dialog                                                                                                                           |
 | `TagPicker` (`components/tag-picker`) | client | Tag selection in the idea editor                                                                                                                 |
 
-- **Navigation and races.** `apply` builds every change on the query _last asked for_ (a ref), not on the one the page is still showing, and sets `page` to 1 unless the change names a page. A filter chosen while a search is on its way, or a debounced search landing just after a filter, adds to the other instead of undoing it. The navigation runs in a transition: the controls show the new state at once (`useOptimistic`), the results dim and take `aria-busy` until they arrive, and the page does not scroll. When nothing is on its way the ref is reset from the server's query, which is how Back and Forward are taken up. The provider does not call `useSearchParams`, so it needs no `<Suspense>` of its own.
+- **Navigation and races.** This is `useQueryNavigation` (`query-navigation.ts`), which `LibraryProvider` and the saved Scripture section's provider both use; `SearchBox` in `library-search.tsx` is likewise the one search box behind both. `apply` builds every change on the query _last asked for_ (a ref), not on the one the page is still showing, and sets `page` to 1 unless the change names a page. A filter chosen while a search is on its way, or a debounced search landing just after a filter, adds to the other instead of undoing it. The navigation runs in a transition: the controls show the new state at once (`useOptimistic`), the results dim and take `aria-busy` until they arrive, and the page does not scroll. When nothing is on its way the ref is reset from the server's query, which is how Back and Forward are taken up. The provider does not call `useSearchParams`, so it needs no `<Suspense>` of its own.
 - **Search and history.** Typing asks after a 300 ms pause. One spell of typing is one history entry: the first request is a `push` and the refinements that follow are `replace`, so Back leaves the search instead of undoing it a letter at a time. Enter and Clear ask at once. When the query changes from outside, the box follows it.
 - **View preference.** Cards (the default) or list, kept in `localStorage` under `library-view` and never in the URL: a shared link should not change how someone else reads. The choice in force is one attribute on `<html>`, `data-library-view`, read by two custom variants in `globals.css`: `list-view:` and `card-view:` (which is simply "not the list"). `IdeaResults` is one piece of markup styled by those variants, so switching re-renders nothing, both views always show the same ideas, and nothing can mismatch at hydration. `LibraryViewScript` sets the attribute before the first paint from the server's HTML, as `SplashScript` does, and the switcher's layout effect does the same after a client navigation. The switcher's checked state comes from `useSyncExternalStore`, as `ThemeToggle`'s does.
 - **What a result shows.** Title, kind, status, and the date it last changed; on a sermon, its type and subject; notes clamped to two lines (cards only); up to three Scripture references and four tags, with a count of the rest. A point shows no sermon type or subject even where the record kept them. In list view a hovered or focused row gains an emerald edge on the left, the counterpart of a card's emerald border.
@@ -297,7 +301,7 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 ### Bible reader
 
-`/bible` is Phase 2C.1A: the whole King James Bible to read, with book, chapter, and verse navigation, the existing word search, verse selection, and copying. Favourites and highlights (2C.1B) and attaching a selection to an idea (2C.1C) are not built; the reader has no table of its own.
+`/bible` is Phase 2C.1A: the whole King James Bible to read, with book, chapter, and verse navigation, the existing word search, verse selection, and copying. Phase 2C.1B added highlighting and favorites to it (see "Saved Scripture" below). Attaching a selection to an idea (2C.1C) is not built.
 
 **The page** (`app/(app)/bible/page.tsx`) is a Server Component: `requireActiveUser()`, then the chapter the address names is read with the cached `getChapter` and sent with the page, so a link arrives with its text. Everything after that happens in the browser, in `BibleReader`, a chapter at a time through `/api/bible`, which authorises every request itself.
 
@@ -321,13 +325,14 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 **Selection** (`features/scripture/selection.ts`) is one of three states: `none`, `verses` (sorted, each once, only verses the chapter has), or `chapter`.
 
+- **Shift and a click** selects every verse from the one last clicked to this one, in either direction, adding to what is selected (`selectRange`). With nothing selected it is an ordinary click. `PassageText` reports it through `onSelectThrough`, which only the reader passes; the Scripture Panel is unchanged. Touch and keyboard need neither: verses are buttons, and each tap or Enter adds one.
 - Clicking a verse selects it; clicking it again unselects it. Verses that are apart become separate references through `versesToReferences`: John 3:3, 5, 6, 8 is John 3:3, John 3:5–6, John 3:8.
 - **Nothing selected is nothing.** `selectionReferences` returns an empty list, never the chapter. This is deliberately not the Scripture Panel's rule, where an empty choice means the whole chapter and quick capture and the editor rely on it; the panel is unchanged.
 - The whole chapter is chosen on purpose ("Select chapter") and is the one chapter reference, not a list of verses. Every verse chosen one by one is the same state.
 - A selection is temporary: it is React state inside the chapter's view, which is keyed by book and chapter, so it cannot outlive its chapter. It is not in the address.
 - Interactive selection is within the chapter on screen. References across chapters remain valid everywhere else.
 
-**`SelectionToolbar`** appears with a selection and goes with it: the reference in words, Copy text, Copy reference, Copy link, Clear. Its `children` are where 2C.1B and 2C.1C add their actions; they get the same `ScriptureReference[]`. It rests at the foot of the reading column (above the tab bar and the safe-area inset on a narrow screen), and `BackToTop` steps aside while it is shown.
+**`SelectionToolbar`** appears with a selection and goes with it. It has two lines: the reference in words with Clear at its end, and beneath it Copy text, Copy reference, Copy link, then a hairline and its `children`, which today are Highlight and Favorite (`components/saved/selection-actions.tsx`) and are where 2C.1C adds its own. A third, quiet line (`footer`) names the favorites the selected verses already belong to. Each button shows its word where the toolbar has room for every word and its icon alone, still named, where it has not; the room is the toolbar's own width (a container query, `toolbarAction` and `toolbarLabel`), because beside an open sidebar a wide window can leave it less than a phone does. It rests at the foot of the reading column (above the tab bar and the safe-area inset on a narrow screen), and `BackToTop` steps aside while it is shown.
 
 - **Copy text** is `formatSelectionText`: the reference and "(KJV)", then directly beneath it each verse on its own line with its number; where verses were passed over, a line of three dots stands between the passages and none of those verses is included. A psalm's title is not copied.
 - **Copy link** is the chapter's address at the first verse chosen. The selection itself is not serialised.
@@ -344,7 +349,46 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 **Motion.** The sidebar's width, slide, fade, and handle share one 0.38 second ease-in-out curve; a verse gone to is lit and fades (held, not faded, under reduced motion); a chapter's text settles into place over 0.3 seconds from 16px to the side it lies on, the next chapter from the right and the one before from the left, and is fully opaque throughout: nothing fades in, because text that starts from clear leaves the page blank for an instant, which the owner saw as a flash. The links at the foot of a chapter are reading on, not turning aside, so from them the next chapter comes up from below and the one before down from above. The chapter's name simply changes, and a first arrival is not animated. The text's container clips sideways, so the slide never widens the page. Go to verse moves the page with `glideTo` (`glide.ts`), one ease set frame by frame, because the browser's own smooth scrolling stuttered when started as the menu closed; the verse is lit as the glide ends, a verse already in view is lit without moving the page, and the reader's own wheel, touch, or key takes over at once. Nothing loops, and the global reduced-motion rule stills all of it.
 
-**Later translations.** References and `reader-location` carry no translation. The translation's name is one constant (`translation` in `books.ts`), and text is reached only through `passages.ts` and `/api/bible`. Nothing else was built ahead of need.
+**Later translations.** References and `reader-location` carry no translation. The translation is one constant (`translation` in `books.ts`: `id`, `short`, `name`), and text is reached only through `passages.ts` and `/api/bible`. Favorites and highlights do carry one: every row is stored under `translation.id`, it is part of what identifies them, and every read and write names it, so a second translation's marks will be separate rows and nothing is carried across. Nothing else was built ahead of need: there is no translation picker, no second text, and no setting.
+
+### Saved Scripture
+
+Phase 2C.1B: favorites and highlights. Both are a person's own, kept in the database per account and per translation (see docs/DATABASE.md), and both live in `features/scripture/saved`. They are independent: a verse can be highlighted, in a favorite, both, or neither; deleting a favorite leaves its verses' highlights, and removing a highlight leaves every favorite.
+
+**A saved passage is a set of verses** (`verse-set.ts`, no server code): `VerseRef` is `{ book, chapter, verse }`, and a favorite holds any number of them, in one chapter or several, together or apart.
+
+- `normaliseVerses` puts them in the Bible's order, each once, and drops what does not exist. `canonicalKey` is the string two equal sets share. A psalm's title has no verse number and can never be one of them.
+- `formatVerseSet` writes a set as it is said: "John 3:16", "Psalm 23:1–6", "Romans 3:10, 23; 6:23", "John 3:16; Romans 6:23", "Jude 5, 7". `parseVerseSet` reads the same form back (each part through `parseReference`; a part with no book belongs to the book before it, and a bare number after a comma to the chapter before it), and is how a favorite's passage is edited.
+- `referencesToVerses` and `versesToRuns` convert to and from `ScriptureReference[]`, the shape the reader's selection and 2C.1C's idea references use.
+- The reader selects within one chapter, so a favorite made there is in one chapter. The model, the table, the formatter, and the editor's typed passage all handle verses across chapters and books.
+
+**Favorites** (`favorites.ts`, `actions.ts`).
+
+- **Identity is the verses and the translation**, never the label or notes. `createFavorite` inserts with `ON CONFLICT DO NOTHING` on the unique `(owner, translation, selection_key)` and then reads, so the same passage saved twice, at once or a year apart, is one favorite; the second answer is the first favorite as it stands, marked `existing`, with its label and notes untouched.
+- `updateFavorite` changes the label, the notes, the verses, or any of them; what is left out is left alone. New verses replace the old in one transaction. If they are another favorite's, nothing changes and that favorite's ID comes back (`conflict`): neither is overwritten.
+- `deleteFavorite` removes the favorite and its verse rows. Nothing else.
+- Limits: 200 verses (the longest chapter has 176), a label of 120 characters, notes of 2,000. Zod enforces them in the actions and CHECK constraints repeat the last two.
+- The actions (`saveFavorite`, `updateFavorite`, `deleteFavorite`, `setHighlight`) follow the idea actions: `authorize("active")`, Zod, the owner from the session, fixed messages, and one answer for "missing" and "someone else's". A verse that does not exist is refused, never dropped.
+
+**Highlights** (`highlights.ts`). Four colors, `yellow`, `green`, `blue`, `red`, and one to a verse: the table's primary key is the account, the translation, and the verse. `setHighlights` is one upsert for every verse asked for, so a selection changes together and a new color replaces the old; `clearHighlights` is one delete. Only the verses named are touched.
+
+**In the reader.**
+
+- **Reading the marks.** `GET /api/bible/<book>/<chapter>/marks` answers `{ highlights: { verse: color }, favorites: [...] }` for the signed-in account: the highlights in the chapter, and the favorites with a verse in it, each with all of its verses. Two queries, `no-store`, and it authorises itself. The Bible page sends the same for the chapter it sends, so a link paints with its colors; if that read fails the text is still sent.
+- **`use-chapter-marks.ts`** is the one place the browser holds them. A chapter's marks are shown from memory at once and asked for again each time the chapter is shown; the chapters either side are fetched ahead with their text. A highlight is shown the moment it is asked for: what is on screen is what the server last confirmed with the changes still on their way laid over it, in order. Changes reach the server one at a time. A refused change is taken back by itself, the ones made after it stay, and the toolbar says why. Each chapter has its own entry, so an answer about a chapter that has been left lands only there, and an answer to a read that a change has overtaken is dropped.
+- **Drawing them.** `PassageText` takes `highlights` and `favorites` beside `selected`. A highlight is a stroke behind the verse's words (`box-decoration-break: clone`, with a 0.2 second color transition); a selection is the emerald tint across the whole row with an emerald number. A verse that is both shows both. A favorited verse has a small gold star under its number. Both marks are also in the verse's accessible name ("Highlighted yellow.", "In your favorites.") and on `data-highlight` and `data-favorite`.
+- **Highlight** opens a popover of four named swatches. The color every selected verse shares is ticked; where they differ it says so in words ("These verses are yellow and blue. A color here replaces them all.") and none is ticked. "Remove highlight" is there only when a selected verse has one. The button itself carries a dot of the color in force. The selection stays, as it does for the copy buttons.
+- **Favorite** saves the selection with one click and says so in a toast with a link to the library. When the selection is exactly a favorite already, the button reads "Saved" and opens it instead. Nothing is saved twice.
+- **`FavoriteEditor`** (`components/saved/favorite-editor.tsx`) is one dialog for the reader and the library: the passage (typed, checked as it is submitted), a label, notes with a count, Save, and Remove, which asks in the dialog's own footer so one layer never sits on another. A click outside does not close it once something has been typed. A passage that is another favorite's is refused with a link that finds that one.
+
+**In the library** (`/library/scripture`, `app/(app)/library/scripture/page.tsx`). A Server Component like the ideas' page: `requireActiveUser()`, the query from the URL, `searchFavorites`, and the results.
+
+- **The query is the URL** (`saved-query.ts`, no server code), on the ideas' pattern: `q`; `book` (1 to 66); `color` (repeat it for several); `sort` (`saved-desc`, the default, `updated-desc`, `bible`); `page`. `parseSavedQuery` never throws and `savedHref` writes one address per query with defaults left out. The URL holds nothing about the account.
+- **Search** matches every word in the reference, the label, or the notes, case-insensitively, with `%`, `_`, and `\` meaning themselves. **Book** matches a passage with any verse in that book. **Color** matches a passage with any verse highlighted in any chosen color, read from the highlights themselves. **Biblical order** is by where the passage begins.
+- **Controls** (`saved-controls.tsx`): the shared search box, a Book `Select` under its testaments, the order, four color toggles that show their own state, and Clear filters. They navigate only through `useSavedScripture().apply`.
+- **A result** shows the label where there is one, the reference as a link to the passage in the Bible (`readerHref` at its first verse), its first three verses with a count of the rest, its notes, the colors its verses carry by name, and when it was saved, with Edit and Remove. Remove asks first and says what is kept.
+- **Empty states** are three, as for ideas: nothing saved at all (no controls, "Open the Bible"), a search that finds nothing, and filters that find nothing.
+- **A page is five queries** whatever its size (docs/DATABASE.md).
 
 ### Account management
 
@@ -391,6 +435,7 @@ All tokens live in `src/app/globals.css` in three layers:
 | `border` / `input`              | `#E4E1D9` / `#D2CFC6` | white 9% / 16%         | Hairlines, control borders                          |
 | `primary` / `primary-hover`     | `#127A5B` / darker    | `#2DA985` / brighter   | Actions, links, selection, current navigation       |
 | `primary-soft`                  | emerald 9%            | emerald 14%            | Tint behind a selected or highlighted item          |
+| `highlight-yellow` … `-red`     | pastel at 52–72%      | the same at 27–30%     | The Scripture highlighter's four inks; nowhere else |
 | `ring`                          | `#127A5B`             | `#5FF0BE`              | Focus outline                                       |
 | `lamp`                          | `#1FBF8F`             | `#5FF0BE`              | The lit edge only; never text or fills              |
 | `gold` / `gold-ink`             | `#A47B35` / `#7D5F24` | `#D5B574`              | Small editorial details; `gold-ink` when it is text |
@@ -404,7 +449,8 @@ Rules:
 
 - Components use semantic utilities only. Do not write hex values or `--brand-*` variables in components. The one exception is the logo mark, which is a fixed asset.
 - **The interface is neutral.** Emerald is for primary buttons, links, current navigation, selection, focus, kind markers, the lit edge, and the hero glow. No green card backgrounds or green sections.
-- **Gold is a detail**: the stage numerals, the ribbon tip, the short rule on the closing band. Never a fill or a button.
+- **Gold is a detail**: the stage numerals, the ribbon tip, the short rule on the closing band, the star on a favorite. Never a fill or a button.
+- **The highlight colors are for Scripture highlights only**: behind a verse's words, and on the swatches that choose or filter by them. They come from `#FDE68A`, `#86EFAC`, `#93C5FD`, and `#FCA5A5`, thinned separately for each theme so the text stays the strongest thing in the line. Components use `bg-highlight-*` through `highlightBackground` (`features/scripture/saved/highlight-style.ts`); a color is always named in words wherever it is shown.
 - Quiet fills are translucent ink (or white in dark), so they work on the canvas and on a card alike. `accent` keeps the shadcn meaning (a subtle interactive highlight) so added primitives behave.
 - Each theme is designed separately: light uses hairlines, soft shadows, and a tinted shadow for glow; dark uses lighter surfaces for elevation, a top inner highlight, and a real (but tight) emerald light.
 
@@ -429,7 +475,7 @@ Glow and animation are allowed, used sparingly (the owner's rule, 9 October 2026
 
 A further use should clear the same bar as that one: slow, light only (nothing moves or resizes), built from the tokens so both themes work, drawn so that it never takes a property the control's hover or focus needs, and static under reduced motion.
 
-Ordinary buttons still do not glow. The primary button's hover is a colour step to `primary-hover`; an earlier emerald ring and halo on hover was removed at the owner's request.
+Ordinary buttons still do not glow. The primary button's hover is a color step to `primary-hover`; an earlier emerald ring and halo on hover was removed at the owner's request.
 
 ### Other utilities
 
@@ -458,17 +504,17 @@ Ordinary buttons still do not glow. The primary button's hover is a colour step 
 
 ### Motion and interaction
 
-- Interactions answer in 150–200ms with colour, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon marked `data-trailing` nudges forward (leading icons and spinners stay put).
+- Interactions answer in 150–200ms with color, border, and shadow. Nothing lifts or scales up on hover. Buttons press in slightly (`scale-[0.98]`) on click, and a trailing icon marked `data-trailing` nudges forward (leading icons and spinners stay put).
 - Everything that acts on a click shows the hand cursor: a base rule in `globals.css` covers buttons, `role="button"`, menu items, and `summary` (Tailwind 4 leaves buttons on the arrow), and links have it natively. Disabled controls keep the arrow, as does the theme option that is already selected.
-- Text links take `link-underline` (in `globals.css`), never `hover:underline`: the line is always present in a transparent colour and fades in with the text colour. Icons inside menu rows carry their own colour transition, so they change with the row.
+- Text links take `link-underline` (in `globals.css`), never `hover:underline`: the line is always present in a transparent color and fades in with the text color. Icons inside menu rows carry their own color transition, so they change with the row.
 - Only interactive elements have hover states. Illustrations, informational cards, and table rows do not.
 - Every hover has a matching pressed state: buttons press in, and quiet controls (navigation links, icon buttons, the theme options) darken to `active:bg-foreground/10`.
 - Compact controls are for a pointer. On touch screens (`pointer-coarse:`) small and icon buttons, menu rows, menu triggers, and the theme options grow to 44px.
 - Load motion is one sequence: the hero rises in, then the capture illustration plays once. There are no scroll-triggered entrances, and one looping animation: the capture control's breathing edge (see Glow).
 - A global `prefers-reduced-motion` rule removes animation, delays, and smooth scrolling; the capture illustration is then static with the thought already filed.
-- Every focusable element gets a visible 2px `outline` in the `ring` colour. Disabled controls are 50% opacity with no pointer events; busy actions change their label ("Sending…", "Working…"), show a spinner (`LoaderCircle` with `animate-spin`), and set `aria-busy`. Action results (`ActionStatus`) carry an icon as well as a colour.
+- Every focusable element gets a visible 2px `outline` in the `ring` color. Disabled controls are 50% opacity with no pointer events; busy actions change their label ("Sending…", "Working…"), show a spinner (`LoaderCircle` with `animate-spin`), and set `aria-busy`. Action results (`ActionStatus`) carry an icon as well as a color.
 - The root layout provides a skip link; each shell must render `<main id="main">`.
-- Text colour pairs were chosen for WCAG AA contrast in both themes.
+- Text color pairs were chosen for WCAG AA contrast in both themes.
 
 ### Theming
 
@@ -478,19 +524,19 @@ Ordinary buttons still do not glow. The primary button's hover is a colour step 
 
 `SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button (two lines that cross into an X) and an opaque sheet that unrolls under the bar, set like a contents page: section links in Playfair with hairlines between, Sign in, and the theme control. The page dims behind it; tapping the dimmed area or pressing Escape closes it, and widening the window past `md` removes it. Section links (`#…`) are plain anchors, not `next/link`, which does not scroll again to a hash already in the URL. While the panel is open the bar turns opaque to match it (the panel carries `data-nav-panel`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round outlined button in its centre, styled as the bar's Capture control is; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. The Bible reader joined it in Phase 2C.1A (Dashboard, Library, Bible; on a narrow screen the tab bar is Dashboard, Library, capture, Bible). **The outline builder joins that list when its page is built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald and a slowly breathing edge; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`, the progress bar `z-70`, and the splash screen `z-100`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round outlined button in its centre, styled as the bar's Capture control is; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. The Bible reader joined it in Phase 2C.1A (Dashboard, Library, Bible; on a narrow screen the tab bar is Dashboard, Library, capture, Bible). Saved Scripture (2C.1B) did not join it: it is a section of the library, reached from the library. **The outline builder joins that list when its page is built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald and a slowly breathing edge; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`, the progress bar `z-70`, and the splash screen `z-100`.
 
 The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
 
-Clerk's sign-in, sign-up, and profile components are styled through `src/lib/clerk-appearance.ts`, which maps Clerk's variables to the CSS tokens so they follow the theme class, and matches Clerk's card to `AuthNotice` (same radius, hairline, and shadow), its primary button to `Button` (40px, no gradient sheen, same colour-only hover), and its inputs to `Input` (hairline, darker on hover, emerald line and soft halo on focus). Clerk draws input borders as box shadows and its own focus ring is a solid 4px band, so the focus override is `!important`. The card is given an opaque background so the glow behind it cannot tint Clerk's translucent footer strip. Clerk's components load from its CDN, so there is no local source to read: inspect the rendered `cl-*` elements when changing this file. The auth shell is the logo above one card; the shell's wrapper supplies the lit edge and glow to whichever card it holds.
+Clerk's sign-in, sign-up, and profile components are styled through `src/lib/clerk-appearance.ts`, which maps Clerk's variables to the CSS tokens so they follow the theme class, and matches Clerk's card to `AuthNotice` (same radius, hairline, and shadow), its primary button to `Button` (40px, no gradient sheen, same color-only hover), and its inputs to `Input` (hairline, darker on hover, emerald line and soft halo on focus). Clerk draws input borders as box shadows and its own focus ring is a solid 4px band, so the focus override is `!important`. The card is given an opaque background so the glow behind it cannot tint Clerk's translucent footer strip. Clerk's components load from its CDN, so there is no local source to read: inspect the rendered `cl-*` elements when changing this file. The auth shell is the logo above one card; the shell's wrapper supplies the lit edge and glow to whichever card it holds.
 
 ### Components
 
 shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@latest add <name>` only when a feature needs it, then restyle it to the tokens as `ui/button.tsx` does.
 
-- **Button**: `default` (emerald; hover is a colour step only), `secondary`, `outline`, `ghost`, `destructive`, `link`. `outline` is the secondary action beside a primary one; on hover its hairline turns emerald (`border-primary/70`), as does the account trigger's and Clerk's social button. For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
+- **Button**: `default` (emerald; hover is a color step only), `secondary`, `outline`, `ghost`, `destructive`, `link`. `outline` is the secondary action beside a primary one; on hover its hairline turns emerald (`border-primary/70`), as does the account trigger's and Clerk's social button. For navigation styled as a button, apply `buttonVariants()` to a `<Link>`.
 - **Input**: white surface, hairline, darker border on hover, emerald border and `shadow-focus` on focus, `aria-invalid` in destructive.
-- **Dropdown menu, alert dialog**: `glass-float`. Destructive items and confirmations use the destructive colour.
+- **Dropdown menu, alert dialog**: `glass-float`. Destructive items and confirmations use the destructive color.
 - **`Dialog`** (`ui/dialog.tsx`): every other modal layer, with a `placement`: `top` (a form, clear of the on-screen keyboard), `bottom` (a short sheet), `side` (a panel down the right edge), `full` (a whole narrow screen).
 - **`Popover`**: a small floating panel anchored to its trigger.
 - **`Select`** (`ui/select.tsx`): the dropdown for a known set of options. Native `<select>` is not used, because its menu cannot be styled. `layout="grid"` sets short options (chapter and verse numbers) in rows. The selected option is emerald; group headings stay neutral.
@@ -543,9 +589,9 @@ These are settled and constrain later phases. The first and fourth are implement
 
 ## Testing
 
-- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, and Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, Scripture, and saved Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
-- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
+- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
@@ -619,3 +665,16 @@ These are settled and constrain later phases. The first and fourth are implement
 | A typed reference navigates instead of searching       | It is what was meant; the words can still be searched for with one more click           |
 | The copy shortcut's meaning is a device preference     | Like the theme and the library's view: nothing to store on the account                  |
 | Ctrl+C clears the selection; the buttons do not        | The shortcut finishes the job; the buttons let two things be copied from one selection  |
+| A favorite is a set of verses, in a child table        | One verse, a passage, or verses apart and across chapters are all the same shape        |
+| A favorite's identity is a digest of its verses        | A unique constraint refuses a second copy under any concurrency, at a fixed key length  |
+| The written reference is stored on the favorite        | The library can search, order, and page in SQL; it is rewritten with the verses         |
+| Highlights keyed by account, translation, and verse    | One color to a verse by construction, and a chapter's highlights are one index range    |
+| Highlights and favorites do not reference each other   | Either exists without the other; deleting one cannot disturb the other                  |
+| No foreign key from saved verses to `bible_verses`     | The text is reloaded wholesale and absent in tests; verses are checked in code instead  |
+| Marks read per chapter, uncached, beside cached text   | The text is everyone's and never changes; the marks are one person's and do             |
+| Highlights are optimistic; favorites wait for the ID   | A color must feel instant and is easy to take back; a favorite needs its real record    |
+| Highlight drawn behind the words, selection on the row | Stored and temporary state stay distinguishable, and a verse can show both              |
+| Saved Scripture is a section of the library            | The owner wants main navigation kept for the work; saved content has one home           |
+| Two-line selection toolbar, labels by its own width    | Five actions and the reference do not fit one line beside an open sidebar               |
+| Removing a favorite is confirmed inside its dialog     | One modal layer at a time                                                               |
+| A favorite's passage is edited as typed text           | The audience writes references fluently; the Scripture Panel would stack on the dialog  |

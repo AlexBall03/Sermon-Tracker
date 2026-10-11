@@ -23,7 +23,7 @@ const stages = [
   },
   {
     stage: "Develop",
-    title: "Organise and build over time",
+    title: "Organize and build over time",
     body: "Keep every idea in one library. Add Scripture references and notes, and connect a point to as many sermons as it serves.",
     example: (
       <div className="flex h-30 flex-col justify-center rounded-xl border bg-surface px-4 py-3.5 shadow-card">

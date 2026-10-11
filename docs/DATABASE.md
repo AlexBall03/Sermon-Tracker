@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live.
 
 ## Layout
 
@@ -70,7 +70,7 @@ A label one user can put on their ideas.
 | `created_at` | `timestamptz` | Default `now()`                                       |
 | `updated_at` | `timestamptz` | Default `now()`, set by the application on update     |
 
-`tags_owner_name_key` is a unique index on `(owner_id, lower(name))`: one name per account whatever its case, and the index that lists an account's tags. `UNIQUE (id, owner_id)` (`tags_id_owner_key`) is the target of `idea_tags`' foreign key. There is no colour column.
+`tags_owner_name_key` is a unique index on `(owner_id, lower(name))`: one name per account whatever its case, and the index that lists an account's tags. `UNIQUE (id, owner_id)` (`tags_id_owner_key`) is the target of `idea_tags`' foreign key. There is no color column.
 
 ### `idea_tags`
 
@@ -138,6 +138,77 @@ The titles printed above verse 1 of 116 psalms ("A Psalm of David."). Shared, re
 | `text`  | `text`     | Not null, not blank (CHECK). Plain text |
 
 A psalm without a title has no row. The application never writes here. It reads all the rows at once (`getPsalmTitles`, cached) and treats an empty table as an error, so a database that has not been loaded is never mistaken for "no psalm has a title".
+
+### `bible_favorites`
+
+A saved passage (Phase 2C.1B): any verses a person chose to keep, with an optional label and notes. Personal data, owned like an idea.
+
+| Column                                       | Type          | Notes                                                                             |
+| -------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `id`                                         | `uuid`        | Primary key, `gen_random_uuid()`                                                  |
+| `owner_id`                                   | `uuid`        | Not null, references `users(id)` ON DELETE RESTRICT                               |
+| `translation`                                | `text`        | Not null. CHECK: `kjv`. The translation it was saved in                           |
+| `selection_key`                              | `text`        | Not null. SHA-256 of the verses in canonical order (`book.chapter.verse`, …)      |
+| `reference`                                  | `text`        | Not null. The passage as written: "Romans 3:10, 23; 6:23"                         |
+| `first_book`, `first_chapter`, `first_verse` | `smallint`    | Not null. Where the passage begins                                                |
+| `label`                                      | `text`        | Nullable. CHECK: 1 to 120 characters after trimming                               |
+| `notes`                                      | `text`        | Nullable. CHECK: at most 2,000 characters                                         |
+| `created_at`, `updated_at`                   | `timestamptz` | Not null. `updated_at` moves on any change to the label, the notes, or the verses |
+
+- **`UNIQUE (owner_id, translation, selection_key)`** is what makes a favorite itself: its verses and its translation, never its label or notes. Saving is `INSERT … ON CONFLICT DO NOTHING` followed by a read, so two requests for the same passage, however they arrive, leave one row; changing a favorite's verses to another's is refused by the same constraint and reported as a conflict.
+- `UNIQUE (id, owner_id)` exists for `bible_favorite_verses` to point at.
+- `reference` and the three `first_*` columns are derived from the verses and rewritten in the same transaction whenever the verses are. They are stored so the library can search (`ILIKE`), order (biblical order), and page in SQL.
+- Indexes: `(owner_id, created_at DESC)`, `(owner_id, updated_at DESC)`, `(owner_id, first_book, first_chapter, first_verse)`, one for each order the library offers.
+- No highlight is stored here. A favorite's colors are read from `bible_highlights` when they are shown or filtered by.
+
+### `bible_favorite_verses`
+
+The verses of a favorite, one row each.
+
+| Column                     | Type       | Notes                                                |
+| -------------------------- | ---------- | ---------------------------------------------------- |
+| `favorite_id`              | `uuid`     | Not null                                             |
+| `owner_id`                 | `uuid`     | Not null. Repeats the favorite's owner               |
+| `position`                 | `smallint` | Not null. 0, 1, 2, … in canonical order              |
+| `book`, `chapter`, `verse` | `smallint` | Not null. CHECK: book 1 to 66, chapter and verse ≥ 1 |
+
+- Primary key `(favorite_id, book, chapter, verse)`: a verse is in a favorite once. `UNIQUE (favorite_id, position)`.
+- Foreign key `(favorite_id, owner_id)` → `bible_favorites (id, owner_id)` ON DELETE CASCADE. As in `idea_tags`, the owner is part of the key, so a verse row for another account's favorite cannot exist, and deleting a favorite removes its rows and nothing else.
+- Index `(owner_id, book, chapter)`: the favorites that touch the chapter being read, and the library's book filter.
+- **There is no foreign key to `bible_verses`.** That table is replaced wholesale when a new edition is loaded, and a test database holds no Bible. A verse is checked against the generated verse counts (`versification.ts`) on the server before it is written. A psalm's title is not a verse and has no number, so it can never be one of these rows.
+
+### `bible_highlights`
+
+Highlighted verses. Personal data.
+
+| Column                     | Type          | Notes                                                |
+| -------------------------- | ------------- | ---------------------------------------------------- |
+| `owner_id`                 | `uuid`        | Not null, references `users(id)` ON DELETE RESTRICT  |
+| `translation`              | `text`        | Not null. CHECK: `kjv`                               |
+| `book`, `chapter`, `verse` | `smallint`    | Not null. CHECK: book 1 to 66, chapter and verse ≥ 1 |
+| `color`                    | `text`        | Not null. CHECK: `yellow`, `green`, `blue`, `red`    |
+| `created_at`, `updated_at` | `timestamptz` | Not null                                             |
+
+- **Primary key `(owner_id, translation, book, chapter, verse)`**: a verse has one color or none, by construction. Highlighting is one `INSERT … ON CONFLICT DO UPDATE` for every verse asked for, so a selection changes together and a color replaces the one before; removing is one `DELETE`.
+- The same key serves the read: one chapter's highlights for one account are one index range.
+- Highlights and favorites do not reference each other. Either can exist without the other, and deleting one never touches the other.
+
+**Later translations.** Both personal tables carry `translation`, and it is part of what identifies a favorite and a highlight, so a highlight made in one translation is a different row from the same verse in another and nothing is carried across. Admitting a translation is a migration that widens the two CHECKs (and `translationIds` in `features/scripture/saved/model.ts`); no existing row changes. `bible_verses` itself still has no translation column: that is the additive change the translation phase makes.
+
+**Saved Scripture search and filters.** Search is `ILIKE '%word%'` on `reference`, `label`, and `notes`, every word required, behind `owner_id = …`, as the idea library's is. The book and color filters are subqueries correlated on the favorite, never joins, so a passage is one row however many of its verses match:
+
+```sql
+-- book: any verse of the passage is in it
+EXISTS (SELECT 1 FROM bible_favorite_verses v
+        WHERE v.favorite_id = f.id AND v.owner_id = $owner AND v.book = $book)
+-- color: any verse of the passage is highlighted in one of them
+EXISTS (SELECT 1 FROM bible_favorite_verses v
+        JOIN bible_highlights h ON h.owner_id = $owner AND h.translation = f.translation
+         AND h.book = v.book AND h.chapter = v.chapter AND h.verse = v.verse
+        WHERE v.favorite_id = f.id AND v.owner_id = $owner AND h.color IN (…))
+```
+
+A page of results is five queries whatever its size: the count, the favorites, their verses, their colors, and the text of their first three verses.
 
 ### `reference_datasets`
 
@@ -254,7 +325,7 @@ Database tests use PGlite, an in-process PostgreSQL, and apply the committed mig
 
 See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
-- **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above).
+- **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above). **Favorites and highlights** — implemented in Phase 2C.1B (above).
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Preaching occurrences** (Phase 3) — when, where, and in what context a sermon was preached.

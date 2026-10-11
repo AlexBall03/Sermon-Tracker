@@ -19,16 +19,27 @@ type SelectionToolbarProps = {
   /** Why the last action failed, said here because it concerns these buttons. */
   problem?: string | null;
   /**
-   * Further actions on the selection, placed before Clear. This is where a
-   * later phase adds its own (a favourite, a highlight, an idea); each is
-   * given the same `references`.
+   * Further actions on the selection, placed after the copies: a highlight
+   * and a favorite today, and an idea in a later phase. Each acts on the
+   * same `references`.
    */
   children?: React.ReactNode;
+  /** A quiet line beneath the buttons, for something the selection is already part of. */
+  footer?: React.ReactNode;
   className?: string;
 };
 
-const action = "px-2.5 max-sm:size-10 max-sm:px-0";
-const label = "max-sm:sr-only";
+/**
+ * A toolbar button: its word beside its icon where the toolbar has room for
+ * every word, and the icon alone, still named, where it has not. The room is
+ * the toolbar's own width, not the window's: beside an open sidebar a wide
+ * window can leave it less than a phone does. Actions added as `children`
+ * use the same two classes.
+ */
+export const toolbarAction = "px-2.5 @max-[39rem]:size-10 @max-[39rem]:px-0";
+export const toolbarLabel = "@max-[39rem]:sr-only";
+const action = toolbarAction;
+const label = toolbarLabel;
 
 /**
  * What can be done with the Scripture that is selected. It appears with a
@@ -44,6 +55,7 @@ export function SelectionToolbar({
   shortcut,
   problem,
   children,
+  footer,
   className,
 }: SelectionToolbarProps) {
   if (references.length === 0) return null;
@@ -60,10 +72,11 @@ export function SelectionToolbar({
       aria-label="Selected Scripture"
       data-selection-toolbar
       className={cn(
-        "animate-menu rounded-xl glass-float px-2 py-2 [--float:color-mix(in_oklab,var(--surface-raised)_94%,transparent)]",
+        "@container animate-menu rounded-xl glass-float px-2 py-2 [--float:color-mix(in_oklab,var(--surface-raised)_94%,transparent)]",
         className,
       )}
     >
+      {/* The passage has a line to itself, so it is read whole; what can be done with it is beneath. */}
       <div className="flex items-center gap-1">
         <p
           aria-live="polite"
@@ -73,6 +86,18 @@ export function SelectionToolbar({
         >
           {selected}
         </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="@max-[39rem]:size-10"
+          aria-label="Clear selection"
+          onClick={onClear}
+        >
+          <X aria-hidden />
+        </Button>
+      </div>
+      <div className="mt-0.5 flex flex-wrap items-center gap-1">
         <Button
           type="button"
           variant="ghost"
@@ -106,19 +131,11 @@ export function SelectionToolbar({
           <Link2 aria-hidden />
           <span className={label}>Copy link</span>
         </Button>
+        {/* Copying is one thing and keeping another: a hairline between them. */}
+        {children && <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />}
         {children}
-        <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="max-sm:size-10"
-          aria-label="Clear selection"
-          onClick={onClear}
-        >
-          <X aria-hidden />
-        </Button>
       </div>
+      {footer}
       {problem && (
         <p role="alert" className="px-2 pt-1.5 text-[0.8125rem] font-medium text-destructive">
           {problem}

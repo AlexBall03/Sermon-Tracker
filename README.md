@@ -8,7 +8,7 @@ Production domain: [sermontracker.com](https://sermontracker.com)
 
 ## Status
 
-**Phase 1B implemented:** database, invitation-only authentication, administration, and the authenticated shell, on top of the Phase 1A foundation and landing page. Idea tracking has not started. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/HANDOFF-1B.md](docs/HANDOFF-1B.md).
+**Implemented through Phase 2C.1B:** invitation-only accounts and administration; capturing, editing, tagging, searching, and filtering sermon and point ideas; the King James Bible to read, search, and copy from; and Scripture favorites and highlights, kept in the library's Saved Scripture section. Attaching Scripture to ideas from the reader (2C.1C) is next. See [docs/ROADMAP.md](docs/ROADMAP.md) for every phase and [docs/HANDOFF-2C.1B.md](docs/HANDOFF-2C.1B.md) for the latest.
 
 ## Stack
 
@@ -54,7 +54,7 @@ First-time Playwright setup: `npx playwright install chromium`.
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phases and current status
 - [docs/DATABASE.md](docs/DATABASE.md) — database direction and migration convention
 - [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) — environments, variables, secrets
-- [docs/HANDOFF-1B.md](docs/HANDOFF-1B.md) — Phase 1B handoff, remaining setup, and Phase 1C readiness
+- `docs/HANDOFF-*.md` — one per phase; the latest is [docs/HANDOFF-2C.1B.md](docs/HANDOFF-2C.1B.md)
 
 ## Branches
 
