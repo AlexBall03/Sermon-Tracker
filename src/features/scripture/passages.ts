@@ -4,9 +4,9 @@ import { and, asc, eq } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 
 import { getDb } from "@/db";
-import { bibleVerses } from "@/db/schema";
+import { biblePsalmTitles, bibleVerses } from "@/db/schema";
 import type { Database } from "@/db/types";
-import { versesIn } from "./books";
+import { psalmsBook, versesIn } from "./books";
 
 /** The verses of one chapter, in order: index 0 is verse 1. */
 export async function readChapter(db: Database, book: number, chapter: number): Promise<string[]> {
@@ -31,4 +31,34 @@ export async function getChapter(book: number, chapter: number): Promise<string[
   "use cache";
   cacheLife("max");
   return readChapter(getDb(), book, chapter);
+}
+
+/** Every psalm title, by psalm number. A psalm without one is absent. */
+export async function readPsalmTitles(db: Database): Promise<Record<number, string>> {
+  const rows = await db
+    .select({ psalm: biblePsalmTitles.psalm, text: biblePsalmTitles.text })
+    .from(biblePsalmTitles);
+  // An unloaded table must be an error, never "no psalm has a title".
+  if (rows.length === 0) throw new Error("The psalm titles are unavailable.");
+  return Object.fromEntries(rows.map((row) => [row.psalm, row.text]));
+}
+
+/**
+ * The titles of the Psalms, all of them: there are few, and they change as
+ * little as the text does. Cached as `getChapter` is; a failure throws and is
+ * not cached.
+ */
+export async function getPsalmTitles(): Promise<Record<number, string>> {
+  "use cache";
+  cacheLife("max");
+  return readPsalmTitles(getDb());
+}
+
+/**
+ * The title printed above verse 1 of a chapter, or null when it has none. Only
+ * psalms have them, and they are no part of any verse.
+ */
+export async function getChapterTitle(book: number, chapter: number): Promise<string | null> {
+  if (book !== psalmsBook) return null;
+  return (await getPsalmTitles())[chapter] ?? null;
 }

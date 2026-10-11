@@ -13,6 +13,8 @@
  */
 @custom-variant list-view (&:where([data-library-view="list"] *));
 @custom-variant card-view (&:where(:not([data-library-view="list"] *)));
+/* The Bible reader's navigation, put away (features/scripture/reader-sidebar.ts). */
+@custom-variant sidebar-closed (&:where([data-bible-sidebar="closed"] *));
 
 /*
  * Design tokens (Phase 1B.1)
@@ -692,4 +694,33 @@ html[data-splash="leaving"] .splash-content {
 /* nothing to scroll behind a full-screen splash; the bar returns as the fade begins */
 html[data-splash="on"] {
   overflow: hidden;
+}
+
+/*
+ * A verse that was gone to in the Bible reader (Go to verse, a search result,
+ * a link): a faint tint that comes up and goes again, enough for the eye to
+ * land on it and no more. It ends on whatever the verse looks like otherwise,
+ * selected or not. The reader sets `data-found` on one verse at a time and
+ * takes it off when the tint has gone. Where motion is reduced it does not
+ * fade: it is tinted, and then it is not.
+ */
+@keyframes verse-found {
+  18%,
+  45% {
+    background-color: color-mix(in oklab, var(--primary-soft) 70%, transparent);
+  }
+}
+
+[data-found] {
+  animation: verse-found 2s ease-in-out;
+}
+
+/* In the base layer, beside the rule that stills every animation, so this one can answer it. */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    [data-found] {
+      animation-duration: 2s !important;
+      animation-timing-function: step-end !important;
+    }
+  }
 }

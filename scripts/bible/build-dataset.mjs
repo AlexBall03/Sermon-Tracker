@@ -3,19 +3,22 @@
 //
 //   node scripts/bible/build-dataset.mjs <folder of unzipped eng-kjv2006_usfm>
 //
-// It writes data/bible/kjv.json and src/features/scripture/versification.ts,
-// then prints the counts and the checksum to record in data/bible/README.md.
+// It writes data/bible/kjv.json, data/bible/kjv-psalm-titles.json, and
+// src/features/scripture/versification.ts, then prints the counts and the
+// checksums to record in data/bible/README.md.
 // See that file for the source and for how the text is reduced.
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { checksum, countVerses } from "./dataset.mjs";
+import { checksum, countVerses, expected, psalmsBook, titlesChecksum } from "./dataset.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 /** Lines that are not verse text: titles, headings, and book metadata. */
-const skipped = /^\\(?:id|h|toc\d|mt\d|s\d|d|ms\d?|r|cl)\b/;
+const skipped = /^\\(?:id|h|toc\d|mt\d|s\d|ms\d?|r|cl)\b/;
+/** A psalm's title: text that belongs to the chapter, printed above verse 1. */
+const title = /^\\d\b\s*(.*)$/;
 /** Paragraph and poetry markers; any text after one continues the verse. */
 const layout = /^\\(?:p|q\d?|b|m|pi\d?|nb|li\d?)\b\s*/;
 
@@ -39,6 +42,8 @@ function plain(text) {
 
 function parseBook(source) {
   const chapters = [];
+  /** Chapter number to its title, where the chapter has one. */
+  const titles = {};
   let verse = null;
   for (const raw of source.split(/\r?\n/)) {
     const line = raw.replace(/^\uFEFF/, "").trim();
@@ -50,6 +55,15 @@ function parseBook(source) {
         throw new Error(`Chapter out of order: ${line}`);
       chapters.push([]);
       verse = null;
+      continue;
+    }
+
+    const heading = title.exec(line);
+    if (heading) {
+      // A title stands before the first verse; anywhere else it would be verse text lost.
+      if (chapters.length === 0 || chapters.at(-1).length > 0)
+        throw new Error(`Title out of place: ${line.slice(0, 60)}`);
+      titles[chapters.length] = [titles[chapters.length], heading[1]].filter(Boolean).join(" ");
       continue;
     }
 
@@ -67,7 +81,12 @@ function parseBook(source) {
       throw new Error(`Unhandled marker: ${line.slice(0, 60)}`);
     if (rest && verse !== null) chapters.at(-1)[verse] += ` ${rest}`;
   }
-  return chapters.map((verses) => verses.map(plain));
+  return {
+    chapters: chapters.map((verses) => verses.map(plain)),
+    titles: Object.fromEntries(
+      Object.entries(titles).map(([chapter, text]) => [chapter, plain(text)]),
+    ),
+  };
 }
 
 const folder = process.argv[2];
@@ -80,7 +99,16 @@ if (!folder) {
 const files = readdirSync(folder)
   .filter((name) => name.endsWith(".usfm"))
   .sort();
-const books = files.map((name) => parseBook(readFileSync(`${folder}/${name}`, "utf8")));
+const parsed = files.map((name) => parseBook(readFileSync(`${folder}/${name}`, "utf8")));
+const books = parsed.map((book) => book.chapters);
+
+// Only the Psalms have titles, and the edition has a known number of them.
+const psalmTitles = parsed[psalmsBook - 1]?.titles ?? {};
+if (parsed.some((book, index) => index !== psalmsBook - 1 && Object.keys(book.titles).length))
+  throw new Error("A book other than Psalms has chapter titles.");
+const titleCount = Object.keys(psalmTitles).length;
+if (titleCount !== expected.psalmTitles || Object.values(psalmTitles).some((text) => !text))
+  throw new Error(`Expected ${expected.psalmTitles} psalm titles, found ${titleCount}.`);
 
 const empty = books.flat(2).filter((text) => !text).length;
 if (empty) throw new Error(`${empty} verse(s) came out empty.`);
@@ -90,6 +118,14 @@ const json = `[\n${books
   .map((chapters) => `[\n${chapters.map((verses) => JSON.stringify(verses)).join(",\n")}\n]`)
   .join(",\n")}\n]\n`;
 writeFileSync(`${root}data/bible/kjv.json`, json);
+
+// One title per line, in psalm order, for the same reason.
+writeFileSync(
+  `${root}data/bible/kjv-psalm-titles.json`,
+  `{\n${Object.entries(psalmTitles)
+    .map(([psalm, text]) => `${JSON.stringify(psalm)}: ${JSON.stringify(text)}`)
+    .join(",\n")}\n}\n`,
+);
 
 const counts = books.map(
   (chapters) => `  [${chapters.map((verses) => verses.length).join(", ")}],`,
@@ -110,3 +146,5 @@ console.log(`Books:    ${books.length}`);
 console.log(`Chapters: ${books.reduce((total, chapters) => total + chapters.length, 0)}`);
 console.log(`Verses:   ${countVerses(books)}`);
 console.log(`Checksum: ${checksum(books)}`);
+console.log(`Psalm titles:          ${titleCount}`);
+console.log(`Psalm titles checksum: ${titlesChecksum(psalmTitles)}`);

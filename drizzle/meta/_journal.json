@@ -29,6 +29,13 @@
       "when": 1791668817603,
       "tag": "0003_tags_and_library",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791677385598,
+      "tag": "0004_bible_psalm_titles",
+      "breakpoints": true
     }
   ]
 }

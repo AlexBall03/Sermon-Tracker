@@ -5,6 +5,7 @@ import { requireActiveUser } from "@/features/auth/access";
 import { AccountInformation } from "@/features/settings/components/account-information";
 import { ProfileSettings, SecuritySettings } from "@/features/settings/components/account-sections";
 import { AppearanceSettings } from "@/features/settings/components/appearance-settings";
+import { BibleSettings } from "@/features/settings/components/bible-settings";
 import { SettingsSection } from "@/features/settings/components/settings-section";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -46,6 +47,14 @@ export default async function SettingsPage() {
         description="Light or dark. This is the same control as the one in the bar."
       >
         <AppearanceSettings />
+      </SettingsSection>
+
+      <SettingsSection
+        id="bible"
+        title="Bible"
+        description="How the Bible reader behaves on this device."
+      >
+        <BibleSettings />
       </SettingsSection>
 
       <SettingsSection

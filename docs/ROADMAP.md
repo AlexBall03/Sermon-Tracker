@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 10 October 2026: **Phase 1 through 1C.1, Phase 2A, and Phase 2B (2B.1 and 2B.2) are implemented. Phase 2B.2 added no migration. Its signed-in pages were checked with unit and component tests and a visual preview on sample data, but not in a signed-in session: the signed-in end-to-end test is written and needs a development test account to run ([handoff](HANDOFF-2B.2.md)). Phase 2C.1 is next. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
+Status as of 10 October 2026: **Phase 1 through 1C.1, Phase 2A, and Phase 2B (2B.1 and 2B.2) are implemented. Phase 2B.2 added no migration. Its signed-in pages were checked with unit and component tests and a visual preview on sample data, but not in a signed-in session: the signed-in end-to-end test is written and needs a development test account to run ([handoff](HANDOFF-2B.2.md)). Phase 2C.1A, the Bible reader, is implemented with one migration (`0004_bible_psalm_titles`); its signed-in end-to-end test is written and waits on the same test account ([handoff](HANDOFF-2C.1A.md)). Phase 2C.1B is next. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -23,7 +23,10 @@ Work stays inside the current phase. Do not implement later-phase functionality 
   - **2B.1: Library data, search, filtering, tags, pagination** — implemented ([handoff](HANDOFF-2B.1.md)). The paged, searchable, filterable library query; reusable tags and their actions; the URL query contract. `/library` is paged with Previous and Next
   - **2B.2: Library interface** — implemented ([handoff](HANDOFF-2B.2.md)). Search box, expandable filters with several values per filter and tags matched by any or all, active-filter chips, sort menu, card and list views with a remembered preference, numbered pages, a tag management dialog, tag selection in the idea editor, and returning to the same place in the library. Deferred: tag selection in quick capture, and bulk actions
 - **2C: Bible reader and associations**
-  - **2C.1: Dedicated King James Bible page** — a full reader with book, chapter, and verse navigation, added to the main navigation; the existing text search; selecting a verse or passage and attaching it to an existing idea; psalm titles; favourite verses and highlighting in several colours, stored per user without copying or changing the shared text; browsing and searching favourites
+  - **2C.1: Dedicated King James Bible page**
+    - **2C.1A: Reader foundation** — implemented ([handoff](HANDOFF-2C.1A.md)). `/bible` in the main navigation; book, chapter, and verse navigation with a sidebar that can be put away and a sheet on narrow screens; the existing text search and typed references; selecting one verse, a passage, verses that are apart, or a whole chapter; a selection toolbar that copies the text, the reference, or a link; shareable addresses; the reading position remembered on the device; the 116 psalm titles restored
+    - **2C.1B: Favourites and highlights** — favourite passages with notes, managing and searching them, and highlighting in several colours, stored per user without copying or changing the shared text
+    - **2C.1C: From the Bible to an idea** — attaching a selection to an existing idea, and starting a new idea from one
   - **2C.2: Sermon-point associations** — linking reusable point ideas to sermon ideas, with order and relationships
 
 ## Phase 3 — Preaching History

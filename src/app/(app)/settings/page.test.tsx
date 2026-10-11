@@ -43,9 +43,9 @@ describe("SettingsPage", () => {
     await expect(SettingsPage()).rejects.toThrow("redirect:/access-denied");
   });
 
-  it("has the four sections", async () => {
+  it("has its five sections", async () => {
     render(await SettingsPage());
-    for (const name of ["Profile", "Security", "Appearance", "Account"]) {
+    for (const name of ["Profile", "Security", "Appearance", "Bible", "Account"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
   });

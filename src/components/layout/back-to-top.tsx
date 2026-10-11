@@ -14,7 +14,8 @@ type BackToTopProps = {
  * A round floating button in the bottom corner that returns to the top of the
  * page. It appears once the page has scrolled a full screen, so short pages
  * never show it. It sits under the bar's layer, so an open sheet's scrim
- * covers it.
+ * covers it. While Scripture is selected in the Bible reader it steps aside:
+ * the selection's toolbar rests in the same corner.
  */
 export function BackToTop({ aboveTabBar = false }: BackToTopProps) {
   const [visible, setVisible] = useState(false);
@@ -42,6 +43,7 @@ export function BackToTop({ aboveTabBar = false }: BackToTopProps) {
         "group fixed right-5 bottom-5 z-40 grid size-11 place-items-center rounded-full glass-float text-muted-foreground transition-[opacity,translate,color,border-color] duration-200 hover:border-primary/70 hover:text-primary active:border-primary active:text-primary sm:right-8 sm:bottom-8",
         aboveTabBar && "max-md:bottom-[calc(var(--bar-h)+env(safe-area-inset-bottom)+1rem)]",
         !visible && "pointer-events-none translate-y-2 opacity-0",
+        "[body:has([data-selection-toolbar])_&]:invisible",
       )}
     >
       <ArrowUp

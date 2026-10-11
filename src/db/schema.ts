@@ -238,3 +238,22 @@ export const referenceDatasets = pgTable("reference_datasets", {
   rowCount: integer("row_count").notNull(),
   loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * The titles printed above verse 1 of many psalms ("A Psalm of David."). They
+ * belong to the psalm and not to any verse, so they are kept apart from
+ * `bible_verses`: they are not numbered, counted, selected, or searched.
+ * Shared, read-only reference data, loaded from data/bible/kjv-psalm-titles.json
+ * by the database commands. A psalm without a title has no row.
+ */
+export const biblePsalmTitles = pgTable(
+  "bible_psalm_titles",
+  {
+    psalm: smallint("psalm").primaryKey(),
+    text: text("text").notNull(),
+  },
+  (table) => [
+    check("bible_psalm_titles_psalm_check", sql`${table.psalm} between 1 and 150`),
+    check("bible_psalm_titles_text_check", sql`char_length(btrim(${table.text})) > 0`),
+  ],
+);

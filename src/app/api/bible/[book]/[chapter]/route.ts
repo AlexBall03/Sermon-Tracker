@@ -1,14 +1,14 @@
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
 import { versesIn } from "@/features/scripture/books";
-import { getChapter } from "@/features/scripture/passages";
+import { getChapter, getChapterTitle } from "@/features/scripture/passages";
 
 const wholeNumber = /^[1-9]\d{0,2}$/;
 
 /**
  * One chapter of the King James Bible, for signed-in accounts. The browser
  * asks for a chapter at a time and keeps what it has opened; the whole text
- * is never sent.
+ * is never sent. `title` is the psalm's title, where the chapter has one.
  */
 export async function GET(
   _request: Request,
@@ -25,11 +25,19 @@ export async function GET(
   }
 
   try {
-    const verses = await getChapter(book, chapter);
+    const [verses, title] = await Promise.all([
+      getChapter(book, chapter),
+      // The verses are worth showing without their title, so this failure is not the chapter's.
+      getChapterTitle(book, chapter).catch((error) => {
+        console.error("Psalm title read failed:", describeDatabaseError(error));
+        return undefined;
+      }),
+    ]);
     return Response.json(
-      { book, chapter, verses },
-      // The text never changes, so the browser may keep it; `private` because access needs a session.
-      { headers: { "Cache-Control": "private, max-age=86400" } },
+      { book, chapter, verses, title: title ?? null },
+      // The text never changes, so the browser may keep it; `private` because access needs a
+      // session. An answer that is missing its title is not kept.
+      { headers: { "Cache-Control": title === undefined ? "no-store" : "private, max-age=86400" } },
     );
   } catch (error) {
     console.error("Bible chapter read failed:", describeDatabaseError(error));

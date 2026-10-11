@@ -15,6 +15,15 @@ import { bibleBooks, oldTestamentBooks } from "./books";
  * so "love" does not find "loved" unless a * asks for it.
  */
 
+/** What the search understands, by example, for the help beside a search box. */
+export const searchTips = [
+  ["grace mercy", "verses with both words"],
+  ['"living water"', "the exact phrase"],
+  ["faith OR hope", "either word"],
+  ["shepherd -sheep", "the first without the second"],
+  ["lov*", "love, loved, loveth, lovingkindness"],
+] as const;
+
 export const searchLimits = { text: 200, terms: 16, pageSize: 40 } as const;
 
 /** Where to look: everything, one testament, or one book (its number). */

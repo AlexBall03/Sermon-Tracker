@@ -14,7 +14,8 @@ export const siteConfig = {
 
 /**
  * Route map. `history` is the agreed path for a later phase and is listed so
- * links and robots rules have one source. An idea is at `/library/<id>`.
+ * links and robots rules have one source. An idea is at `/library/<id>`; a
+ * place in the Bible is `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts).
  */
 export const routes = {
   home: "/",
@@ -23,6 +24,7 @@ export const routes = {
   accessDenied: "/access-denied",
   dashboard: "/dashboard",
   library: "/library",
+  bible: "/bible",
   history: "/history",
   settings: "/settings",
   admin: "/admin",
@@ -35,6 +37,7 @@ export const privateRoutes = [
   routes.accessDenied,
   routes.dashboard,
   routes.library,
+  routes.bible,
   routes.history,
   routes.settings,
   routes.admin,
@@ -44,6 +47,7 @@ export const privateRoutes = [
 export const appRoutes = [
   routes.dashboard,
   routes.library,
+  routes.bible,
   routes.history,
   routes.settings,
   routes.admin,

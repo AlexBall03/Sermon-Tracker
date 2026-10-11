@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bibleVerses } from "@/db/schema";
+import { biblePsalmTitles, bibleVerses } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
@@ -19,7 +19,7 @@ vi.mock("@/features/auth/access", () => ({
 }));
 
 import { GET } from "@/app/api/bible/[book]/[chapter]/route";
-import { readChapter } from "./passages";
+import { getChapterTitle, readChapter, readPsalmTitles } from "./passages";
 
 let db: Database;
 const jude = Array.from({ length: 25 }, (_, index) => `Jude verse ${index + 1}.`);
@@ -50,12 +50,58 @@ describe("readChapter", () => {
   });
 });
 
+describe("psalm titles", () => {
+  it("fail rather than report that no psalm has a title", async () => {
+    await expect(readPsalmTitles(db)).rejects.toThrow(/unavailable/);
+  });
+
+  it("are read by psalm number", async () => {
+    await db.insert(biblePsalmTitles).values({ psalm: 23, text: "A Psalm of David." });
+    expect(await readPsalmTitles(db)).toEqual({ 23: "A Psalm of David." });
+    expect(await getChapterTitle(19, 23)).toBe("A Psalm of David.");
+    expect(await getChapterTitle(19, 1)).toBeNull();
+  });
+
+  it("belong to no other book, which is not even asked about", async () => {
+    state.db = undefined;
+    expect(await getChapterTitle(43, 3)).toBeNull();
+  });
+});
+
 describe("GET /api/bible/[book]/[chapter]", () => {
   it("serves a chapter to a signed-in account", async () => {
     const response = await request("65", "1");
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toMatch(/^private/);
-    expect(await response.json()).toEqual({ book: 65, chapter: 1, verses: jude });
+    expect(await response.json()).toEqual({ book: 65, chapter: 1, verses: jude, title: null });
+  });
+
+  it("sends a psalm's title beside its verses, and no title for a psalm without one", async () => {
+    await db.insert(biblePsalmTitles).values({ psalm: 117, text: "A title for the test." });
+    await db.insert(bibleVerses).values([
+      { book: 19, chapter: 117, verse: 1, text: "O praise the LORD, all ye nations." },
+      { book: 19, chapter: 117, verse: 2, text: "Praise ye the LORD." },
+      { book: 19, chapter: 131, verse: 1, text: "One." },
+      { book: 19, chapter: 131, verse: 2, text: "Two." },
+      { book: 19, chapter: 131, verse: 3, text: "Three." },
+    ]);
+    const titled = await (await request("19", "117")).json();
+    expect(titled.title).toBe("A title for the test.");
+    // The title is beside the verses, never in them.
+    expect(titled.verses).toEqual(["O praise the LORD, all ye nations.", "Praise ye the LORD."]);
+    expect((await (await request("19", "131")).json()).title).toBeNull();
+  });
+
+  it("still serves the verses when the titles cannot be read, and does not let that be kept", async () => {
+    // The table is empty here, as in a database whose titles are not yet loaded.
+    await db.insert(bibleVerses).values([
+      { book: 19, chapter: 117, verse: 1, text: "O praise the LORD, all ye nations." },
+      { book: 19, chapter: 117, verse: 2, text: "Praise ye the LORD." },
+    ]);
+    const response = await request("19", "117");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect((await response.json()).verses).toHaveLength(2);
   });
 
   it("refuses anyone without access", async () => {

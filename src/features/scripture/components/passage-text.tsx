@@ -16,10 +16,25 @@ type PassageTextProps = {
   selected?: readonly number[];
   /** Makes each verse a button, for choosing a passage. */
   onSelectVerse?: (verse: number) => void;
+  /**
+   * The chapter's title, set above verse 1 when verse 1 is shown: a psalm's
+   * "A Psalm of David." It is not a verse, so it has no number and cannot be
+   * chosen.
+   */
+  superscription?: string | null;
+  /**
+   * A verse that was gone to. It is named to assistive technology as the
+   * current location, which is not the same as selected; the surface that
+   * goes there decides how to draw the eye to it (the reader lights it briefly).
+   */
+  located?: number | null;
+  /** `reader` is the Bible page: larger type and more air than a panel has room for. */
+  size?: "default" | "reader";
   className?: string;
 };
 
-const verseRow = "flex w-full gap-3 rounded-md px-2 py-1 text-left";
+// The scroll margins keep a verse that is gone to clear of the bars fixed above and below.
+const verseRow = "flex w-full scroll-mt-32 scroll-mb-32 gap-3 rounded-md px-2 py-1 text-left";
 const verseNumber =
   "w-6 shrink-0 pt-[0.4em] text-right font-sans text-[0.6875rem] leading-none font-semibold tabular-nums";
 
@@ -35,6 +50,9 @@ export function PassageText({
   show,
   selected,
   onSelectVerse,
+  superscription,
+  located,
+  size = "default",
   className,
 }: PassageTextProps) {
   const from = show?.from ?? 1;
@@ -44,6 +62,12 @@ export function PassageText({
 
   for (let verse = from; verse <= to; verse++) {
     const isSelected = chosen.has(verse);
+    // Selected verses that follow one another read as one block: the corners
+    // between them are square, so the tint runs on without a notch at each join.
+    const joined = cn(
+      isSelected && chosen.has(verse - 1) && verse > from && "rounded-t-none",
+      isSelected && chosen.has(verse + 1) && verse < to && "rounded-b-none",
+    );
     const content = (
       <>
         <span className={cn(verseNumber, isSelected ? "text-primary" : "text-muted-foreground")}>
@@ -58,18 +82,27 @@ export function PassageText({
           key={verse}
           type="button"
           aria-pressed={isSelected}
+          aria-current={verse === located ? "location" : undefined}
+          data-located={verse === located ? "" : undefined}
           data-verse={verse}
           onClick={() => onSelectVerse(verse)}
           className={cn(
             verseRow,
             "transition-colors duration-150 hover:bg-accent active:bg-foreground/10",
             isSelected && "bg-primary-soft hover:bg-primary-soft",
+            joined,
           )}
         >
           {content}
         </button>
       ) : (
-        <p key={verse} data-verse={verse} className={cn(verseRow, isSelected && "bg-primary-soft")}>
+        <p
+          key={verse}
+          data-verse={verse}
+          aria-current={verse === located ? "location" : undefined}
+          data-located={verse === located ? "" : undefined}
+          className={cn(verseRow, isSelected && "bg-primary-soft", joined)}
+        >
           {content}
         </p>
       ),
@@ -77,7 +110,23 @@ export function PassageText({
   }
 
   return (
-    <div className={cn("font-serif text-[1.0625rem] leading-[1.65] text-foreground", className)}>
+    <div
+      className={cn(
+        "font-serif text-foreground",
+        size === "reader"
+          ? "text-[1.125rem] leading-[1.75] sm:text-[1.1875rem]"
+          : "text-[1.0625rem] leading-[1.65]",
+        className,
+      )}
+    >
+      {superscription && from === 1 && (
+        <p
+          data-superscription
+          className="mb-2 px-2 pl-11 text-[0.9375em] text-muted-foreground italic"
+        >
+          {superscription}
+        </p>
+      )}
       {rows}
     </div>
   );

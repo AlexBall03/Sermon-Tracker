@@ -48,6 +48,12 @@ export const bibleBooks: readonly BibleBook[] = table.map(([name, short, ...alia
 
 export const oldTestamentBooks = 39;
 
+/** Psalms: the one book whose chapters can carry a title above verse 1. */
+export const psalmsBook = 19;
+
+/** The translation the application holds. Shown wherever text is named or copied. */
+export const translation = { short: "KJV", name: "King James Version" } as const;
+
 export function getBook(id: number): BibleBook | undefined {
   return bibleBooks[id - 1];
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,10 +17,11 @@ import {
   versesToReferences,
   type ScriptureReference,
 } from "../reference";
-import { buildSearchQuery, splitHit, type SearchHit, type SearchScope } from "../search";
-import { requestSearch, SearchError } from "../search-request";
+import { searchTips, type SearchScope } from "../search";
+import { useBibleSearch } from "../use-bible-search";
 import { useChapter } from "../use-chapter";
 import { PassageError, PassageSkeleton, PassageText } from "./passage-text";
+import { SearchHits } from "./search-hits";
 
 export type PanelAttach = {
   /** What attaching does here: "Add to idea", "Update reference". */
@@ -51,17 +52,6 @@ type ScriptureBrowserProps = {
   className?: string;
 };
 
-type Results = {
-  query: string;
-  scope: SearchScope;
-  status: "loading" | "ready" | "error";
-  message?: string;
-  total: number;
-  hits: SearchHit[];
-  /** Fetching a further page. */
-  more: boolean;
-};
-
 const bookGroups: SelectGroup[] = [
   { label: "Old Testament", options: [] as { value: string; label: string }[] },
   { label: "New Testament", options: [] as { value: string; label: string }[] },
@@ -81,14 +71,6 @@ const numbers = (count: number) =>
 
 const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, index) => from + index);
-
-const tips = [
-  ["grace mercy", "verses with both words"],
-  ['"living water"', "the exact phrase"],
-  ["faith OR hope", "either word"],
-  ["shepherd -sheep", "the first without the second"],
-  ["lov*", "love, loved, loveth, lovingkindness"],
-] as const;
 
 /**
  * Reading and choosing a passage. This is the Scripture Panel's content, and
@@ -130,10 +112,13 @@ export function ScriptureBrowser({
   // What was last attached while the panel stayed open, until the selection changes.
   const [attached, setAttached] = useState<string | null>(null);
   const [entry, setEntry] = useState("");
-  const [entryError, setEntryError] = useState<string | null>(null);
-  const [results, setResults] = useState<Results | null>(null);
+  const {
+    results,
+    problem: entryError,
+    search: runSearch,
+    clearProblem: clearEntryError,
+  } = useBibleSearch();
   const [view, setView] = useState<"read" | "results">("read");
-  const latestSearch = useRef(0);
   const searchBox = useRef<HTMLInputElement>(null);
 
   // The panel opens ready to search. After the frame, so it follows whatever
@@ -198,39 +183,8 @@ export function ScriptureBrowser({
     );
   }
 
-  async function search(query: string, scope: SearchScope, offset = 0) {
-    const built = buildSearchQuery(query);
-    if (!built.ok) return setEntryError(built.message);
-    setEntryError(null);
-    setView("results");
-    const request = ++latestSearch.current;
-    setResults((current) =>
-      offset > 0 && current
-        ? { ...current, more: true }
-        : { query, scope, status: "loading", total: 0, hits: [], more: false },
-    );
-    try {
-      const page = await requestSearch(query, scope, offset);
-      // A newer search has started; this answer is no longer wanted.
-      if (request !== latestSearch.current) return;
-      setResults((current) => ({
-        query,
-        scope,
-        status: "ready",
-        total: page.total,
-        hits: offset > 0 && current ? [...current.hits, ...page.hits] : page.hits,
-        more: false,
-      }));
-    } catch (error) {
-      if (request !== latestSearch.current) return;
-      const message =
-        error instanceof SearchError ? error.message : "The search could not be run. Try again.";
-      setResults((current) =>
-        offset > 0 && current
-          ? { ...current, more: false, message }
-          : { query, scope, status: "error", message, total: 0, hits: [], more: false },
-      );
-    }
+  function search(query: string, scope: SearchScope, offset = 0) {
+    if (runSearch(query, scope, offset)) setView("results");
   }
 
   const atStart = book === 1 && chapter === 1;
@@ -259,7 +213,7 @@ export function ScriptureBrowser({
             event.preventDefault();
             // Never the surrounding form's submit.
             event.stopPropagation();
-            void search(entry, results?.scope ?? "all");
+            search(entry, results?.scope ?? "all");
           }}
         >
           <label htmlFor={`${id}-search`} className="sr-only">
@@ -274,7 +228,7 @@ export function ScriptureBrowser({
                 value={entry}
                 onChange={(event) => {
                   setEntry(event.target.value);
-                  setEntryError(null);
+                  clearEntryError();
                 }}
                 placeholder="Search the text for words"
                 autoComplete="off"
@@ -292,7 +246,7 @@ export function ScriptureBrowser({
                   aria-label="Clear the search"
                   onClick={() => {
                     setEntry("");
-                    setEntryError(null);
+                    clearEntryError();
                     searchBox.current?.focus();
                   }}
                   className="absolute top-1/2 right-1 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10"
@@ -332,7 +286,7 @@ export function ScriptureBrowser({
               className="w-[22rem] p-3 text-xs"
             >
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                {tips.map(([example, meaning]) => (
+                {searchTips.map(([example, meaning]) => (
                   <div key={example} className="contents">
                     <dt className="font-mono font-semibold whitespace-nowrap">{example}</dt>
                     <dd className="text-muted-foreground">{meaning}</dd>
@@ -423,7 +377,7 @@ export function ScriptureBrowser({
                 label="Search in"
                 value={String(results.scope)}
                 onChange={(value) =>
-                  void search(
+                  search(
                     results.query,
                     value === "all" || value === "old" || value === "new" ? value : Number(value),
                   )
@@ -433,107 +387,32 @@ export function ScriptureBrowser({
               />
             </div>
 
-            <p role="status" aria-live="polite" className="px-2 text-sm text-muted-foreground">
-              {results.status === "loading" && "Searching…"}
-              {results.status === "ready" &&
-                (results.total === 0
-                  ? "No verses match. Check the spelling, try fewer words, or end a word with * to match its beginning."
-                  : `${results.total.toLocaleString("en")} ${results.total === 1 ? "verse" : "verses"}`)}
-            </p>
-            {results.status === "loading" && <PassageSkeleton lines={6} />}
-            {results.status === "error" && (
-              <div role="alert" className="px-2 text-sm text-muted-foreground">
-                <p>{results.message}</p>
+            <SearchHits
+              results={results}
+              onSearch={search}
+              onOpen={(hit) => goTo(hit.book, hit.chapter, hit.verse)}
+            >
+              {typedReference?.ok && (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-3"
-                  onClick={() => void search(results.query, results.scope)}
+                  className="mx-2 mt-3"
+                  onClick={() => {
+                    const reference = typedReference.reference;
+                    goTo(reference.book, reference.chapterStart, reference.verseStart);
+                    if (reference.chapterEnd !== null) setCarried(reference);
+                    else if (reference.verseStart !== null) {
+                      setPicked(
+                        range(reference.verseStart, reference.verseEnd ?? reference.verseStart),
+                      );
+                    }
+                  }}
                 >
-                  Try again
+                  Go to {formatReference(typedReference.reference)}
                 </Button>
-              </div>
-            )}
-
-            {typedReference?.ok && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mx-2 mt-3"
-                onClick={() => {
-                  const reference = typedReference.reference;
-                  goTo(reference.book, reference.chapterStart, reference.verseStart);
-                  if (reference.chapterEnd !== null) setCarried(reference);
-                  else if (reference.verseStart !== null) {
-                    setPicked(
-                      range(reference.verseStart, reference.verseEnd ?? reference.verseStart),
-                    );
-                  }
-                }}
-              >
-                Go to {formatReference(typedReference.reference)}
-              </Button>
-            )}
-
-            {results.hits.length > 0 && (
-              <ul className="mt-2">
-                {results.hits.map((hit) => (
-                  <li key={`${hit.book}.${hit.chapter}.${hit.verse}`}>
-                    <button
-                      type="button"
-                      onClick={() => goTo(hit.book, hit.chapter, hit.verse)}
-                      className="block w-full rounded-md px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:bg-foreground/10"
-                    >
-                      <span className="block font-serif text-[0.8125rem] font-medium text-primary italic">
-                        {formatReference({
-                          book: hit.book,
-                          chapterStart: hit.chapter,
-                          verseStart: hit.verse,
-                          chapterEnd: null,
-                          verseEnd: null,
-                        })}
-                      </span>
-                      <span className="mt-0.5 block font-serif text-base leading-[1.6]">
-                        {splitHit(hit.text).map((run, index) =>
-                          index % 2 === 1 ? (
-                            <mark
-                              key={index}
-                              className="rounded-sm bg-primary/20 px-1 font-semibold text-primary dark:bg-primary/25"
-                            >
-                              {run}
-                            </mark>
-                          ) : (
-                            run
-                          ),
-                        )}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {results.status === "ready" && results.hits.length < results.total && (
-              <div className="px-2 pt-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={results.more}
-                  aria-busy={results.more}
-                  onClick={() => void search(results.query, results.scope, results.hits.length)}
-                >
-                  {results.more && <LoaderCircle className="animate-spin" aria-hidden />}
-                  {results.more ? "Loading…" : "Show more"}
-                </Button>
-                {results.message && (
-                  <p role="alert" className="mt-2 text-sm text-destructive">
-                    {results.message}
-                  </p>
-                )}
-              </div>
-            )}
+              )}
+            </SearchHits>
           </section>
         ) : (
           <>

@@ -1,21 +1,22 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`).
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing.
 
 ## Layout
 
-| Path                        | Purpose                                                           |
-| --------------------------- | ----------------------------------------------------------------- |
-| `src/db/schema.ts`          | Tables, in TypeScript. The single place the schema is defined     |
-| `src/db/index.ts`           | `getDb()`: the server-only connection (pooled WebSocket driver)   |
-| `src/db/types.ts`           | `Database` type and log-safe error text                           |
-| `src/db/testing.ts`         | In-memory PostgreSQL (PGlite) with the real migrations, for tests |
-| `drizzle/`                  | Generated SQL migrations and Drizzle's journal. Committed         |
-| `drizzle.config.ts`         | Drizzle Kit configuration (generation only)                       |
-| `scripts/db/cli.mjs`        | `migrate`, `stamp`, `status` commands                             |
-| `scripts/db/seed-bible.mjs` | Loads the King James text when a database lacks it                |
-| `data/bible/kjv.json`       | The King James text, with its source in `data/bible/README.md`    |
-| `scripts/db/guard.mjs`      | The rules that decide whether a command may touch a database      |
+| Path                               | Purpose                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `src/db/schema.ts`                 | Tables, in TypeScript. The single place the schema is defined             |
+| `src/db/index.ts`                  | `getDb()`: the server-only connection (pooled WebSocket driver)           |
+| `src/db/types.ts`                  | `Database` type and log-safe error text                                   |
+| `src/db/testing.ts`                | In-memory PostgreSQL (PGlite) with the real migrations, for tests         |
+| `drizzle/`                         | Generated SQL migrations and Drizzle's journal. Committed                 |
+| `drizzle.config.ts`                | Drizzle Kit configuration (generation only)                               |
+| `scripts/db/cli.mjs`               | `migrate`, `stamp`, `status` commands                                     |
+| `scripts/db/seed-bible.mjs`        | Loads the King James text and the psalm titles when a database lacks them |
+| `data/bible/kjv.json`              | The King James text, with its source in `data/bible/README.md`            |
+| `data/bible/kjv-psalm-titles.json` | The titles of the Psalms, from the same source                            |
+| `scripts/db/guard.mjs`             | The rules that decide whether a command may touch a database              |
 
 The pooled WebSocket driver (`@neondatabase/serverless` `Pool`) is used rather than the HTTP driver because role and status changes need interactive transactions. Use Neon's **pooled** connection string.
 
@@ -127,9 +128,20 @@ The King James Bible, one row per verse: 31,102 rows. Shared, read-only referenc
 
 The primary key `(book, chapter, verse)` serves verse, passage, and chapter reads. `bible_verses_search_idx` is a GIN index on `to_tsvector('simple', text)` for word search; a query must use exactly that expression to use it.
 
+### `bible_psalm_titles`
+
+The titles printed above verse 1 of 116 psalms ("A Psalm of David."). Shared, read-only reference data with no owner, like `bible_verses`, and deliberately apart from it: a title is not a verse, so it has no verse number, is not counted among the 31,102 verses, and is not in the search index.
+
+| Column  | Type       | Notes                                   |
+| ------- | ---------- | --------------------------------------- |
+| `psalm` | `smallint` | Primary key, 1 to 150 (CHECK)           |
+| `text`  | `text`     | Not null, not blank (CHECK). Plain text |
+
+A psalm without a title has no row. The application never writes here. It reads all the rows at once (`getPsalmTitles`, cached) and treats an empty table as an error, so a database that has not been loaded is never mistaken for "no psalm has a title".
+
 ### `reference_datasets`
 
-Which edition of each reference dataset a database holds: `name` (`kjv`), `checksum`, `row_count`, `loaded_at`.
+Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. There are two rows: `kjv` (31,102) and `kjv-psalm-titles` (116).
 
 ## Bible text
 
@@ -140,6 +152,14 @@ The text is data, not a migration. It lives in `data/bible/kjv.json` and every `
 - A first load takes about ten seconds against Neon.
 - `npm run db:status` reports `Bible: loaded` or `not loaded`.
 - A manual production migration (`db:migrate:prod`) asks for its confirmation when either a migration or the Bible load is pending.
+
+**The titles of the Psalms** are a second dataset, loaded the same way and by the same command, after the migrations (their table is one of them) and after the verses:
+
+- `psalmTitlesAreCurrent` compares the checksum of `data/bible/kjv-psalm-titles.json` with the `kjv-psalm-titles` row and the count with 116. A database without the table yet is simply "not loaded".
+- `seedPsalmTitles` replaces `bible_psalm_titles` in one transaction on one connection: delete, insert, count, record. It does not touch `bible_verses`. A failure rolls back and fails the command.
+- Running it again does nothing; a fresh database and one that already had the verses end the same.
+- `npm run db:status` reports `Titles: loaded` or `not loaded`, and `db:migrate:prod` asks for its confirmation when the titles are pending too.
+- **Order with a deployment.** The migration only adds a table, so it is safe under the code already live. Until a production build has loaded the titles, the new code serves psalms without them (logged, and not kept by the browser); it does not fail.
 
 To change the text, see `data/bible/README.md`. Tests load the real dataset into an in-memory PostgreSQL to prove the loader; other database tests insert the few verses they need.
 
@@ -154,16 +174,16 @@ Never edit a migration that has been applied anywhere, and never use `drizzle-ki
 
 ## Commands
 
-| Command                   | What it does                                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`             | Applies pending migrations to the development database and loads the Bible if it is missing, then starts Next. Aborts if either fails |
-| `npm run dev:next`        | Starts Next without touching a database (interface work only)                                                                         |
-| `npm run db:generate`     | Writes a migration from schema changes                                                                                                |
-| `npm run db:migrate:dev`  | Applies pending migrations to development                                                                                             |
-| `npm run build`           | Builds; in the Vercel production deployment only, then applies pending migrations to production and loads the Bible if it is missing  |
-| `npm run db:migrate:prod` | Applies pending migrations to production by hand, after confirmation                                                                  |
-| `npm run db:status`       | Target, stamp, applied and pending migrations (`-- prod` for production)                                                              |
-| `npm run db:stamp -- dev` | Identifies a database as development (`-- prod` for production)                                                                       |
+| Command                   | What it does                                                                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`             | Applies pending migrations to the development database and loads the Bible and the psalm titles if they are missing, then starts Next. Aborts if any of it fails |
+| `npm run dev:next`        | Starts Next without touching a database (interface work only)                                                                                                    |
+| `npm run db:generate`     | Writes a migration from schema changes                                                                                                                           |
+| `npm run db:migrate:dev`  | Applies pending migrations to development                                                                                                                        |
+| `npm run build`           | Builds; in the Vercel production deployment only, then applies pending migrations to production and loads the Bible if it is missing                             |
+| `npm run db:migrate:prod` | Applies pending migrations to production by hand, after confirmation                                                                                             |
+| `npm run db:status`       | Target, stamp, applied and pending migrations (`-- prod` for production)                                                                                         |
+| `npm run db:stamp -- dev` | Identifies a database as development (`-- prod` for production)                                                                                                  |
 
 ## How a database is identified
 

@@ -1,11 +1,22 @@
-// Loads the King James Bible into `bible_verses`. See docs/DATABASE.md.
+// Loads the King James Bible into `bible_verses`, and the titles of the Psalms
+// into `bible_psalm_titles`. See docs/DATABASE.md.
 //
 // It is reference data, not a migration: the text lives in data/bible/kjv.json
-// and a database records which edition it holds in `reference_datasets`.
+// (the titles in data/bible/kjv-psalm-titles.json) and a database records
+// which edition of each it holds in `reference_datasets`.
 // Loading is skipped when that edition is already there, so it is safe to run
 // on every start and every deployment.
 
-import { checksum, countVerses, datasetName, expected } from "../bible/dataset.mjs";
+import {
+  checksum,
+  countVerses,
+  datasetName,
+  expected,
+  psalmCount,
+  titleRows,
+  titlesChecksum,
+  titlesDatasetName,
+} from "../bible/dataset.mjs";
 
 /** Refuses anything that is not a complete 66-book canon. */
 export function checkDataset(books) {
@@ -72,6 +83,73 @@ export async function seedBible(db, books) {
        on conflict (name) do update
          set checksum = excluded.checksum, row_count = excluded.row_count, loaded_at = now()`,
       [datasetName, checksum(books), expected.verses],
+    );
+    await db.query("commit");
+  } catch (error) {
+    await db.query("rollback");
+    throw error;
+  }
+}
+
+/** Refuses anything that is not the full set of titles, each on a real psalm. */
+export function checkPsalmTitles(titles) {
+  const rows = titleRows(titles);
+  if (rows.length !== expected.psalmTitles) {
+    throw new Error(`The psalm titles are incomplete: ${rows.length} of ${expected.psalmTitles}.`);
+  }
+  for (const { psalm, text } of rows) {
+    if (!Number.isInteger(psalm) || psalm < 1 || psalm > psalmCount) {
+      throw new Error(`There is no psalm ${psalm} to give a title to.`);
+    }
+    if (typeof text !== "string" || !text.trim()) {
+      throw new Error(`The title of psalm ${psalm} is empty.`);
+    }
+  }
+}
+
+/** True when the database already holds exactly these titles. */
+export async function psalmTitlesAreCurrent(db, titles) {
+  // Before its migration has run there is no table, and so nothing loaded.
+  const tables = await db.query(
+    `select to_regclass('public.reference_datasets') is not null
+        and to_regclass('public.bible_psalm_titles') is not null as present`,
+  );
+  if (!tables.rows[0].present) return false;
+  const result = await db.query(
+    "select checksum, row_count from reference_datasets where name = $1",
+    [titlesDatasetName],
+  );
+  const loaded = result.rows[0];
+  return loaded?.checksum === titlesChecksum(titles) && loaded?.row_count === expected.psalmTitles;
+}
+
+/**
+ * Replaces the stored psalm titles with the dataset, in one transaction, as
+ * `seedBible` does for the verses. It never touches `bible_verses`. `db` must
+ * be a single connection, not a pool.
+ */
+export async function seedPsalmTitles(db, titles) {
+  checkPsalmTitles(titles);
+  await db.query("begin");
+  try {
+    await db.query("delete from bible_psalm_titles");
+    await db.query(
+      `insert into bible_psalm_titles (psalm, text)
+       select psalm, text
+       from jsonb_to_recordset($1::jsonb) as rows(psalm smallint, text text)`,
+      [JSON.stringify(titleRows(titles))],
+    );
+    const stored = await db.query("select count(*)::int as titles from bible_psalm_titles");
+    if (stored.rows[0].titles !== expected.psalmTitles) {
+      throw new Error(
+        `Expected ${expected.psalmTitles} psalm titles, the database holds ${stored.rows[0].titles}.`,
+      );
+    }
+    await db.query(
+      `insert into reference_datasets (name, checksum, row_count) values ($1, $2, $3)
+       on conflict (name) do update
+         set checksum = excluded.checksum, row_count = excluded.row_count, loaded_at = now()`,
+      [titlesDatasetName, titlesChecksum(titles), expected.psalmTitles],
     );
     await db.query("commit");
   } catch (error) {

@@ -19,6 +19,8 @@ test.describe("guests and application routes", () => {
     "/settings",
     "/library",
     "/library/00000000-0000-4000-8000-000000000000",
+    "/bible",
+    "/bible?book=43&chapter=3&verse=16",
   ]) {
     test(`${path} sends a guest to sign-in`, async ({ page }) => {
       await page.goto(path);
@@ -68,7 +70,7 @@ test.describe("access denied page", () => {
 
 test("robots.txt keeps the new routes out of search", async ({ request }) => {
   const body = await (await request.get("/robots.txt")).text();
-  for (const path of ["/admin", "/accept-invitation", "/access-denied", "/sign-in"]) {
+  for (const path of ["/admin", "/accept-invitation", "/access-denied", "/sign-in", "/bible"]) {
     expect(body).toContain(`Disallow: ${path}`);
   }
 });

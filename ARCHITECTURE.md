@@ -28,7 +28,7 @@ src/
     (marketing)/            Public, indexable pages (header + footer shell)
       page.tsx              Landing page  /
     (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
-    (app)/                  Authenticated shell: dashboard, library, settings, admin
+    (app)/                  Authenticated shell: dashboard, library, bible, settings, admin
     api/bible/              Route handlers: one chapter, and word search
     icon.svg                Favicon (small-size mark)
     apple-icon.png          Generated
@@ -64,7 +64,7 @@ src/
 public/brand/               mark.svg, icon-192.png, icon-512.png
 scripts/                    generate-brand-assets.mjs, db/ (migration commands and the Bible
                             loader), bible/ (dataset reader and its builder)
-data/bible/                 kjv.json, the King James text, and where it came from
+data/bible/                 kjv.json, the King James text; kjv-psalm-titles.json; and where they came from
 drizzle/                    Generated SQL migrations (committed)
 tests/e2e/                  Playwright specs
 docs/                       Roadmap, database, environments, handoff, brand board
@@ -90,6 +90,7 @@ Conventions:
 | `/admin`             | Restricted administration                  | 1B    | No      |
 | `/library`           | The owner's ideas: search, filter, browse  | 2B.2  | No      |
 | `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
+| `/bible`             | The Bible reader                           | 2C.1A | No      |
 | `/api/bible/…`       | A chapter, or a word search (JSON)         | 2A    | No      |
 | `/history`           | Preaching history                          | 3     | No      |
 | `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
@@ -272,7 +273,9 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 **A reference** is numbers: `{ book, chapterStart, verseStart, chapterEnd, verseEnd }`, book 1 to 66. It is the same shape in the table, the actions, and the components. `reference.ts` parses what is typed ("Romans 12:1-2", "Psalm 23", "Jude 5"), formats it, and validates it against `versification.ts`, the real verse count of every chapter, which is generated from the dataset. Validation therefore needs no request, and the server repeats it.
 
-**Text** is fetched a chapter at a time: `GET /api/bible/<book>/<chapter>`, for active accounts. `getChapter` is the application's one `use cache` function: the text is the same for everyone and never changes. It throws, and so is not cached, if a chapter is missing or short. The browser keeps the chapters it has opened (`use-chapter.ts`) and never holds more.
+**Text** is fetched a chapter at a time: `GET /api/bible/<book>/<chapter>`, for active accounts, answering `{ book, chapter, verses, title }`. `getChapter` is a `use cache` function: the text is the same for everyone and never changes. It throws, and so is not cached, if a chapter is missing or short. The browser keeps the chapters it has opened (`use-chapter.ts`) and never holds more.
+
+**A psalm's title** ("A Psalm of David.") is `title`. It belongs to the chapter and to no verse: it is stored apart (`bible_psalm_titles`), read by `getPsalmTitles` (cached, all 116 at once, and an error rather than "none" when the table is empty), never numbered, counted, selected, searched, or copied, and shown by `PassageText` as `superscription` above verse 1. If the titles cannot be read the chapter is still served, without one and with `no-store` so the browser does not keep the gap. `useChapter` returns it beside `verses`; callers that do not show it ignore it.
 
 **Search** is `GET /api/bible/search?q=&in=&offset=`: PostgreSQL full-text search with the `simple` configuration, so words match exactly as written (a concordance, not a search engine), in canonical order, 40 to a page. `buildSearchQuery` (`search.ts`) turns the input into a query by hand, admitting only letters and digits: `grace mercy` (both), `"living water"` (phrase), `faith OR hope`, `-law` (without), `lov*` (beginning with). The query lives in `search-verses.ts`, apart from the cached read, deliberately.
 
@@ -282,14 +285,66 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 | --------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Quick Preview   | Clicking any `ReferenceChip`                        | Popover where the window is at least 48rem wide; a sheet from the foot of the screen below that                   |
 | Scripture Panel | "Read" in a preview; "Browse" in a `ScriptureField` | A panel down the right edge when wide; a full-height sheet when narrow; inside quick capture, part of that dialog |
-| Bible reader    | Not built                                           | A page that hosts the same `ScriptureBrowser`                                                                     |
+| Bible reader    | The Bible link in the main navigation               | The `/bible` page: `BibleReader` (see "Bible reader" below)                                                       |
 
-- `PassageText` is the only renderer of Bible text: serif, one verse to a line, the number in the margin, selected verses on `primary-soft` with an emerald number.
+- `PassageText` is the only renderer of Bible text: serif, one verse to a line, the number in the margin, selected verses on `primary-soft` with an emerald number. `size="reader"` is the Bible page's larger setting, `superscription` a psalm's title, and `located` a verse that was gone to (`aria-current="location"`; not a selection, and how the eye is drawn to it is the surface's business).
+- `useBibleSearch` (`use-bible-search.ts`) and `SearchHits` are the search request and its results list, shared by the panel and the reader. A reply to a search that has been replaced is dropped.
 - `ScriptureBrowser` is the panel's content and is identical in every container: a search box, Book / Chapter / Verse filters with previous and next, the text, and a footer with the selection and one action. Verses are chosen by tapping, any number, and unselected by tapping again; none chosen means the whole chapter. Verses that are not adjacent become separate references. When the idea is still on screen beside the panel (`besideIdea`) and the action can be repeated (adding, not replacing), attaching leaves the panel open for the next passage; where the panel covers the idea, attaching returns to it.
 - `ScriptureProvider` owns the one panel. `useScripture().openPanel({ reference, attach })` opens it on a passage; `attach` is what choosing does there ("Add to idea", "Update reference"), and its absence means reading only. A surface that shows the panel within itself wraps its content in `ScriptureHost`.
 - `ScriptureField` is the form control: chips, a box that adds a typed reference on Enter, and Browse. It applies each change to the list as it stands when the change lands, because the form beside an open panel stays live.
 - The container is chosen from the space available (`useMediaQuery`), never from the device. Surfaces mount on interaction, so there is nothing to mismatch at hydration.
 - **One modal layer at a time.** A preview closes before the panel opens. Inside quick capture the panel sits beside the form when wide and replaces it when narrow, and a narrow-screen chip goes straight to the panel.
+
+### Bible reader
+
+`/bible` is Phase 2C.1A: the whole King James Bible to read, with book, chapter, and verse navigation, the existing word search, verse selection, and copying. Favourites and highlights (2C.1B) and attaching a selection to an idea (2C.1C) are not built; the reader has no table of its own.
+
+**The page** (`app/(app)/bible/page.tsx`) is a Server Component: `requireActiveUser()`, then the chapter the address names is read with the cached `getChapter` and sent with the page, so a link arrives with its text. Everything after that happens in the browser, in `BibleReader`, a chapter at a time through `/api/bible`, which authorises every request itself.
+
+**The address is the location.** `features/scripture/reader-location.ts` is the contract, with no server code in it:
+
+| Address                             | Means                                               |
+| ----------------------------------- | --------------------------------------------------- |
+| `/bible`                            | The chapter last read in this browser, or Genesis 1 |
+| `/bible?book=43&chapter=3`          | John 3                                              |
+| `/bible?book=43&chapter=3&verse=16` | John 3, brought to verse 16                         |
+
+- `book` is the canonical number, 1 to 66. Everything is checked against `versification.ts`.
+- `parseReaderLocation` never throws. No real book: no location. A chapter the book does not have: chapter 1 (and the verse is dropped with it). A verse the chapter does not have: dropped. Other parameters are ignored and of a repeated one the first is used.
+- `readerHref` writes one address per place, in the order `book`, `chapter`, `verse`. An address that says a place another way is rewritten in place (`replaceState`).
+- `verse` says where to look. It scrolls the verse into view and tints it faintly for under two seconds (`data-found`, the `verse-found` animation in `globals.css`), then lets it go: there is nothing to clear, and it is never a selection. Only one verse is ever tinted: going to another takes it off the first at once, the attribute is removed when the animation ends, and going to the same verse again plays it again. Neither the verse nor the Go to verse menu keeps any mark afterwards.
+- **The chapters either side are fetched ahead** once a chapter is shown, so Previous and Next show text at once and not the loading lines.
+- **Moving about** (the sidebar, Previous and Next, Go to verse, a search result, a typed reference) is `window.history.pushState`, which Next keeps in step with `useSearchParams`: no request to the server for the page, and Back and Forward retrace the reading. A new chapter starts at the top of the page.
+- **No place named**: the reader shows the loading lines (never a wrong chapter), reads the saved place, and `router.replace`s to it, so the bare address leaves no history entry that would only send forward again.
+
+**Reading position** is `localStorage["bible-location"]`, written as `book.chapter` on every chapter shown and validated again when read. It is a preference of the device: it is not in the database, is not synchronised, and a link that names a place always wins over it. Storage that is missing, refused, or holds nonsense means Genesis 1.
+
+**Selection** (`features/scripture/selection.ts`) is one of three states: `none`, `verses` (sorted, each once, only verses the chapter has), or `chapter`.
+
+- Clicking a verse selects it; clicking it again unselects it. Verses that are apart become separate references through `versesToReferences`: John 3:3, 5, 6, 8 is John 3:3, John 3:5–6, John 3:8.
+- **Nothing selected is nothing.** `selectionReferences` returns an empty list, never the chapter. This is deliberately not the Scripture Panel's rule, where an empty choice means the whole chapter and quick capture and the editor rely on it; the panel is unchanged.
+- The whole chapter is chosen on purpose ("Select chapter") and is the one chapter reference, not a list of verses. Every verse chosen one by one is the same state.
+- A selection is temporary: it is React state inside the chapter's view, which is keyed by book and chapter, so it cannot outlive its chapter. It is not in the address.
+- Interactive selection is within the chapter on screen. References across chapters remain valid everywhere else.
+
+**`SelectionToolbar`** appears with a selection and goes with it: the reference in words, Copy text, Copy reference, Copy link, Clear. Its `children` are where 2C.1B and 2C.1C add their actions; they get the same `ScriptureReference[]`. It rests at the foot of the reading column (above the tab bar and the safe-area inset on a narrow screen), and `BackToTop` steps aside while it is shown.
+
+- **Copy text** is `formatSelectionText`: the reference and "(KJV)", then directly beneath it each verse on its own line with its number; where verses were passed over, a line of three dots stands between the passages and none of those verses is included. A psalm's title is not copied.
+- **Copy link** is the chapter's address at the first verse chosen. The selection itself is not serialised.
+- Success is a toast; a refused clipboard is said in the toolbar.
+- **Ctrl+C or Command+C** copies the selection and then clears it. What it copies is a choice made in Settings (verse text by default, or the reference, or a link), kept on the device in `localStorage["bible-copy"]` (`copy-preference.ts`); the button it stands for carries `aria-keyshortcuts`. It stands aside for a text box, for text marked the ordinary way, and when nothing is selected, and a refused copy keeps the selection. The toolbar's buttons leave the selection in place, so the text and then the reference can both be taken.
+
+**Navigation** (`ReaderNavigator`) is one component in two containers: the sidebar from `md`, and a full-height `Dialog` below it, opened from the chapter bar. Its state (`useReaderNavigation`) is held by the reader, so search results are still there when the sheet is opened again.
+
+- The box goes to a typed reference (`parseReference`) and otherwise searches the text. After going to a reference it offers to search for the words instead, for the word that is also a book ("Jude"). Searching with the box empty returns to the books and puts the last search away.
+- Books are listed under their testaments; the book being read is open on its chapters. A book of one chapter is gone to directly.
+- **The sidebar can be put away**, and that is remembered on the device (`localStorage["bible-sidebar"]`, `reader-sidebar.ts`): the same mechanism as the library's view, one attribute on `<html>` (`data-bible-sidebar`) set before first paint by `ReaderSidebarScript` and read by the `sidebar-closed:` variant. Its place closes by width while the panel itself slides a little to the left and fades, with its content held at full width so nothing reflows, and it is `visibility: hidden` once away. **One handle does both**: a small round control astride the line between the navigation and the text, which travels with that line to the window's edge and back, its arrow turning to say which way the navigation will go. It is outside the element it hides, so it never has to hand focus to another control.
+- **Previous and Next are in two places**: the chapter bar, and the foot of each chapter, as two links that name the chapter they lead to. Arrows floating beside the text were tried, as round arrows on a wide window and as edge tabs on a phone, and the owner decided against both: do not add them back. On a touch screen a sideways swipe over the text does the same (`swipe.ts`): towards the left for the next chapter, towards the right for the one before, and only when it is plainly sideways, far enough, and quick, so that scrolling the chapter is never taken for one.
+- **The chapter bar** holds only Previous, the chapter's name (the page's `h1`), and Next, each control balanced by its like at the other end, so the name sits over the middle of the text. Beneath it, above the text, are the translation's name, **Go to verse** (a popover of the chapter's verse numbers), and **Select chapter**.
+
+**Motion.** The sidebar's width, slide, fade, and handle share one 0.38 second ease-in-out curve; a verse gone to is lit and fades (held, not faded, under reduced motion); a chapter's text settles into place over 0.3 seconds from 16px to the side it lies on, the next chapter from the right and the one before from the left, and is fully opaque throughout: nothing fades in, because text that starts from clear leaves the page blank for an instant, which the owner saw as a flash. The links at the foot of a chapter are reading on, not turning aside, so from them the next chapter comes up from below and the one before down from above. The chapter's name simply changes, and a first arrival is not animated. The text's container clips sideways, so the slide never widens the page. Go to verse moves the page with `glideTo` (`glide.ts`), one ease set frame by frame, because the browser's own smooth scrolling stuttered when started as the menu closed; the verse is lit as the glide ends, a verse already in view is lit without moving the page, and the reader's own wheel, touch, or key takes over at once. Nothing loops, and the global reduced-motion rule stills all of it.
+
+**Later translations.** References and `reader-location` carry no translation. The translation's name is one constant (`translation` in `books.ts`), and text is reached only through `passages.ts` and `/api/bible`. Nothing else was built ahead of need.
 
 ### Account management
 
@@ -306,11 +361,12 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 - Role, status, and joining date are shown read-only from the `users` row. No action accepts a role, a status, or a user ID.
 - A connected account cannot be disconnected when it is the only way to sign in. The provider list is the constant in `use-connected-accounts.ts` (Google), because the SDK has no public list of enabled providers.
 - Appearance reuses `ThemeToggle` on the same `next-themes` store as the bar, plus "Use device setting" to clear a manual choice. Nothing about the theme is saved to the account.
+- Bible (`BibleSettings`) is one choice, what the reader's copy shortcut copies. It too is kept in the browser and not on the account.
 - Account deletion is not implemented.
 
 ### Caching
 
-Cache Components is on. Nothing user-specific uses `use cache`; the one cached function is `getChapter`, which returns Bible text and knows nothing about the caller. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
+Cache Components is on. Nothing user-specific uses `use cache`; the cached functions are `getChapter`, which returns Bible text and knows nothing about the caller, and beside it `getPsalmTitles`, the same kind of read. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
 
 ## Design system
 
@@ -422,7 +478,7 @@ Ordinary buttons still do not glow. The primary button's hover is a colour step 
 
 `SiteHeader` is a fixed, full-width, 56px glass bar with a bottom hairline (`glass glass-settle`). Its logo is `HomeLink`, which on the landing page scrolls to the very top and clears any section hash, since a link to the current URL would otherwise do nothing. From `md` up it shows section links, the theme control, and Sign in inline. Below `md`, `MobileNav` shows a menu button (two lines that cross into an X) and an opaque sheet that unrolls under the bar, set like a contents page: section links in Playfair with hairlines between, Sign in, and the theme control. The page dims behind it; tapping the dimmed area or pressing Escape closes it, and widening the window past `md` removes it. Section links (`#…`) are plain anchors, not `next/link`, which does not scroll again to a hash already in the URL. While the panel is open the bar turns opaque to match it (the panel carries `data-nav-panel`, and the header reacts with `has-[…]`), so the two read as one sheet even at the top of the page where the bar is otherwise clear.
 
-`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round outlined button in its centre, styled as the bar's Capture control is; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. **The Bible reader and the outline builder each join that list when their pages are built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald and a slowly breathing edge; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`, the progress bar `z-70`, and the splash screen `z-100`.
+`AppHeader` is the same bar for the authenticated shell: Dashboard and Library links, the Capture control, and `AccountMenu` (name, email, Settings, Administration for administrators, Light / Dark as menu radio items, sign out; the trigger shows the profile picture or initials). Settings is reached from the account menu and the dashboard, not the link row. Below `md` the bar keeps the logo and an avatar button. The avatar opens the account sheet (identity with the theme control beside it, Settings, Administration for administrators, sign out), built on the same `useNavPanel` sheet as `MobileNav`. A round `BackToTop` button floats in the bottom corner of both shells once a page has scrolled a full screen, above the tab bar where there is one. Destinations move to a fixed tab bar at the foot of the screen, with quick capture as a round outlined button in its centre, styled as the bar's Capture control is; the `(app)` layout pads `main` for it. The link row and the tab bar both read `appLinks()` in `components/layout/app-links.ts`: add a destination there, with its icon, only once its page exists, and keep the tab bar to five including capture. The Bible reader joined it in Phase 2C.1A (Dashboard, Library, Bible; on a narrow screen the tab bar is Dashboard, Library, capture, Bible). **The outline builder joins that list when its page is built.** Administration is not a destination: it is reached from the account menu and the account sheet. In the bar, Capture is a quiet outlined pill matching the account button, with only its plus in emerald and a slowly breathing edge; the owner found a solid emerald button there too heavy. The current page link is ink with a 2px emerald rule just beneath its label, via `aria-current` (it sat on the bar's bottom edge until the owner asked for it closer to the text). The bar, menus, and dialogs are all `z-50`; menus and dialogs render in a portal at the end of `<body>`, so they sit above the bar. The skip link is `z-60`, the progress bar `z-70`, and the splash screen `z-100`.
 
 The logo link in a bar must be `flex items-center`: as an inline box it sits on the text baseline and lands a few pixels above the row's centre.
 
@@ -552,3 +608,14 @@ These are settled and constrain later phases. The first and fourth are implement
 | The way back is a query string, re-parsed              | It can only ever produce a library address, so it is not an open redirect               |
 | Tag management is a dialog in the library              | Tags are tidied while looking at the ideas they organise; no extra page or nav item     |
 | Signed-in E2E through Clerk's testing ticket           | No password or bypass in the repository; development instance only                      |
+| Reader location in the URL, by book number             | A place can be linked and bookmarked; numbers need no translation and validate offline  |
+| Reader moves with `pushState`, not the router          | No server round trip per chapter; Back and Forward still work; the API authorises       |
+| Reading position in `localStorage`, not a table        | A device preference; nothing to migrate, and a link always wins                         |
+| No selection in the reader means no verses             | Nobody acts on a chapter they did not choose; the panel keeps its own rule              |
+| Whole chapter is a selection state of its own          | One chapter reference, and distinct from having chosen nothing                          |
+| Sidebar state remembered on the device                 | As the library's view is: a reading habit, set before paint, never in the address       |
+| Psalm titles in their own table and file               | They are not verse text: the 31,102 verses, their numbers, and their checksum stay put  |
+| Psalm titles read all at once, and cached              | 116 short rows; an empty table is an error, so "no title" is never cached by mistake    |
+| A typed reference navigates instead of searching       | It is what was meant; the words can still be searched for with one more click           |
+| The copy shortcut's meaning is a device preference     | Like the theme and the library's view: nothing to store on the account                  |
+| Ctrl+C clears the selection; the buttons do not        | The shortcut finishes the job; the buttons let two things be copied from one selection  |
