@@ -64,7 +64,7 @@ beforeAll(async () => {
         // Kept from when this was a sermon; a point shows neither.
         subject: "Prayer",
         sermonType: "topical",
-        status: "captured",
+        status: "idea",
         createdAt: at("2026-02-01T00:00:00Z"),
         updatedAt: at("2026-03-02T00:00:00Z"),
       },
@@ -73,7 +73,7 @@ beforeAll(async () => {
         kind: "undecided",
         title: "100% committed",
         notes: "under_score and back\\slash",
-        status: "captured",
+        status: "idea",
         createdAt: at("2026-02-15T08:00:00Z"),
         updatedAt: at("2026-03-03T08:00:00Z"),
       },
@@ -242,14 +242,14 @@ describe("filters", () => {
   });
 
   it("filters by each status", async () => {
-    expect(sorted(await found({ statuses: ["captured"] }))).toEqual(sorted([C, D]));
+    expect(sorted(await found({ statuses: ["idea"] }))).toEqual(sorted([C, D]));
     expect(sorted(await found({ statuses: ["developing"] }))).toEqual(sorted([A, E]));
     expect(await found({ statuses: ["ready"] })).toEqual([B]);
   });
 
   it("matches any of several statuses", async () => {
     expect(sorted(await found({ statuses: ["developing", "ready"] }))).toEqual(sorted([A, B, E]));
-    expect(sorted(await found({ statuses: ["captured", "ready"] }))).toEqual(sorted([B, C, D]));
+    expect(sorted(await found({ statuses: ["idea", "ready"] }))).toEqual(sorted([B, C, D]));
   });
 
   it("filters by sermon type, among sermons only", async () => {
@@ -273,9 +273,9 @@ describe("filters", () => {
   });
 
   it("joins the values in a filter with or, and the filters with and", async () => {
-    // (sermon or point) and (captured or ready): B is a ready sermon, C a captured point.
+    // (sermon or point) and (idea or ready): B is a ready sermon, C a point still an idea.
     expect(
-      sorted(await found({ kinds: ["sermon", "point"], statuses: ["captured", "ready"] })),
+      sorted(await found({ kinds: ["sermon", "point"], statuses: ["idea", "ready"] })),
     ).toEqual(sorted([B, C]));
     // (sermon) and (developing or ready) and (faith and prayer)
     expect(
@@ -384,7 +384,7 @@ describe("filters", () => {
     expect(
       await found({ q: "pray", kinds: ["sermon"], statuses: ["ready"], tagIds: [tag.prayer] }),
     ).toEqual([B]);
-    expect(await found({ kinds: ["sermon"], statuses: ["captured"] })).toEqual([]);
+    expect(await found({ kinds: ["sermon"], statuses: ["idea"] })).toEqual([]);
     // Tags with a search and a date: C is the only faith idea created in February.
     expect(
       await found({ q: "faith", tagIds: [tag.faith], tagMode: "all", createdFrom: "2026-02-01" }),

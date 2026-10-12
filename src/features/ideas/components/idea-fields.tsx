@@ -200,14 +200,9 @@ export function SermonFields({ form, draft, update, errors }: FieldProps) {
       <Segmented
         label={t.fields.sermonType}
         name={`${form}-sermon-type`}
-        options={[
-          { value: "none" as const, label: t.fields.notSet },
-          ...sermonTypes.map((value) => ({ value, label: t.sermonTypes[value] })),
-        ]}
-        value={draft.sermonType ?? "none"}
-        onChange={(value) =>
-          update((current) => ({ ...current, sermonType: value === "none" ? null : value }))
-        }
+        options={sermonTypes.map((value) => ({ value, label: t.sermonTypes[value] }))}
+        value={draft.sermonType}
+        onChange={(sermonType) => update((current) => ({ ...current, sermonType }))}
       />
       <div>
         <Label htmlFor={id}>{t.fields.subject}</Label>

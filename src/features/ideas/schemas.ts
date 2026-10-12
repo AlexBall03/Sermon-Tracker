@@ -10,13 +10,16 @@ import {
 import { dictionary, formatNumber } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import {
+  classificationDefaults,
   ideaKinds,
   ideaLimits,
   ideaStatuses,
+  intendedFormats,
   sermonTypes,
   tagLimits,
   type IdeaKind,
   type IdeaStatus,
+  type IntendedFormat,
   type SermonType,
 } from "./model";
 import type { IdeaTag } from "./tags";
@@ -28,6 +31,26 @@ export const ideaIdSchema = z.uuid();
 export const ideaKindSchema = z.enum(ideaKinds);
 
 export const tagIdSchema = z.uuid();
+
+/**
+ * The three classifications, each one of its fixed values or left out. They
+ * say nothing in words, so they need no language. Left out means "as it is":
+ * there is no default here, and a value that is not on the list is refused.
+ */
+const classificationShape = {
+  status: z.enum(ideaStatuses).optional(),
+  intendedFormat: z.enum(intendedFormats).optional(),
+  sermonType: z.enum(sermonTypes).optional(),
+};
+
+/**
+ * A change to an idea's classification and nothing else: any of the three,
+ * and at least one. What is not named is left alone.
+ */
+export const classificationInputSchema = z
+  .object(classificationShape)
+  .refine((change) => Object.values(change).some((value) => value !== undefined));
+export type ClassificationInput = z.infer<typeof classificationInputSchema>;
 
 /**
  * The schemas of ideas and tags, saying what they refuse in one language. The
@@ -78,11 +101,10 @@ export function ideaSchemas(locale: Locale = defaultLocale) {
       .min(1, t.titleRequired)
       .max(ideaLimits.title, t.titleTooLong(ideaLimits.title)),
     notes: optionalText(ideaLimits.notes),
-    status: z.enum(ideaStatuses).default("captured"),
-    sermonType: z
-      .enum(sermonTypes)
-      .nullish()
-      .transform((value) => value ?? null),
+    // A new idea that does not say is given the defaults.
+    status: z.enum(ideaStatuses).default(classificationDefaults.status),
+    intendedFormat: z.enum(intendedFormats).default(classificationDefaults.intendedFormat),
+    sermonType: z.enum(sermonTypes).default(classificationDefaults.sermonType),
     subject: optionalText(ideaLimits.subject),
     references: z
       .array(ideaReferenceSchema)
@@ -104,6 +126,14 @@ export function ideaSchemas(locale: Locale = defaultLocale) {
     /** Left out, the idea's tags stay as they are; given, they replace what was there. */
     tagIds: tagIdsSchema.optional(),
   });
+
+  /**
+   * A save of an idea that already exists. It is the same as a new idea's
+   * input but for the classifications, which have no default here: one that
+   * is left out stays as it is, so a save that names only the title cannot
+   * put the status back to `idea`.
+   */
+  const ideaUpdateSchema = ideaInputSchema.extend(classificationShape);
 
   /**
    * Passages to add to an idea that already exists, from the Bible reader or
@@ -137,6 +167,7 @@ export function ideaSchemas(locale: Locale = defaultLocale) {
     tagName: tagNameSchema,
     tagIds: tagIdsSchema,
     ideaInput: ideaInputSchema,
+    ideaUpdate: ideaUpdateSchema,
     attachInput: attachInputSchema,
   };
 }
@@ -148,6 +179,8 @@ export const tagNameSchema = inEnglish.tagName;
 export const tagIdsSchema = inEnglish.tagIds;
 export const ideaInputSchema = inEnglish.ideaInput;
 export type IdeaInput = z.infer<typeof ideaInputSchema>;
+export const ideaUpdateSchema = inEnglish.ideaUpdate;
+export type IdeaUpdate = z.infer<typeof ideaUpdateSchema>;
 export const attachInputSchema = inEnglish.attachInput;
 export type AttachInput = z.infer<typeof attachInputSchema>;
 
@@ -157,7 +190,8 @@ export type IdeaDraft = {
   title: string;
   notes: string;
   status: IdeaStatus;
-  sermonType: SermonType | null;
+  intendedFormat: IntendedFormat;
+  sermonType: SermonType;
   subject: string;
   references: IdeaReference[];
   /**
@@ -175,8 +209,7 @@ export const emptyDraft: IdeaDraft = {
   kind: "undecided",
   title: "",
   notes: "",
-  status: "captured",
-  sermonType: null,
+  ...classificationDefaults,
   subject: "",
   references: [],
   tags: [],

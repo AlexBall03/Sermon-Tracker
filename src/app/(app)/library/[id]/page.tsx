@@ -64,6 +64,8 @@ export default async function IdeaPage({
           title: idea.title,
           notes: idea.notes ?? "",
           status: idea.status,
+          // Not shown yet, and sent back with every save as it is.
+          intendedFormat: idea.intendedFormat,
           sermonType: idea.sermonType,
           subject: idea.subject ?? "",
           references: idea.references,

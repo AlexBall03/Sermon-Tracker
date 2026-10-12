@@ -204,7 +204,7 @@ describe("LibraryPage", () => {
     state.ideas = [sermon];
     await library({
       kind: ["point", "sermon", "series"],
-      status: ["ready", "captured"],
+      status: ["ready", "idea"],
       type: ["topical", "expository"],
       tag: [b, a, a],
       tag_mode: "all",
@@ -212,7 +212,7 @@ describe("LibraryPage", () => {
     expect(state.searchIdeas).toHaveBeenCalledWith("database", "owner-1", {
       ...defaultLibraryQuery,
       kinds: ["sermon", "point"],
-      statuses: ["captured", "ready"],
+      statuses: ["idea", "ready"],
       sermonTypes: ["topical", "expository"],
       tagIds: [a, b],
       tagMode: "all",

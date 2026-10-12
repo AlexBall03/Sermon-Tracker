@@ -64,7 +64,7 @@ export function IdeaResults({
               <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
                 {words.kinds[idea.kind]}
               </Badge>
-              {sermon && idea.sermonType && (
+              {sermon && idea.sermonType !== "unspecified" && (
                 <span className="truncate text-xs text-muted-foreground">
                   <span className="sr-only">{t.sermonType} </span>
                   {words.sermonTypes[idea.sermonType]}

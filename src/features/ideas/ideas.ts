@@ -8,6 +8,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNull,
   lt,
   or,
   sql,
@@ -18,11 +19,31 @@ import { ideas, ideaScriptureReferences, ideaTags, type Idea } from "@/db/schema
 import type { Database } from "@/db/types";
 import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { searchTerms, startOfDay, startOfNextDay, type LibraryQuery } from "./library-query";
-import { ideaLimits, libraryPageSize, type IdeaKind, type LibrarySort } from "./model";
-import type { IdeaInput, IdeaReference } from "./schemas";
+import {
+  classificationDefaults,
+  ideaLimits,
+  legacyIdeaStatus,
+  libraryPageSize,
+  type IdeaKind,
+  type IdeaStatus,
+  type LibrarySort,
+  type SermonType,
+  type StoredIdeaStatus,
+} from "./model";
+import type { ClassificationInput, IdeaInput, IdeaReference, IdeaUpdate } from "./schemas";
 import { tagsForIdeas, writeIdeaTags, type IdeaTag } from "./tags";
 
-export type IdeaWithReferences = Idea & { references: IdeaReference[]; tags: IdeaTag[] };
+/**
+ * An idea as the application reads it. The table may still hold what the
+ * classifications were before Phase 2D.1 (`captured`, and no sermon type);
+ * nothing outside this file ever sees those.
+ */
+export type IdeaRecord = Omit<Idea, "status" | "sermonType"> & {
+  status: IdeaStatus;
+  sermonType: SermonType;
+};
+
+export type IdeaWithReferences = IdeaRecord & { references: IdeaReference[]; tags: IdeaTag[] };
 
 /** One page of the library, and how much there is altogether. */
 export type LibraryPage = {
@@ -37,6 +58,15 @@ export type LibraryPage = {
 
 /** The most a caller may ask for on one page. */
 const maxPageSize = 100;
+
+/** A stored row as it is read: `captured` is `idea`, and no sermon type is `unspecified`. */
+function asRead(row: Idea): IdeaRecord {
+  return {
+    ...row,
+    status: row.status === legacyIdeaStatus ? classificationDefaults.status : row.status,
+    sermonType: row.sermonType ?? classificationDefaults.sermonType,
+  };
+}
 
 type Reader = Pick<Database, "select">;
 type Writer = Pick<Database, "insert" | "delete">;
@@ -82,7 +112,7 @@ async function withReferences(db: Reader, ownerId: string, rows: Idea[]) {
     tagsForIdeas(db, ownerId, ids),
   ]);
   return rows.map((row) => ({
-    ...row,
+    ...asRead(row),
     references: references.get(row.id) ?? [],
     tags: tags.get(row.id) ?? [],
   }));
@@ -96,13 +126,18 @@ async function writeReferences(db: Writer, ideaId: string, references: IdeaRefer
     .values(references.map((reference, position) => ({ ...reference, ideaId, position })));
 }
 
-/** The columns a person may set, named one by one: nothing else reaches the table. */
-function columns(input: IdeaInput) {
+/**
+ * The columns a person may set, named one by one: nothing else reaches the
+ * table. A classification an update leaves out is undefined here, and an
+ * undefined column is not written, so it stays as it was.
+ */
+function columns(input: IdeaInput | IdeaUpdate) {
   return {
     kind: input.kind,
     title: input.title,
     notes: input.notes,
     status: input.status,
+    intendedFormat: input.intendedFormat,
     sermonType: input.sermonType,
     subject: input.subject,
   };
@@ -113,7 +148,7 @@ function columns(input: IdeaInput) {
  * then has. Input without `tagIds` leaves them alone. A tag that is not the
  * owner's throws, which undoes the whole save.
  */
-async function saveTags(tx: Reader & Writer, idea: Idea, input: IdeaInput) {
+async function saveTags(tx: Reader & Writer, idea: Idea, input: IdeaInput | IdeaUpdate) {
   if (input.tagIds) await writeIdeaTags(tx, idea.ownerId, idea.id, input.tagIds);
   return (await tagsForIdeas(tx, idea.ownerId, [idea.id])).get(idea.id) ?? [];
 }
@@ -185,10 +220,23 @@ function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
 
   // Within a filter any chosen value will do; an empty filter asks nothing.
   if (query.kinds.length > 0) conditions.push(inArray(ideas.kind, query.kinds));
-  if (query.statuses.length > 0) conditions.push(inArray(ideas.status, query.statuses));
+  if (query.statuses.length > 0) {
+    // An idea saved before the status was renamed is an idea still.
+    const stored: StoredIdeaStatus[] = query.statuses.includes(classificationDefaults.status)
+      ? [...query.statuses, legacyIdeaStatus]
+      : query.statuses;
+    conditions.push(inArray(ideas.status, stored));
+  }
   // A type kept from when an idea was a sermon does not count.
   if (query.sermonTypes.length > 0) {
-    conditions.push(eq(ideas.kind, "sermon"), inArray(ideas.sermonType, query.sermonTypes));
+    const chosen = inArray(ideas.sermonType, query.sermonTypes);
+    conditions.push(
+      eq(ideas.kind, "sermon"),
+      // A sermon saved before there was an `unspecified` has no type at all.
+      query.sermonTypes.includes(classificationDefaults.sermonType)
+        ? or(chosen, isNull(ideas.sermonType))
+        : chosen,
+    );
   }
 
   // Tags are matched in a subquery, never a join, so an idea with two of them
@@ -292,15 +340,23 @@ export async function createIdea(
     // A repeated submission returns the first one's idea as it stands, tags included.
     if (!created) return id ? getIdea(tx, ownerId, id) : null;
     await writeReferences(tx, created.id, input.references);
-    return { ...created, references: input.references, tags: await saveTags(tx, created, input) };
+    return {
+      ...asRead(created),
+      references: input.references,
+      tags: await saveTags(tx, created, input),
+    };
   });
 }
 
+/**
+ * Saves an idea's content. A classification the input leaves out is not
+ * touched; one it names is set.
+ */
 export async function updateIdea(
   db: Database,
   ownerId: string,
   id: string,
-  input: IdeaInput,
+  input: IdeaInput | IdeaUpdate,
 ): Promise<IdeaWithReferences | null> {
   return db.transaction(async (tx) => {
     const [updated] = await tx
@@ -311,7 +367,11 @@ export async function updateIdea(
     // References are touched only once the owner-scoped update has matched.
     if (!updated) return null;
     await writeReferences(tx, updated.id, input.references);
-    return { ...updated, references: input.references, tags: await saveTags(tx, updated, input) };
+    return {
+      ...asRead(updated),
+      references: input.references,
+      tags: await saveTags(tx, updated, input),
+    };
   });
 }
 
@@ -405,13 +465,73 @@ export async function setIdeaKind(
   ownerId: string,
   id: string,
   kind: IdeaKind,
-): Promise<Idea | null> {
+): Promise<IdeaRecord | null> {
   const [updated] = await db
     .update(ideas)
     .set({ kind })
     .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
     .returning();
-  return updated ?? null;
+  return updated ? asRead(updated) : null;
+}
+
+/**
+ * Changes an idea's status, intended format, or sermon type: whichever the
+ * change names, and nothing else. Any value may follow any other. It is only
+ * ever called because a person chose; nothing in the application moves a
+ * classification by itself.
+ */
+export async function classifyIdea(
+  db: Database,
+  ownerId: string,
+  id: string,
+  change: ClassificationInput,
+): Promise<IdeaRecord | null> {
+  const [updated] = await db
+    .update(ideas)
+    .set({
+      status: change.status,
+      intendedFormat: change.intendedFormat,
+      sermonType: change.sermonType,
+    })
+    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+    .returning();
+  return updated ? asRead(updated) : null;
+}
+
+/**
+ * Archives an idea: it is kept whole and marked with when. Its status,
+ * format, type, notes, references, and tags are not touched, and neither is
+ * `updated_at`, because putting an idea away is not an edit. Archiving one
+ * that is archived already keeps the first date.
+ */
+export async function archiveIdea(
+  db: Database,
+  ownerId: string,
+  id: string,
+): Promise<IdeaRecord | null> {
+  const [updated] = await db
+    .update(ideas)
+    .set({
+      archivedAt: sql`coalesce(${ideas.archivedAt}, now())`,
+      updatedAt: sql`${ideas.updatedAt}`,
+    })
+    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+    .returning();
+  return updated ? asRead(updated) : null;
+}
+
+/** Takes an idea out of the archive, exactly as it went in. Restoring one that is not archived changes nothing. */
+export async function restoreIdea(
+  db: Database,
+  ownerId: string,
+  id: string,
+): Promise<IdeaRecord | null> {
+  const [updated] = await db
+    .update(ideas)
+    .set({ archivedAt: null, updatedAt: sql`${ideas.updatedAt}` })
+    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+    .returning();
+  return updated ? asRead(updated) : null;
 }
 
 /** True when the owner's idea was deleted; its references go with it. */

@@ -4,6 +4,7 @@ import { routes } from "@/lib/site";
 import {
   ideaKinds,
   ideaStatuses,
+  legacyIdeaStatus,
   librarySorts,
   searchLimits,
   sermonTypes,
@@ -177,7 +178,13 @@ export function parseLibraryQuery(params: LibrarySearchParams): LibraryQuery {
   return {
     q: normaliseSearch(first(libraryParams.q) ?? ""),
     kinds: manyOf(ideaKinds, allValues(params, libraryParams.kinds)),
-    statuses: manyOf(ideaStatuses, allValues(params, libraryParams.statuses)),
+    statuses: manyOf(
+      ideaStatuses,
+      // An address written when `idea` was called `captured` still asks for it.
+      allValues(params, libraryParams.statuses).map((value) =>
+        value === legacyIdeaStatus ? ideaStatuses[0] : value,
+      ),
+    ),
     sermonTypes: manyOf(sermonTypes, allValues(params, libraryParams.sermonTypes)),
     tagIds: tagList(allValues(params, libraryParams.tagIds)),
     tagMode: oneOf(tagModes, first(libraryParams.tagMode)) ?? defaultTagMode,

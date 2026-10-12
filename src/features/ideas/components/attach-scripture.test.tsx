@@ -29,7 +29,7 @@ const john = passage(43, 3, 16, 18);
 const idea = (fields: Partial<IdeaMatch> & { title: string }): IdeaMatch => ({
   id: `id-${fields.title}`,
   kind: "sermon",
-  status: "captured",
+  status: "idea",
   subject: null,
   references: [],
   ...fields,

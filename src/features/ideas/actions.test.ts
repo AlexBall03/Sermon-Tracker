@@ -19,7 +19,16 @@ vi.mock("@/features/auth/access", () => ({
   authorize: async (): Promise<Authorization> => state.access as Authorization,
 }));
 
-import { attachScripture, changeIdeaKind, createIdea, deleteIdea, updateIdea } from "./actions";
+import {
+  archiveIdea,
+  attachScripture,
+  changeIdeaKind,
+  classifyIdea,
+  createIdea,
+  deleteIdea,
+  restoreIdea,
+  updateIdea,
+} from "./actions";
 import { getIdea, recentIdeas } from "./ideas";
 
 let db: Database;
@@ -65,6 +74,9 @@ describe("idea actions", () => {
         await createIdea({ title: "Thought" }),
         await updateIdea(id, { title: "Thought" }),
         await changeIdeaKind(id, "sermon"),
+        await classifyIdea(id, { status: "ready" }),
+        await archiveIdea(id),
+        await restoreIdea(id),
         await deleteIdea(id),
       ]) {
         expect(result).toEqual({ ok: false, message });
@@ -168,6 +180,154 @@ describe("idea actions", () => {
     };
     const result = await createIdea({ title: "Thought" });
     expect(result).toEqual({ ok: false, message: "The idea could not be saved. Try again." });
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
+  });
+});
+
+describe("classification actions", () => {
+  const sermon = {
+    kind: "sermon",
+    title: "Is There Not a Cause?",
+    notes: "1 Samuel 17.",
+    status: "developing",
+    intendedFormat: "flexible",
+    sermonType: "textual",
+  };
+
+  it("give a new idea the defaults, and keep what it was given", async () => {
+    signInAs(me);
+    const bare = await createIdea({ title: "A thought" });
+    expect(await getIdea(db, me, bare.id!)).toMatchObject({
+      status: "idea",
+      intendedFormat: "unspecified",
+      sermonType: "unspecified",
+      archivedAt: null,
+    });
+    const { id } = await createIdea(sermon);
+    expect(await getIdea(db, me, id!)).toMatchObject({ ...sermon, archivedAt: null });
+  });
+
+  it("do not reset a classification when a save names only the title or the notes", async () => {
+    signInAs(me);
+    const { id } = await createIdea(sermon);
+    expect(await updateIdea(id, { kind: "sermon", title: "Renamed" })).toMatchObject({ ok: true });
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      title: "Renamed",
+      status: "developing",
+      intendedFormat: "flexible",
+      sermonType: "textual",
+    });
+    await updateIdea(id, { kind: "sermon", title: "Renamed", notes: "More." });
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      notes: "More.",
+      status: "developing",
+      intendedFormat: "flexible",
+      sermonType: "textual",
+    });
+  });
+
+  it("change one classification and leave the others", async () => {
+    signInAs(me);
+    const { id } = await createIdea(sermon);
+    const saved = { ok: true, message: "Classification saved." };
+    expect(await classifyIdea(id, { status: "on_hold" })).toEqual(saved);
+    expect(await classifyIdea(id, { intendedFormat: "mini" })).toEqual(saved);
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      ...sermon,
+      status: "on_hold",
+      intendedFormat: "mini",
+    });
+    expect(await classifyIdea(id, { sermonType: "expository", status: "ready" })).toEqual(saved);
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      status: "ready",
+      intendedFormat: "mini",
+      sermonType: "expository",
+    });
+  });
+
+  it("refuse a value that is not on the list, and change nothing", async () => {
+    signInAs(me);
+    const { id } = await createIdea(sermon);
+    const invalid = { ok: false, message: "That request was not valid." };
+    for (const change of [
+      { status: "preached" },
+      { status: "captured" },
+      { intendedFormat: "long" },
+      { sermonType: "verse_by_verse" },
+      { status: "ready", sermonType: "narrative" },
+      {},
+      { title: "Not a classification" },
+      null,
+      "ready",
+    ]) {
+      expect(await classifyIdea(id, change)).toEqual(invalid);
+    }
+    expect(await classifyIdea("not-a-uuid", { status: "ready" })).toEqual(invalid);
+    expect(await archiveIdea("not-a-uuid")).toEqual(invalid);
+    expect(await restoreIdea(undefined)).toEqual(invalid);
+    for (const fields of [{ status: "preached" }, { intendedFormat: 1 }, { sermonType: "x" }]) {
+      expect(await updateIdea(id, { title: "T", ...fields })).toMatchObject({ ok: false });
+      expect(await createIdea({ title: "T", ...fields })).toMatchObject({ ok: false });
+    }
+    expect(await getIdea(db, me, id!)).toMatchObject(sermon);
+    expect(await recentIdeas(db, me, 10)).toHaveLength(1);
+  });
+
+  it("archive and restore the caller's idea, keeping everything else", async () => {
+    signInAs(me);
+    const { id } = await createIdea(sermon);
+    expect(await archiveIdea(id)).toEqual({ ok: true, message: "Idea archived." });
+    const archived = await getIdea(db, me, id!);
+    expect(archived).toMatchObject(sermon);
+    expect(archived?.archivedAt).toBeInstanceOf(Date);
+
+    // Asked again, it is still archived, from the same moment.
+    expect(await archiveIdea(id)).toEqual({ ok: true, message: "Idea archived." });
+    expect((await getIdea(db, me, id!))?.archivedAt).toEqual(archived?.archivedAt);
+
+    expect(await restoreIdea(id)).toEqual({ ok: true, message: "Idea restored." });
+    expect(await restoreIdea(id)).toEqual({ ok: true, message: "Idea restored." });
+    expect(await getIdea(db, me, id!)).toMatchObject({ ...sermon, archivedAt: null });
+  });
+
+  it("give the same answer for another account's idea as for one that does not exist", async () => {
+    signInAs(other);
+    const theirs = await createIdea(sermon);
+    await archiveIdea(theirs.id);
+    const stood = await getIdea(db, other, theirs.id!);
+
+    signInAs(me);
+    const missing = { ok: false, message: "That idea no longer exists." };
+    for (const id of [theirs.id!, "77777777-7777-4777-8777-777777777777"]) {
+      expect(await classifyIdea(id, { status: "ready" })).toEqual(missing);
+      expect(await archiveIdea(id)).toEqual(missing);
+      expect(await restoreIdea(id)).toEqual(missing);
+    }
+    // No input can name another owner either.
+    expect(await classifyIdea(theirs.id, { status: "ready", ownerId: other })).toEqual(missing);
+    expect(await getIdea(db, other, theirs.id!)).toEqual(stood);
+  });
+
+  it("answer a database failure with a fixed message", async () => {
+    signInAs(me);
+    const id = "77777777-7777-4777-8777-777777777777";
+    state.db = {
+      update: () => {
+        throw new Error("postgres://user:secret@host/db refused");
+      },
+    };
+    expect(await classifyIdea(id, { status: "ready" })).toEqual({
+      ok: false,
+      message: "The classification could not be saved. Try again.",
+    });
+    expect(await archiveIdea(id)).toEqual({
+      ok: false,
+      message: "The idea could not be archived. Try again.",
+    });
+    expect(await restoreIdea(id)).toEqual({
+      ok: false,
+      message: "The idea could not be restored. Try again.",
+    });
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
   });
 });

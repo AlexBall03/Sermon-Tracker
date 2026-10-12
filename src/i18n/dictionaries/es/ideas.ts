@@ -13,8 +13,53 @@ const ideaCount = (count: number) => (count === 1 ? "1 idea" : `${count} ideas`)
 export const ideas: Untranslated<typeof english> = {
   kinds,
   kindChoices: { sermon: "Sermón", point: "Punto", undecided: "Sin decidir" },
-  statuses: { captured: "Capturada", developing: "En desarrollo", ready: "Lista" },
-  sermonTypes: { topical: "Temático", expository: "Expositivo" },
+  statuses: { idea: "Idea", developing: "En desarrollo", ready: "Lista", on_hold: "En pausa" },
+  statusMeanings: {
+    idea: "Capturada, pero todavía sin desarrollar a fondo.",
+    developing: "Se está investigando, organizando o ampliando.",
+    ready: "Preparada lo suficiente para predicarla.",
+    on_hold: "En pausa a propósito, para considerarla más adelante.",
+  },
+  formats: {
+    full_length: "Completo",
+    mini: "Minisermón",
+    flexible: "Flexible",
+    unspecified: "Sin especificar",
+  },
+  formatMeanings: {
+    full_length: "Pensado para un sermón de duración normal.",
+    mini: "Pensado para una oportunidad de predicar más breve.",
+    flexible: "Podría desarrollarse o predicarse en cualquiera de los dos formatos.",
+    unspecified: "Todavía no se ha decidido el formato.",
+  },
+  sermonTypes: {
+    topical: "Temático",
+    textual: "Textual",
+    expository: "Expositivo",
+    unspecified: "Sin especificar",
+  },
+  sermonTypeGuide: {
+    topical: {
+      definition:
+        "Un sermón organizado en torno a un tema, que toma su enseñanza y su apoyo de los pasajes de la Escritura que tratan de él.",
+      example:
+        "“La importancia de ganar almas”, desarrollado con Proverbios 11:30, Mateo 28:19–20 y Daniel 12:3.",
+    },
+    textual: {
+      definition:
+        "Un sermón cuyos puntos principales salen de las palabras, las frases o las ideas centrales de un versículo o de un pasaje corto.",
+      example: "“¿No hay una causa?”, con puntos de predicación tomados de 1 Samuel 17:29.",
+    },
+    expository: {
+      definition:
+        "Un sermón que explica y aplica la Escritura desarrollando su sentido dentro del contexto, la estructura y el avance del pasaje.",
+      example: "“David y Goliat”, que explica y aplica 1 Samuel 17:32–50.",
+    },
+    unspecified: {
+      definition: "Todavía no se ha decidido el enfoque de la predicación.",
+      example: "Una idea recién capturada que el predicador aún no ha clasificado.",
+    },
+  },
   fields: {
     kind: "Tipo de idea",
     idea: "Idea",
@@ -22,7 +67,6 @@ export const ideas: Untranslated<typeof english> = {
     notesPlaceholder: "Todo lo que vaya con ella.",
     status: "Estado",
     sermonType: "Tipo de sermón",
-    notSet: "Sin definir",
     subject: "Tema",
     subjectPlaceholder: "La gracia, la oración, la cruz",
   },
@@ -167,6 +211,12 @@ export const ideas: Untranslated<typeof english> = {
     added: (references, title) => `Se agregó ${references} a ${title}.`,
     notReclassified: "No se pudo reclasificar la idea. Inténtalo de nuevo.",
     reclassified: (kind) => `Ahora está como: ${kinds[kind]}.`,
+    classified: "Clasificación guardada.",
+    notClassified: "No se pudo guardar la clasificación. Inténtalo de nuevo.",
+    archived: "Idea archivada.",
+    notArchived: "No se pudo archivar la idea. Inténtalo de nuevo.",
+    restored: "Idea restaurada.",
+    notRestored: "No se pudo restaurar la idea. Inténtalo de nuevo.",
     notDeleted: "No se pudo eliminar la idea. Inténtalo de nuevo.",
     deleted: "Idea eliminada.",
     missingTag: "Esa etiqueta ya no existe.",

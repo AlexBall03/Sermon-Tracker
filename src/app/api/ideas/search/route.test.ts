@@ -89,7 +89,7 @@ describe("GET /api/ideas/search", () => {
       expect.objectContaining({
         title: "Grace abounding",
         kind: "sermon",
-        status: "captured",
+        status: "idea",
         subject: "Grace",
         references: [],
       }),

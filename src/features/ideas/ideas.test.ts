@@ -58,9 +58,9 @@ describe("createIdea", () => {
       ownerId: me,
       title: "The story isn't over",
       kind: "undecided",
-      status: "captured",
+      status: "idea",
       notes: null,
-      sermonType: null,
+      sermonType: "unspecified",
       subject: null,
       references: [],
     });

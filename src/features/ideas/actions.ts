@@ -12,7 +12,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import * as service from "./ideas";
 import { ideaLimits } from "./model";
-import { ideaIdSchema, ideaKindSchema, ideaSchemas } from "./schemas";
+import { classificationInputSchema, ideaIdSchema, ideaKindSchema, ideaSchemas } from "./schemas";
 import { UnknownTagError } from "./tags";
 
 export type IdeaActionResult = ActionResult & { id?: string };
@@ -73,7 +73,8 @@ export async function updateIdea(id: unknown, input: unknown): Promise<ActionRes
 
   const ideaId = ideaIdSchema.safeParse(id);
   if (!ideaId.success) return { ok: false, message: t.invalid };
-  const parsed = schemas.ideaInput.safeParse(input);
+  // Unlike a new idea's input, this has no default classification: one left out is left alone.
+  const parsed = schemas.ideaUpdate.safeParse(input);
   if (!parsed.success) return firstIssue(parsed.error, t.changesNotSaved);
 
   try {
@@ -170,6 +171,71 @@ export async function changeIdeaKind(id: unknown, kind: unknown): Promise<Action
   }
   refresh(ideaId.data);
   return { ok: true, message: t.reclassified(parsed.data) };
+}
+
+/**
+ * Changes an idea's status, intended format, or sermon type: `{ status }`,
+ * `{ intendedFormat }`, `{ sermonType }`, or any of them together. What is
+ * not named is left as it is.
+ */
+export async function classifyIdea(id: unknown, input: unknown): Promise<ActionResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+  const { t } = await context();
+
+  const ideaId = ideaIdSchema.safeParse(id);
+  const parsed = classificationInputSchema.safeParse(input);
+  if (!ideaId.success || !parsed.success) return { ok: false, message: t.invalid };
+
+  try {
+    const idea = await service.classifyIdea(getDb(), actor.user.id, ideaId.data, parsed.data);
+    if (!idea) return { ok: false, message: t.missing };
+  } catch (error) {
+    console.error("Idea classification failed:", describeDatabaseError(error));
+    return { ok: false, message: t.notClassified };
+  }
+  refresh(ideaId.data);
+  return { ok: true, message: t.classified };
+}
+
+/** Archives one of the caller's ideas. Nothing else about it changes, and doing it twice is doing it once. */
+export async function archiveIdea(id: unknown): Promise<ActionResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+  const { t } = await context();
+
+  const ideaId = ideaIdSchema.safeParse(id);
+  if (!ideaId.success) return { ok: false, message: t.invalid };
+
+  try {
+    const idea = await service.archiveIdea(getDb(), actor.user.id, ideaId.data);
+    if (!idea) return { ok: false, message: t.missing };
+  } catch (error) {
+    console.error("Idea archive failed:", describeDatabaseError(error));
+    return { ok: false, message: t.notArchived };
+  }
+  refresh(ideaId.data);
+  return { ok: true, message: t.archived };
+}
+
+/** Takes one of the caller's ideas out of the archive, as it went in. */
+export async function restoreIdea(id: unknown): Promise<ActionResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+  const { t } = await context();
+
+  const ideaId = ideaIdSchema.safeParse(id);
+  if (!ideaId.success) return { ok: false, message: t.invalid };
+
+  try {
+    const idea = await service.restoreIdea(getDb(), actor.user.id, ideaId.data);
+    if (!idea) return { ok: false, message: t.missing };
+  } catch (error) {
+    console.error("Idea restore failed:", describeDatabaseError(error));
+    return { ok: false, message: t.notRestored };
+  }
+  refresh(ideaId.data);
+  return { ok: true, message: t.restored };
 }
 
 export async function deleteIdea(id: unknown): Promise<ActionResult> {

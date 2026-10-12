@@ -62,7 +62,7 @@ describe("quick capture", () => {
     expect(input).toMatchObject({
       title: "The story isn't over",
       kind: "undecided",
-      status: "captured",
+      status: "idea",
       notes: null,
       references: [],
     });

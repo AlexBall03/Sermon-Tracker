@@ -75,7 +75,7 @@ describe("parseLibraryQuery", () => {
     for (const kind of ["sermon", "point", "undecided"]) {
       expect(parseLibraryQuery({ kind }).kinds).toEqual([kind]);
     }
-    for (const status of ["captured", "developing", "ready"]) {
+    for (const status of ["idea", "developing", "ready", "on_hold"]) {
       expect(parseLibraryQuery({ status }).statuses).toEqual([status]);
     }
     for (const type of ["topical", "expository"]) {
@@ -138,11 +138,11 @@ describe("parseLibraryQuery", () => {
   it("reads a repeated filter as several values, each once, in one order", () => {
     const parsed = parseLibraryQuery(
       new URLSearchParams(
-        "kind=undecided&kind=sermon&kind=undecided&status=ready&status=captured&type=expository&type=topical",
+        "kind=undecided&kind=sermon&kind=undecided&status=ready&status=idea&type=expository&type=topical",
       ),
     );
     expect(parsed.kinds).toEqual(["sermon", "undecided"]);
-    expect(parsed.statuses).toEqual(["captured", "ready"]);
+    expect(parsed.statuses).toEqual(["idea", "ready"]);
     expect(parsed.sermonTypes).toEqual(["topical", "expository"]);
     expect(parseLibraryQuery({ kind: ["point", "sermon", "point"] }).kinds).toEqual([
       "sermon",
@@ -263,18 +263,18 @@ describe("serializeLibraryQuery", () => {
     const one = libraryHref({
       ...defaultLibraryQuery,
       kinds: ["undecided", "sermon"],
-      statuses: ["ready", "captured"],
+      statuses: ["ready", "idea"],
       tagIds: [tagB, tagA, tagA],
     });
     const other = libraryHref({
       ...defaultLibraryQuery,
       kinds: ["sermon", "undecided", "sermon"],
-      statuses: ["captured", "ready"],
+      statuses: ["idea", "ready"],
       tagIds: [tagA, tagB],
     });
     expect(one).toBe(other);
     expect(one).toBe(
-      `/library?kind=sermon&kind=undecided&status=captured&status=ready&tag=${tagA}&tag=${tagB}`,
+      `/library?kind=sermon&kind=undecided&status=idea&status=ready&tag=${tagA}&tag=${tagB}`,
     );
   });
 

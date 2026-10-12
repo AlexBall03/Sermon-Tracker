@@ -26,7 +26,8 @@ const initial: IdeaDraft = {
   kind: "sermon",
   title: "It is Well",
   notes: "2 Kings 4.",
-  status: "captured",
+  status: "idea",
+  intendedFormat: "unspecified",
   sermonType: "topical",
   subject: "Faith",
   references: [

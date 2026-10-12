@@ -4,7 +4,7 @@ import { defaultLocale, type Locale } from "@/i18n/locales";
 
 /**
  * The four figures the dashboard will summarise. They are shown together once
- * preaching history (Phase 3) exists and the summary is built (Phase 5), so
+ * preaching history (Phase 2E) exists and the summary is built (later), so
  * for now each says what it will measure instead of showing a number. Give an entry a
  * `value` in place of `pending` once its data is real.
  */

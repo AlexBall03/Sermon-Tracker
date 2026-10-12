@@ -13,8 +13,55 @@ export const ideas = {
   kinds,
   /** The kinds as a choice between them, where "idea" would only be repeated. */
   kindChoices: { sermon: "Sermon", point: "Point", undecided: "Undecided" },
-  statuses: { captured: "Captured", developing: "Developing", ready: "Ready" },
-  sermonTypes: { topical: "Topical", expository: "Expository" },
+  statuses: { idea: "Idea", developing: "Developing", ready: "Ready", on_hold: "On Hold" },
+  /** What each status means, for wherever one is chosen. */
+  statusMeanings: {
+    idea: "Captured but not substantially developed.",
+    developing: "Actively being researched, organized, or expanded.",
+    ready: "Prepared sufficiently to preach.",
+    on_hold: "Intentionally paused for future consideration.",
+  },
+  formats: {
+    full_length: "Full-Length",
+    mini: "Mini Sermon",
+    flexible: "Flexible",
+    unspecified: "Not Specified",
+  },
+  formatMeanings: {
+    full_length: "Intended for a normal-length sermon.",
+    mini: "Intended for a shorter preaching opportunity.",
+    flexible: "Could reasonably be developed or delivered in either format.",
+    unspecified: "The intended format has not been determined.",
+  },
+  sermonTypes: {
+    topical: "Topical",
+    textual: "Textual",
+    expository: "Expository",
+    unspecified: "Not Specified",
+  },
+  /** Each sermon type explained, with an example. Practical descriptions, not rules. */
+  sermonTypeGuide: {
+    topical: {
+      definition:
+        "A sermon organized around a particular subject, drawing teaching and support from relevant Scripture passages.",
+      example:
+        "“The Importance of Soul Winning,” developed using Proverbs 11:30, Matthew 28:19–20, and Daniel 12:3.",
+    },
+    textual: {
+      definition:
+        "A sermon whose main points are developed from the words, phrases, or central ideas of a particular verse or short passage.",
+      example: "“Is There Not a Cause?”, developing preaching points from 1 Samuel 17:29.",
+    },
+    expository: {
+      definition:
+        "A sermon that explains and applies Scripture by developing its meaning within the passage’s context, structure, and progression.",
+      example: "“David and Goliath,” explaining and applying 1 Samuel 17:32–50.",
+    },
+    unspecified: {
+      definition: "The preaching approach has not yet been determined.",
+      example: "A newly captured idea that the preacher has not classified.",
+    },
+  },
   fields: {
     kind: "Kind of idea",
     idea: "Idea",
@@ -22,7 +69,6 @@ export const ideas = {
     notesPlaceholder: "Anything that belongs with it.",
     status: "Status",
     sermonType: "Sermon type",
-    notSet: "Not set",
     subject: "Subject or theme",
     subjectPlaceholder: "Grace, prayer, the cross",
   },
@@ -168,6 +214,12 @@ export const ideas = {
     added: (references: string, title: string) => `Added ${references} to ${title}.`,
     notReclassified: "The idea could not be reclassified. Try again.",
     reclassified: (kind: IdeaKind) => `Now filed as: ${kinds[kind]}.`,
+    classified: "Classification saved.",
+    notClassified: "The classification could not be saved. Try again.",
+    archived: "Idea archived.",
+    notArchived: "The idea could not be archived. Try again.",
+    restored: "Idea restored.",
+    notRestored: "The idea could not be restored. Try again.",
     notDeleted: "The idea could not be deleted. Try again.",
     deleted: "Idea deleted.",
     missingTag: "That tag no longer exists.",

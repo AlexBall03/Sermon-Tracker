@@ -100,8 +100,8 @@ Conventions:
 | `/bible`             | The Bible reader                           | 2C.1A | No      |
 | `/api/bible/…`       | A chapter, its marks, or a word search     | 2A    | No      |
 | `/api/ideas/search`  | The account's own ideas, found by name     | 2C.1C | No      |
-| `/history`           | Preaching history                          | 3     | No      |
-| `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
+| `/history`           | Preaching history                          | 2E    | No      |
+| `/analytics`         | Statistics (not in the route map yet)      | Later | No      |
 
 Route groups separate the three shells without affecting URLs:
 
@@ -156,7 +156,7 @@ Disabling an account takes effect on that person's next request, because status 
 
 ### Dashboard
 
-`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: the five most recently changed ideas (or an invitation to capture the first), shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) wait for preaching history and the summary itself, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page is Phase 5.
+`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: the five most recently changed ideas (or an invitation to capture the first), shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) wait for preaching history and the summary itself, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page has no phase yet (see the roadmap).
 
 ### Ideas
 
@@ -165,9 +165,46 @@ One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, 
 - **Service** (`ideas.ts`): `createIdea`, `getIdea`, `recentIdeas` (the dashboard's five), `searchIdeas` (the library), `updateIdea`, `attachReferences` (see "Scripture on an idea"), `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
 - **Actions** (`actions.ts`): `createIdea`, `updateIdea`, `attachScripture`, `changeIdeaKind`, `deleteIdea`. Each calls `authorize("active")`, validates with Zod, and takes the owner from the session. No input can name an owner: the schema drops unknown keys and the service names each column it writes.
 - **Create is idempotent.** The browser generates the UUID before the first attempt; the insert is `ON CONFLICT (id) DO NOTHING` followed by an owner-scoped read. A double submit or a retry is one idea; an ID that exists under another account fails without revealing it.
+- **Classifications** (status, intended format, sermon type) and **archiving** are described under "Classification" below. `classifyIdea`, `archiveIdea`, and `restoreIdea` are the service functions and the actions of the same names.
 - **Reclassifying changes only `kind`.** A sermon's type and subject stay in their columns when it becomes a point or undecided, and return when it becomes a sermon again. The editor applies a reclassification at once, separately from Save.
 - **Pages**: `/library` reads its query from the URL and shows one page of results (see "Library" below). `/library/<id>` validates the ID as a UUID before querying and calls `notFound()` for anything the owner-scoped query does not return.
 - **The editor follows the saved idea.** Next keeps a page it has left, so the editor can be on screen, or kept, while the idea changes elsewhere (a passage added from the Bible, another tab). When the server sends the idea again, an editor with nothing unsaved simply shows it; one with edits under way keeps them and brings in only the passages added elsewhere, so the next Save cannot take them off again.
+
+### Classification
+
+Phase 2D.1: the data model only. Every idea, of any kind, carries three classifications and an archive date. They are four columns of `ideas`, each a fixed list of values checked by the table, by Zod, and by TypeScript from one list in `features/ideas/model.ts`. There are no definition tables and nothing an account can add to: these are the product's words, not a person's taxonomy (tags are that).
+
+| Classification     | Column            | Values                                            | A new idea    |
+| ------------------ | ----------------- | ------------------------------------------------- | ------------- |
+| Development status | `status`          | `idea`, `developing`, `ready`, `on_hold`          | `idea`        |
+| Intended format    | `intended_format` | `full_length`, `mini`, `flexible`, `unspecified`  | `unspecified` |
+| Sermon type        | `sermon_type`     | `topical`, `textual`, `expository`, `unspecified` | `unspecified` |
+| Archived           | `archived_at`     | A date, or null                                   | null          |
+
+- **Status is changed by hand and by nothing else.** Any status may follow any other. Nothing moves it: not a date, a note, a tag, a passage, or, later, a sermon being preached. There is no Inbox and no Preached status. Whether and how often a sermon was preached will be read from preaching-history records (Phase 2E); no column here records it, and none should be added.
+- **Intended format is what the sermon is meant for**, not what happened on an occasion. A sermon marked Full-Length may once have been given as a five-minute mini sermon; each occurrence will keep the format actually used, and changing this column never rewrites that. There are no duration thresholds, a mini sermon is not a preaching-class sermon, and changing a format never makes a second record.
+- **Sermon type is one primary type**, or `unspecified`. Verse-by-verse preaching is a kind of expository preaching, not a fourth type. Nothing infers a type from an idea's content.
+- **Format and type belong to a sermon.** Like `subject`, they are kept when an idea is reclassified and given back when it becomes a sermon again; the library shows a type, and filters by it, on sermons only.
+- **Archiving is not a status.** `archiveIdea` sets `archived_at` (to the first moment asked, so a repeat keeps it) and `restoreIdea` clears it. Neither touches the status, the format, the type, the notes, the references, the tags, the kind, or `updated_at`: putting an idea away is not an edit, and it comes back exactly as it went. It is not deletion and not a soft delete; `deleteIdea` is unchanged. An archived idea is still returned by every read. Nothing in the interface archives yet, and deciding where archived ideas are shown belongs with the control that archives them (2D.2, 2D.3).
+
+**The words** are in the `ideas` dictionary, in both languages: `statuses`, `formats`, and `sermonTypes` are the labels; `statusMeanings` and `formatMeanings` say what each means; `sermonTypeGuide` holds each type's definition and example. `classificationOptions(locale)` (`features/ideas/classification.ts`, no server code) returns all of it as lists in the model's order, which is what a control that chooses one renders. Nothing about a person is in these lists, and nothing about them waits on onboarding.
+
+**Validation and saves** (`schemas.ts`).
+
+- `ideaInput` is a new idea's input (and the editor's whole draft): a classification left out gets its default.
+- `ideaUpdate` is what `updateIdea` parses: the same, but the three classifications have **no default**. One that is left out is undefined, an undefined column is not written, and so it stays as it was. Before this phase a save that named only the title put the status back to its default. Content fields (`kind`, `notes`, `subject`, `references`) keep the whole-record behavior they had: the editor always sends them all.
+- `classificationInputSchema` is a change to the classifications alone: any of the three, at least one. It is what `classifyIdea` takes, on the pattern of `changeIdeaKind`.
+- A value on no list is refused everywhere, by Zod and then by the table's CHECK.
+
+**Values from before this phase.** `status` was `captured`, `developing`, or `ready`, and `sermon_type` was `topical`, `expository`, or null. Production migrates during the build, while the previous deployment is still writing `captured` and null, so migration 0007 widens and adds and rewrites no row (docs/DATABASE.md). Until a later migration tightens the table:
+
+- A stored `captured` is read as `idea` and a null type as `unspecified`, in one function, `asRead` in `ideas.ts`, which every read and every returned row passes through. `IdeaRecord` is the type of what comes out, and nothing outside that file sees the old values.
+- Nothing writes `captured` or a null type any more. A row keeps its old value until something sets that column.
+- The library's status filter for `idea` also matches `captured`, and its type filter for `unspecified` also matches null. An address with `status=captured` reads as `status=idea`.
+
+**Existing controls.** The editor's and quick capture's status and sermon-type choices, and the library's filters for them, are built from the model's lists, so they list the new values with no new control: this was agreed with the owner for 2D.1. Intended format has no control yet (the idea page carries it through the draft so a save sends it back unchanged), and neither has archiving.
+
+**What later phases need from this.** A sermon is still one `ideas` row with one ID, whatever it is classified as and however often it is preached, so a preaching occurrence (2E) and an outline (Phase 3) can both point at it; a point is still its own row, and a classification change touches no other row. IDs can already be made in the browser, every value is a short string that can be checked without the server (`model.ts` and `schemas.ts` have no server code), and the changes go through three small actions, which is what offline work (Phase 5) will need.
 
 ### Library
 
@@ -177,18 +214,18 @@ The data layer is Phase 2B.1 and the interface Phase 2B.2. `/library` is a searc
 
 **The query is the URL.** `features/ideas/library-query.ts` is the contract, with no server code in it, so the browser can build links with it:
 
-| Parameter                    | Values                                                                                  | Default        |
-| ---------------------------- | --------------------------------------------------------------------------------------- | -------------- |
-| `q`                          | Search text, cut to 200 characters; the first 8 words are used                          | none           |
-| `kind`                       | `sermon`, `point`, `undecided`; repeat it for several                                   | all            |
-| `status`                     | `captured`, `developing`, `ready`; repeat it for several                                | all            |
-| `type`                       | `topical`, `expository`; repeat it for several                                          | all            |
-| `tag`                        | A tag ID; repeat it for several (20 at most)                                            | none           |
-| `tag_mode`                   | `any`, `all`                                                                            | `any`          |
-| `created_from`, `created_to` | `YYYY-MM-DD`                                                                            | none           |
-| `updated_from`, `updated_to` | `YYYY-MM-DD`                                                                            | none           |
-| `sort`                       | `updated-desc`, `updated-asc`, `created-desc`, `created-asc`, `title-asc`, `title-desc` | `updated-desc` |
-| `page`                       | A whole number from 1                                                                   | 1              |
+| Parameter                    | Values                                                                                       | Default        |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| `q`                          | Search text, cut to 200 characters; the first 8 words are used                               | none           |
+| `kind`                       | `sermon`, `point`, `undecided`; repeat it for several                                        | all            |
+| `status`                     | `idea`, `developing`, `ready`, `on_hold`; repeat it for several (`captured` reads as `idea`) | all            |
+| `type`                       | `topical`, `textual`, `expository`, `unspecified`; repeat it for several                     | all            |
+| `tag`                        | A tag ID; repeat it for several (20 at most)                                                 | none           |
+| `tag_mode`                   | `any`, `all`                                                                                 | `any`          |
+| `created_from`, `created_to` | `YYYY-MM-DD`                                                                                 | none           |
+| `updated_from`, `updated_to` | `YYYY-MM-DD`                                                                                 | none           |
+| `sort`                       | `updated-desc`, `updated-asc`, `created-desc`, `created-asc`, `title-asc`, `title-desc`      | `updated-desc` |
+| `page`                       | A whole number from 1                                                                        | 1              |
 
 - `parseLibraryQuery` never throws. A missing, malformed, or out-of-range value becomes its default, unknown parameters are ignored, and where one value is expected (`q`, `tag_mode`, the dates, `sort`, `page`) the first is used. A filter that repeats keeps the values it recognises, each once, and drops the rest; an address written when filters took one value (`?kind=sermon`) reads as a list of one.
 - `serializeLibraryQuery` and `libraryHref` write a query back with every default left out, in a fixed order: filter values in the order the model lists them, tag IDs sorted, and `tag_mode` only when it is `all` and a tag is chosen. One query has one address, however its values were picked.
@@ -640,7 +677,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - The landing page sets its canonical URL. `/sign-in`, `/accept-invitation`, `/access-denied`, and everything under `(app)` are `noindex`.
 - `robots.ts` disallows every application path. On any Vercel deployment that is not production (`VERCEL_ENV`), the whole site is `noindex` and `robots.txt` disallows everything.
 - A page that sets its own `openGraph` object replaces the inherited one, including the share image. Extend it deliberately.
-- There is no web app manifest yet; it belongs to Phase 7 (PWA). The icons it will need already exist in `public/brand/`.
+- There is no web app manifest yet; it belongs to Phase 5 (PWA). The icons it will need already exist in `public/brand/`.
 
 ## Domain decisions
 
@@ -654,9 +691,9 @@ These are settled and constrain later phases. The first and fourth are implement
 
 **Quick capture is a primary feature.** A thought must be saveable in seconds, especially on mobile, from anywhere in the authenticated shell and without choosing a type first.
 
-**Offline comes later (Phase 7).** To keep synchronisation feasible: use client-generatable IDs (UUIDs) for idea records, keep `created_at`/`updated_at` on every record, and route mutations through a small number of well-defined server actions rather than scattering writes.
+**Offline comes later (Phase 5).** To keep synchronisation feasible: use client-generatable IDs (UUIDs) for idea records, keep `created_at`/`updated_at` on every record, and route mutations through a small number of well-defined server actions rather than scattering writes.
 
-**Sharing creates independent copies (Phase 6).** Accepting a shared idea copies it; it does not link two users to one record.
+**Sharing creates independent copies (later; not yet numbered).** Accepting a shared idea copies it; it does not link two users to one record.
 
 ## Testing
 
@@ -682,7 +719,7 @@ These are settled and constrain later phases. The first and fourth are implement
 | Hex values taken from the written brief                | The brand board labels differ by a character in places; the brief is authoritative      |
 | Canonical origin is a constant, not an env variable    | Previews should still canonicalise to production                                        |
 | Static generated share image rather than `next/og`     | Uses the real fonts and mark with no build-time network dependency                      |
-| No manifest in Phase 1                                 | Installability is Phase 7 scope                                                         |
+| No manifest in Phase 1                                 | Installability is Phase 5 scope                                                         |
 | `@vitejs/plugin-react` not installed                   | Vitest transforms JSX itself; the plugin conflicted on peer dependencies                |
 | Playwright serves a production build on port 3100      | Tests what ships, and avoids a dev server on 3000                                       |
 | Neon WebSocket pool, not the HTTP driver               | The last-administrator check needs an interactive transaction                           |
@@ -759,3 +796,10 @@ These are settled and constrain later phases. The first and fourth are implement
 | A pane's translation shown from local state            | The router can hold an address change back; the text must not wait                      |
 | History changed with a null state                      | Next ignores a call that hands it back its own state object                             |
 | Comparing by window width; navigation steps aside      | Two columns must be readable, and must not be squeezed by the sidebar                   |
+| Classifications as CHECKed text on `ideas`, no tables  | Fixed product values, not a person's taxonomy; a new value is a plain migration         |
+| `captured` and a null type read as the new values      | The live deployment writes them during the migration; rows are tightened later          |
+| Archiving is a date, not a status                      | An archived idea keeps its status and comes back with it; either changes alone          |
+| Archive and restore leave `updated_at` alone           | Putting an idea away is not an edit, and must not reorder the library                   |
+| A save has no default classification                   | Defaults are for new ideas; an update that names only a title must not reset a status   |
+| No preached flag or count on an idea                   | Preaching history will be the one record of it; a second copy would drift               |
+| Classification words in the dictionaries, one builder  | Labels, meanings, and examples exist once per language and reach any control as a list  |
