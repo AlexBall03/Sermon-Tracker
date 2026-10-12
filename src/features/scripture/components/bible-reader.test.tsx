@@ -2021,10 +2021,8 @@ describe("the translation being read", () => {
     expect(here()).toBe("/bible?book=43&chapter=3&verse=16&t=rvg");
     expect(heading()).toHaveTextContent("Juan 3");
     expect(screen.queryByText(verseText(43, 3, 16))).not.toBeInTheDocument();
-    // Said for the eye beside the selector, and for a screen reader in the live region.
-    expect(document.querySelector("[data-translation-changed]")).toHaveTextContent(
-      "Now reading the RVG.",
-    );
+    // The text itself is the sign of it: nothing is said beside the selector.
+    expect(document.querySelector("[data-translation-changed]")).not.toBeInTheDocument();
     // The page was not asked for again: only text and marks.
     expect(requests.slice(pages).every((url) => url.startsWith("/api/bible/"))).toBe(true);
     expect(address.replaced).toEqual([]);

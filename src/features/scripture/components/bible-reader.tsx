@@ -13,7 +13,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  Check,
   ChevronLeft,
   ChevronRight,
   Columns2,
@@ -877,14 +876,6 @@ function ChapterView({
   // What the keyboard's copy does here: chosen in Settings, the verse text until then.
   const shortcut = useSyncExternalStore(subscribeCopyKind, readCopyKind, () => defaultCopyKind);
   const textBox = useRef<HTMLDivElement>(null);
-  // Just changed to this translation: said beside the selector for a moment, in words.
-  const [changed, setChanged] = useState(arrival === "swap");
-  useEffect(() => {
-    if (!changed) return;
-    const timer = window.setTimeout(() => setChanged(false), 2600);
-    return () => window.clearTimeout(timer);
-  }, [changed]);
-
   // The chapter that came with the page is shown as it is and kept, so it is
   // never asked for; any other is fetched, once.
   const sent =
@@ -1128,7 +1119,7 @@ function ChapterView({
               className="h-8 w-[5.25rem] text-xs font-medium pointer-coarse:h-11"
             />
             {/* While its text is on the way, said beside the control that asked for it. */}
-            {!text && fetched.status === "loading" ? (
+            {!text && fetched.status === "loading" && (
               <span
                 role="status"
                 data-translation-loading
@@ -1137,18 +1128,6 @@ function ChapterView({
                 <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
                 {t.loadingTranslation(allTranslations[translation].short)}
               </span>
-            ) : (
-              changed && (
-                // The reader's own live region announces the change; this is for the eye.
-                <span
-                  aria-hidden
-                  data-translation-changed
-                  className="flex animate-menu items-center gap-1.5 text-xs font-medium text-primary"
-                >
-                  <Check className="size-3.5" aria-hidden />
-                  {t.nowReading(allTranslations[translation].short)}
-                </span>
-              )
             )}
           </div>
         ) : (
