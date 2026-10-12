@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { referenceKey } from "@/features/scripture/reference";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
 import { changeIdeaKind, deleteIdea, updateIdea } from "../actions";
-import { ideaKindLabels, type IdeaKind } from "../model";
-import { draftTagIds, fieldErrors, ideaInputSchema, type IdeaDraft } from "../schemas";
+import type { IdeaKind } from "../model";
+import { draftTagIds, fieldErrors, ideaSchemas, type IdeaDraft } from "../schemas";
 import type { IdeaTag } from "../tags";
 import {
   KindField,
@@ -41,10 +42,6 @@ type IdeaEditorProps = {
 };
 
 const form = "idea";
-const offline: ActionResult = {
-  ok: false,
-  message: "That could not be saved. Check your connection and try again.",
-};
 
 /**
  * One idea, open for editing. Content is saved with the Save button.
@@ -67,6 +64,9 @@ export function IdeaEditor({
 }: IdeaEditorProps) {
   const router = useRouter();
   const toast = useToast();
+  const t = useT("ideas").editor;
+  const locale = useLocale();
+  const offline: ActionResult = { ok: false, message: t.offline };
   const [draft, setDraft] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -104,7 +104,7 @@ export function IdeaEditor({
   }
 
   // Leaving with unsaved edits asks first, however the page is left.
-  const guard = useLeaveGuard(dirty, "Your changes to this idea have not been saved.", () => {
+  const guard = useLeaveGuard(dirty, t.unsaved, () => {
     // Leaving without saving puts the idea back as it was last saved.
     setDraft(saved);
     setErrors({});
@@ -119,7 +119,10 @@ export function IdeaEditor({
 
   async function save() {
     if (busy) return;
-    const parsed = ideaInputSchema.safeParse({ ...draft, tagIds: draftTagIds(draft) });
+    const parsed = ideaSchemas(locale).ideaInput.safeParse({
+      ...draft,
+      tagIds: draftTagIds(draft),
+    });
     if (!parsed.success) {
       const found = fieldErrors(parsed.error);
       setErrors(found);
@@ -180,9 +183,7 @@ export function IdeaEditor({
             onChange={(kind) => void reclassify(kind)}
             disabled={busy !== null}
           />
-          <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">
-            Changing this takes effect straight away and keeps everything else as it is.
-          </p>
+          <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">{t.kindHint}</p>
         </div>
         <ReferencesField draft={draft} update={update} ideaId={id} />
         <TagsField draft={draft} update={update} options={allTags} />
@@ -202,9 +203,9 @@ export function IdeaEditor({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button type="submit" disabled={busy !== null || !dirty} aria-busy={busy === "save"}>
               {busy === "save" && <LoaderCircle className="animate-spin" aria-hidden />}
-              {busy === "save" ? "Saving…" : "Save changes"}
+              {busy === "save" ? t.saving : t.save}
             </Button>
-            {dirty && <span className="text-sm text-muted-foreground">Unsaved changes</span>}
+            {dirty && <span className="text-sm text-muted-foreground">{t.unsavedChanges}</span>}
           </div>
           <ActionStatus result={result} />
         </div>
@@ -212,10 +213,12 @@ export function IdeaEditor({
 
       <footer className="mt-10 flex max-w-2xl flex-wrap items-center justify-between gap-4 border-t pt-6">
         <p className="text-sm text-muted-foreground">
-          Captured <time dateTime={createdAt.toISOString()}>{formatDate(createdAt)}</time>
+          {t.captured}{" "}
+          <time dateTime={createdAt.toISOString()}>{formatDate(createdAt, locale)}</time>
           <span aria-hidden> · </span>
           <span className="sr-only">, </span>
-          last changed <time dateTime={updatedAt.toISOString()}>{formatDate(updatedAt)}</time>
+          {t.lastChanged}{" "}
+          <time dateTime={updatedAt.toISOString()}>{formatDate(updatedAt, locale)}</time>
         </p>
         <Button
           type="button"
@@ -225,16 +228,16 @@ export function IdeaEditor({
           className="text-destructive hover:border-destructive/60"
           onClick={() =>
             setConfirmation({
-              title: "Delete this idea?",
-              description: `“${saved.title}” and its Scripture references will be deleted. This cannot be undone.`,
-              confirmLabel: `Delete ${ideaKindLabels[saved.kind].toLowerCase()}`,
+              title: t.deleteTitle,
+              description: t.deleteDescription(saved.title),
+              confirmLabel: t.deleteConfirm(saved.kind),
               destructive: true,
               run: () => deleteIdea(id),
             })
           }
         >
           <Trash2 aria-hidden />
-          Delete idea
+          {t.delete}
         </Button>
       </footer>
 

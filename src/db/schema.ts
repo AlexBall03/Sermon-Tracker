@@ -16,7 +16,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, sermonTypes } from "../features/ideas/model";
-import { highlightColors, translationIds } from "../features/scripture/saved/model";
+import { highlightColors } from "../features/scripture/saved/model";
+import { accentFold } from "../features/scripture/search-fold";
+import { translationIds } from "../features/scripture/translations";
+import { locales } from "../i18n/locales";
 
 /**
  * Application roles and account statuses. Stored as text with CHECK
@@ -36,6 +39,14 @@ export const users = pgTable(
     clerkUserId: text("clerk_user_id").notNull().unique(),
     role: text("role", { enum: userRoles }).notNull().default("user"),
     status: text("status", { enum: userStatuses }).notNull().default("active"),
+    /** The language of the interface. */
+    locale: text("locale", { enum: locales }).notNull().default("en"),
+    /**
+     * The Bible translation the person chose. Null until they choose one, and
+     * until then it follows the interface language (KJV in English, RVG in
+     * Spanish). Changing the language never writes here.
+     */
+    bibleTranslation: text("bible_translation", { enum: translationIds }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -45,10 +56,33 @@ export const users = pgTable(
   (table) => [
     check("users_role_check", sql`${table.role} in ('admin', 'user')`),
     check("users_status_check", sql`${table.status} in ('active', 'disabled')`),
+    check("users_locale_check", sql`${table.locale} in ('en', 'es')`),
+    check(
+      "users_bible_translation_check",
+      sql`${table.bibleTranslation} is null or ${table.bibleTranslation} in ('kjv', 'rvg')`,
+    ),
   ],
 );
 
 export type AppUser = typeof users.$inferSelect;
+
+/**
+ * Settings of the whole application, as one row. `spanish_enabled` is the
+ * administrator's switch: off, the Spanish interface and the Spanish Bible are
+ * unavailable to everyone, and English and the King James are used instead.
+ * Nothing a person saved is changed by it. A database with no row yet is one
+ * where nothing has been switched off.
+ */
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    singleton: boolean("singleton").primaryKey().default(true),
+    spanishEnabled: boolean("spanish_enabled").notNull().default(true),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [check("app_settings_singleton_check", sql`${table.singleton}`)],
+);
 
 /**
  * Ideas. One kind of record for sermon ideas, point ideas, and thoughts not
@@ -161,7 +195,7 @@ export const ideaTags = pgTable(
 
 /**
  * A passage attached to an idea, as numbers only: book 1 to 66 in canonical
- * order, then where it starts and ends. The text is read from `bible_verses`
+ * order, then where it starts and ends. The text is read from `scripture_verses`
  * when shown and is never copied here.
  *
  *   John 3          chapter_start 3
@@ -211,9 +245,60 @@ export const ideaScriptureReferences = pgTable(
 );
 
 /**
- * The King James Bible, one row per verse. Shared, read-only reference data:
- * it has no owner, the application never writes to it, and it is loaded from
- * data/bible/kjv.json by the database commands (see docs/DATABASE.md).
+ * The Bible, one row per verse of each translation. Shared, read-only
+ * reference data: it has no owner, the application never writes to it, and it
+ * is loaded from data/bible/<translation>.json by the database commands (see
+ * docs/DATABASE.md). Every translation numbers its chapters and verses alike.
+ */
+export const scriptureVerses = pgTable(
+  "scripture_verses",
+  {
+    translation: text("translation", { enum: translationIds }).notNull(),
+    book: smallint("book").notNull(),
+    chapter: smallint("chapter").notNull(),
+    verse: smallint("verse").notNull(),
+    text: text("text").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.translation, table.book, table.chapter, table.verse] }),
+    check("scripture_verses_translation_check", sql`${table.translation} in ('kjv', 'rvg')`),
+    // Word search. The "simple" configuration indexes every word exactly as
+    // written, with no stemming and no stop words, so a search behaves like a
+    // concordance; accented vowels are indexed as plain ones. Queries must use
+    // the same expression (features/scripture/search-verses.ts).
+    index("scripture_verses_search_idx").using(
+      "gin",
+      sql`to_tsvector('simple', translate(${table.text}, ${sql.raw(`'${accentFold.from}', '${accentFold.to}'`)}))`,
+    ),
+  ],
+);
+
+/**
+ * The titles printed above verse 1 of many psalms, for each translation. They
+ * belong to the psalm and not to any verse, so they are kept apart from
+ * `scripture_verses`: they are not numbered, counted, selected, or searched.
+ * A psalm without a title has no row.
+ */
+export const scripturePsalmTitles = pgTable(
+  "scripture_psalm_titles",
+  {
+    translation: text("translation", { enum: translationIds }).notNull(),
+    psalm: smallint("psalm").notNull(),
+    text: text("text").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.translation, table.psalm] }),
+    check("scripture_psalm_titles_translation_check", sql`${table.translation} in ('kjv', 'rvg')`),
+    check("scripture_psalm_titles_psalm_check", sql`${table.psalm} between 1 and 150`),
+    check("scripture_psalm_titles_text_check", sql`char_length(btrim(${table.text})) > 0`),
+  ],
+);
+
+/**
+ * Superseded by `scripture_verses` in Phase 2C.2 and no longer read or
+ * loaded. It is kept, with the King James text it holds, because the
+ * deployment live while that migration ran still read it; a later migration
+ * drops it.
  */
 export const bibleVerses = pgTable(
   "bible_verses",
@@ -240,13 +325,7 @@ export const referenceDatasets = pgTable("reference_datasets", {
   loadedAt: timestamp("loaded_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/**
- * The titles printed above verse 1 of many psalms ("A Psalm of David."). They
- * belong to the psalm and not to any verse, so they are kept apart from
- * `bible_verses`: they are not numbered, counted, selected, or searched.
- * Shared, read-only reference data, loaded from data/bible/kjv-psalm-titles.json
- * by the database commands. A psalm without a title has no row.
- */
+/** Superseded by `scripture_psalm_titles` in Phase 2C.2, and kept for the same reason as `bible_verses`. */
 export const biblePsalmTitles = pgTable(
   "bible_psalm_titles",
   {
@@ -262,7 +341,7 @@ export const biblePsalmTitles = pgTable(
 /**
  * A saved passage: any verses a person chose to keep, with an optional label
  * and notes. The verses are in `bible_favorite_verses`; the text is read from
- * `bible_verses` when shown and is never copied here.
+ * `scripture_verses` when shown and is never copied here.
  *
  * What makes a favorite itself is its verses and its translation, never its
  * label or notes: `selection_key` is a digest of the verses in canonical
@@ -294,7 +373,7 @@ export const bibleFavorites = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    check("bible_favorites_translation_check", sql`${table.translation} in ('kjv')`),
+    check("bible_favorites_translation_check", sql`${table.translation} in ('kjv', 'rvg')`),
     check(
       "bible_favorites_label_check",
       sql`${table.label} is null or char_length(btrim(${table.label})) between 1 and 120`,
@@ -382,7 +461,7 @@ export const bibleHighlights = pgTable(
     primaryKey({
       columns: [table.ownerId, table.translation, table.book, table.chapter, table.verse],
     }),
-    check("bible_highlights_translation_check", sql`${table.translation} in ('kjv')`),
+    check("bible_highlights_translation_check", sql`${table.translation} in ('kjv', 'rvg')`),
     check(
       "bible_highlights_color_check",
       sql`${table.color} in ('yellow', 'green', 'blue', 'red')`,

@@ -22,6 +22,7 @@ describe("parseSavedQuery", () => {
     expect(parse("q=grace&book=45&color=blue&color=yellow&sort=bible&page=3")).toEqual({
       q: "grace",
       book: 45,
+      translation: null,
       colors: ["yellow", "blue"],
       sort: "bible",
       page: 3,
@@ -32,6 +33,7 @@ describe("parseSavedQuery", () => {
     expect(parseSavedQuery({ q: ["one", "two"], book: "1", color: "red" })).toMatchObject({
       q: "one",
       book: 1,
+      translation: null,
       colors: ["red"],
     });
   });
@@ -77,6 +79,7 @@ describe("savedHref", () => {
     const href = savedHref({
       q: "grace",
       book: 45,
+      translation: null,
       colors: ["blue", "yellow"],
       sort: "bible",
       page: 2,
@@ -90,6 +93,7 @@ describe("savedHref", () => {
     const query = {
       q: "the cross",
       book: 43,
+      translation: null,
       colors: ["red" as const],
       sort: "updated-desc" as const,
       page: 4,

@@ -6,7 +6,7 @@ import {
   bibleFavorites,
   bibleFavoriteVerses,
   bibleHighlights,
-  bibleVerses,
+  scriptureVerses,
   ideas,
   users,
 } from "@/db/schema";
@@ -178,7 +178,7 @@ describe("the database's own rules", () => {
     await expect(set({ notes: "n".repeat(2001) })).rejects.toThrow();
     await expect(set({ label: "l".repeat(121) })).rejects.toThrow();
     await expect(set({ label: "   " })).rejects.toThrow();
-    await expect(set({ translation: "rvg" })).rejects.toThrow();
+    await expect(set({ translation: "nvi" })).rejects.toThrow();
     await set({ notes: "n".repeat(2000), label: "l".repeat(120) });
     await expect(
       db
@@ -540,9 +540,9 @@ describe("the library's saved passages", () => {
 
   it("shows the opening verses where the text is loaded, and lists the passage where it is not", async () => {
     expect((await find({ q: "gospel" })).items[0].preview).toEqual([]);
-    await db.insert(bibleVerses).values([
-      { ...v(43, 3, 16), text: "For God so loved the world" },
-      { ...v(43, 3, 17), text: "For God sent not his Son" },
+    await db.insert(scriptureVerses).values([
+      { translation: "kjv", ...v(43, 3, 16), text: "For God so loved the world" },
+      { translation: "kjv", ...v(43, 3, 17), text: "For God sent not his Son" },
     ]);
     expect((await find({ q: "gospel" })).items[0].preview).toEqual([
       { ...v(43, 3, 16), text: "For God so loved the world" },

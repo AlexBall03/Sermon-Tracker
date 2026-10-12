@@ -1,3 +1,4 @@
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import {
   formatReferences,
   referenceSpans,
@@ -92,6 +93,7 @@ export function formatSelectionText(
   references: readonly ScriptureReference[],
   verses: readonly string[],
   translation: string,
+  language: Locale = defaultLocale,
 ): string {
   if (references.length === 0) return "";
   const passages = references.map((reference) =>
@@ -105,5 +107,5 @@ export function formatSelectionText(
       })
       .join("\n"),
   );
-  return `${formatReferences(references)} (${translation})\n${passages.join(`\n${omission}\n`)}`;
+  return `${formatReferences(references, language)} (${translation})\n${passages.join(`\n${omission}\n`)}`;
 }

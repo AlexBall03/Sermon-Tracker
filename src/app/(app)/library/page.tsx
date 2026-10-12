@@ -28,20 +28,32 @@ import {
   type LibrarySearchParams,
 } from "@/features/ideas/library-query";
 import { listTags } from "@/features/ideas/tags";
+import { dictionary, formatNumber, type Dictionaries } from "@/i18n";
+import type { Locale } from "@/i18n/locales";
+import { getLocale } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Library" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: dictionary(await getLocale(), "library").title };
+}
 
 const emptyState = "mt-6 rounded-xl border border-dashed border-input px-6 py-12 sm:px-8";
 const emptyHeading = "font-display text-2xl leading-snug font-medium";
 const emptyCopy = "mt-3 max-w-md text-[0.9375rem] leading-relaxed text-muted-foreground";
 
 /** "Showing 25–48 of 126 ideas", or simply how many there are when they fit on one page. */
-function countLine(total: number, page: number, pageSize: number, filtered: boolean) {
-  const noun = `${filtered ? "matching " : ""}${total === 1 ? "idea" : "ideas"}`;
-  if (total <= pageSize) return `${total.toLocaleString("en")} ${noun}`;
+function countLine(
+  t: Dictionaries["library"],
+  locale: Locale,
+  total: number,
+  page: number,
+  pageSize: number,
+  filtered: boolean,
+) {
+  const written = (value: number) => formatNumber(locale, value);
+  if (total <= pageSize) return t.count(total, written(total), filtered);
   const first = (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
-  return `Showing ${first.toLocaleString("en")}–${last.toLocaleString("en")} of ${total.toLocaleString("en")} ${noun}`;
+  return t.showing(written(first), written(last), total, written(total), filtered);
 }
 
 /**
@@ -58,6 +70,8 @@ export default async function LibraryPage({
 } = {}) {
   const user = await requireActiveUser();
   const query = parseLibraryQuery(await searchParams);
+  const locale = await getLocale();
+  const t = dictionary(locale, "library");
   const db = getDb();
   const [{ items, total, page, pageSize, totalPages }, tags] = await Promise.all([
     searchIdeas(db, user.id, query),
@@ -72,8 +86,8 @@ export default async function LibraryPage({
 
   const header = (
     <PageHeader
-      title="Library"
-      description="Every idea you have captured, and the Scripture you have saved."
+      title={t.title}
+      description={t.description}
       action={<CaptureButton className="max-md:hidden" />}
     />
   );
@@ -83,15 +97,12 @@ export default async function LibraryPage({
     return (
       <div className="container-page py-10 lg:py-12">
         {header}
-        <LibrarySections current="ideas" />
+        <LibrarySections current="ideas" locale={locale} />
         <section aria-labelledby="empty-heading" className={emptyState}>
           <h2 id="empty-heading" className={emptyHeading}>
-            Nothing here yet
+            {t.empty.nothing}
           </h2>
-          <p className={emptyCopy}>
-            Capture the first thought that is worth keeping. A line is enough, and you can decide
-            later whether it is a sermon or a point.
-          </p>
+          <p className={emptyCopy}>{t.empty.nothingBody}</p>
           <CaptureButton className="mt-6" />
         </section>
       </div>
@@ -102,7 +113,7 @@ export default async function LibraryPage({
     <div className="container-page py-10 lg:py-12">
       <LibraryViewScript />
       {header}
-      <LibrarySections current="ideas" />
+      <LibrarySections current="ideas" locale={locale} />
 
       <LibraryProvider query={query} tags={tags}>
         <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -116,16 +127,16 @@ export default async function LibraryPage({
           {total === 0 ? (
             <section aria-labelledby="empty-heading" className={emptyState}>
               <h2 id="empty-heading" className={emptyHeading}>
-                {filtering ? "No ideas match these filters" : "No ideas match your search"}
+                {filtering ? t.empty.noFilterMatch : t.empty.noSearchMatch}
               </h2>
               <p role="status" className={emptyCopy}>
                 {impossibleDates
-                  ? "A date range ends before it starts, so nothing can fall inside it."
+                  ? t.empty.impossibleDates
                   : filtering && searching
-                    ? `Nothing in your library fits “${query.q}” together with the filters you have chosen.`
+                    ? t.empty.both(query.q)
                     : filtering
-                      ? "Your library has ideas, but none fits every filter you have chosen."
-                      : `Nothing in your library has “${query.q}” in its title, subject, or notes.`}
+                      ? t.empty.filtersOnly
+                      : t.empty.searchOnly(query.q)}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 {filtering && (
@@ -133,7 +144,7 @@ export default async function LibraryPage({
                     href={libraryHref(clearFilters(query))}
                     className={buttonVariants({ variant: "outline" })}
                   >
-                    Clear filters
+                    {t.empty.clearFilters}
                   </Link>
                 )}
                 {searching && (
@@ -141,7 +152,7 @@ export default async function LibraryPage({
                     href={libraryHref({ ...query, q: "", page: 1 })}
                     className={buttonVariants({ variant: "outline" })}
                   >
-                    Clear search
+                    {t.empty.clearSearch}
                   </Link>
                 )}
               </div>
@@ -149,12 +160,17 @@ export default async function LibraryPage({
           ) : (
             <>
               <p role="status" className="mt-5 text-sm text-muted-foreground tabular-nums">
-                {countLine(total, page, pageSize, filtered)}
+                {countLine(t, locale, total, page, pageSize, filtered)}
               </p>
               <div className="mt-3">
-                <IdeaResults ideas={items} label="Your ideas" query={{ ...query, page }} />
+                <IdeaResults
+                  ideas={items}
+                  label={t.results.label}
+                  query={{ ...query, page }}
+                  locale={locale}
+                />
               </div>
-              <Pagination query={query} page={page} totalPages={totalPages} />
+              <Pagination query={query} page={page} totalPages={totalPages} locale={locale} />
             </>
           )}
         </LibraryResults>

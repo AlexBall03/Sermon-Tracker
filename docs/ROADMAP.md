@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 12 October 2026: **Phase 1 through 1C.1, Phase 2A, and Phase 2B (2B.1 and 2B.2) are implemented. Phase 2B.2 added no migration. Its signed-in pages were checked with unit and component tests and a visual preview on sample data, but not in a signed-in session: the signed-in end-to-end test is written and needs a development test account to run ([handoff](HANDOFF-2B.2.md)). Phase 2C.1A, the Bible reader, is implemented with one migration (`0004_bible_psalm_titles`); its signed-in end-to-end test is written and waits on the same test account ([handoff](HANDOFF-2C.1A.md)). Phase 2C.1B, favorites and highlights, is implemented with one migration (`0005_bible_favorites_and_highlights`); it too was checked with unit, component, and database tests and a visual preview on sample data, and its signed-in end-to-end test waits on the same test account ([handoff](HANDOFF-2C.1B.md)). Phase 2C.1C, from the Bible to an idea, is implemented with no migration; it was checked the same way, and its signed-in end-to-end test waits on the same test account ([handoff](HANDOFF-2C.1C.md)). That completes the King James Bible. The owner has put the English and Spanish milestone next, ahead of sermon-point associations and the outline builder. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
+Status as of 12 October 2026: **Phase 1 through 1C.1, Phase 2A, and Phase 2B (2B.1 and 2B.2) are implemented. Phase 2B.2 added no migration. Its signed-in pages were checked with unit and component tests and a visual preview on sample data, but not in a signed-in session: the signed-in end-to-end test is written and needs a development test account to run ([handoff](HANDOFF-2B.2.md)). Phase 2C.1A, the Bible reader, is implemented with one migration (`0004_bible_psalm_titles`); its signed-in end-to-end test is written and waits on the same test account ([handoff](HANDOFF-2C.1A.md)). Phase 2C.1B, favorites and highlights, is implemented with one migration (`0005_bible_favorites_and_highlights`); it too was checked with unit, component, and database tests and a visual preview on sample data, and its signed-in end-to-end test waits on the same test account ([handoff](HANDOFF-2C.1B.md)). Phase 2C.1C, from the Bible to an idea, is implemented with no migration; it was checked the same way, and its signed-in end-to-end test waits on the same test account ([handoff](HANDOFF-2C.1C.md)). That completed the King James Bible. The bilingual milestone, English and Spanish with the RVG beside the KJV, is implemented as Phase 2C.2 with one migration (`0006_scripture_translations_and_languages`); it was checked with unit, component, and database tests, lint, type checking, and a production build, and by the owner in a signed-in development session while it was built, but its end-to-end suite was not run and it was not given the measured visual pass earlier phases had ([handoff](HANDOFF-2C.2.md)). Sermon-point associations and the outline builder follow. The live checks listed for Phase 1C.2 are still outstanding ([handoff](HANDOFF-1C.1.md)).**
 
 Work stays inside the current phase. Do not implement later-phase functionality early.
 
@@ -27,18 +27,20 @@ Work stays inside the current phase. Do not implement later-phase functionality 
     - **2C.1A: Reader foundation** — implemented ([handoff](HANDOFF-2C.1A.md)). `/bible` in the main navigation; book, chapter, and verse navigation with a sidebar that can be put away and a sheet on narrow screens; the existing text search and typed references; selecting one verse, a passage, verses that are apart, or a whole chapter; a selection toolbar that copies the text, the reference, or a link; shareable addresses; the reading position remembered on the device; the 116 psalm titles restored
     - **2C.1B: Favorites and highlights** — implemented ([handoff](HANDOFF-2C.1B.md)). Saving a verse, a passage, or verses that are apart as one favorite, with an optional label and notes, never twice; highlighting in yellow, green, blue, or red, one color to a verse; both from the reader's selection toolbar, with Shift-click to select a run; a Saved Scripture section inside the library, with search, book and color filters, three orders, and pages; all of it per account and per translation, without copying or changing the shared text
     - **2C.1C: From the Bible to an idea** — implemented ([handoff](HANDOFF-2C.1C.md)). Adding a selection (a verse, a passage, or verses that are apart) to an existing sermon or point idea from the reader, found by name in one dialog, never twice; beginning a new sermon or point idea from a selection; the same from a saved passage in the library; references on an idea's page as rows that open their text in place; opening a reference in the Bible with the passage pointed out and a way back to the idea
-  - **2C.2: Sermon-point associations** — linking reusable point ideas to sermon ideas, with order and relationships. Not started; the owner has placed the bilingual milestone before it
+  - **2C.2: English and Spanish, and the RVG** — implemented ([handoff](HANDOFF-2C.2.md)); see "Bilingual milestone" below
+  - **2C.3: Sermon-point associations** — linking reusable point ideas to sermon ideas, with order and relationships. Not started
 
-## Bilingual milestone — English and Spanish (next)
+## Bilingual milestone — English and Spanish (Phase 2C.2)
 
-Not started, and nothing of it is built. Set down here so its order is on record; its own brief will define it.
+Implemented ([handoff](HANDOFF-2C.2.md)).
 
-- Interface in English and Spanish, with a preferred language per account
-- A second Bible text, shown to people as **RVG** (the edition is RVG 2023), beside the King James; switching translation in the reader
-- Side-by-side reading: KJV/KJV, KJV/RVG, RVG/RVG, on a wide window and on a phone held sideways
-- A switch an administrator can use to turn Spanish off
+- Interface in English and Spanish, with a preferred language per account, and a Bible translation chosen independently of it
+- A second Bible text, shown to people as **RVG** (the revision is RVG 2023, from the publisher's own file), beside the King James; switching translation in the reader
+- Side-by-side reading in any pairing of the two, where the window is wide enough for two columns
+- A switch an administrator can use to turn Spanish off for everyone, which deletes nothing
 - What a person wrote (ideas, notes, labels) is never translated for them
-- **Before any of it: permission to store and show the RVG 2023 text.** None has been assumed and no text has been added
+- The owner reviewed the RVG's published terms before the text was added; the source and attribution are in `data/bible/README.md`
+- Still in English: the public landing page, Clerk's own sign-in form, and the profile and security forms inside Settings
 
 ## Phase 3 — Preaching History
 

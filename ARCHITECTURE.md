@@ -48,6 +48,9 @@ src/
     scripture/              Books, references, chapter and search reads, and every Scripture component;
                             saved/ holds favorites and highlights (model, services, actions, URL query)
     settings/               Account management: schemas, server action, Clerk hooks, components
+    preferences/            The interface language and Bible translation: what is saved, what is
+                            in force (with the Spanish switch applied), and the actions that save it
+  i18n/                     Locales, the dictionaries by feature (en/, es/), getT and useT
   components/
     ui/                     shadcn primitives restyled to the tokens, and small shared pieces
                             (Badge, Avatar, StatStrip, ActionStatus, ConfirmDialog, Dialog,
@@ -66,7 +69,8 @@ src/
 public/brand/               mark.svg, icon-192.png, icon-512.png
 scripts/                    generate-brand-assets.mjs, db/ (migration commands and the Bible
                             loader), bible/ (dataset reader and its builder)
-data/bible/                 kjv.json, the King James text; kjv-psalm-titles.json; and where they came from
+data/bible/                 kjv.json and rvg.json, each translation's text; their psalm titles; and
+                            where they came from
 drizzle/                    Generated SQL migrations (committed)
 tests/e2e/                  Playwright specs
 docs/                       Roadmap, database, environments, handoff, brand board
@@ -359,7 +363,39 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 - **The page's name is the chapter** ("John 3 · Sermon Tracker"), set by the reader as it moves, so a tab and the history list say where each entry is.
 
-**Later translations.** References and `reader-location` carry no translation, and neither does a reference on an idea: `idea_scripture_references` is five numbers, so one row is the same passage in any translation and nothing is duplicated per translation. A translation, when there is more than one, belongs in the reader's address as one more parameter beside `book`, and in what text is fetched for a reference; the reference itself does not change. The translation is one constant (`translation` in `books.ts`: `id`, `short`, `name`), and text is reached only through `passages.ts` and `/api/bible`. Favorites and highlights do carry one: every row is stored under `translation.id`, it is part of what identifies them, and every read and write names it, so a second translation's marks will be separate rows and nothing is carried across. Nothing else was built ahead of need: there is no translation picker, no second text, and no setting.
+**Translations.** There are two, and this is how the paragraph that stood here said a second would arrive: a reference, the reader's place, and a reference on an idea still carry no translation; the translation is one more parameter in the reader's address and in what text is fetched. See "Languages and translations" below.
+
+### Languages and translations
+
+Phase 2C.2. The interface is in English or Spanish, the Bible is the King James (KJV) or the Reina-Valera Gómez (shown as RVG, never with its revision year), and the two choices are independent.
+
+**Preferences** (`features/preferences`). `users.locale` is the interface language and `users.bible_translation` the Bible, null until one is chosen. `resolvePreferences` (`resolve.ts`, no server code, and the one statement of the rule) turns what is stored into what is in force:
+
+- Nobody has chosen a translation: it is the one in the interface's language, KJV for English and RVG for Spanish.
+- Once a translation is chosen it stays, whatever the interface language is changed to. `setLocale` never writes the translation and `setBibleTranslation` never writes the language; `setBibleTranslation(null)` goes back to following the language.
+- `getPreferences()` (`current.ts`) is what every page, action, and route asks. It is decided once per request from the session and the database. Before sign-in there is no account, and the language is the `st_locale` cookie, which is written when the preference is saved or chosen on a sign-in page, holds a language code, and grants nothing.
+
+**The Spanish switch.** `app_settings.spanish_enabled`, changed only by `setSpanishEnabled` (`authorize("admin")`) from the Languages section of `/admin`. It is applied in `resolvePreferences` and nowhere else, and is for everyone, administrators included:
+
+- Off, the interface is English and only the KJV is on offer, whatever is stored. Stored preferences, favorites, and highlights are not touched, so switching it on restores them.
+- Enforced on the server, not by hiding controls: `/api/bible/<book>/<chapter>`, its `/marks`, and `/api/bible/search` answer 404 for `t=rvg`; `saveFavorite` and `setHighlight` refuse `rvg`; `updateFavorite` and `deleteFavorite` answer "no longer exists" for an RVG favorite and leave it; `/library/scripture` does not list or count RVG favorites; `setLocale("es")` and `setBibleTranslation("rvg")` are refused. The reader drops a `t` or `beside` it is not offered.
+- It is read from the database on every request (once per request, `getAppSettings`), so it takes effect on the next request with no deployment. If it cannot be read, Spanish is treated as off: English and the KJV always work.
+- RVG chapter responses are `no-store`, so a browser cannot go on serving them after the switch.
+
+**Localization** (`src/i18n`). No library. `dictionaries/en/<feature>.ts` defines every string; `dictionaries/es/<feature>.ts` is typed as the same shape with anything optional, and whatever it leaves out is shown in English. An entry is a string, or a small function where the words depend on a count or a name, so each language keeps its own grammar. `getT(feature)` on the server and `useT(feature)` in Client Components; `I18nProvider` in the `(app)` shell passes only the language's code, so no dictionary crosses to the browser as a prop. A server component that tests render directly (`IdeaResults`, `Pagination`, `DashboardView`) takes a `locale` prop. Schemas are built per language (`ideaSchemas(locale)`, `savedSchemas(locale)`) so what they refuse is said in it. A test checks that Spanish has every English key and no others. What a person wrote is never translated. The outline page adds a dictionary file of its own.
+
+**Books and references.** `books.ts` names the 66 books in both languages; a book is still its number. `findBook` reads either language's name whatever the interface is in, and English spellings read exactly as before. `formatReference` and `formatVerseSet` take a language: the interface's in general, and the translation's wherever text of that translation is beside it (a reading pane, its navigation, copied text, a favorite's stored reference).
+
+**Text.** `passages.ts` and `search-verses.ts` take a translation; both translations number alike, which `data/bible/README.md` shows and a test asserts. Search folds accented vowels (index and query alike) and marks hits on the text as written. The browser's chapter and marks stores are keyed by translation.
+
+**Marks.** A favorite or a highlight belongs to the translation it was made in (still one color to a verse, per translation) and is never shown in or carried to the other. So nothing is hidden silently, `getChapterMarks` also answers `elsewhere`: how many highlights and favorites the account has in the same chapter of the other translation, shown above the text as a link that reads the chapter there without changing the saved translation. Saved Scripture lists both, labels each, filters by `translation`, quotes each from its own text, and opens each in its own translation.
+
+**In the reader.** The address gains `t` (the translation; absent, the account's own) and `beside=<translation>.<book>.<chapter>` (a second pane with a translation and a place of its own).
+
+- Choosing a translation keeps the book, chapter, and verse, with no request for the page. The pane shows the choice at once from the reader's own state (`chosen`): the address is changed through Next's router, which can hold a change back while the saved preference refreshes the page, and the text must not wait for that. While the other text is on its way the pane shows the loading lines and "Loading the RVG…" beside the selector; when it is there, the text fades and rises in and the selector says "Now reading the RVG" for a moment. The other translation of the chapter on screen is fetched ahead.
+- The choice in the first pane is saved as the account's translation; a refusal puts the text back and says why. The second pane's is kept only in the address.
+- **Comparing** (`ReaderPane`, `ChapterBar`) is two panes side by side, each with its own selector, place, selection, marks, and scrolling, in any pairing of the two translations. It is offered where the window is at least 44rem wide (a phone on its side, a tablet, a desktop) and not below; an address that asks for it on a narrower screen shows the first pane alone. The panes do not compete with the navigation: below 66rem the docked sidebar steps aside while two panes are open and is opened over them from either pane's bar. The navigation, the keyboard's copy, and the page's name answer to the pane last touched, marked by an emerald line under its bar. Closing either pane leaves the other as the reader.
+- Synchronized navigation and scrolling are not built. The panes know nothing of each other; `BibleReader.go` is the one place a move is made and holds the `linked` flag where the other pane would be moved too.
 
 ### Saved Scripture
 
@@ -439,6 +475,7 @@ Phase 2C.1C. A reference on an idea is a row of `idea_scripture_references`, as 
 - A connected account cannot be disconnected when it is the only way to sign in. The provider list is the constant in `use-connected-accounts.ts` (Google), because the SDK has no public list of enabled providers.
 - Appearance reuses `ThemeToggle` on the same `next-themes` store as the bar, plus "Use device setting" to clear a manual choice. Nothing about the theme is saved to the account.
 - Bible (`BibleSettings`) is one choice, what the reader's copy shortcut copies. It too is kept in the browser and not on the account.
+- Language (`LanguageSettings`) is the interface language and the Bible translation. Unlike the two above they are saved to the account (see "Languages and translations"). While Spanish is switched off it says so instead of offering a choice.
 - Account deletion is not implemented.
 
 ### Caching
@@ -711,3 +748,13 @@ These are settled and constrain later phases. The first and fourth are implement
 | Two-line selection toolbar, labels by its own width    | Five actions and the reference do not fit one line beside an open sidebar               |
 | Removing a favorite is confirmed inside its dialog     | One modal layer at a time                                                               |
 | A favorite's passage is edited as typed text           | The audience writes references fluently; the Scripture Panel would stack on the dialog  |
+| Bible text in new tables, the old ones left in place   | The live deployment reads `bible_verses` with no translation filter                     |
+| RVG verses placed by position, proved by anchors       | The publisher's file has no references; both texts number alike                         |
+| Interface language and translation stored apart        | Either can be changed without moving the other                                          |
+| An unchosen translation is null, not a default         | It can follow the interface language until the person chooses                           |
+| The Spanish switch applied in one function             | One rule for every route and action; stored choices are never rewritten                 |
+| Dictionaries as plain modules, no i18n library         | Two languages, typed keys, functions for plurals; nothing to configure or parse         |
+| Marks stay per translation, with a count of the other  | A highlight is on a text; the reader is told what the other holds instead of guessing   |
+| A pane's translation shown from local state            | The router can hold an address change back; the text must not wait                      |
+| History changed with a null state                      | Next ignores a call that hands it back its own state object                             |
+| Comparing by window width; navigation steps aside      | Two columns must be readable, and must not be squeezed by the sidebar                   |

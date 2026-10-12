@@ -324,7 +324,7 @@ describe("IdeaEditor Scripture", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", async (url: string) => {
-      const [book, chapter] = url.split("/").slice(-2).map(Number);
+      const [book, chapter] = url.split("?")[0].split("/").slice(-2).map(Number);
       const verses = Array.from(
         { length: 60 },
         (_, index) => `Text of ${book}.${chapter}.${index + 1}`,

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { SignUp } from "@clerk/nextjs";
 
+import { getLocale, getT } from "@/i18n/server";
 import { isAuthConfigured } from "@/lib/env";
 import { routes } from "@/lib/site";
 import { AuthFormFallback, AuthNotice } from "../../auth-notice";
@@ -36,10 +37,10 @@ async function AcceptInvitation({ params, searchParams }: PageProps) {
   const isContinuing = Boolean(rest?.length);
 
   if (!isAuthConfigured() || (!ticket && !isContinuing)) {
+    const [t, locale] = await Promise.all([getT("auth"), getLocale()]);
     return (
-      <AuthNotice eyebrow="Invitation-only beta" title="An invitation is required">
-        Accounts are created from an invitation email. Open the link in your invitation to continue,
-        or ask an administrator to send a new one if it has expired.
+      <AuthNotice eyebrow={t.beta} title={t.invitation.requiredTitle} locale={locale}>
+        {t.invitation.required}
       </AuthNotice>
     );
   }

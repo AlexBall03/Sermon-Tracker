@@ -1,11 +1,12 @@
 import { normaliseSearch, searchTerms } from "@/features/ideas/library-query";
 import { routes } from "@/lib/site";
 import { chaptersIn } from "../books";
+import { isTranslationId, type TranslationId } from "../translations";
 import { highlightColors, savedSorts, type HighlightColor, type SavedSort } from "./model";
 
 /**
  * What the library's Saved Scripture section is asked for: a search, a book,
- * highlight colors, an order, and a page. Like the ideas' query
+ * a translation, highlight colors, an order, and a page. Like the ideas' query
  * (features/ideas/library-query.ts) it is carried in the URL, holds nothing
  * about the account, and is read leniently: a link opened by someone else
  * shows their own passages, and a bad value falls back instead of failing.
@@ -13,11 +14,14 @@ import { highlightColors, savedSorts, type HighlightColor, type SavedSort } from
  *   /library/scripture                          every saved passage, newest first
  *   /library/scripture?q=grace&book=45          "grace" in Romans
  *   /library/scripture?color=yellow&sort=bible  with a yellow verse, in the Bible's order
+ *   /library/scripture?translation=rvg          saved from the Reina-Valera Gómez
  */
 export type SavedQuery = {
   q: string;
   /** A book, 1 to 66: passages with a verse in it. Null is every book. */
   book: number | null;
+  /** Passages saved from this translation. Null is every translation on offer. */
+  translation: TranslationId | null;
   /** Passages with a verse highlighted in any of these. Empty asks nothing. */
   colors: HighlightColor[];
   sort: SavedSort;
@@ -29,6 +33,7 @@ export const defaultSavedSort: SavedSort = savedSorts[0];
 export const defaultSavedQuery: SavedQuery = {
   q: "",
   book: null,
+  translation: null,
   colors: [],
   sort: defaultSavedSort,
   page: 1,
@@ -38,6 +43,7 @@ export const defaultSavedQuery: SavedQuery = {
 export const savedParams = {
   q: "q",
   book: "book",
+  translation: "translation",
   colors: "color",
   sort: "sort",
   page: "page",
@@ -77,10 +83,12 @@ export function parseSavedQuery(params: SavedSearchParams): SavedQuery {
   const pageText = first(savedParams.page) ?? "";
   const page = /^\d{1,7}$/.test(pageText) ? Math.min(Math.max(Number(pageText), 1), maxPage) : 1;
   const sort = first(savedParams.sort) as SavedSort;
+  const translation = first(savedParams.translation);
 
   return {
     q: normaliseSearch(first(savedParams.q) ?? ""),
     book,
+    translation: isTranslationId(translation) ? translation : null,
     colors: colorList(allValues(params, savedParams.colors)),
     sort: savedSorts.includes(sort) ? sort : defaultSavedSort,
     page,
@@ -95,6 +103,7 @@ export function serializeSavedQuery(query: SavedQuery): URLSearchParams {
   if (query.book !== null && chaptersIn(query.book) > 0) {
     params.set(savedParams.book, String(query.book));
   }
+  if (isTranslationId(query.translation)) params.set(savedParams.translation, query.translation);
   for (const color of colorList(query.colors)) params.append(savedParams.colors, color);
   if (query.sort !== defaultSavedSort && savedSorts.includes(query.sort)) {
     params.set(savedParams.sort, query.sort);
@@ -109,9 +118,9 @@ export function savedHref(query: SavedQuery = defaultSavedQuery): string {
   return search ? `${routes.savedScripture}?${search}` : routes.savedScripture;
 }
 
-/** How many filters are in force: the book, and each color. The search is not a filter. */
+/** How many filters are in force: the book, the translation, and each color. The search is not a filter. */
 export function savedFilterCount(query: SavedQuery) {
-  return Number(query.book !== null) + query.colors.length;
+  return Number(query.book !== null) + Number(query.translation !== null) + query.colors.length;
 }
 
 /** True when the query narrows what is shown: a search or any filter. Order and page do not. */

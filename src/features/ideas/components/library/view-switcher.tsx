@@ -4,6 +4,7 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { LayoutGrid, List } from "lucide-react";
 
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import {
   applyLibraryView,
@@ -15,9 +16,9 @@ import {
 } from "./library-view";
 
 const options = [
-  { value: "cards", label: "Cards", icon: LayoutGrid },
-  { value: "list", label: "List", icon: List },
-] as const satisfies readonly { value: LibraryView; label: string; icon: unknown }[];
+  { value: "cards", icon: LayoutGrid },
+  { value: "list", icon: List },
+] as const satisfies readonly { value: LibraryView; icon: unknown }[];
 
 /**
  * Applies the stored view before the first paint. As with the splash, the
@@ -43,6 +44,7 @@ export function LibraryViewScript() {
 export function ViewSwitcher({ className }: { className?: string }) {
   // Unknown on the server, so nothing is marked checked until after hydration.
   const current = useSyncExternalStore(subscribeLibraryView, readLibraryView, () => null);
+  const t = useT("library").toolbar;
 
   // Arriving from another page loads no HTML, so the inline script did not run.
   useLayoutEffect(() => applyLibraryView(), []);
@@ -72,18 +74,18 @@ export function ViewSwitcher({ className }: { className?: string }) {
   return (
     <div
       role="radiogroup"
-      aria-label="Library view"
+      aria-label={t.view}
       onKeyDown={onKeyDown}
       className={cn("inline-flex gap-0.5 rounded-lg bg-secondary p-0.5", className)}
     >
-      {options.map(({ value, label, icon: Icon }) => (
+      {options.map(({ value, icon: Icon }) => (
         <button
           key={value}
           type="button"
           role="radio"
           aria-checked={current === value}
-          aria-label={`${label} view`}
-          title={`${label} view`}
+          aria-label={t.views[value]}
+          title={t.views[value]}
           // Only the option in force is in the tab order; the arrows move between them.
           tabIndex={current === null || current === value ? 0 : -1}
           onClick={() => choose(value)}

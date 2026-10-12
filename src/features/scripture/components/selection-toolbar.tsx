@@ -3,6 +3,8 @@
 import { ClipboardCopy, Link2, Quote, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useLocale, useT } from "@/i18n/client";
+import type { Locale } from "@/i18n/locales";
 import { cn } from "@/lib/utils";
 import type { CopyKind } from "../copy-preference";
 import { formatReferences, type ScriptureReference } from "../reference";
@@ -27,6 +29,8 @@ type SelectionToolbarProps = {
   children?: React.ReactNode;
   /** A quiet line beneath the buttons, for something the selection is already part of. */
   footer?: React.ReactNode;
+  /** The language the books are named in: that of the text selected from. The interface's when omitted. */
+  language?: Locale;
   className?: string;
 };
 
@@ -57,20 +61,23 @@ export function SelectionToolbar({
   problem,
   children,
   footer,
+  language,
   className,
 }: SelectionToolbarProps) {
+  const t = useT("scripture").toolbar;
+  const locale = useLocale();
   if (references.length === 0) return null;
-  const selected = formatReferences(references);
+  const selected = formatReferences(references, language ?? locale);
   // Said on the one button the keyboard's copy stands for.
   const keys = (kind: CopyKind) =>
     kind === shortcut
-      ? ({ "aria-keyshortcuts": "Control+C Meta+C", title: "Ctrl+C, or Command+C" } as const)
+      ? ({ "aria-keyshortcuts": "Control+C Meta+C", title: t.copyKeys } as const)
       : {};
 
   return (
     <div
       role="toolbar"
-      aria-label="Selected Scripture"
+      aria-label={t.label}
       data-selection-toolbar
       className={cn(
         "@container animate-menu rounded-xl glass-float px-2 py-2 [--float:color-mix(in_oklab,var(--surface-raised)_94%,transparent)]",
@@ -92,7 +99,7 @@ export function SelectionToolbar({
           variant="ghost"
           size="icon"
           className="@max-[41.5rem]:size-10"
-          aria-label="Clear selection"
+          aria-label={t.clear}
           onClick={onClear}
         >
           <X aria-hidden />
@@ -108,7 +115,7 @@ export function SelectionToolbar({
           {...keys("text")}
         >
           <ClipboardCopy aria-hidden />
-          <span className={label}>Copy text</span>
+          <span className={label}>{t.copyText}</span>
         </Button>
         <Button
           type="button"
@@ -119,7 +126,7 @@ export function SelectionToolbar({
           {...keys("reference")}
         >
           <Quote aria-hidden />
-          <span className={label}>Copy reference</span>
+          <span className={label}>{t.copyReference}</span>
         </Button>
         <Button
           type="button"
@@ -130,7 +137,7 @@ export function SelectionToolbar({
           {...keys("link")}
         >
           <Link2 aria-hidden />
-          <span className={label}>Copy link</span>
+          <span className={label}>{t.copyLink}</span>
         </Button>
         {/* Copying is one thing and keeping another: a hairline between them. */}
         {children && <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />}

@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below.
 
 ## Layout
 
@@ -13,9 +13,12 @@ Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas an
 | `drizzle/`                         | Generated SQL migrations and Drizzle's journal. Committed                 |
 | `drizzle.config.ts`                | Drizzle Kit configuration (generation only)                               |
 | `scripts/db/cli.mjs`               | `migrate`, `stamp`, `status` commands                                     |
-| `scripts/db/seed-bible.mjs`        | Loads the King James text and the psalm titles when a database lacks them |
+| `scripts/db/seed-bible.mjs`        | Loads each translation's text and psalm titles when a database lacks them |
+| `scripts/bible/dataset.mjs`        | The list of translations: files, checksums, and expected counts           |
 | `data/bible/kjv.json`              | The King James text, with its source in `data/bible/README.md`            |
 | `data/bible/kjv-psalm-titles.json` | The titles of the Psalms, from the same source                            |
+| `data/bible/rvg.json`              | The Reina-Valera Gómez text, with its source in the same README           |
+| `data/bible/rvg-psalm-titles.json` | Its psalm headings                                                        |
 | `scripts/db/guard.mjs`             | The rules that decide whether a command may touch a database              |
 
 The pooled WebSocket driver (`@neondatabase/serverless` `Pool`) is used rather than the HTTP driver because role and status changes need interactive transactions. Use Neon's **pooled** connection string.
@@ -119,7 +122,27 @@ A row names a passage and no translation: it is the same reference whatever text
 
 **Adding to an idea (Phase 2C.1C)** changed no table. `attachReferences` runs in one transaction: it reads the idea `WHERE id = … AND owner_id = … FOR UPDATE`, which both checks ownership and holds the idea's row; reads the references it has; inserts those not already there, by all five numbers, at the positions after the last; and sets `updated_at`. Two requests for one idea therefore run one after the other, and the second sees what the first added. An editor's Save takes the same row lock through its `UPDATE` before it replaces the references. `UNIQUE (idea_id, position)` would refuse a collision if the lock were ever lost. There is deliberately no unique constraint over the passage itself: the code that was live before this phase replaces an idea's references by deleting and inserting, and a constraint added under it would have been a second thing to keep in step for no gain while every writer takes the lock.
 
-### `bible_verses`
+### `scripture_verses`
+
+The Bible, one row per verse of each translation: 31,102 rows for `kjv` and 31,102 for `rvg`. Shared, read-only reference data with no owner. The application never writes to it.
+
+| Column        | Type       | Notes                  |
+| ------------- | ---------- | ---------------------- |
+| `translation` | `text`     | `kjv` or `rvg` (CHECK) |
+| `book`        | `smallint` | 1 to 66                |
+| `chapter`     | `smallint` |                        |
+| `verse`       | `smallint` |                        |
+| `text`        | `text`     | Plain verse text       |
+
+The primary key `(translation, book, chapter, verse)` serves verse, passage, and chapter reads. Both translations number alike, so the same key but for its first column is the same verse in the other text. `scripture_verses_search_idx` is a GIN index on `to_tsvector('simple', translate(text, 'áéíóúüÁÉÍÓÚÜ', 'aeiouuAEIOUU'))`: words exactly as written, with accented vowels indexed as plain ones so "jehova" finds "Jehová". A query must use exactly that expression (`search-verses.ts` and the schema both take the letters from `search-fold.ts`). ñ is not folded. No extension is used.
+
+### `scripture_psalm_titles`
+
+The headings above verse 1 of the psalms, per translation: primary key `(translation, psalm)`, 116 rows for `kjv` and 123 for `rvg`. As before, a title is not a verse: it has no verse number and is not in the search index.
+
+### `bible_verses` (superseded)
+
+**No longer read or loaded.** It held the King James text before there were two translations, and is kept because the deployment that is live while migration 0006 runs still reads it, with no translation in its WHERE clause; Spanish rows added to it would have reached that code. `bible_psalm_titles` is kept for the same reason. Both are to be dropped by a later migration, once no deployment reads them. Their old description follows.
 
 The King James Bible, one row per verse: 31,102 rows. Shared, read-only reference data with no owner. The application never writes to it.
 
@@ -216,22 +239,40 @@ A page of results is five queries whatever its size: the count, the favorites, t
 
 ### `reference_datasets`
 
-Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. There are two rows: `kjv` (31,102) and `kjv-psalm-titles` (116).
+Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. The rows the loader keeps are `scripture-kjv` and `scripture-rvg` (31,102 each), and `scripture-kjv-psalm-titles` (116) and `scripture-rvg-psalm-titles` (123). A database that existed before Phase 2C.2 also has `kjv` and `kjv-psalm-titles`, which describe the superseded tables and are no longer consulted.
+
+### `app_settings`
+
+Settings of the whole application, as one row (`singleton boolean PRIMARY KEY`, CHECK true). `spanish_enabled boolean NOT NULL DEFAULT true` is the administrator's switch; `updated_at` and `updated_by` (references `users.id`, `ON DELETE SET NULL`) say when and by whom it was last changed. A database with no row has nothing switched off. It is read on every request (once per request) and written by one upsert, so a change is in force on the next request with no deployment. Nothing else is written when it changes: no preference, favorite, or highlight.
+
+### Preferences on `users`
+
+| Column              | Type   | Notes                                                                                                   |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| `locale`            | `text` | Not null, default `en`; `en` or `es` (CHECK). The interface language                                    |
+| `bible_translation` | `text` | Nullable; `kjv` or `rvg` (CHECK). Null means "the one in the interface's language", until one is chosen |
+
+The two are independent and neither action writes the other. What is in force for a request is computed from them and from `app_settings` (`resolvePreferences`): with Spanish off, English and `kjv`, whatever is stored. The stored values are never rewritten by the switch.
+
+### Phase 2C.2 migration
+
+`0006_scripture_translations_and_languages` creates `scripture_verses`, `scripture_psalm_titles`, and `app_settings`; adds `users.locale` (with a default) and `users.bible_translation` (nullable); and replaces the CHECK on `bible_favorites.translation` and `bible_highlights.translation` with one that also admits `rvg`. Every existing row satisfies the new constraints, no row is rewritten, and nothing is dropped, so it is safe under the code already live: that code names the columns it reads, inserts users without the new columns, and goes on reading `bible_verses`, which is untouched. The new tables are filled by the loader in the same command.
 
 ## Bible text
 
-The text is data, not a migration. It lives in `data/bible/kjv.json` and every `migrate` command loads it when needed, after any pending migrations and under the same identity checks:
+The text is data, not a migration. Each translation lives in `data/bible/<translation>.json` (the list is `datasets` in `scripts/bible/dataset.mjs`) and every `migrate` command loads each one when needed, after any pending migrations and under the same identity checks:
 
-- The command compares the checksum of the committed text with `reference_datasets`. If they match and the row count is 31,102, it does nothing. This is one small query on every `npm run dev`.
-- Otherwise it replaces the contents of `bible_verses` in **one transaction on one connection**: delete, insert book by book, count, record the edition. Readers see the old text or the new, never part of each. Any failure rolls back, changes nothing, and fails the command, so a production build fails and the previous deployment keeps serving.
-- A first load takes about ten seconds against Neon.
-- `npm run db:status` reports `Bible: loaded` or `not loaded`.
+- For each translation, the command compares the checksum of the committed text with its row in `reference_datasets`. If they match and the row count is 31,102, it does nothing. This is a few small queries on every `npm run dev`.
+- Otherwise it replaces **that translation's rows** of `scripture_verses` in **one transaction on one connection**: delete where the translation is this one, insert book by book, count, record the edition. Readers see the old text or the new, never part of each, and the other translation is not touched. Any failure rolls back, changes nothing, and fails the command, so a production build fails and the previous deployment keeps serving.
+- A first load takes about ten seconds per translation against Neon.
+- `npm run db:status` reports `KJV`, `KJV titles`, `RVG`, and `RVG titles` as `loaded` or `not loaded`.
+- Safe to run again: a loaded edition is skipped, and loading one twice leaves the same rows.
 - A manual production migration (`db:migrate:prod`) asks for its confirmation when either a migration or the Bible load is pending.
 
 **The titles of the Psalms** are a second dataset, loaded the same way and by the same command, after the migrations (their table is one of them) and after the verses:
 
-- `psalmTitlesAreCurrent` compares the checksum of `data/bible/kjv-psalm-titles.json` with the `kjv-psalm-titles` row and the count with 116. A database without the table yet is simply "not loaded".
-- `seedPsalmTitles` replaces `bible_psalm_titles` in one transaction on one connection: delete, insert, count, record. It does not touch `bible_verses`. A failure rolls back and fails the command.
+- `psalmTitlesAreCurrent` compares the checksum of a translation's titles file with its row and the count with the number that translation has (116 or 123). A database without the table yet is simply "not loaded".
+- `seedPsalmTitles` replaces that translation's rows of `scripture_psalm_titles` in one transaction on one connection: delete, insert, count, record. It does not touch the verses. A failure rolls back and fails the command.
 - Running it again does nothing; a fresh database and one that already had the verses end the same.
 - `npm run db:status` reports `Titles: loaded` or `not loaded`, and `db:migrate:prod` asks for its confirmation when the titles are pending too.
 - **Order with a deployment.** The migration only adds a table, so it is safe under the code already live. Until a production build has loaded the titles, the new code serves psalms without them (logged, and not kept by the browser); it does not fail.
@@ -330,7 +371,7 @@ Database tests use PGlite, an in-process PostgreSQL, and apply the committed mig
 See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
 - **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above). **Favorites and highlights** — implemented in Phase 2C.1B (above). **Scripture from the Bible to an idea** — Phase 2C.1C, with no schema change (see `idea_scripture_references`).
-- **A second translation** — `bible_verses` and `bible_psalm_titles` hold one text and have no translation column; that is the change the bilingual milestone makes. Favorites and highlights already carry a translation. References on ideas carry none and need none.
+- **A second translation** — implemented in Phase 2C.2 (above): `scripture_verses` and `scripture_psalm_titles` hold each translation's text. Favorites and highlights carry a translation and are never carried from one to the other. References on ideas carry none and need none. Still to do: a migration that drops `bible_verses` and `bible_psalm_titles`.
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Preaching occurrences** (Phase 3) — when, where, and in what context a sermon was preached.

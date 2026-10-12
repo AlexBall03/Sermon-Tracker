@@ -8,7 +8,10 @@ import { PageLoading } from "@/components/layout/page-loading";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireActiveUser } from "@/features/auth/access";
 import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture";
+import { ReadingProvider } from "@/features/preferences/client";
+import { getPreferences } from "@/features/preferences/current";
 import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
+import { I18nProvider } from "@/i18n/client";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -30,24 +33,36 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 async function Shell({ children }: { children: React.ReactNode }) {
   const user = await requireActiveUser();
+  // The language and the translation in force, with the administrator's switch applied.
+  // They only tell the interface what to show: every action and route decides again.
+  const preferences = await getPreferences();
   return (
-    // One of each for the whole shell: confirmations, the Scripture Panel, and
-    // quick capture, which uses both. They hold no account data.
-    <ToastProvider aboveTabBar>
-      <ScriptureProvider>
-        <QuickCaptureProvider>
-          <AppHeader isAdmin={user.role === "admin"} />
-          {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
-          <main
-            id="main"
-            className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
-          >
-            {children}
-          </main>
-          <BackToTop aboveTabBar />
-        </QuickCaptureProvider>
-      </ScriptureProvider>
-    </ToastProvider>
+    <I18nProvider locale={preferences.locale}>
+      <ReadingProvider
+        translation={preferences.translation}
+        translations={preferences.translations}
+      >
+        {/*
+         * One of each for the whole shell: confirmations, the Scripture Panel, and
+         * quick capture, which uses both. They hold no account data.
+         */}
+        <ToastProvider aboveTabBar>
+          <ScriptureProvider>
+            <QuickCaptureProvider>
+              <AppHeader isAdmin={user.role === "admin"} />
+              {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+              <main
+                id="main"
+                className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
+              >
+                {children}
+              </main>
+              <BackToTop aboveTabBar />
+            </QuickCaptureProvider>
+          </ScriptureProvider>
+        </ToastProvider>
+      </ReadingProvider>
+    </I18nProvider>
   );
 }
 

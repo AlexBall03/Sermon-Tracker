@@ -1,6 +1,7 @@
 import { routes } from "@/lib/site";
 import { bibleBooks, chaptersIn, versesIn } from "./books";
 import { referenceSpans, type ScriptureReference } from "./reference";
+import { isTranslationId, type TranslationId } from "./translations";
 
 /**
  * Where the Bible reader is open: the address of `/bible`, and the place this
@@ -11,12 +12,20 @@ import { referenceSpans, type ScriptureReference } from "./reference";
  *   /bible?book=43&chapter=3            John 3
  *   /bible?book=43&chapter=3&verse=16   John 3, brought to verse 16
  *   …&verse=16&through=18               the same, pointing out verses 16 to 18
+ *   …&t=rvg                             read in that translation, not the reader's usual one
+ *   …&beside=kjv.45.8                   with Romans 8 in the King James open beside it
  *   …&idea=<id>                         opened from that idea, which is the way back
  *
  * `book` is the canonical number, 1 to 66. `verse` says where to look, and
  * `through` how far the passage runs in that chapter; neither ever selects
  * anything. `idea` is an idea's ID and nothing more: whose it is, and what it
- * is called, is for the server to find out. None of them names a translation.
+ * is called, is for the server to find out.
+ *
+ * A place is the same place in every translation, so `t` is apart from it: it
+ * says which text to read the place in, and an address without it is read in
+ * the reader's own translation. `beside` is the second pane of a comparison:
+ * a translation and a chapter of its own, which need not be the first pane's.
+ * Whether a translation is on offer is not decided here (see `offered`).
  */
 export type ReaderLocation = {
   book: number;
@@ -26,7 +35,17 @@ export type ReaderLocation = {
   through?: number | null;
   /** The idea the reader was opened from. */
   idea?: string | null;
+  /** The translation to read it in. Absent, it is the reader's own. */
+  translation?: TranslationId | null;
+  /** The pane open beside this one, when two are being compared. */
+  beside?: BesidePane | null;
 };
+
+/** The second pane of a comparison: its own translation and its own chapter. */
+export type BesidePane = { translation: TranslationId; book: number; chapter: number };
+
+/** The parameter that names a translation, in the reader's address and in /api/bible. */
+export const translationParam = "t";
 
 export type ReaderSearchParams = Record<string, string | string[] | undefined>;
 
@@ -37,6 +56,21 @@ const wholeNumber = /^[1-9]\d{0,2}$/;
 function numberOf(value: string | string[] | null | undefined): number {
   const first = Array.isArray(value) ? value[0] : value;
   return typeof first === "string" && wholeNumber.test(first) ? Number(first) : 0;
+}
+
+function translationOf(value: string | string[] | null | undefined): TranslationId | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  return isTranslationId(first) ? first : null;
+}
+
+/** "kjv.45.8": a translation and a chapter that exists, or nothing. */
+function besideOf(value: string | string[] | null | undefined): BesidePane | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  const match =
+    typeof first === "string" ? /^([a-z0-9]+)\.(\d{1,2})\.(\d{1,3})$/.exec(first) : null;
+  if (!match || !isTranslationId(match[1])) return null;
+  const [book, chapter] = [Number(match[2]), Number(match[3])];
+  return versesIn(book, chapter) > 0 ? { translation: match[1], book, chapter } : null;
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,8 +97,10 @@ function settle(book: number, chapter: number, verse: number, through = 0): Read
 /**
  * Reads a location from an address. It never throws. Without a real book
  * there is no location (null); a chapter the book does not have becomes
- * chapter 1; a verse the chapter does not have is dropped. Anything else in
- * the address is ignored, and of a repeated parameter the first is used.
+ * chapter 1; a verse the chapter does not have is dropped. A translation that
+ * is not one, and a second pane that does not name a real chapter, are
+ * dropped too. Anything else in the address is ignored, and of a repeated
+ * parameter the first is used.
  */
 export function parseReaderLocation(
   params: ReaderSearchParams | URLSearchParams | null | undefined,
@@ -78,15 +114,50 @@ export function parseReaderLocation(
     numberOf(read("verse")),
     numberOf(read("through")),
   );
+  if (!place) return null;
+  const translation = translationOf(read(translationParam));
+  const beside = besideOf(read("beside"));
   const idea = ideaOf(read("idea"));
-  return place && idea ? { ...place, idea } : place;
+  return {
+    ...place,
+    ...(translation ? { translation } : {}),
+    ...(beside ? { beside } : {}),
+    ...(idea ? { idea } : {}),
+  };
+}
+
+/**
+ * The location with anything that is not on offer taken out of it: a
+ * translation an administrator has switched off is read as the reader's own,
+ * and a second pane in it is closed. The place itself never changes.
+ */
+export function offered(
+  location: ReaderLocation,
+  translations: readonly TranslationId[],
+): ReaderLocation {
+  const { translation, beside, ...place } = location;
+  return {
+    ...place,
+    ...(translation && translations.includes(translation) ? { translation } : {}),
+    ...(beside && translations.includes(beside.translation) ? { beside } : {}),
+  };
 }
 
 /** The one address of a location. */
-export function readerHref({ book, chapter, verse, through, idea }: ReaderLocation): string {
+export function readerHref({
+  book,
+  chapter,
+  verse,
+  through,
+  idea,
+  translation,
+  beside,
+}: ReaderLocation): string {
   let href = `${routes.bible}?book=${book}&chapter=${chapter}`;
   if (verse) href += `&verse=${verse}`;
   if (verse && through && through > verse) href += `&through=${through}`;
+  if (translation) href += `&${translationParam}=${translation}`;
+  if (beside) href += `&beside=${beside.translation}.${beside.book}.${beside.chapter}`;
   if (idea) href += `&idea=${idea}`;
   return href;
 }

@@ -1,12 +1,14 @@
 import { z } from "zod";
 
+import { dictionary, formatNumber } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { bibleBooks } from "../books";
 import { highlightColors, savedLimits, translationIds } from "./model";
 import { normaliseVerses, verseExists } from "./verse-set";
 
 export const favoriteIdSchema = z.uuid();
 
-/** Only the translation the application holds, until there is another. */
+/** A translation the application holds. Whether it is on offer is the action's to decide. */
 export const translationSchema = z.enum(translationIds);
 
 const verseSchema = z.object({
@@ -16,61 +18,70 @@ const verseSchema = z.object({
 });
 
 /**
- * The verses of a favorite, or the verses to highlight: at least one, every
- * one of them a verse the Bible has, and returned in canonical order with
- * each once. A verse that does not exist is refused, never dropped.
+ * The schemas of saved Scripture, saying what they refuse in one language.
+ * The rules are the same whatever the language; only the words differ.
  */
-export const versesSchema = z
-  .array(verseSchema, "Choose at least one verse.")
-  .min(1, "Choose at least one verse.")
-  .max(savedLimits.verses * 2, `Choose ${savedLimits.verses} verses or fewer at a time.`)
-  .refine((verses) => verses.every(verseExists), "One of those verses does not exist.")
-  .transform(normaliseVerses)
-  .refine(
-    (verses) => verses.length <= savedLimits.verses,
-    `Choose ${savedLimits.verses} verses or fewer at a time.`,
-  );
+export function savedSchemas(locale: Locale = defaultLocale) {
+  const t = dictionary(locale, "scripture").saved.actions;
+  /**
+   * The verses of a favorite, or the verses to highlight: at least one, every
+   * one of them a verse the Bible has, and returned in canonical order with
+   * each once. A verse that does not exist is refused, never dropped.
+   */
+  const verses = z
+    .array(verseSchema, t.chooseVerse)
+    .min(1, t.chooseVerse)
+    .max(savedLimits.verses * 2, t.tooManyVerses(savedLimits.verses))
+    .refine((list) => list.every(verseExists), t.noSuchVerse)
+    .transform(normaliseVerses)
+    .refine((list) => list.length <= savedLimits.verses, t.tooManyVerses(savedLimits.verses));
 
-/** A favorite's label: one line, trimmed, and null when nothing was written. */
-export const labelSchema = z
-  .string()
-  .transform((value) => value.replace(/\s+/g, " ").trim())
-  .pipe(z.string().max(savedLimits.label, `Keep a label to ${savedLimits.label} characters.`))
-  .nullish()
-  .transform((value) => value || null);
+  /** A favorite's label: one line, trimmed, and null when nothing was written. */
+  const label = z
+    .string()
+    .transform((value) => value.replace(/\s+/g, " ").trim())
+    .pipe(z.string().max(savedLimits.label, t.labelTooLong(savedLimits.label)))
+    .nullish()
+    .transform((value) => value || null);
 
-/** A favorite's notes: trimmed, and null when nothing was written. */
-export const notesSchema = z
-  .string()
-  .trim()
-  .max(
-    savedLimits.notes,
-    `Keep notes to ${savedLimits.notes.toLocaleString("en")} characters or fewer.`,
-  )
-  .nullish()
-  .transform((value) => value || null);
+  /** A favorite's notes: trimmed, and null when nothing was written. */
+  const notes = z
+    .string()
+    .trim()
+    .max(savedLimits.notes, t.notesTooLong(formatNumber(locale, savedLimits.notes)))
+    .nullish()
+    .transform((value) => value || null);
 
-/** A new favorite. Label and notes may be left out; the verses may not. */
-export const favoriteInputSchema = z.object({
-  translation: translationSchema,
-  verses: versesSchema,
-  label: labelSchema,
-  notes: notesSchema,
-});
+  return {
+    verses,
+    label,
+    notes,
+    /** A new favorite. Label and notes may be left out; the verses may not. */
+    favoriteInput: z.object({ translation: translationSchema, verses, label, notes }),
+    /** A change to a favorite. What is left out is left alone. */
+    favoriteChange: z.object({
+      verses: verses.optional(),
+      label: label.optional(),
+      notes: notes.optional(),
+    }),
+    /** Verses to highlight in one color, or to clear when the color is null. */
+    highlightInput: z.object({
+      translation: translationSchema,
+      verses,
+      color: z.enum(highlightColors).nullable(),
+    }),
+  };
+}
+
+const inEnglish = savedSchemas();
+
+// The schemas in English, for callers that only need the shapes and the types.
+export const versesSchema = inEnglish.verses;
+export const labelSchema = inEnglish.label;
+export const notesSchema = inEnglish.notes;
+export const favoriteInputSchema = inEnglish.favoriteInput;
 export type FavoriteInput = z.infer<typeof favoriteInputSchema>;
-
-/** A change to a favorite. What is left out is left alone. */
-export const favoriteChangeSchema = z.object({
-  verses: versesSchema.optional(),
-  label: labelSchema.optional(),
-  notes: notesSchema.optional(),
-});
+export const favoriteChangeSchema = inEnglish.favoriteChange;
 export type FavoriteChange = z.infer<typeof favoriteChangeSchema>;
-
-/** Verses to highlight in one color, or to clear when the color is null. */
-export const highlightInputSchema = z.object({
-  translation: translationSchema,
-  verses: versesSchema,
-  color: z.enum(highlightColors).nullable(),
-});
+export const highlightInputSchema = inEnglish.highlightInput;
 export type HighlightInput = z.infer<typeof highlightInputSchema>;

@@ -24,19 +24,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { useReading } from "@/features/preferences/client";
 import { ScriptureBrowser } from "@/features/scripture/components/scripture-browser";
 import {
   ScriptureHost,
   type PanelRequest,
 } from "@/features/scripture/components/scripture-provider";
 import type { ScriptureReference } from "@/features/scripture/reference";
+import { translations } from "@/features/scripture/translations";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { createIdea } from "../actions";
 import type { IdeaKind } from "../model";
-import { emptyDraft, fieldErrors, hasContent, ideaInputSchema, type IdeaDraft } from "../schemas";
+import { emptyDraft, fieldErrors, hasContent, ideaSchemas, type IdeaDraft } from "../schemas";
 import {
   KindField,
   NotesField,
@@ -80,15 +83,13 @@ export function useQuickCapture() {
 }
 
 /** The capture action as a button, for pages. The bar and the tab bar have their own. */
-export function CaptureButton({
-  children = "Capture an idea",
-  ...props
-}: React.ComponentProps<typeof Button>) {
+export function CaptureButton({ children, ...props }: React.ComponentProps<typeof Button>) {
   const capture = useQuickCapture();
+  const label = useT("ideas").capture.button;
   return (
     <Button type="button" onClick={capture.open} {...props}>
       <Plus aria-hidden />
-      {children}
+      {children ?? label}
     </Button>
   );
 }
@@ -107,6 +108,9 @@ const form = "capture";
  * save it twice.
  */
 export function QuickCaptureProvider({ children }: { children: React.ReactNode }) {
+  const t = useT("ideas").capture;
+  const locale = useLocale();
+  const reading = useReading();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<IdeaDraft>(emptyDraft);
   // What the capture was opened with. Only what is written beyond it is the person's to lose.
@@ -160,7 +164,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
 
   async function save() {
     if (busy) return;
-    const parsed = ideaInputSchema.safeParse(draft);
+    const parsed = ideaSchemas(locale).ideaInput.safeParse(draft);
     if (!parsed.success) {
       const found = fieldErrors(parsed.error);
       setErrors(found);
@@ -177,10 +181,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     try {
       outcome = await createIdea(parsed.data, ideaId.current);
     } catch {
-      outcome = {
-        ok: false,
-        message: "The idea could not be saved. Check your connection and try again.",
-      };
+      outcome = { ok: false, message: t.offline };
     }
     setBusy(false);
 
@@ -192,13 +193,13 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     setOpen(false);
     toast({
       message: outcome.message,
-      action: outcome.id ? { label: "Open", href: `${routes.library}/${outcome.id}` } : undefined,
+      action: outcome.id ? { label: t.open, href: `${routes.library}/${outcome.id}` } : undefined,
     });
   }
 
   // Opened from a passage and left as it came, there is nothing to ask about.
   const dirty = hasContent(draft) && JSON.stringify(draft) !== JSON.stringify(seed);
-  const unsaved = "This idea has not been saved.";
+  const unsaved = t.unsaved;
   // Leaving the page with something written asks first, and leaving discards it.
   const guard = useLeaveGuard(open && dirty, unsaved, () => {
     clear();
@@ -249,10 +250,10 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
               >
                 <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-1">
                   <div className="min-w-0">
-                    <DialogTitle>Capture an idea</DialogTitle>
-                    <DialogDescription>Save the thought now. Sort it out later.</DialogDescription>
+                    <DialogTitle>{t.title}</DialogTitle>
+                    <DialogDescription>{t.description}</DialogDescription>
                   </div>
-                  <DialogClose label="Close capture" className="-mr-2" />
+                  <DialogClose label={t.close} className="-mr-2" />
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 pt-3 pb-4">
@@ -263,7 +264,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                     errors={errors}
                     inputRef={titleRef}
                     hideLabel
-                    placeholder="What is the thought?"
+                    placeholder={t.placeholder}
                   />
                   <KindField
                     form={form}
@@ -288,7 +289,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                         )}
                         aria-hidden
                       />
-                      More details
+                      {t.more}
                     </button>
                     <div
                       id="capture-more"
@@ -320,16 +321,14 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                         disabled={busy}
                         onClick={clear}
                       >
-                        Clear
+                        {t.clear}
                       </Button>
                     ) : (
-                      <span className="text-xs text-muted-foreground max-sm:hidden">
-                        Enter saves. In notes, Ctrl or ⌘ with Enter.
-                      </span>
+                      <span className="text-xs text-muted-foreground max-sm:hidden">{t.hint}</span>
                     )}
                     <Button type="submit" disabled={busy} aria-busy={busy} className="ml-auto">
                       {busy && <LoaderCircle className="animate-spin" aria-hidden />}
-                      {busy ? "Saving…" : "Save idea"}
+                      {busy ? t.saving : t.save}
                     </Button>
                   </div>
                   <ActionStatus result={result} />
@@ -354,10 +353,10 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                         onClick={() => setPanel(null)}
                       >
                         <ArrowLeft aria-hidden />
-                        {sideBySide ? "Close Scripture" : "Back to the idea"}
+                        {sideBySide ? t.closeScripture : t.backToIdea}
                       </Button>
                       <span className="ml-auto pr-2 text-xs text-muted-foreground">
-                        King James Version
+                        {translations[reading.translation].name}
                       </span>
                     </div>
                   }
@@ -370,11 +369,13 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
       <AlertDialog open={discarding} onOpenChange={setDiscarding}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard this idea?</AlertDialogTitle>
-            <AlertDialogDescription>{unsaved} Closing now will discard it.</AlertDialogDescription>
+            <AlertDialogTitle>{t.discardTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {unsaved} {t.discardDetail}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep writing</AlertDialogCancel>
+            <AlertDialogCancel>{t.keepWriting}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -383,7 +384,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                 setOpen(false);
               }}
             >
-              Discard idea
+              {t.discard}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

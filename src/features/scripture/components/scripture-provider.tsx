@@ -9,8 +9,11 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useReading } from "@/features/preferences/client";
+import { useT } from "@/i18n/client";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import type { ScriptureReference } from "../reference";
+import { translations } from "../translations";
 import { ScriptureBrowser, type PanelAttach } from "./scripture-browser";
 
 /** What to open the Scripture Panel on, and what choosing a passage there does. */
@@ -58,6 +61,8 @@ export function ScriptureProvider({ children }: { children: React.ReactNode }) {
     setOpen(true);
   }, []);
   const value = useMemo(() => ({ openPanel, inline: false }), [openPanel]);
+  const t = useT("scripture").panel;
+  const { translation } = useReading();
   const close = () => setOpen(false);
 
   return (
@@ -76,10 +81,10 @@ export function ScriptureProvider({ children }: { children: React.ReactNode }) {
               header={
                 <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
                   <div className="min-w-0">
-                    <DialogTitle>Scripture</DialogTitle>
-                    <DialogDescription>King James Version</DialogDescription>
+                    <DialogTitle>{t.title}</DialogTitle>
+                    <DialogDescription>{translations[translation].name}</DialogDescription>
                   </div>
-                  <DialogClose label="Close Scripture" />
+                  <DialogClose label={t.close} />
                 </div>
               }
             />

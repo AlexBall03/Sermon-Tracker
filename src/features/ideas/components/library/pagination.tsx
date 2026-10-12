@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { cn } from "@/lib/utils";
 import { libraryHref, type LibraryQuery } from "../../library-query";
 
@@ -36,10 +38,13 @@ const number =
 export function Pagination({
   query,
   hrefAt,
-  label = "Library pages",
+  label,
   page,
   totalPages,
+  locale = defaultLocale,
 }: {
+  /** The interface language. English when omitted. */
+  locale?: Locale;
   /** The ideas' query. Another section of the library gives `hrefAt` instead. */
   query?: LibraryQuery;
   /** The address of a page, for a section with a query of its own. */
@@ -49,29 +54,30 @@ export function Pagination({
   page: number;
   totalPages: number;
 }) {
+  const t = dictionary(locale, "library").pagination;
   if (totalPages <= 1 || (!query && !hrefAt)) return null;
   const at = (target: number) =>
     hrefAt ? hrefAt(target) : libraryHref({ ...query!, page: target });
 
   return (
     <nav
-      aria-label={label}
+      aria-label={label ?? t.label}
       className="mt-8 flex items-center justify-between gap-2 sm:justify-center"
     >
       {page > 1 ? (
         <Link href={at(page - 1)} rel="prev" className={step}>
           <ChevronLeft aria-hidden />
-          Previous
+          {t.previous}
         </Link>
       ) : (
         <span aria-disabled="true" className={cn(step, "pointer-events-none opacity-50")}>
           <ChevronLeft aria-hidden />
-          Previous
+          {t.previous}
         </span>
       )}
 
       <p className="text-sm text-muted-foreground tabular-nums sm:hidden">
-        Page {page} of {totalPages}
+        {t.pageOf(page, totalPages)}
       </p>
       <ol className="flex items-center gap-1 max-sm:hidden">
         {pageWindow(page, totalPages).map((item, index) =>
@@ -86,13 +92,13 @@ export function Pagination({
                   aria-current="page"
                   className={cn(number, "bg-primary-soft font-semibold text-primary")}
                 >
-                  <span className="sr-only">Page&nbsp;</span>
+                  <span className="sr-only">{t.page}&nbsp;</span>
                   {item}
                 </span>
               ) : (
                 <Link
                   href={at(item)}
-                  aria-label={`Page ${item}`}
+                  aria-label={t.pageNumber(item)}
                   className={cn(
                     number,
                     "text-muted-foreground hover:bg-accent hover:text-foreground active:bg-foreground/10",
@@ -108,12 +114,12 @@ export function Pagination({
 
       {page < totalPages ? (
         <Link href={at(page + 1)} rel="next" className={step}>
-          Next
+          {t.next}
           <ChevronRight aria-hidden />
         </Link>
       ) : (
         <span aria-disabled="true" className={cn(step, "pointer-events-none opacity-50")}>
-          Next
+          {t.next}
           <ChevronRight aria-hidden />
         </span>
       )}

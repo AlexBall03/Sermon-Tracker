@@ -1,4 +1,6 @@
-import { chaptersIn, getBook, psalmsBook, versesIn } from "../books";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
+import { chapterBookName, chaptersIn, getBook, versesIn } from "../books";
 import {
   parseReference,
   referenceSpans,
@@ -94,9 +96,12 @@ function runsText(book: number, chapter: number, verses: number[]) {
 /**
  * The set as it is written: "John 3:16", "Psalm 23:1–6", "Romans 3:10, 23;
  * 6:23", "John 3:16; Romans 6:23", "Jude 5, 7". The book is named once, and
- * each chapter once within it.
+ * each chapter once within it, in `language`.
  */
-export function formatVerseSet(verses: readonly VerseRef[]): string {
+export function formatVerseSet(
+  verses: readonly VerseRef[],
+  language: Locale = defaultLocale,
+): string {
   const books: { book: number; chapters: { chapter: number; verses: number[] }[] }[] = [];
   for (const group of byChapter(verses)) {
     const last = books.at(-1);
@@ -105,10 +110,10 @@ export function formatVerseSet(verses: readonly VerseRef[]): string {
   }
   return books
     .map(({ book, chapters }) => {
-      const name = getBook(book)?.name ?? "";
+      const name = getBook(book, language)?.name ?? "";
       if (chaptersIn(book) === 1) return `${name} ${runsText(book, 1, chapters[0].verses)}`;
       // One psalm is "Psalm 23"; several are from the "Psalms".
-      const shown = book === psalmsBook && chapters.length === 1 ? "Psalm" : name;
+      const shown = chapters.length === 1 ? chapterBookName(book, language) : name;
       const parts = chapters.map(
         ({ chapter, verses: list }) => `${chapter}:${runsText(book, chapter, list)}`,
       );
@@ -124,9 +129,9 @@ export type ParsedVerseSet = { ok: true; verses: VerseRef[] } | { ok: false; mes
  * "John 3:16", "Psalm 23", "Romans 3:10, 23; 6:23", "John 3:16-18; Romans
  * 6:23". A part that names no book belongs to the book before it, and a bare
  * number after a comma to the chapter before it. Every verse is checked
- * against the King James Bible.
+ * against the Bible, and what is wrong is said in `locale`.
  */
-export function parseVerseSet(input: string): ParsedVerseSet {
+export function parseVerseSet(input: string, locale: Locale = defaultLocale): ParsedVerseSet {
   const references: ScriptureReference[] = [];
   // The passage before, which a part that names less than a whole reference is read from.
   let before: ScriptureReference | null = null;
@@ -136,7 +141,7 @@ export function parseVerseSet(input: string): ParsedVerseSet {
       const part = piece.trim();
       if (!part) continue;
       let typed = part;
-      if (before && !/[a-z]/i.test(part)) {
+      if (before && !/\p{L}/u.test(part)) {
         const name = getBook(before.book)?.name ?? "";
         const chapter = before.chapterEnd ?? before.chapterStart;
         // After a comma, a number alone is a verse of the chapter before: "3:10, 23".
@@ -148,14 +153,14 @@ export function parseVerseSet(input: string): ParsedVerseSet {
           /^\d+(\s*[-–—]\s*\d+)?$/.test(part);
         typed = verseOfChapter ? `${name} ${chapter}:${part}` : `${name} ${part}`;
       }
-      const read = parseReference(typed);
+      const read = parseReference(typed, locale);
       if (!read.ok) return read;
       references.push(read.reference);
       before = read.reference;
     }
   }
   if (references.length === 0) {
-    return { ok: false, message: "Type a passage, such as John 3:16–18." };
+    return { ok: false, message: dictionary(locale, "scripture").reference.emptyPassage };
   }
   return { ok: true, verses: referencesToVerses(references) };
 }

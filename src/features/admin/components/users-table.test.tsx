@@ -7,7 +7,12 @@ vi.mock("../actions", () => ({ setUserRole: vi.fn(), setUserStatus: vi.fn() }));
 
 import { UsersTable } from "./users-table";
 
-const base = { createdAt: new Date("2026-10-01T12:00:00Z"), updatedAt: new Date() };
+const base = {
+  createdAt: new Date("2026-10-01T12:00:00Z"),
+  updatedAt: new Date(),
+  locale: "en" as const,
+  bibleTranslation: null,
+};
 const entries: DirectoryEntry[] = [
   {
     ...base,

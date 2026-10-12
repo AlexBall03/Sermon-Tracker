@@ -5,21 +5,24 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import { dictionary, type Dictionaries } from "@/i18n";
+import { getLocale } from "@/i18n/server";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
-import { ideaIdSchema, tagIdSchema, tagIdsSchema, tagNameSchema } from "./schemas";
+import { ideaIdSchema, ideaSchemas, tagIdSchema } from "./schemas";
 import * as service from "./tags";
 import { UnknownTagError, type IdeaTag, type TagResult } from "./tags";
 
 export type TagActionResult = ActionResult & { tag?: IdeaTag };
 export type IdeaTagsActionResult = ActionResult & { tags?: IdeaTag[] };
 
-const invalid: ActionResult = { ok: false, message: "That request was not valid." };
-// The same answers whether the record is missing or belongs to someone else.
-const missingTag: ActionResult = { ok: false, message: "That tag no longer exists." };
-const missingIdea: ActionResult = { ok: false, message: "That idea no longer exists." };
-const unknownTag: ActionResult = { ok: false, message: "One of those tags no longer exists." };
-const duplicate: ActionResult = { ok: false, message: "You already have a tag with that name." };
+type Messages = Dictionaries["ideas"]["actions"];
+
+/** The messages and the schemas, in the account's language. */
+async function context() {
+  const locale = await getLocale();
+  return { t: dictionary(locale, "ideas").actions, schemas: ideaSchemas(locale) };
+}
 
 function refresh(ideaId?: string) {
   revalidatePath(routes.library);
@@ -27,8 +30,11 @@ function refresh(ideaId?: string) {
   if (ideaId) revalidatePath(`${routes.library}/${ideaId}`);
 }
 
-function saved(result: TagResult, message: string): TagActionResult {
-  if (!result.ok) return result.reason === "duplicate" ? duplicate : missingTag;
+function saved(result: TagResult, message: string, t: Messages): TagActionResult {
+  // The same answer whether the tag is missing or belongs to someone else.
+  if (!result.ok) {
+    return { ok: false, message: result.reason === "duplicate" ? t.duplicateTag : t.missingTag };
+  }
   refresh();
   return { ok: true, message, tag: { id: result.tag.id, name: result.tag.name } };
 }
@@ -42,35 +48,38 @@ function saved(result: TagResult, message: string): TagActionResult {
 export async function createTag(name: unknown): Promise<TagActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
+  const { t, schemas } = await context();
 
-  const parsed = tagNameSchema.safeParse(name);
+  const parsed = schemas.tagName.safeParse(name);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "" };
 
   try {
-    return saved(await service.createTag(getDb(), actor.user.id, parsed.data), "Tag created.");
+    return saved(await service.createTag(getDb(), actor.user.id, parsed.data), t.tagCreated, t);
   } catch (error) {
     console.error("Tag create failed:", describeDatabaseError(error));
-    return { ok: false, message: "The tag could not be created. Try again." };
+    return { ok: false, message: t.tagNotCreated };
   }
 }
 
 export async function renameTag(id: unknown, name: unknown): Promise<TagActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
+  const { t, schemas } = await context();
 
   const tagId = tagIdSchema.safeParse(id);
-  if (!tagId.success) return invalid;
-  const parsed = tagNameSchema.safeParse(name);
+  if (!tagId.success) return { ok: false, message: t.invalid };
+  const parsed = schemas.tagName.safeParse(name);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "" };
 
   try {
     return saved(
       await service.renameTag(getDb(), actor.user.id, tagId.data, parsed.data),
-      "Tag renamed.",
+      t.tagRenamed,
+      t,
     );
   } catch (error) {
     console.error("Tag rename failed:", describeDatabaseError(error));
-    return { ok: false, message: "The tag could not be renamed. Try again." };
+    return { ok: false, message: t.tagNotRenamed };
   }
 }
 
@@ -78,18 +87,21 @@ export async function renameTag(id: unknown, name: unknown): Promise<TagActionRe
 export async function deleteTag(id: unknown): Promise<ActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
+  const { t } = await context();
 
   const tagId = tagIdSchema.safeParse(id);
-  if (!tagId.success) return invalid;
+  if (!tagId.success) return { ok: false, message: t.invalid };
 
   try {
-    if (!(await service.deleteTag(getDb(), actor.user.id, tagId.data))) return missingTag;
+    if (!(await service.deleteTag(getDb(), actor.user.id, tagId.data))) {
+      return { ok: false, message: t.missingTag };
+    }
   } catch (error) {
     console.error("Tag delete failed:", describeDatabaseError(error));
-    return { ok: false, message: "The tag could not be deleted. Try again." };
+    return { ok: false, message: t.tagNotDeleted };
   }
   refresh();
-  return { ok: true, message: "Tag deleted." };
+  return { ok: true, message: t.tagDeleted };
 }
 
 type Change = typeof service.setIdeaTags;
@@ -101,21 +113,22 @@ async function changeIdeaTags(
 ): Promise<IdeaTagsActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
+  const { t, schemas } = await context();
 
   const idea = ideaIdSchema.safeParse(ideaId);
-  if (!idea.success) return invalid;
-  const parsed = tagIdsSchema.safeParse(tagIds);
+  if (!idea.success) return { ok: false, message: t.invalid };
+  const parsed = schemas.tagIds.safeParse(tagIds);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "" };
 
   try {
     const tags = await change(getDb(), actor.user.id, idea.data, parsed.data);
-    if (!tags) return missingIdea;
+    if (!tags) return { ok: false, message: t.missing };
     refresh(idea.data);
-    return { ok: true, message: "Tags updated.", tags };
+    return { ok: true, message: t.tagsUpdated, tags };
   } catch (error) {
-    if (error instanceof UnknownTagError) return unknownTag;
+    if (error instanceof UnknownTagError) return { ok: false, message: t.unknownTag };
     console.error("Idea tag change failed:", describeDatabaseError(error));
-    return { ok: false, message: "The tags could not be updated. Try again." };
+    return { ok: false, message: t.tagsNotUpdated };
   }
 }
 

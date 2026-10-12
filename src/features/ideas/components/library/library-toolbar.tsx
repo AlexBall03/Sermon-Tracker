@@ -4,15 +4,14 @@ import { SlidersHorizontal, Tags } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { activeFilterCount } from "../../library-query";
-import { librarySortLabels, librarySorts, type LibrarySort } from "../../model";
+import { librarySorts, type LibrarySort } from "../../model";
 import { useLibrary } from "./library-state";
 import { ViewSwitcher } from "./view-switcher";
 
 export const filtersPanelId = "library-filters";
-
-const sortOptions = librarySorts.map((value) => ({ value, label: librarySortLabels[value] }));
 
 /**
  * The library's controls beside the search box: open the filters, choose the
@@ -22,6 +21,9 @@ const sortOptions = librarySorts.map((value) => ({ value, label: librarySortLabe
 export function LibraryToolbar({ className }: { className?: string }) {
   const { query, apply, filtersOpen, setFiltersOpen, setManagingTags } = useLibrary();
   const active = activeFilterCount(query);
+  const t = useT("library").toolbar;
+  const sorts = useT("library").sorts;
+  const sortOptions = librarySorts.map((value) => ({ value, label: sorts[value] }));
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -35,17 +37,17 @@ export function LibraryToolbar({ className }: { className?: string }) {
       >
         <SlidersHorizontal aria-hidden />
         {/* A phone has room for the icon and the count; the name is still read out. */}
-        <span className="max-sm:sr-only">Filters</span>
+        <span className="max-sm:sr-only">{t.filters}</span>
         {active > 0 && (
           <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary-soft px-1.5 text-xs font-semibold text-primary tabular-nums">
             {active}
-            <span className="sr-only"> active</span>
+            <span className="sr-only">{t.active}</span>
           </span>
         )}
       </Button>
 
       <Select
-        label="Sort ideas"
+        label={t.sort}
         value={query.sort}
         onChange={(sort) => apply({ sort: sort as LibrarySort })}
         options={sortOptions}
@@ -62,7 +64,7 @@ export function LibraryToolbar({ className }: { className?: string }) {
           className="px-3.5"
         >
           <Tags aria-hidden />
-          <span className="max-sm:sr-only">Manage tags</span>
+          <span className="max-sm:sr-only">{t.manageTags}</span>
         </Button>
       </div>
     </div>

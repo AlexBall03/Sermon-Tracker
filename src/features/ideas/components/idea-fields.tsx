@@ -5,15 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { ScriptureField } from "@/features/scripture/components/scripture-field";
-import {
-  ideaLimits,
-  ideaStatusLabels,
-  ideaStatuses,
-  sermonTypeLabels,
-  sermonTypes,
-  type IdeaKind,
-  type SermonType,
-} from "../model";
+import { useT } from "@/i18n/client";
+import { ideaKinds, ideaLimits, ideaStatuses, sermonTypes, type IdeaKind } from "../model";
 import type { IdeaDraft } from "../schemas";
 import type { IdeaTag } from "../tags";
 import { TagPicker } from "./tag-picker";
@@ -38,12 +31,6 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   );
 }
 
-const kindOptions: { value: IdeaKind; label: string }[] = [
-  { value: "sermon", label: "Sermon" },
-  { value: "point", label: "Point" },
-  { value: "undecided", label: "Undecided" },
-];
-
 /** Sermon, point, or not decided yet. Changing it loses nothing. */
 export function KindField({
   form,
@@ -58,12 +45,13 @@ export function KindField({
   disabled?: boolean;
   hideLabel?: boolean;
 }) {
+  const t = useT("ideas");
   return (
     <Segmented
-      label="Kind of idea"
+      label={t.fields.kind}
       hideLabel={hideLabel}
       name={`${form}-kind`}
-      options={kindOptions}
+      options={ideaKinds.map((kind) => ({ value: kind, label: t.kindChoices[kind] }))}
       value={value}
       onChange={onChange}
       disabled={disabled}
@@ -78,7 +66,7 @@ export function TitleField({
   update,
   errors,
   inputRef,
-  label = "Idea",
+  label,
   hideLabel = false,
   placeholder,
 }: FieldProps & {
@@ -88,10 +76,11 @@ export function TitleField({
   placeholder?: string;
 }) {
   const id = `${form}-title`;
+  const t = useT("ideas").fields;
   return (
     <div>
       <Label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
-        {label}
+        {label ?? t.idea}
       </Label>
       <Input
         ref={inputRef}
@@ -124,9 +113,10 @@ export function NotesField({
   onSubmitShortcut?: () => void;
 }) {
   const id = `${form}-notes`;
+  const t = useT("ideas").fields;
   return (
     <div>
-      <Label htmlFor={id}>Notes</Label>
+      <Label htmlFor={id}>{t.notes}</Label>
       <Textarea
         id={id}
         name="notes"
@@ -139,7 +129,7 @@ export function NotesField({
           }
         }}
         maxLength={ideaLimits.notes}
-        placeholder="Anything that belongs with it."
+        placeholder={t.notesPlaceholder}
         aria-invalid={errors?.notes ? true : undefined}
         aria-describedby={errors?.notes ? `${id}-error` : undefined}
         className="mt-2"
@@ -189,45 +179,45 @@ export function TagsField({
 }
 
 export function StatusField({ form, draft, update }: FieldProps) {
+  const t = useT("ideas");
   return (
     <Segmented
-      label="Status"
+      label={t.fields.status}
       name={`${form}-status`}
-      options={ideaStatuses.map((value) => ({ value, label: ideaStatusLabels[value] }))}
+      options={ideaStatuses.map((value) => ({ value, label: t.statuses[value] }))}
       value={draft.status}
       onChange={(status) => update((current) => ({ ...current, status }))}
     />
   );
 }
 
-const sermonTypeOptions: { value: SermonType | "none"; label: string }[] = [
-  { value: "none", label: "Not set" },
-  ...sermonTypes.map((value) => ({ value, label: sermonTypeLabels[value] })),
-];
-
 /** What only a sermon has. Shown for sermons; kept, unseen, for anything else. */
 export function SermonFields({ form, draft, update, errors }: FieldProps) {
   const id = `${form}-subject`;
+  const t = useT("ideas");
   return (
     <>
       <Segmented
-        label="Sermon type"
+        label={t.fields.sermonType}
         name={`${form}-sermon-type`}
-        options={sermonTypeOptions}
+        options={[
+          { value: "none" as const, label: t.fields.notSet },
+          ...sermonTypes.map((value) => ({ value, label: t.sermonTypes[value] })),
+        ]}
         value={draft.sermonType ?? "none"}
         onChange={(value) =>
           update((current) => ({ ...current, sermonType: value === "none" ? null : value }))
         }
       />
       <div>
-        <Label htmlFor={id}>Subject or theme</Label>
+        <Label htmlFor={id}>{t.fields.subject}</Label>
         <Input
           id={id}
           name="subject"
           value={draft.subject}
           onChange={(event) => update((current) => ({ ...current, subject: event.target.value }))}
           maxLength={ideaLimits.subject}
-          placeholder="Grace, prayer, the cross"
+          placeholder={t.fields.subjectPlaceholder}
           autoComplete="off"
           aria-invalid={errors?.subject ? true : undefined}
           aria-describedby={errors?.subject ? `${id}-error` : undefined}

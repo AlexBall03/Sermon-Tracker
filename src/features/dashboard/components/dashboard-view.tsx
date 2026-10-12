@@ -6,6 +6,8 @@ import { StatStrip } from "@/components/ui/stat-strip";
 import { IdeaList } from "@/features/ideas/components/idea-list";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
 import type { IdeaWithReferences } from "@/features/ideas/ideas";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 import { welcomeTitle } from "../greeting";
 import { summaryStats } from "../summary";
@@ -18,19 +20,24 @@ type DashboardViewProps = {
   isAdmin: boolean;
   /** The person's latest ideas, newest first. The full list is the library. */
   recentIdeas: IdeaWithReferences[];
+  /** The interface language. English when omitted. */
+  locale?: Locale;
 };
 
 /**
  * The dashboard's content: the latest ideas, the way in to capture, and
  * shortcuts. The summary figures still wait for the phases that produce them.
  */
-export function DashboardView({ firstName, isAdmin, recentIdeas }: DashboardViewProps) {
+export function DashboardView({
+  firstName,
+  isAdmin,
+  recentIdeas,
+  locale = defaultLocale,
+}: DashboardViewProps) {
+  const t = dictionary(locale, "dashboard");
   return (
     <div className="container-page py-10 lg:py-12">
-      <PageHeader
-        title={welcomeTitle(firstName)}
-        description="Your workspace for sermon ideas, and for the points that build them."
-      />
+      <PageHeader title={welcomeTitle(firstName, locale)} description={t.description} />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         {recentIdeas.length === 0 ? (
@@ -39,11 +46,10 @@ export function DashboardView({ firstName, isAdmin, recentIdeas }: DashboardView
             className="flex flex-col justify-center rounded-xl border border-dashed border-input px-6 py-10 sm:px-8 lg:col-span-2"
           >
             <h2 id="recent-heading" className="font-display text-2xl leading-snug font-medium">
-              No ideas yet
+              {t.empty.title}
             </h2>
             <p className="mt-3 max-w-md text-[0.9375rem] leading-relaxed text-muted-foreground">
-              Capture the first thought worth keeping. A line is enough, and you can decide later
-              whether it is a sermon or a point.
+              {t.empty.body}
             </p>
             <div className="mt-6">
               <CaptureButton />
@@ -53,18 +59,18 @@ export function DashboardView({ firstName, isAdmin, recentIdeas }: DashboardView
           <section aria-labelledby="recent-heading" className="min-w-0 lg:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="recent-heading" className="text-lg font-semibold tracking-[-0.015em]">
-                Recent ideas
+                {t.recent}
               </h2>
               <CaptureButton size="sm" className="max-md:hidden" />
             </div>
             <div className="mt-4">
-              <IdeaList ideas={recentIdeas} label="Recent ideas" />
+              <IdeaList ideas={recentIdeas} label={t.recent} locale={locale} />
             </div>
             <Link
               href={routes.library}
               className="group/all mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary link-underline"
             >
-              Open the library
+              {t.openLibrary}
               <ArrowRight
                 className="size-4 transition-transform duration-150 group-hover/all:translate-x-0.5"
                 aria-hidden
@@ -73,37 +79,36 @@ export function DashboardView({ firstName, isAdmin, recentIdeas }: DashboardView
           </section>
         )}
 
-        <nav aria-label="Shortcuts" className="grid content-start gap-4">
+        <nav aria-label={t.shortcuts} className="grid content-start gap-4">
           <ShortcutLink
             href={routes.settings}
             icon={Settings}
-            title="Account settings"
-            description="Your name, email, password, and how the app looks."
+            title={t.settings.title}
+            description={t.settings.description}
           />
           {isAdmin && (
             <ShortcutLink
               href={routes.admin}
               icon={ShieldCheck}
-              title="Administration"
-              description="Invite people, and manage roles and access."
+              title={t.administration.title}
+              description={t.administration.description}
             />
           )}
         </nav>
       </div>
 
       <div className="mt-12 lg:mt-14">
-        <WorkflowOverview />
+        <WorkflowOverview locale={locale} />
       </div>
 
       <section aria-labelledby="summary-heading" className="mt-12 lg:mt-14">
         <h2 id="summary-heading" className="text-lg font-semibold tracking-[-0.015em]">
-          At a glance
+          {t.summary.title}
         </h2>
         <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
-          A short summary of your work will sit here. Its figures arrive with the preaching record,
-          so none are shown yet.
+          {t.summary.description}
         </p>
-        <StatStrip stats={summaryStats} className="mt-4" />
+        <StatStrip stats={summaryStats(locale)} className="mt-4" />
       </section>
     </div>
   );

@@ -1,7 +1,12 @@
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { bibleBooks, oldTestamentBooks } from "./books";
+import { foldAccents } from "./search-fold";
+
+export { accentFold, foldAccents } from "./search-fold";
 
 /**
- * Word search over the King James text. What someone types is turned into a
+ * Word search over the Bible text. What someone types is turned into a
  * PostgreSQL text-search query here, by hand, so that only letters and digits
  * ever reach it:
  *
@@ -15,14 +20,27 @@ import { bibleBooks, oldTestamentBooks } from "./books";
  * so "love" does not find "loved" unless a * asks for it.
  */
 
-/** What the search understands, by example, for the help beside a search box. */
-export const searchTips = [
-  ["grace mercy", "verses with both words"],
-  ['"living water"', "the exact phrase"],
-  ["faith OR hope", "either word"],
-  ["shepherd -sheep", "the first without the second"],
-  ["lov*", "love, loved, loveth, lovingkindness"],
-] as const;
+/**
+ * What the search understands, by example, for the help beside a search box.
+ * The examples are words of the text being searched, so they are given in
+ * its language; what each one does is said in the interface's.
+ */
+export function searchTips(textLanguage: Locale, locale: Locale = defaultLocale) {
+  const t = dictionary(locale, "scripture").search.tips;
+  const examples =
+    textLanguage === "es"
+      ? ["gracia misericordia", '"agua viva"', "fe OR esperanza", "pastor -ovejas", "am*"]
+      : ["grace mercy", '"living water"', "faith OR hope", "shepherd -sheep", "lov*"];
+  const prefixed =
+    textLanguage === "es" ? "amor, amado, amaos, amarás" : "love, loved, loveth, lovingkindness";
+  return [
+    [examples[0], t.both],
+    [examples[1], t.phrase],
+    [examples[2], t.either],
+    [examples[3], t.without],
+    [examples[4], prefixed],
+  ] as const;
+}
 
 export const searchLimits = { text: 200, terms: 16, pageSize: 40 } as const;
 
@@ -43,7 +61,7 @@ const term = /(-?)"([^"]*)"|(-?)(\S+)/g;
 /** One word or phrase as a tsquery fragment, or null when nothing searchable is left. */
 function fragment(text: string): string | null {
   const wildcard = text.endsWith("*");
-  const words = text
+  const words = foldAccents(text)
     .toLowerCase()
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
@@ -56,11 +74,12 @@ function fragment(text: string): string | null {
   return parts.length === 1 ? parts[0] : `(${parts.join(" <-> ")})`;
 }
 
-export function buildSearchQuery(input: string): SearchQuery {
-  const text = input.trim().replace(/[“”]/g, '"');
-  if (!text) return { ok: false, message: "Type a word or a phrase to search for." };
+export function buildSearchQuery(input: string, locale: Locale = defaultLocale): SearchQuery {
+  const t = dictionary(locale, "scripture").search;
+  const text = input.trim().replace(/[“”«»]/g, '"');
+  if (!text) return { ok: false, message: t.empty };
   if (text.length > searchLimits.text) {
-    return { ok: false, message: "That search is too long. Try fewer words." };
+    return { ok: false, message: t.tooLong };
   }
 
   // Alternatives separated by OR; within one, every term must match.
@@ -71,14 +90,14 @@ export function buildSearchQuery(input: string): SearchQuery {
     const quoted = match[2] !== undefined;
     const negated = (quoted ? match[1] : match[3]) === "-";
     const raw = quoted ? match[2] : match[4];
-    if (!quoted && /^(?:OR|\|)$/.test(raw) && !negated) {
+    if (!quoted && /^(?:OR|O|\|)$/.test(raw) && !negated) {
       if (alternatives.at(-1)!.length > 0) alternatives.push([]);
       continue;
     }
     const piece = fragment(quoted ? raw : raw.replace(/^-+/, ""));
     if (!piece) continue;
     if (++count > searchLimits.terms) {
-      return { ok: false, message: "That search has too many words. Try fewer." };
+      return { ok: false, message: t.tooManyWords };
     }
     if (!negated) positive = true;
     alternatives.at(-1)!.push(negated ? `!${piece}` : piece);
@@ -86,10 +105,10 @@ export function buildSearchQuery(input: string): SearchQuery {
 
   const groups = alternatives.filter((group) => group.length > 0);
   if (groups.length === 0) {
-    return { ok: false, message: "Type a word or a phrase to search for." };
+    return { ok: false, message: t.empty };
   }
   if (!positive) {
-    return { ok: false, message: "Add a word to look for, as well as the ones to leave out." };
+    return { ok: false, message: t.onlyNegative };
   }
   return { ok: true, tsquery: groups.map((group) => `(${group.join(" & ")})`).join(" | ") };
 }

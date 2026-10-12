@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 type BackToTopProps = {
@@ -19,6 +20,7 @@ type BackToTopProps = {
  */
 export function BackToTop({ aboveTabBar = false }: BackToTopProps) {
   const [visible, setVisible] = useState(false);
+  const t = useT("navigation").backToTop;
 
   useEffect(() => {
     const update = () => setVisible(window.scrollY > window.innerHeight);
@@ -34,7 +36,7 @@ export function BackToTop({ aboveTabBar = false }: BackToTopProps) {
   return (
     <button
       type="button"
-      aria-label="Back to top"
+      aria-label={t}
       inert={!visible}
       // Smoothness comes from `scroll-behavior` on <html>, so reduced motion is respected.
       onClick={() => window.scrollTo({ top: 0 })}

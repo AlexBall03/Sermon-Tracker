@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 
 export type Confirmation = {
@@ -31,6 +32,7 @@ type ConfirmDialogProps = {
 
 /** One confirmation dialog shared by a view's consequential actions. */
 export function ConfirmDialog({ confirmation, busy, onConfirm, onCancel }: ConfirmDialogProps) {
+  const t = useT("common");
   return (
     <AlertDialog open={confirmation !== null} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
@@ -39,7 +41,7 @@ export function ConfirmDialog({ confirmation, busy, onConfirm, onCancel }: Confi
           <AlertDialogDescription>{confirmation?.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{t.cancel}</AlertDialogCancel>
           <AlertDialogAction
             variant={confirmation?.destructive ? "destructive" : "default"}
             disabled={busy}
@@ -47,7 +49,7 @@ export function ConfirmDialog({ confirmation, busy, onConfirm, onCancel }: Confi
             onClick={() => confirmation && onConfirm(confirmation)}
           >
             {busy && <LoaderCircle className="animate-spin" aria-hidden />}
-            {busy ? "Working…" : confirmation?.confirmLabel}
+            {busy ? t.working : confirmation?.confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

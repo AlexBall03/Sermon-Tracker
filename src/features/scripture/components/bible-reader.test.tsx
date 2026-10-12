@@ -2,12 +2,16 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "@/components/ui/toast";
+import { ReadingProvider } from "@/features/preferences/client";
+import { I18nProvider } from "@/i18n/client";
+import type { Locale } from "@/i18n/locales";
 import { versesIn } from "../books";
 import { copyKindKey } from "../copy-preference";
 import { savedLocationKey } from "../reader-location";
 import { sidebarKey } from "../reader-sidebar";
 import type { ChapterMarks, FavoriteSummary, HighlightColor } from "../saved/model";
 import type { VerseRef } from "../saved/verse-set";
+import type { TranslationId } from "../translations";
 import { clearChapterCache } from "../use-chapter";
 import { clearMarksCache } from "../use-chapter-marks";
 import { BibleReader, type InitialChapter, type ReaderOrigin } from "./bible-reader";
@@ -55,7 +59,7 @@ const account = vi.hoisted(() => ({
   highlights: new Map<string, string>(),
   favorites: [] as {
     id: string;
-    translation: "kjv";
+    translation: "kjv" | "rvg";
     reference: string;
     label: string | null;
     notes: string | null;
@@ -75,6 +79,10 @@ vi.mock("../saved/actions", async () => {
   const { formatVerseSet, normaliseVerses, canonicalKey } = await import("../saved/verse-set");
   type Verses = { book: number; chapter: number; verse: number }[];
   const refused = { ok: false, message: "The server said no." };
+  // A mark belongs to a translation: the King James' are kept as they always were,
+  // and another translation's under its own name.
+  const under = (translation: string | undefined, key: string) =>
+    !translation || translation === "kjv" ? key : `${translation}:${key}`;
   const gate = (action: string, input: unknown) => {
     account.calls.push({ action, input });
     if (account.unreachable) {
@@ -88,7 +96,7 @@ vi.mock("../saved/actions", async () => {
     return null;
   };
   return {
-    setHighlight: async (input: { verses: Verses; color: string | null }) => {
+    setHighlight: async (input: { translation?: string; verses: Verses; color: string | null }) => {
       if (account.hold) {
         const hold = account.hold;
         account.hold = null;
@@ -97,24 +105,32 @@ vi.mock("../saved/actions", async () => {
       const stopped = gate("setHighlight", input);
       if (stopped) return stopped;
       for (const { book, chapter, verse } of input.verses) {
-        const key = `${book}.${chapter}.${verse}`;
+        const key = under(input.translation, `${book}.${chapter}.${verse}`);
         if (input.color) account.highlights.set(key, input.color);
         else account.highlights.delete(key);
       }
       return { ok: true, message: "Highlighted." };
     },
-    saveFavorite: async (input: { verses: Verses; label?: string; notes?: string }) => {
+    saveFavorite: async (input: {
+      translation?: "kjv" | "rvg";
+      verses: Verses;
+      label?: string;
+      notes?: string;
+    }) => {
       const stopped = gate("saveFavorite", input);
       if (stopped) return stopped;
       const verses = normaliseVerses(input.verses);
+      const translation = input.translation ?? "kjv";
       const held = account.favorites.find(
-        (favorite) => canonicalKey(favorite.verses) === canonicalKey(verses),
+        (favorite) =>
+          favorite.translation === translation &&
+          canonicalKey(favorite.verses) === canonicalKey(verses),
       );
       if (held) return { ok: true, message: "Already saved.", favorite: held, existing: true };
       const favorite = {
         id: `favorite-${account.nextId++}`,
-        translation: "kjv" as const,
-        reference: formatVerseSet(verses),
+        translation,
+        reference: formatVerseSet(verses, translation === "rvg" ? "es" : "en"),
         label: input.label ?? null,
         notes: input.notes ?? null,
         verses,
@@ -160,6 +176,17 @@ vi.mock("../saved/actions", async () => {
   };
 });
 
+// Saving the translation chosen in the reader: stood in for, recording what it was sent.
+const preference = vi.hoisted(() => ({
+  setBibleTranslation: vi.fn(async (): Promise<{ ok: boolean; message: string }> => ({
+    ok: true,
+    message: "Saved.",
+  })),
+}));
+vi.mock("@/features/preferences/actions", () => ({
+  setBibleTranslation: preference.setBibleTranslation,
+}));
+
 // Putting Scripture on an idea: the action is stood in for, and records what it was sent.
 const ideas = vi.hoisted(() => ({ attachScripture: vi.fn(), createIdea: vi.fn() }));
 vi.mock("@/features/ideas/actions", () => ({
@@ -167,23 +194,49 @@ vi.mock("@/features/ideas/actions", () => ({
   createIdea: ideas.createIdea,
 }));
 
-/** What the marks endpoint answers for a chapter, from the account above. */
-function marksOf(book: number, chapter: number): ChapterMarks {
-  const highlights: Record<number, HighlightColor> = {};
-  for (const [key, color] of account.highlights) {
-    const [atBook, atChapter, verse] = key.split(".").map(Number);
-    if (atBook === book && atChapter === chapter) highlights[verse] = color as HighlightColor;
-  }
-  const favorites = account.favorites.filter((favorite) =>
-    favorite.verses.some((verse) => verse.book === book && verse.chapter === chapter),
-  );
-  return { highlights, favorites: favorites as FavoriteSummary[] };
+/** What the marks endpoint answers for a chapter of one translation, from the account above. */
+function marksOf(book: number, chapter: number, translation: TranslationId = "kjv"): ChapterMarks {
+  const read = (within: TranslationId) => {
+    const highlights: Record<number, HighlightColor> = {};
+    for (const [key, color] of account.highlights) {
+      const [owner, place] = key.includes(":") ? key.split(":") : ["kjv", key];
+      const [atBook, atChapter, verse] = place.split(".").map(Number);
+      if (owner === within && atBook === book && atChapter === chapter) {
+        highlights[verse] = color as HighlightColor;
+      }
+    }
+    const favorites = account.favorites.filter(
+      (favorite) =>
+        favorite.translation === within &&
+        favorite.verses.some((verse) => verse.book === book && verse.chapter === chapter),
+    );
+    return { highlights, favorites: favorites as FavoriteSummary[] };
+  };
+  const other = read(translation === "kjv" ? "rvg" : "kjv");
+  const count = Object.keys(other.highlights).length;
+  return {
+    ...read(translation),
+    ...(count + other.favorites.length > 0
+      ? {
+          elsewhere: [
+            {
+              translation: translation === "kjv" ? "rvg" : "kjv",
+              highlights: count,
+              favorites: other.favorites.length,
+            },
+          ],
+        }
+      : {}),
+  };
 }
 
 /** Puts a highlight in the account, as if it had been made before this page was opened. */
-const highlighted = (verses: VerseRef[], color: HighlightColor) =>
+const highlighted = (verses: VerseRef[], color: HighlightColor, translation = "kjv") =>
   verses.forEach(({ book, chapter, verse }) =>
-    account.highlights.set(`${book}.${chapter}.${verse}`, color),
+    account.highlights.set(
+      `${translation === "kjv" ? "" : `${translation}:`}${book}.${chapter}.${verse}`,
+      color,
+    ),
   );
 
 // The Bible endpoints are faked: every verse says where it is from, Psalm 3
@@ -201,6 +254,9 @@ let clipboardFails = false;
 
 const verseText = (book: number, chapter: number, verse: number) =>
   `Text of ${book}.${chapter}.${verse}`;
+/** The same verse as the Spanish text has it. */
+const spanishText = (book: number, chapter: number, verse: number) =>
+  `Texto de ${book}.${chapter}.${verse}`;
 
 function show(href: string, initial?: InitialChapter, origin?: ReaderOrigin) {
   window.history.replaceState(null, "", href);
@@ -208,6 +264,24 @@ function show(href: string, initial?: InitialChapter, origin?: ReaderOrigin) {
     <ToastProvider>
       <BibleReader initial={initial} origin={origin} />
     </ToastProvider>,
+  );
+}
+
+/** The reader for an account that has both translations on offer. */
+function showBilingual(
+  href: string,
+  { translation = "kjv", locale = "en" }: { translation?: TranslationId; locale?: Locale } = {},
+  initial?: InitialChapter,
+) {
+  window.history.replaceState(null, "", href);
+  return render(
+    <I18nProvider locale={locale}>
+      <ReadingProvider translation={translation} translations={["kjv", "rvg"]}>
+        <ToastProvider>
+          <BibleReader initial={initial} />
+        </ToastProvider>
+      </ReadingProvider>
+    </I18nProvider>,
   );
 }
 
@@ -259,7 +333,18 @@ beforeEach(() => {
       address.changed();
     });
   }
-  vi.stubGlobal("fetch", async (url: string) => {
+  preference.setBibleTranslation.mockReset();
+  preference.setBibleTranslation.mockResolvedValue({ ok: true, message: "Saved." });
+  vi.stubGlobal("fetch", async (address: string) => {
+    // Every request names its translation. The King James is recorded as it always
+    // was, without one, so what is asked for is told apart only where it matters.
+    const [path, search = ""] = address.split("?");
+    const asked = new URLSearchParams(search);
+    const translation = (asked.get("t") ?? "kjv") as TranslationId;
+    const url =
+      translation === "kjv"
+        ? address.replace(/[?&]t=kjv$/, "").replace(/([?&])t=kjv&/, "$1")
+        : address;
     requests.push(url);
     if (failNext) {
       failNext = false;
@@ -279,10 +364,14 @@ beforeEach(() => {
         return { ok: true, status: 200, json: async () => ({ total: 0, hits: [] }) };
       }
       const offset = Number(params.get("offset"));
+      const found =
+        translation === "rvg"
+          ? hits.map((hit) => ({ ...hit, text: hit.text.replace("water", "agua") }))
+          : hits;
       return {
         ok: true,
         status: 200,
-        json: async () => ({ total: 2, hits: hits.slice(offset, offset + 1) }),
+        json: async () => ({ total: 2, hits: found.slice(offset, offset + 1) }),
       };
     }
     if (url.startsWith("/api/ideas/search")) {
@@ -306,17 +395,27 @@ beforeEach(() => {
       ];
       return { ok: true, status: 200, json: async () => ({ items, total: items.length }) };
     }
-    if (url.endsWith("/marks")) {
-      const [book, chapter] = url.split("/").slice(-3, -1).map(Number);
+    if (path.endsWith("/marks")) {
+      const [book, chapter] = path.split("/").slice(-3, -1).map(Number);
       if (marksFail) return { ok: false, status: 503, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => marksOf(book, chapter) };
+      return { ok: true, status: 200, json: async () => marksOf(book, chapter, translation) };
     }
-    const [book, chapter] = url.split("/").slice(-2).map(Number);
+    const [book, chapter] = path.split("/").slice(-2).map(Number);
+    const words = translation === "rvg" ? spanishText : verseText;
     const verses = Array.from({ length: versesIn(book, chapter) }, (_, index) =>
-      verseText(book, chapter, index + 1),
+      words(book, chapter, index + 1),
     );
-    const title = book === 19 && chapter === 3 ? "A Psalm of David, when he fled." : null;
-    return { ok: true, status: 200, json: async () => ({ book, chapter, verses, title }) };
+    const title =
+      book === 19 && chapter === 3
+        ? translation === "rvg"
+          ? "Salmo de David, cuando huía"
+          : "A Psalm of David, when he fled."
+        : null;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ translation, book, chapter, verses, title }),
+    };
   });
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -1853,5 +1952,450 @@ describe("the page's name", () => {
     await waitFor(() => expect(document.title).toBe("John 3 · Sermon Tracker"));
     fireEvent.click(screen.getByRole("button", { name: "Next chapter" }));
     await waitFor(() => expect(document.title).toBe("John 4 · Sermon Tracker"));
+  });
+});
+
+/** Chooses a translation in a pane's selector, as a reader would. */
+async function chooseTranslation(short: string, within_: ReturnType<typeof within> = screen) {
+  fireEvent.click(within_.getByRole("combobox", { name: "Bible translation" }));
+  const option = await screen.findByRole("option", { name: short });
+  // A real click starts with the pointer going down on the option.
+  fireEvent.pointerDown(option);
+  fireEvent.click(option);
+}
+
+/** A window of a given width, for what depends on the room there is. */
+function windowWidth(px: number) {
+  vi.stubGlobal("matchMedia", (query: string) => {
+    const rem = /min-width:\s*([\d.]+)rem/.exec(query);
+    return {
+      matches: rem ? px >= Number(rem[1]) * 16 : false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+  });
+}
+
+const spanishVerse = (number: number, book = 43, chapter = 3) =>
+  screen.findByRole("button", {
+    name: new RegExp(`^${number}\\s*${spanishText(book, chapter, number)}$`),
+  });
+/** A verse of one pane, by its number: a marked verse says so in its name. */
+const paneVerse = (which: "primary" | "beside", number: number) =>
+  document.querySelector<HTMLElement>(`[data-pane="${which}"] [data-verse="${number}"]`)!;
+const pane = (which: "primary" | "beside") =>
+  within(document.querySelector<HTMLElement>(`[data-pane="${which}"]`)!);
+
+describe("the translation being read", () => {
+  it("is simply named when there is only one, with nothing to choose", async () => {
+    show("/bible?book=43&chapter=3");
+    await verse(1);
+    expect(screen.getByText("King James Version")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Bible translation" })).not.toBeInTheDocument();
+  });
+
+  it("is the account's own, with a selector, when two are on offer", async () => {
+    showBilingual("/bible?book=43&chapter=3", { translation: "rvg" });
+    expect(await spanishVerse(1)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Bible translation" })).toHaveTextContent("RVG");
+    // Named as its own text names it, with the interface still in English.
+    expect(heading()).toHaveTextContent("Juan 3");
+    expect(screen.getByRole("button", { name: "Go to verse" })).toBeInTheDocument();
+  });
+
+  it("is the one the address names, whatever the account usually reads", async () => {
+    const first = showBilingual("/bible?book=43&chapter=3&t=rvg", { translation: "kjv" });
+    expect(await spanishVerse(1)).toBeInTheDocument();
+    first.unmount();
+    showBilingual("/bible?book=43&chapter=3&t=kjv", { translation: "rvg" });
+    expect(await verse(1)).toBeInTheDocument();
+  });
+
+  it("changes in place, keeping the book, the chapter, and the verse, and is saved", async () => {
+    showBilingual("/bible?book=43&chapter=3&verse=16");
+    await verse(16);
+    const pages = requests.length;
+
+    await chooseTranslation("RVG");
+    expect(await spanishVerse(16)).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&verse=16&t=rvg");
+    expect(heading()).toHaveTextContent("Juan 3");
+    expect(screen.queryByText(verseText(43, 3, 16))).not.toBeInTheDocument();
+    // Said for the eye beside the selector, and for a screen reader in the live region.
+    expect(document.querySelector("[data-translation-changed]")).toHaveTextContent(
+      "Now reading the RVG.",
+    );
+    // The page was not asked for again: only text and marks.
+    expect(requests.slice(pages).every((url) => url.startsWith("/api/bible/"))).toBe(true);
+    expect(address.replaced).toEqual([]);
+    // It is the account's translation from now on.
+    expect(preference.setBibleTranslation).toHaveBeenCalledExactlyOnceWith("rvg");
+
+    // And back again, to the same place.
+    await chooseTranslation("KJV");
+    expect(await verse(16)).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&verse=16&t=kjv");
+    expect(preference.setBibleTranslation).toHaveBeenLastCalledWith("kjv");
+  });
+
+  it("says it is loading at once, before the other text has come", async () => {
+    showBilingual("/bible?book=19&chapter=3");
+    await verse(1, 19, 3);
+    // The other translation was not fetched ahead this time.
+    clearChapterCache();
+    await chooseTranslation("RVG");
+    // Straight away, in the same breath as the choice: the loading lines, and the word for it.
+    expect(document.querySelector("[data-translation-loading]")).toHaveTextContent(
+      "Loading the RVG…",
+    );
+    expect(screen.getByText("Loading the passage")).toBeInTheDocument();
+    expect(screen.queryByText(verseText(19, 3, 1))).not.toBeInTheDocument();
+    // Then the text, with the psalm's title in the same translation.
+    expect(await spanishVerse(1, 19, 3)).toBeInTheDocument();
+    expect(screen.getByText("Salmo de David, cuando huía")).toBeInTheDocument();
+    expect(document.querySelector("[data-translation-loading]")).not.toBeInTheDocument();
+  });
+
+  it("does not wait for the address to catch up", async () => {
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    // The router is slow to take the new address, as it is while a page refreshes behind it.
+    vi.mocked(window.history.replaceState).mockImplementation(() => {});
+    await chooseTranslation("RVG");
+    expect(await spanishVerse(1)).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3");
+  });
+
+  it("is carried along when reading on", async () => {
+    showBilingual("/bible?book=43&chapter=3&t=rvg");
+    await spanishVerse(1);
+    fireEvent.click(screen.getByRole("button", { name: "Next chapter" }));
+    expect(await spanishVerse(1, 43, 4)).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=4&t=rvg");
+    expect(heading()).toHaveTextContent("Juan 4");
+  });
+
+  it("goes back to what it was when the choice cannot be saved, and says why", async () => {
+    preference.setBibleTranslation.mockResolvedValue({
+      ok: false,
+      message: "That translation is not available right now.",
+    });
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    await chooseTranslation("RVG");
+    expect(await screen.findByText("That translation is not available right now.")).toBeVisible();
+    expect(await verse(1)).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3");
+  });
+
+  it("names the books in the navigation as the text being read names them", async () => {
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    expect(sidebar().getByRole("button", { name: "Genesis" })).toBeInTheDocument();
+    await chooseTranslation("RVG");
+    await spanishVerse(1);
+    expect(sidebar().getByRole("button", { name: "Génesis" })).toBeInTheDocument();
+    expect(sidebar().getByText("Antiguo Testamento")).toBeInTheDocument();
+    expect(sidebar().queryByRole("button", { name: "Genesis" })).not.toBeInTheDocument();
+    // The controls are still in the interface's language.
+    expect(sidebar().getByPlaceholderText("Words or a reference")).toBeInTheDocument();
+  });
+
+  it("is read as the account's own when the one in the address is not on offer", async () => {
+    // Spanish switched off: one translation, and an old link that names the other.
+    show("/bible?book=43&chapter=3&verse=16&t=rvg&beside=rvg.45.8");
+    expect(await verse(16)).toBeInTheDocument();
+    await waitFor(() => expect(here()).toBe("/bible?book=43&chapter=3&verse=16"));
+    expect(requests.some((url) => url.includes("t=rvg"))).toBe(false);
+  });
+
+  it("copies under its own name and its own book names", async () => {
+    showBilingual("/bible?book=43&chapter=3&t=rvg");
+    fireEvent.click(await spanishVerse(16));
+    fireEvent.click(screen.getByRole("button", { name: "Copy text" }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toBe(`Juan 3:16 (RVG)\n16 ${spanishText(43, 3, 16)}`);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await waitFor(() => expect(copied).toHaveLength(2));
+    // A link to the Spanish text says so; one to the King James needs no saying.
+    expect(copied[1]).toMatch(/\/bible\?book=43&chapter=3&verse=16&t=rvg$/);
+  });
+
+  it("searches the text being read", async () => {
+    showBilingual("/bible?book=43&chapter=3&t=rvg");
+    await spanishVerse(1);
+    const box = sidebar().getByRole("searchbox");
+    fireEvent.change(box, { target: { value: "agua" } });
+    fireEvent.submit(box.closest("form")!);
+    expect(await sidebar().findByText("agua")).toBeInTheDocument();
+    expect(
+      requests.some((url) => url.startsWith("/api/bible/search") && url.includes("t=rvg")),
+    ).toBe(true);
+    // The verse found is named as its translation names it.
+    expect(sidebar().getByText("Juan 4:10")).toBeInTheDocument();
+  });
+});
+
+describe("marks and the translation they were made in", () => {
+  it("are shown only in their own translation, and are never lost by changing it", async () => {
+    highlighted([{ book: 43, chapter: 3, verse: 16 }], "yellow");
+    showBilingual("/bible?book=43&chapter=3");
+    // A highlighted verse says so in its name, so it is found by its number.
+    await waitFor(() =>
+      expect(document.querySelector(`[data-verse="16"]`)).toHaveAttribute(
+        "data-highlight",
+        "yellow",
+      ),
+    );
+
+    await chooseTranslation("RVG");
+    const spanish = await spanishVerse(16);
+    await waitFor(() => expect(document.querySelector("[data-marks-elsewhere]")).toBeTruthy());
+    // The Spanish verse is not highlighted: that highlight is the King James'.
+    expect(spanish).not.toHaveAttribute("data-highlight");
+    // But the reader is told it is there, and how to see it.
+    const note = screen.getByRole("button", { name: "1 highlight here in the KJV" });
+    fireEvent.click(note);
+    await waitFor(() =>
+      expect(document.querySelector(`[data-verse="16"]`)).toHaveAttribute(
+        "data-highlight",
+        "yellow",
+      ),
+    );
+    // Nothing was written by any of that.
+    expect(account.calls).toEqual([]);
+    expect([...account.highlights]).toEqual([["43.3.16", "yellow"]]);
+  });
+
+  it("go to the translation being read, and leave the other's alone", async () => {
+    highlighted([{ book: 43, chapter: 3, verse: 16 }], "yellow");
+    showBilingual("/bible?book=43&chapter=3&t=rvg");
+    fireEvent.click(await spanishVerse(16));
+    fireEvent.click(screen.getByRole("button", { name: "Highlight" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Blue" }));
+    await waitFor(() => expect(account.calls).toHaveLength(1));
+    expect(account.calls[0]).toMatchObject({
+      action: "setHighlight",
+      input: { translation: "rvg", color: "blue" },
+    });
+    // One color to a verse, in each translation.
+    expect(Object.fromEntries(account.highlights)).toEqual({
+      "43.3.16": "yellow",
+      "rvg:43.3.16": "blue",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add to favorites" }));
+    await waitFor(() => expect(account.favorites).toHaveLength(1));
+    expect(account.favorites[0]).toMatchObject({ translation: "rvg", reference: "Juan 3:16" });
+  });
+
+  it("looking at the other translation's marks does not change the account's own translation", async () => {
+    highlighted([{ book: 43, chapter: 3, verse: 16 }], "green", "rvg");
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    fireEvent.click(await screen.findByRole("button", { name: "1 highlight here in the RVG" }));
+    expect(await spanishVerse(16)).toBeInTheDocument();
+    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
+  });
+});
+
+describe("reading two side by side", () => {
+  beforeEach(() => windowWidth(1440));
+
+  it("is not offered where two columns would not fit, and is where they would", async () => {
+    windowWidth(390);
+    const narrow = showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    expect(screen.queryByRole("button", { name: /^Compare/ })).not.toBeInTheDocument();
+    narrow.unmount();
+
+    // A phone turned on its side, or anything wider.
+    windowWidth(844);
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    expect(
+      screen.getByRole("button", { name: "Compare with another translation or passage" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows one pane, as ever, where an address asks for two and there is no room", async () => {
+    windowWidth(390);
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    expect(await verse(1)).toBeInTheDocument();
+    expect(document.querySelector("[data-comparing]")).not.toBeInTheDocument();
+    expect(screen.queryByText(spanishText(43, 3, 1))).not.toBeInTheDocument();
+    // The second pane is still in the address, for when the screen is turned.
+    expect(here()).toBe("/bible?book=43&chapter=3&beside=rvg.43.3");
+  });
+
+  it("opens the other translation beside the one being read, at the same chapter", async () => {
+    showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare with another translation or passage" }),
+    );
+    await waitFor(() => expect(here()).toBe("/bible?book=43&chapter=3&beside=rvg.43.3"));
+    expect(await pane("primary").findByText(verseText(43, 3, 1))).toBeInTheDocument();
+    expect(await pane("beside").findByText(spanishText(43, 3, 1))).toBeInTheDocument();
+    expect(pane("primary").getByRole("heading")).toHaveTextContent("John 3");
+    expect(pane("beside").getByRole("heading")).toHaveTextContent("Juan 3");
+    // Each has a selector of its own.
+    expect(pane("primary").getByRole("combobox", { name: "Bible translation" })).toHaveTextContent(
+      "KJV",
+    );
+    expect(pane("beside").getByRole("combobox", { name: "Bible translation" })).toHaveTextContent(
+      "RVG",
+    );
+  });
+
+  it.each([
+    ["kjv", "kjv"],
+    ["kjv", "rvg"],
+    ["rvg", "kjv"],
+    ["rvg", "rvg"],
+  ] as const)("reads %s beside %s", async (first, second) => {
+    // Two places, so that the same translation twice is still two things to read.
+    showBilingual(`/bible?book=43&chapter=3&t=${first}&beside=${second}.45.8`);
+    const words = { kjv: verseText, rvg: spanishText };
+    expect(await pane("primary").findByText(words[first](43, 3, 1))).toBeInTheDocument();
+    expect(await pane("beside").findByText(words[second](45, 8, 1))).toBeInTheDocument();
+    expect(pane("primary").getByRole("combobox")).toHaveTextContent(first.toUpperCase());
+    expect(pane("beside").getByRole("combobox")).toHaveTextContent(second.toUpperCase());
+    expect(pane("primary").getByRole("heading")).toHaveTextContent(
+      first === "rvg" ? "Juan 3" : "John 3",
+    );
+    expect(pane("beside").getByRole("heading")).toHaveTextContent(
+      second === "rvg" ? "Romanos 8" : "Romans 8",
+    );
+    // Nothing was rewritten: every combination is its own address.
+    expect(here()).toBe(`/bible?book=43&chapter=3&t=${first}&beside=${second}.45.8`);
+  });
+
+  it("moves each pane by itself", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 1));
+
+    fireEvent.click(pane("beside").getByRole("button", { name: "Next chapter" }));
+    expect(await pane("beside").findByText(spanishText(43, 4, 1))).toBeInTheDocument();
+    // The first pane has not moved.
+    expect(pane("primary").getByText(verseText(43, 3, 1))).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&beside=rvg.43.4");
+
+    fireEvent.click(pane("primary").getByRole("button", { name: "Previous chapter" }));
+    expect(await pane("primary").findByText(verseText(43, 2, 1))).toBeInTheDocument();
+    expect(pane("beside").getByText(spanishText(43, 4, 1))).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=2&beside=rvg.43.4");
+  });
+
+  it("changes each pane's translation by itself, and saves only the first pane's", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 1));
+
+    await chooseTranslation("KJV", pane("beside"));
+    expect(await pane("beside").findByText(verseText(43, 3, 1))).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&beside=kjv.43.3");
+    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
+
+    await chooseTranslation("RVG", pane("primary"));
+    expect(await pane("primary").findByText(spanishText(43, 3, 1))).toBeInTheDocument();
+    expect(pane("beside").getByText(verseText(43, 3, 1))).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&t=rvg&beside=kjv.43.3");
+    expect(preference.setBibleTranslation).toHaveBeenCalledExactlyOnceWith("rvg");
+  });
+
+  it("selects and marks in each pane by itself", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 16));
+    fireEvent.click(paneVerse("beside", 16));
+    // A toolbar in the second pane and none in the first.
+    expect(pane("beside").getByRole("toolbar", { name: "Selected Scripture" })).toHaveTextContent(
+      "Juan 3:16",
+    );
+    expect(pane("primary").queryByRole("toolbar")).not.toBeInTheDocument();
+    expect(paneVerse("primary", 16)).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(pane("beside").getByRole("button", { name: "Highlight" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yellow" }));
+    await waitFor(() => expect(account.calls).toHaveLength(1));
+    expect(account.calls[0].input).toMatchObject({ translation: "rvg" });
+    await waitFor(() =>
+      expect(paneVerse("beside", 16)).toHaveAttribute("data-highlight", "yellow"),
+    );
+    expect(paneVerse("primary", 16)).not.toHaveAttribute("data-highlight");
+  });
+
+  it("sends the navigation to the pane last touched", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 1));
+    expect(document.querySelector('[data-pane="primary"]')).toHaveAttribute("data-active", "true");
+
+    fireEvent.pointerDown(pane("beside").getByText(spanishText(43, 3, 1)));
+    expect(document.querySelector('[data-pane="beside"]')).toHaveAttribute("data-active", "true");
+    // The books are now named as that pane's text names them, and going to one moves it.
+    fireEvent.click(sidebar().getByRole("button", { name: "Judas" }));
+    expect(await pane("beside").findByText(spanishText(65, 1, 1))).toBeInTheDocument();
+    expect(pane("primary").getByText(verseText(43, 3, 1))).toBeInTheDocument();
+    expect(here()).toBe("/bible?book=43&chapter=3&beside=rvg.65.1");
+  });
+
+  it("closes either pane, and the one left is the reader", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.45.8");
+    await pane("beside").findByText(spanishText(45, 8, 1));
+
+    // Closing the second leaves the first where it was.
+    fireEvent.click(pane("beside").getByRole("button", { name: "Close Romanos 8" }));
+    await waitFor(() => expect(here()).toBe("/bible?book=43&chapter=3"));
+    expect(document.querySelector("[data-comparing]")).not.toBeInTheDocument();
+    expect(await verse(1)).toBeInTheDocument();
+    expect(heading()).toHaveTextContent("John 3");
+  });
+
+  it("keeps the second pane as the reader when the first is closed", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.45.8");
+    await pane("beside").findByText(spanishText(45, 8, 1));
+    fireEvent.click(pane("primary").getByRole("button", { name: "Close John 3" }));
+    await waitFor(() => expect(here()).toBe("/bible?book=45&chapter=8&t=rvg"));
+    expect(await spanishVerse(1, 45, 8)).toBeInTheDocument();
+    expect(heading()).toHaveTextContent("Romanos 8");
+  });
+
+  it("gives the panes the window when the navigation would not fit beside them", async () => {
+    // Wide enough for two panes, not for two panes and the navigation.
+    windowWidth(900);
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 1));
+    expect(screen.getByRole("complementary", { hidden: true })).toHaveClass("hidden");
+    // The navigation is reached from each pane's bar instead, and moves that pane.
+    fireEvent.click(pane("beside").getByRole("button", { name: "Browse and search the Bible" }));
+    const sheet = within(await screen.findByRole("dialog"));
+    fireEvent.click(sheet.getByRole("button", { name: "Judas" }));
+    expect(await pane("beside").findByText(spanishText(65, 1, 1))).toBeInTheDocument();
+    expect(pane("primary").getByText(verseText(43, 3, 1))).toBeInTheDocument();
+  });
+
+  it("keeps the docked navigation where there is room for all three", async () => {
+    showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
+    await pane("beside").findByText(spanishText(43, 3, 1));
+    expect(screen.getByRole("complementary", { name: "Bible navigation" })).not.toHaveClass(
+      "hidden",
+    );
+  });
+});
+
+describe("the reader in Spanish", () => {
+  it("names its controls in Spanish, whatever translation is read", async () => {
+    showBilingual("/bible?book=43&chapter=3&t=kjv", { locale: "es" });
+    expect(await verse(1)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ir al versículo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Seleccionar capítulo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Capítulo siguiente" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Navegación de la Biblia" })).toBeTruthy();
+    // The King James is still named as the King James names its books.
+    expect(heading()).toHaveTextContent("John 3");
+    fireEvent.click(await verse(16));
+    expect(screen.getByRole("toolbar", { name: "Escritura seleccionada" })).toHaveTextContent(
+      "John 3:16",
+    );
+    expect(screen.getByRole("button", { name: "Copiar texto" })).toBeInTheDocument();
   });
 });

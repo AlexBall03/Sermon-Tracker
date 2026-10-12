@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/client";
 
 const subscribe = () => () => {};
 
@@ -14,6 +15,7 @@ const subscribe = () => () => {};
  * the account.
  */
 export function AppearanceSettings() {
+  const t = useT("settings").appearance;
   const { theme, setTheme } = useTheme();
   // The stored choice is unknown on the server.
   const mounted = useSyncExternalStore(
@@ -27,13 +29,11 @@ export function AppearanceSettings() {
     <div>
       <ThemeToggle showLabels className="flex w-full max-w-xs" />
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground" aria-live="polite">
-        {chosen
-          ? "Your choice is remembered on this device."
-          : "Following your device's setting until you choose one."}
+        {chosen ? t.remembered : t.following}
       </p>
       {chosen && (
         <Button variant="outline" size="sm" className="mt-3" onClick={() => setTheme("system")}>
-          Use device setting
+          {t.useDevice}
         </Button>
       )}
     </div>

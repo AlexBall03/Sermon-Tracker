@@ -1,5 +1,7 @@
 import { Tag } from "lucide-react";
 
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,16 +26,23 @@ export function TagChip({ children, className }: { children: string; className?:
 export function TagList({
   tags,
   limit = 4,
+  locale = defaultLocale,
   className,
 }: {
   tags: { id: string; name: string }[];
   limit?: number;
+  /** The interface language. English when omitted. */
+  locale?: Locale;
   className?: string;
 }) {
+  const t = dictionary(locale, "library").tags;
   if (tags.length === 0) return null;
   const more = tags.length - limit;
   return (
-    <ul aria-label="Tags" className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}>
+    <ul
+      aria-label={t.label}
+      className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}
+    >
       {tags.slice(0, limit).map((tag) => (
         <li key={tag.id} className="max-w-full min-w-0">
           <TagChip>{tag.name}</TagChip>
@@ -42,7 +51,7 @@ export function TagList({
       {more > 0 && (
         <li className="text-xs text-muted-foreground">
           +{more}
-          <span className="sr-only"> more</span>
+          <span className="sr-only">{t.more}</span>
         </li>
       )}
     </ul>

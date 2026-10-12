@@ -13,10 +13,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { useReading } from "@/features/preferences/client";
+import { useLocale, useT } from "@/i18n/client";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { readerHref, referenceLocation } from "../reader-location";
 import { countReferenceVerses, formatReference, type ScriptureReference } from "../reference";
+import { translations } from "../translations";
 import { Passage } from "./passage-text";
 import { useScripture } from "./scripture-provider";
 
@@ -54,13 +57,16 @@ export function ReferenceChip({
   const [open, setOpen] = useState(false);
   const wide = useMediaQuery(wideEnough);
   const scripture = useScripture();
-  const label = formatReference(reference);
+  const t = useT("scripture").chip;
+  const locale = useLocale();
+  const { translation } = useReading();
+  const label = formatReference(reference, locale);
 
   const read = () => {
     setOpen(false);
     scripture.openPanel({
       reference,
-      attach: onChange ? { label: "Update reference", onAttach: onChange } : undefined,
+      attach: onChange ? { label: t.updateReference, onAttach: onChange } : undefined,
     });
   };
 
@@ -71,10 +77,10 @@ export function ReferenceChip({
         <Button type="button" variant="outline" size="sm" onClick={read}>
           <BookOpen aria-hidden />
           {onChange
-            ? "Read or change"
+            ? t.readOrChange
             : countReferenceVerses(reference) > previewVerses
-              ? "Read all"
-              : "Read"}
+              ? t.readAll
+              : t.read}
         </Button>
         <Link
           href={readerHref(referenceLocation(reference, origin))}
@@ -82,7 +88,7 @@ export function ReferenceChip({
           className={buttonVariants({ variant: "ghost", size: "sm" })}
         >
           <ExternalLink aria-hidden />
-          Open in Bible
+          {t.openInBible}
         </Link>
         {onRemove && (
           <Button
@@ -96,7 +102,7 @@ export function ReferenceChip({
             }}
           >
             <Trash2 aria-hidden />
-            Remove
+            {t.remove}
           </Button>
         )}
       </div>
@@ -108,15 +114,12 @@ export function ReferenceChip({
   if (wide) {
     return (
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          aria-label={`${label}: preview the passage`}
-          className={cn(chipClass, className)}
-        >
+        <PopoverTrigger aria-label={t.preview(label)} className={cn(chipClass, className)}>
           <span className="truncate">{label}</span>
         </PopoverTrigger>
         <PopoverContent>
           <PopoverTitle className={heading}>{label}</PopoverTitle>
-          <p className={version}>King James Version</p>
+          <p className={version}>{translations[translation].name}</p>
           {body}
         </PopoverContent>
       </Popover>
@@ -127,7 +130,7 @@ export function ReferenceChip({
     <>
       <button
         type="button"
-        aria-label={`${label}: preview the passage`}
+        aria-label={t.preview(label)}
         aria-haspopup="dialog"
         // Inside a surface that holds the panel itself, go straight there: no sheet over a sheet.
         onClick={() => (scripture.inline ? read() : setOpen(true))}
@@ -141,9 +144,11 @@ export function ReferenceChip({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <DialogTitle className="text-lg">{label}</DialogTitle>
-                <DialogDescription className="text-xs">King James Version</DialogDescription>
+                <DialogDescription className="text-xs">
+                  {translations[translation].name}
+                </DialogDescription>
               </div>
-              <DialogClose label="Close preview" className="-mt-1 -mr-2" />
+              <DialogClose label={t.closePreview} className="-mt-1 -mr-2" />
             </div>
             {body}
           </div>

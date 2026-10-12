@@ -7,7 +7,7 @@
 // `migrate deploy` is the build step: it migrates production inside the Vercel
 // production deployment, without a prompt, and does nothing anywhere else.
 //
-// `migrate` also loads the King James Bible and the titles of the Psalms
+// `migrate` also loads each Bible translation and its titles of the Psalms
 // (seed-bible.mjs) when the database does not already hold the committed edition
 // of each.
 //
@@ -30,7 +30,7 @@ import {
   redact,
   resolveTarget,
 } from "./guard.mjs";
-import { readDataset, readPsalmTitles } from "../bible/dataset.mjs";
+import { datasets, readDataset, readPsalmTitles } from "../bible/dataset.mjs";
 import {
   bibleIsCurrent,
   psalmTitlesAreCurrent,
@@ -162,13 +162,30 @@ async function inspect(pool, target, declared) {
 }
 
 /** Loads reference data on one connection, since each load is a transaction. */
-async function load(pool, seed, data) {
+async function load(pool, seed, dataset, data) {
   const client = await pool.connect();
   try {
-    await seed(client, data);
+    await seed(client, dataset, data);
   } finally {
     client.release();
   }
+}
+
+/** Each translation's committed text and titles, and whether the database already holds them. */
+async function readTexts(pool) {
+  const texts = [];
+  for (const dataset of Object.values(datasets)) {
+    const books = readDataset(dataset.path);
+    const titles = readPsalmTitles(dataset.titlesPath);
+    texts.push({
+      dataset,
+      books,
+      titles,
+      bibleCurrent: await bibleIsCurrent(pool, dataset, books),
+      titlesCurrent: await psalmTitlesAreCurrent(pool, dataset, titles),
+    });
+  }
+  return texts;
 }
 
 async function runMigrate(pool, target, { url, declared }, automated) {
@@ -176,11 +193,9 @@ async function runMigrate(pool, target, { url, declared }, automated) {
   if (!verdict.ok) throw new Refusal(verdict.reason);
 
   const { pending } = await readPending(pool);
-  const books = readDataset();
-  const bibleCurrent = await bibleIsCurrent(pool, books);
-  const titles = readPsalmTitles();
-  const titlesCurrent = await psalmTitlesAreCurrent(pool, titles);
-  const upToDate = pending.length === 0 && bibleCurrent && titlesCurrent;
+  const texts = await readTexts(pool);
+  const upToDate =
+    pending.length === 0 && texts.every((text) => text.bibleCurrent && text.titlesCurrent);
 
   if (target === "production") {
     console.log(`Target:   PRODUCTION  ${describeTarget(url)}`);
@@ -189,8 +204,11 @@ async function runMigrate(pool, target, { url, declared }, automated) {
         ? `Pending:  ${pending.length}\n${pending.map((tag) => `  - ${tag}`).join("\n")}`
         : "Pending:  none",
     );
-    console.log(`Bible:    ${bibleCurrent ? "loaded" : "to be loaded"}`);
-    console.log(`Titles:   ${titlesCurrent ? "loaded" : "to be loaded"}`);
+    for (const { dataset, bibleCurrent, titlesCurrent } of texts) {
+      const name = dataset.id.toUpperCase();
+      console.log(`${name}:      ${bibleCurrent ? "loaded" : "to be loaded"}`);
+      console.log(`${name} titles: ${titlesCurrent ? "loaded" : "to be loaded"}`);
+    }
     if (upToDate) return;
     if (pending.length) console.log("Migrations are not rolled back automatically if one fails.");
     // A deployment has no terminal; pushing to the production branch is the confirmation.
@@ -205,14 +223,16 @@ async function runMigrate(pool, target, { url, declared }, automated) {
     await migrate(drizzle({ client: pool }), { migrationsFolder });
     console.log(`Database: applied ${pending.length} migration(s) to ${target}.`);
   }
-  if (!bibleCurrent) {
-    await load(pool, seedBible, books);
-    console.log(`Database: loaded the King James Bible into ${target}.`);
-  }
-  // After the migrations: the table the titles go in is one of them.
-  if (!titlesCurrent) {
-    await load(pool, seedPsalmTitles, titles);
-    console.log(`Database: loaded the titles of the Psalms into ${target}.`);
+  // After the migrations: the tables the text goes in are among them.
+  for (const { dataset, books, titles, bibleCurrent, titlesCurrent } of texts) {
+    if (!bibleCurrent) {
+      await load(pool, seedBible, dataset, books);
+      console.log(`Database: loaded the ${dataset.label} into ${target}.`);
+    }
+    if (!titlesCurrent) {
+      await load(pool, seedPsalmTitles, dataset, titles);
+      console.log(`Database: loaded the ${dataset.label}'s titles of the Psalms into ${target}.`);
+    }
   }
 }
 
@@ -239,12 +259,11 @@ async function runStatus(pool, target, { url, declared }) {
   console.log(`Stamp:      ${stamp ?? "(none)"}`);
   console.log(`Migrations: ${total - pending.length} applied, ${pending.length} pending`);
   for (const tag of pending) console.log(`  - ${tag}`);
-  console.log(
-    `Bible:      ${(await bibleIsCurrent(pool, readDataset())) ? "loaded" : "not loaded"}`,
-  );
-  console.log(
-    `Titles:     ${(await psalmTitlesAreCurrent(pool, readPsalmTitles())) ? "loaded" : "not loaded"}`,
-  );
+  for (const { dataset, bibleCurrent, titlesCurrent } of await readTexts(pool)) {
+    const name = dataset.id.toUpperCase();
+    console.log(`${name}:        ${bibleCurrent ? "loaded" : "not loaded"}`);
+    console.log(`${name} titles: ${titlesCurrent ? "loaded" : "not loaded"}`);
+  }
   console.log(verdict.ok ? "Check:      ok" : `Check:      refused. ${verdict.reason}`);
 }
 

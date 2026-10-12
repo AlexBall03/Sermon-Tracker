@@ -1,21 +1,20 @@
-// Loads the King James Bible into `bible_verses`, and the titles of the Psalms
-// into `bible_psalm_titles`. See docs/DATABASE.md.
+// Loads each Bible translation into `scripture_verses`, and its titles of the
+// Psalms into `scripture_psalm_titles`. See docs/DATABASE.md.
 //
-// It is reference data, not a migration: the text lives in data/bible/kjv.json
-// (the titles in data/bible/kjv-psalm-titles.json) and a database records
-// which edition of each it holds in `reference_datasets`.
-// Loading is skipped when that edition is already there, so it is safe to run
-// on every start and every deployment.
+// It is reference data, not a migration: each text lives in data/bible (see
+// `datasets` in scripts/bible/dataset.mjs) and a database records which
+// edition of each it holds in `reference_datasets`. Loading is skipped when
+// that edition is already there, so it is safe to run on every start and
+// every deployment. One translation is loaded at a time and no load touches
+// another translation's rows.
 
 import {
   checksum,
   countVerses,
-  datasetName,
   expected,
   psalmCount,
   titleRows,
   titlesChecksum,
-  titlesDatasetName,
 } from "../bible/dataset.mjs";
 
 /** Refuses anything that is not a complete 66-book canon. */
@@ -36,54 +35,74 @@ export function checkDataset(books) {
   }
 }
 
-/** True when the database already holds exactly this edition. */
-export async function bibleIsCurrent(db, books) {
-  const table = await db.query(
-    "select to_regclass('public.reference_datasets') is not null as present",
-  );
-  if (!table.rows[0].present) return false;
+async function tablesExist(db, ...names) {
+  for (const name of ["reference_datasets", ...names]) {
+    const table = await db.query("select to_regclass($1) is not null as present", [
+      `public.${name}`,
+    ]);
+    if (!table.rows[0].present) return false;
+  }
+  return true;
+}
+
+async function recorded(db, name) {
   const result = await db.query(
     "select checksum, row_count from reference_datasets where name = $1",
-    [datasetName],
+    [name],
   );
-  const loaded = result.rows[0];
+  return result.rows[0];
+}
+
+async function record(db, name, sum, rows) {
+  await db.query(
+    `insert into reference_datasets (name, checksum, row_count) values ($1, $2, $3)
+     on conflict (name) do update
+       set checksum = excluded.checksum, row_count = excluded.row_count, loaded_at = now()`,
+    [name, sum, rows],
+  );
+}
+
+/** True when the database already holds exactly this edition of a translation's text. */
+export async function bibleIsCurrent(db, dataset, books) {
+  // Before its migration has run there is no table, and so nothing loaded.
+  if (!(await tablesExist(db, "scripture_verses"))) return false;
+  const loaded = await recorded(db, dataset.name);
   return loaded?.checksum === checksum(books) && loaded?.row_count === expected.verses;
 }
 
 /**
- * Replaces the stored text with the dataset, in one transaction: readers see
- * the old edition or the new one, never part of each, and a failure changes
- * nothing. `db` must be a single connection, not a pool.
+ * Replaces one translation's stored text with the dataset, in one
+ * transaction: readers see the old edition or the new one, never part of
+ * each, and a failure changes nothing. `db` must be a single connection, not
+ * a pool.
  */
-export async function seedBible(db, books) {
+export async function seedBible(db, dataset, books) {
   checkDataset(books);
   await db.query("begin");
   try {
-    await db.query("delete from bible_verses");
+    await db.query("delete from scripture_verses where translation = $1", [dataset.id]);
     for (const [index, chapters] of books.entries()) {
       const rows = chapters.flatMap((verses, chapter) =>
         verses.map((text, verse) => ({ c: chapter + 1, v: verse + 1, t: text })),
       );
       // One statement per book. A JSON parameter avoids array-literal quoting.
       await db.query(
-        `insert into bible_verses (book, chapter, verse, text)
-         select $1::smallint, c, v, t
-         from jsonb_to_recordset($2::jsonb) as rows(c smallint, v smallint, t text)`,
-        [index + 1, JSON.stringify(rows)],
+        `insert into scripture_verses (translation, book, chapter, verse, text)
+         select $1, $2::smallint, c, v, t
+         from jsonb_to_recordset($3::jsonb) as rows(c smallint, v smallint, t text)`,
+        [dataset.id, index + 1, JSON.stringify(rows)],
       );
     }
-    const stored = await db.query("select count(*)::int as verses from bible_verses");
+    const stored = await db.query(
+      "select count(*)::int as verses from scripture_verses where translation = $1",
+      [dataset.id],
+    );
     if (stored.rows[0].verses !== expected.verses) {
       throw new Error(
         `Expected ${expected.verses} verses, the database holds ${stored.rows[0].verses}.`,
       );
     }
-    await db.query(
-      `insert into reference_datasets (name, checksum, row_count) values ($1, $2, $3)
-       on conflict (name) do update
-         set checksum = excluded.checksum, row_count = excluded.row_count, loaded_at = now()`,
-      [datasetName, checksum(books), expected.verses],
-    );
+    await record(db, dataset.name, checksum(books), expected.verses);
     await db.query("commit");
   } catch (error) {
     await db.query("rollback");
@@ -91,11 +110,11 @@ export async function seedBible(db, books) {
   }
 }
 
-/** Refuses anything that is not the full set of titles, each on a real psalm. */
-export function checkPsalmTitles(titles) {
+/** Refuses anything that is not the translation's full set of titles, each on a real psalm. */
+export function checkPsalmTitles(dataset, titles) {
   const rows = titleRows(titles);
-  if (rows.length !== expected.psalmTitles) {
-    throw new Error(`The psalm titles are incomplete: ${rows.length} of ${expected.psalmTitles}.`);
+  if (rows.length !== dataset.psalmTitles) {
+    throw new Error(`The psalm titles are incomplete: ${rows.length} of ${dataset.psalmTitles}.`);
   }
   for (const { psalm, text } of rows) {
     if (!Number.isInteger(psalm) || psalm < 1 || psalm > psalmCount) {
@@ -107,50 +126,39 @@ export function checkPsalmTitles(titles) {
   }
 }
 
-/** True when the database already holds exactly these titles. */
-export async function psalmTitlesAreCurrent(db, titles) {
-  // Before its migration has run there is no table, and so nothing loaded.
-  const tables = await db.query(
-    `select to_regclass('public.reference_datasets') is not null
-        and to_regclass('public.bible_psalm_titles') is not null as present`,
-  );
-  if (!tables.rows[0].present) return false;
-  const result = await db.query(
-    "select checksum, row_count from reference_datasets where name = $1",
-    [titlesDatasetName],
-  );
-  const loaded = result.rows[0];
-  return loaded?.checksum === titlesChecksum(titles) && loaded?.row_count === expected.psalmTitles;
+/** True when the database already holds exactly these titles for the translation. */
+export async function psalmTitlesAreCurrent(db, dataset, titles) {
+  if (!(await tablesExist(db, "scripture_psalm_titles"))) return false;
+  const loaded = await recorded(db, dataset.titlesName);
+  return loaded?.checksum === titlesChecksum(titles) && loaded?.row_count === dataset.psalmTitles;
 }
 
 /**
- * Replaces the stored psalm titles with the dataset, in one transaction, as
- * `seedBible` does for the verses. It never touches `bible_verses`. `db` must
- * be a single connection, not a pool.
+ * Replaces one translation's stored psalm titles with the dataset, in one
+ * transaction, as `seedBible` does for the verses. It never touches
+ * `scripture_verses`. `db` must be a single connection, not a pool.
  */
-export async function seedPsalmTitles(db, titles) {
-  checkPsalmTitles(titles);
+export async function seedPsalmTitles(db, dataset, titles) {
+  checkPsalmTitles(dataset, titles);
   await db.query("begin");
   try {
-    await db.query("delete from bible_psalm_titles");
+    await db.query("delete from scripture_psalm_titles where translation = $1", [dataset.id]);
     await db.query(
-      `insert into bible_psalm_titles (psalm, text)
-       select psalm, text
-       from jsonb_to_recordset($1::jsonb) as rows(psalm smallint, text text)`,
-      [JSON.stringify(titleRows(titles))],
+      `insert into scripture_psalm_titles (translation, psalm, text)
+       select $1, psalm, text
+       from jsonb_to_recordset($2::jsonb) as rows(psalm smallint, text text)`,
+      [dataset.id, JSON.stringify(titleRows(titles))],
     );
-    const stored = await db.query("select count(*)::int as titles from bible_psalm_titles");
-    if (stored.rows[0].titles !== expected.psalmTitles) {
+    const stored = await db.query(
+      "select count(*)::int as titles from scripture_psalm_titles where translation = $1",
+      [dataset.id],
+    );
+    if (stored.rows[0].titles !== dataset.psalmTitles) {
       throw new Error(
-        `Expected ${expected.psalmTitles} psalm titles, the database holds ${stored.rows[0].titles}.`,
+        `Expected ${dataset.psalmTitles} psalm titles, the database holds ${stored.rows[0].titles}.`,
       );
     }
-    await db.query(
-      `insert into reference_datasets (name, checksum, row_count) values ($1, $2, $3)
-       on conflict (name) do update
-         set checksum = excluded.checksum, row_count = excluded.row_count, loaded_at = now()`,
-      [titlesDatasetName, titlesChecksum(titles), expected.psalmTitles],
-    );
+    await record(db, dataset.titlesName, titlesChecksum(titles), dataset.psalmTitles);
     await db.query("commit");
   } catch (error) {
     await db.query("rollback");

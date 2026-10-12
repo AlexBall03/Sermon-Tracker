@@ -128,7 +128,7 @@ describe("saved Scripture actions", () => {
     ["a psalm title as verse 0", passage([{ book: 19, chapter: 3, verse: 0 }])],
     ["a fraction of a verse", passage([{ book: 43, chapter: 3, verse: 1.5 }])],
     ["a string for a number", passage([{ book: "43", chapter: 3, verse: 16 }] as never)],
-    ["an unknown translation", { ...passage(), translation: "rvg" }],
+    ["an unknown translation", { ...passage(), translation: "nvi" }],
     ["no translation", { verses: john(16) }],
     ["notes that are too long", passage(john(16), { notes: "n".repeat(2001) })],
     ["a label that is too long", passage(john(16), { label: "l".repeat(121) })],
@@ -259,7 +259,7 @@ describe("saved Scripture actions", () => {
       "a verse that does not exist",
       passage([{ book: 43, chapter: 3, verse: 37 }], { color: "yellow" }),
     ],
-    ["an unknown translation", { translation: "rvg", verses: john(16), color: "yellow" }],
+    ["an unknown translation", { translation: "nvi", verses: john(16), color: "yellow" }],
   ])("refuse to highlight with %s", async (_name, input) => {
     signInAs(me);
     expect((await setHighlight(input)).ok).toBe(false);

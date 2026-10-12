@@ -7,18 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
+import { dictionary } from "@/i18n";
+import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
-import { bibleBooks, chaptersIn, getBook, oldTestamentBooks } from "../books";
+import { booksIn, chaptersIn, getBook, oldTestamentBooks } from "../books";
 import { locationOfReference, type ReaderLocation } from "../reader-location";
 import { formatReference, parseReference, type ScriptureReference } from "../reference";
 import { searchTips, type SearchScope } from "../search";
+import { translations, type TranslationId } from "../translations";
 import { useBibleSearch } from "../use-bible-search";
 import { SearchHits } from "./search-hits";
-
-const testaments = [
-  { label: "Old Testament", books: bibleBooks.slice(0, oldTestamentBooks) },
-  { label: "New Testament", books: bibleBooks.slice(oldTestamentBooks) },
-] as const;
 
 /**
  * What the navigation is showing and what was searched for. The reader holds
@@ -39,6 +37,8 @@ export type ReaderNavigation = ReturnType<typeof useReaderNavigation>;
 type ReaderNavigatorProps = {
   /** Where the reader is, once that is known. */
   location: ReaderLocation | null;
+  /** The translation being read, which is the one a search looks in. The account's own when omitted. */
+  translation?: TranslationId;
   onGo: (location: ReaderLocation) => void;
   navigation: ReaderNavigation;
   className?: string;
@@ -50,8 +50,26 @@ type ReaderNavigatorProps = {
  * chapters, or what the search found. It is the same in the sidebar of a wide
  * window and in the sheet of a narrow one.
  */
-export function ReaderNavigator({ location, onGo, navigation, className }: ReaderNavigatorProps) {
+export function ReaderNavigator({
+  location,
+  translation,
+  onGo,
+  navigation,
+  className,
+}: ReaderNavigatorProps) {
+  const t = useT("scripture").navigator;
+  const locale = useLocale();
   const id = useId();
+  // The books are named as the text being read names them: Génesis beside the Spanish
+  // text, Genesis beside the English, whatever language the controls are in. The
+  // numbers they stand for do not change.
+  const textLanguage = translation ? translations[translation].language : locale;
+  const named = dictionary(textLanguage, "scripture").navigator;
+  const books = booksIn(textLanguage);
+  const testaments = [
+    { label: named.oldTestament, books: books.slice(0, oldTestamentBooks) },
+    { label: named.newTestament, books: books.slice(oldTestamentBooks) },
+  ];
   const { search, entry, setEntry, view, setView, went, setWent } = navigation;
   const { results, problem } = search;
   const searchBox = useRef<HTMLInputElement>(null);
@@ -79,7 +97,9 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
   }
 
   function runSearch(query: string, scope: SearchScope, offset = 0) {
-    if (search.search(query, scope, offset)) {
+    // A further page comes from the translation the first did; a new search, from the one being read.
+    const within = offset > 0 ? results?.translation : translation;
+    if (search.search(query, scope, offset, within)) {
       setWent(null);
       setView("results");
     }
@@ -93,7 +113,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
       return setView("browse");
     }
     // A reference is somewhere to go, not words to look for.
-    const typed = parseReference(entry);
+    const typed = parseReference(entry, locale);
     if (typed.ok) {
       search.clearProblem();
       setWent({ typed: entry.trim(), reference: typed.reference });
@@ -103,11 +123,11 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
     runSearch(entry, results?.scope ?? "all");
   }
 
-  const bookName = location ? (getBook(location.book)?.name ?? "") : "";
+  const bookName = location ? (getBook(location.book, textLanguage)?.name ?? "") : "";
   const scopeOptions = [
-    { value: "all", label: "Whole Bible" },
-    { value: "old", label: "Old Testament" },
-    { value: "new", label: "New Testament" },
+    { value: "all", label: t.wholeBible },
+    { value: "old", label: named.oldTestament },
+    { value: "new", label: named.newTestament },
     ...(location ? [{ value: String(location.book), label: bookName }] : []),
   ];
 
@@ -122,7 +142,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
           }}
         >
           <label htmlFor={`${id}-search`} className="sr-only">
-            Search the Bible, or go to a reference
+            {t.searchLabel}
           </label>
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
@@ -135,7 +155,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
                   setEntry(event.target.value);
                   search.clearProblem();
                 }}
-                placeholder="Words or a reference"
+                placeholder={t.placeholder}
                 autoComplete="off"
                 spellCheck={false}
                 enterKeyHint="search"
@@ -148,7 +168,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
               {entry && (
                 <button
                   type="button"
-                  aria-label="Clear the search"
+                  aria-label={t.clear}
                   onClick={() => {
                     setEntry("");
                     search.clearProblem();
@@ -165,7 +185,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
               variant="outline"
               size="icon"
               className="size-10"
-              aria-label="Search"
+              aria-label={t.search}
             >
               <Search aria-hidden />
             </Button>
@@ -182,34 +202,31 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
           {/* Floats over the list, so opening it moves nothing. */}
           <Popover>
             <PopoverTrigger className="mt-1.5 rounded-sm text-xs font-medium text-muted-foreground link-underline hover:text-foreground">
-              Search options
+              {t.options}
             </PopoverTrigger>
             <PopoverContent initialFocus={false} className="w-[22rem] p-3 text-xs">
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                {searchTips.map(([example, meaning]) => (
+                {searchTips(textLanguage, locale).map(([example, meaning]) => (
                   <div key={example} className="contents">
                     <dt className="font-mono font-semibold whitespace-nowrap">{example}</dt>
                     <dd className="text-muted-foreground">{meaning}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-2 text-muted-foreground">
-                Words are matched as written, whatever their capitals. A reference, such as John
-                3:16 or Psalm 23, opens that passage instead.
-              </p>
+              <p className="mt-2 text-muted-foreground">{t.optionsNote}</p>
             </PopoverContent>
           </Popover>
         </form>
 
         {went && (
           <p role="status" className="mt-2 text-xs text-muted-foreground">
-            Opened {formatReference(went.reference)}.{" "}
+            {t.opened(formatReference(went.reference, textLanguage))}{" "}
             <button
               type="button"
               onClick={() => runSearch(went.typed, results?.scope ?? "all")}
               className="rounded-sm font-medium text-primary link-underline"
             >
-              Search the text for “{went.typed}” instead
+              {t.searchInstead(went.typed)}
             </button>
           </p>
         )}
@@ -221,7 +238,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
         className="min-h-0 flex-1 scroll-quiet overflow-y-auto overscroll-contain px-2 py-3"
       >
         {view === "results" && results ? (
-          <section aria-label="Search results">
+          <section aria-label={t.results}>
             <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 px-2">
               <Button
                 type="button"
@@ -231,10 +248,10 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
                 onClick={() => setView("browse")}
               >
                 <ArrowLeft aria-hidden />
-                Books
+                {t.books}
               </Button>
               <Select
-                label="Search in"
+                label={t.searchIn}
                 value={String(results.scope)}
                 onChange={(value) =>
                   runSearch(
@@ -254,7 +271,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
             />
           </section>
         ) : (
-          <nav aria-label="Books of the Bible">
+          <nav aria-label={t.booksNav} lang={textLanguage}>
             {results && (
               <Button
                 type="button"
@@ -263,7 +280,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
                 className="mb-2 px-2"
                 onClick={() => setView("results")}
               >
-                Back to results
+                {t.backToResults}
               </Button>
             )}
             {testaments.map((testament) => (
@@ -304,7 +321,7 @@ export function ReaderNavigator({ location, onGo, navigation, className }: Reade
                         </button>
                         {open && (
                           <ul
-                            aria-label={`${book.name}, chapters`}
+                            aria-label={t.chapters(book.name)}
                             className="grid grid-cols-6 gap-0.5 px-1 pt-1 pb-2"
                           >
                             {Array.from({ length: chapters }, (_, index) => index + 1).map(

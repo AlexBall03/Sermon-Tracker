@@ -4,14 +4,14 @@
  * browser all read the same list.
  */
 
+import type { TranslationId } from "../translations";
 import type { VerseRef } from "./verse-set";
 
 /**
  * The translations a favorite or a highlight can belong to. Each is kept
  * with the translation it was made in and is never carried to another.
  */
-export const translationIds = ["kjv"] as const;
-export type TranslationId = (typeof translationIds)[number];
+export { translationIds, type TranslationId } from "../translations";
 
 /** The highlighter's colors. A verse carries one of them, or none. */
 export const highlightColors = ["yellow", "green", "blue", "red"] as const;
@@ -58,7 +58,16 @@ export type ChapterMarks = {
   highlights: Record<number, HighlightColor>;
   /** Each with all of its verses, including any in other chapters. */
   favorites: FavoriteSummary[];
+  /**
+   * What the account has marked in this same chapter of the other
+   * translations on offer, as counts: marks belong to the translation they
+   * were made in and are never shown in another, so this is how a reader
+   * learns they are there. Only translations with something marked are listed.
+   */
+  elsewhere?: MarksElsewhere[];
 };
+
+export type MarksElsewhere = { translation: TranslationId; highlights: number; favorites: number };
 
 export const noMarks: ChapterMarks = { highlights: {}, favorites: [] };
 

@@ -9,11 +9,13 @@ import { requireActiveUser } from "@/features/auth/access";
 import { IdeaEditor } from "@/features/ideas/components/idea-editor";
 import { getIdea } from "@/features/ideas/ideas";
 import { libraryReturnHref } from "@/features/ideas/library-query";
-import { ideaKindLabels } from "@/features/ideas/model";
 import { ideaIdSchema } from "@/features/ideas/schemas";
 import { listTags } from "@/features/ideas/tags";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "Idea" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT("ideas")).page.metaTitle };
+}
 
 /**
  * One idea. An ID that is malformed, unknown, or someone else's is the same
@@ -38,6 +40,7 @@ export default async function IdeaPage({
   const [idea, tags] = await Promise.all([getIdea(db, user.id, id.data), listTags(db, user.id)]);
   if (!idea) notFound();
   const back = libraryReturnHref((await searchParams)?.from);
+  const t = await getT("ideas");
 
   return (
     <div className="container-page py-10 lg:py-12">
@@ -46,12 +49,9 @@ export default async function IdeaPage({
         className="mb-5 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <ArrowLeft className="size-4" aria-hidden />
-        Library
+        {t.page.back}
       </Link>
-      <PageHeader
-        title={ideaKindLabels[idea.kind]}
-        description="Change anything here. Nothing is lost when an idea is reclassified."
-      />
+      <PageHeader title={t.kinds[idea.kind]} description={t.page.description} />
       <IdeaEditor
         key={idea.id}
         id={idea.id}

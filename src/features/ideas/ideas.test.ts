@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ideas, ideaScriptureReferences, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
-import { translation } from "@/features/scripture/books";
 import { normaliseReference, type ScriptureReference } from "@/features/scripture/reference";
 import { createFavorite, deleteFavorite, getFavorite } from "@/features/scripture/saved/favorites";
 import { versesToRuns } from "@/features/scripture/saved/verse-set";
@@ -450,7 +449,7 @@ describe("attachReferences", () => {
     ];
     const save = async (chosen: typeof verses, label: string | null = null) =>
       (await createFavorite(db, me, {
-        translation: translation.id,
+        translation: "kjv",
         verses: chosen,
         label,
         notes: null,

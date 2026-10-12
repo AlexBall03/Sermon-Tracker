@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { AttachScripture } from "@/features/ideas/components/attach-scripture";
+import { useReading } from "@/features/preferences/client";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -17,15 +19,11 @@ import type { ScriptureReference } from "../../reference";
 import { deleteFavorite } from "../../saved/actions";
 import type { ListedFavorite } from "../../saved/favorites";
 import { highlightBackground } from "../../saved/highlight-style";
-import { highlightColorLabels, type FavoriteSummary } from "../../saved/model";
+import type { FavoriteSummary } from "../../saved/model";
 import { versesToRuns } from "../../saved/verse-set";
+import { translations } from "../../translations";
 import { dropFavorite } from "../../use-chapter-marks";
 import { FavoriteEditor } from "./favorite-editor";
-
-const offline: ActionResult = {
-  ok: false,
-  message: "That did not reach the server. Check your connection and try again.",
-};
 
 /** "3:16", or "5" in a book of one chapter: where a previewed verse is, said shortly. */
 function place({ book, chapter, verse }: { book: number; chapter: number; verse: number }) {
@@ -42,9 +40,17 @@ function place({ book, chapter, verse }: { book: number; chapter: number; verse:
  * "Add to idea" is the reader's own dialog, given the passage's verses as
  * references. What reaches the idea is those references and nothing of the
  * favorite: removing either afterwards leaves the other as it is.
+ *
+ * A passage is quoted from, and opened in, the translation it was saved from;
+ * where more than one is on offer, each says which that is.
  */
 export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]; label: string }) {
   const toast = useToast();
+  const t = useT("scripture").saved.results;
+  const colors = useT("scripture").marks.colors;
+  const locale = useLocale();
+  const reading = useReading();
+  const offline: ActionResult = { ok: false, message: useT("scripture").saved.offline };
   const [editing, setEditing] = useState<FavoriteSummary | null>(null);
   const [attaching, setAttaching] = useState<ScriptureReference[] | null>(null);
   const [removing, setRemoving] = useState<Confirmation | null>(null);
@@ -54,10 +60,9 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
   function askToRemove(favorite: ListedFavorite) {
     setProblem(null);
     setRemoving({
-      title: `Remove ${favorite.label ?? favorite.reference}?`,
-      description:
-        "It leaves your saved Scripture, with its label and notes. Highlights on these verses stay, and so do your ideas.",
-      confirmLabel: "Remove",
+      title: t.removeTitle(favorite.label ?? favorite.reference),
+      description: t.removeDetail,
+      confirmLabel: t.remove,
       destructive: true,
       run: async () => {
         const outcome = await deleteFavorite(favorite.id);
@@ -89,6 +94,7 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
           const [first] = favorite.verses;
           const more = favorite.verses.length - favorite.preview.length;
           const name = favorite.label ?? favorite.reference;
+          const translation = translations[favorite.translation];
           // Without a label the reference is the passage's name, and so its heading.
           const Reference = favorite.label ? "p" : "h3";
           return (
@@ -106,17 +112,33 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
                   className={cn("font-serif italic", favorite.label ? "mt-0.5" : "text-lg")}
                 >
                   <Link
-                    href={readerHref(first ?? firstLocation)}
-                    title="Open in the Bible"
+                    // In the translation it was saved from, whatever the reader usually reads.
+                    href={readerHref({
+                      ...(first ?? firstLocation),
+                      translation: favorite.translation,
+                    })}
+                    title={t.openInTheBible}
                     className="rounded-sm font-medium text-primary link-underline"
                   >
                     {favorite.reference}
-                    <span className="sr-only">, open in the Bible</span>
+                    <span className="sr-only">{t.openSuffix}</span>
                   </Link>
+                  {reading.translations.length > 1 && (
+                    <span
+                      data-translation={translation.id}
+                      title={translation.name}
+                      className="ml-2 align-middle font-sans text-[0.6875rem] font-semibold tracking-wide text-muted-foreground not-italic"
+                    >
+                      {translation.short}
+                    </span>
+                  )}
                 </Reference>
 
                 {favorite.preview.length > 0 && (
-                  <p className="mt-2.5 line-clamp-4 font-serif text-[0.9375rem] leading-relaxed">
+                  <p
+                    lang={translation.language}
+                    className="mt-2.5 line-clamp-4 font-serif text-[0.9375rem] leading-relaxed"
+                  >
                     {favorite.preview.map((verse) => (
                       <span key={`${verse.book}.${verse.chapter}.${verse.verse}`}>
                         {/* One verse needs no number: its reference is right above it. */}
@@ -131,14 +153,12 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
                   </p>
                 )}
                 {more > 0 && favorite.preview.length > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    and {more} more {more === 1 ? "verse" : "verses"}
-                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.more(more)}</p>
                 )}
 
                 {favorite.notes && (
                   <p className="mt-3 line-clamp-3 border-l-2 pl-3 text-sm leading-relaxed whitespace-pre-line text-muted-foreground">
-                    <span className="sr-only">Notes: </span>
+                    <span className="sr-only">{t.notes} </span>
                     {favorite.notes}
                   </p>
                 )}
@@ -160,15 +180,15 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
                     </span>
                     {/* Named as well as shown. */}
                     <span>
-                      <span className="sr-only">Highlighted </span>
-                      {favorite.colors.map((color) => highlightColorLabels[color]).join(", ")}
+                      <span className="sr-only">{t.highlighted} </span>
+                      {favorite.colors.map((color) => colors[color]).join(", ")}
                     </span>
                   </p>
                 )}
                 <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-                  Saved{" "}
+                  {t.saved}{" "}
                   <time dateTime={favorite.createdAt.toISOString()}>
-                    {formatDate(favorite.createdAt)}
+                    {formatDate(favorite.createdAt, locale)}
                   </time>
                 </p>
                 <div className="-mr-2 -mb-1.5 ml-auto flex flex-wrap justify-end gap-0.5">
@@ -177,36 +197,36 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
                     variant="ghost"
                     size="sm"
                     className="px-2.5 text-muted-foreground hover:text-foreground"
-                    aria-label={`Add ${name} to an idea`}
+                    aria-label={t.addNamed(name)}
                     aria-haspopup="dialog"
                     onClick={() => setAttaching(versesToRuns(favorite.verses))}
                   >
                     <Lightbulb aria-hidden />
-                    Add to idea
+                    {t.addToIdea}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="px-2.5 text-muted-foreground hover:text-foreground"
-                    aria-label={`Edit ${name}`}
+                    aria-label={t.editNamed(name)}
                     aria-haspopup="dialog"
                     onClick={() => setEditing(favorite)}
                   >
                     <Pencil aria-hidden />
-                    Edit
+                    {t.edit}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="px-2.5 text-muted-foreground hover:text-destructive"
-                    aria-label={`Remove ${name}`}
+                    aria-label={t.removeNamed(name)}
                     aria-haspopup="dialog"
                     onClick={() => askToRemove(favorite)}
                   >
                     <Trash2 aria-hidden />
-                    Remove
+                    {t.remove}
                   </Button>
                 </div>
               </div>

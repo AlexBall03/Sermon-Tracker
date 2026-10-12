@@ -6,6 +6,7 @@ import { Check, CircleAlert, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import {
   activeFilterCount,
@@ -15,17 +16,7 @@ import {
   toggled,
   type LibraryQuery,
 } from "../../library-query";
-import {
-  ideaKindLabels,
-  ideaKinds,
-  ideaStatusLabels,
-  ideaStatuses,
-  sermonTypeLabels,
-  sermonTypes,
-  tagFilterLimit,
-  tagModeLabels,
-  tagModes,
-} from "../../model";
+import { ideaKinds, ideaStatuses, sermonTypes, tagFilterLimit, tagModes } from "../../model";
 import { useLibrary } from "./library-state";
 import { filtersPanelId } from "./library-toolbar";
 
@@ -108,6 +99,7 @@ function DateRange({
   onChange: (key: DateKey, value: string | null) => void;
 }) {
   const id = useId();
+  const t = useT("library").filters;
   const inverted = invertedRange(query[from], query[through]);
   const field = (key: DateKey, text: string, limit: { min?: string; max?: string }) => (
     <div className="min-w-0 flex-1">
@@ -135,8 +127,8 @@ function DateRange({
   return (
     <Group label={label}>
       <div className="flex gap-2">
-        {field(from, "From", { max: query[through] ?? undefined })}
-        {field(through, "To", { min: query[from] ?? undefined })}
+        {field(from, t.from, { max: query[through] ?? undefined })}
+        {field(through, t.to, { min: query[from] ?? undefined })}
       </div>
       {inverted && (
         <p
@@ -145,7 +137,7 @@ function DateRange({
           className="mt-2 flex items-start gap-1.5 text-[0.8125rem] font-medium text-destructive"
         >
           <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          This range ends before it starts, so no idea can fall in it.
+          {t.inverted}
         </p>
       )}
     </Group>
@@ -162,6 +154,9 @@ function DateRange({
 export function LibraryFilters() {
   const { query, tags, apply, filtersOpen, setManagingTags } = useLibrary();
   const [tagSearch, setTagSearch] = useState("");
+  const t = useT("library").filters;
+  const modes = useT("library").tagModes;
+  const words = useT("ideas");
   const active = activeFilterCount(query);
 
   const wanted = tagSearch.trim().toLowerCase();
@@ -171,7 +166,7 @@ export function LibraryFilters() {
   return (
     <section
       id={filtersPanelId}
-      aria-label="Filters"
+      aria-label={t.panel}
       hidden={!filtersOpen}
       className={cn(
         "mt-3 rounded-xl border bg-surface p-4 shadow-card sm:p-5",
@@ -179,7 +174,7 @@ export function LibraryFilters() {
       )}
     >
       <div className="grid gap-x-8 gap-y-6 md:grid-cols-2 xl:grid-cols-3">
-        <Group label="Kind of idea">
+        <Group label={t.kind}>
           <div className="flex flex-wrap gap-2">
             {ideaKinds.map((kind) => (
               <Toggle
@@ -187,13 +182,13 @@ export function LibraryFilters() {
                 pressed={query.kinds.includes(kind)}
                 onToggle={() => apply((current) => ({ kinds: toggled(current.kinds, kind) }))}
               >
-                {ideaKindLabels[kind]}
+                {words.kinds[kind]}
               </Toggle>
             ))}
           </div>
         </Group>
 
-        <Group label="Status">
+        <Group label={t.status}>
           <div className="flex flex-wrap gap-2">
             {ideaStatuses.map((status) => (
               <Toggle
@@ -203,13 +198,13 @@ export function LibraryFilters() {
                   apply((current) => ({ statuses: toggled(current.statuses, status) }))
                 }
               >
-                {ideaStatusLabels[status]}
+                {words.statuses[status]}
               </Toggle>
             ))}
           </div>
         </Group>
 
-        <Group label="Sermon type" hint="Finds sermon ideas only.">
+        <Group label={t.sermonType} hint={t.sermonTypeHint}>
           <div className="flex flex-wrap gap-2">
             {sermonTypes.map((type) => (
               <Toggle
@@ -219,35 +214,33 @@ export function LibraryFilters() {
                   apply((current) => ({ sermonTypes: toggled(current.sermonTypes, type) }))
                 }
               >
-                {sermonTypeLabels[type]}
+                {words.sermonTypes[type]}
               </Toggle>
             ))}
           </div>
         </Group>
 
-        <Group label="Tags" className="md:col-span-2 xl:col-span-3">
+        <Group label={t.tags} className="md:col-span-2 xl:col-span-3">
           {tags.length === 0 ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <p className="text-sm text-muted-foreground">
-                You have no tags yet. A tag gathers ideas that share a theme, a series, or a season.
-              </p>
+              <p className="text-sm text-muted-foreground">{t.noTags}</p>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setManagingTags(true)}
               >
-                Create a tag
+                {t.createTag}
               </Button>
             </div>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <Segmented
-                  label="Match tags"
+                  label={t.matchTags}
                   hideLabel
                   name="library-tag-mode"
-                  options={tagModes.map((value) => ({ value, label: tagModeLabels[value] }))}
+                  options={tagModes.map((value) => ({ value, label: modes[value] }))}
                   value={query.tagMode}
                   onChange={(tagMode) => apply({ tagMode })}
                   // The mode is about the chosen tags; with none there is nothing to set.
@@ -256,10 +249,10 @@ export function LibraryFilters() {
                 />
                 <p className="text-[0.8125rem] text-muted-foreground">
                   {query.tagIds.length === 0
-                    ? "Choose tags, then whether an idea needs any of them or all of them."
+                    ? t.chooseTags
                     : query.tagMode === "all"
-                      ? "Ideas that have every chosen tag."
-                      : "Ideas that have at least one chosen tag."}
+                      ? t.everyTag
+                      : t.anyTag}
                 </p>
               </div>
 
@@ -271,8 +264,8 @@ export function LibraryFilters() {
                   />
                   <Input
                     type="search"
-                    aria-label="Find a tag"
-                    placeholder="Find a tag"
+                    aria-label={t.findTag}
+                    placeholder={t.findTag}
                     value={tagSearch}
                     onChange={(event) => setTagSearch(event.target.value)}
                     autoComplete="off"
@@ -299,12 +292,12 @@ export function LibraryFilters() {
                   );
                 })}
                 {shownTags.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No tag has that in its name.</p>
+                  <p className="text-sm text-muted-foreground">{t.noTagNamed}</p>
                 )}
               </div>
               {tagsFull && (
                 <p className="mt-2 text-[0.8125rem] text-muted-foreground">
-                  The library can be filtered by {tagFilterLimit} tags at once.
+                  {t.tagLimit(tagFilterLimit)}
                 </p>
               )}
             </>
@@ -312,14 +305,14 @@ export function LibraryFilters() {
         </Group>
 
         <DateRange
-          label="Created"
+          label={t.created}
           from="createdFrom"
           through="createdThrough"
           query={query}
           onChange={(key, value) => apply({ [key]: value })}
         />
         <DateRange
-          label="Last changed"
+          label={t.changed}
           from="updatedFrom"
           through="updatedThrough"
           query={query}
@@ -328,9 +321,7 @@ export function LibraryFilters() {
       </div>
 
       <div className="mt-5 flex items-center justify-between gap-3 border-t pt-4">
-        <p className="text-[0.8125rem] text-muted-foreground">
-          Dates are whole days in UTC, as shown on each idea.
-        </p>
+        <p className="text-[0.8125rem] text-muted-foreground">{t.utc}</p>
         <Button
           type="button"
           variant="ghost"
@@ -338,7 +329,7 @@ export function LibraryFilters() {
           disabled={active === 0}
           onClick={() => apply(clearFilters)}
         >
-          Clear filters
+          {t.clear}
         </Button>
       </div>
     </section>

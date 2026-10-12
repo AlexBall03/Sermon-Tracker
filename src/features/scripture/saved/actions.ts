@@ -5,17 +5,14 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import { getPreferences } from "@/features/preferences/current";
+import { dictionary } from "@/i18n";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import * as service from "./favorites";
 import { clearHighlights, setHighlights } from "./highlights";
-import { highlightColorLabels, type FavoriteSummary } from "./model";
-import {
-  favoriteChangeSchema,
-  favoriteIdSchema,
-  favoriteInputSchema,
-  highlightInputSchema,
-} from "./schemas";
+import type { FavoriteSummary } from "./model";
+import { favoriteIdSchema, savedSchemas } from "./schemas";
 
 export type FavoriteActionResult = ActionResult & {
   favorite?: FavoriteSummary;
@@ -25,9 +22,15 @@ export type FavoriteActionResult = ActionResult & {
   conflictId?: string;
 };
 
-const invalid: ActionResult = { ok: false, message: "That request was not valid." };
-// The same answer whether the favorite is missing or belongs to someone else.
-const missing: ActionResult = { ok: false, message: "That saved passage no longer exists." };
+/** The messages, in the account's language, and the translations on offer to it. */
+async function context() {
+  const { locale, translations } = await getPreferences();
+  return {
+    t: dictionary(locale, "scripture").saved.actions,
+    offered: translations,
+    schemas: savedSchemas(locale),
+  };
+}
 
 function firstIssue(error: { issues: { message: string }[] }, fallback: string): ActionResult {
   return { ok: false, message: error.issues[0]?.message ?? fallback };
@@ -43,6 +46,11 @@ function summary({ id, translation, reference, label, notes, verses }: service.F
  * takes the owner from the session, and accepts nothing that could name
  * another. Reading is not an action: the Bible page, the library, and
  * /api/bible/<book>/<chapter>/marks read for themselves.
+ *
+ * A mark belongs to a translation, and one that is not on offer (the Spanish
+ * text while an administrator has Spanish switched off) is refused here, on
+ * the server. A favorite in it is answered as missing and left as it is; the
+ * same answer as for one that does not exist or is someone else's.
  */
 
 /**
@@ -53,26 +61,26 @@ export async function saveFavorite(input: unknown): Promise<FavoriteActionResult
   const actor = await authorize("active");
   if (!actor.ok) return actor;
 
-  const parsed = favoriteInputSchema.safeParse(input);
-  if (!parsed.success) return firstIssue(parsed.error, "That passage could not be saved.");
+  const { t, offered, schemas } = await context();
+
+  const parsed = schemas.favoriteInput.safeParse(input);
+  if (!parsed.success) return firstIssue(parsed.error, t.couldNotSave);
+  if (!offered.includes(parsed.data.translation)) {
+    return { ok: false, message: t.translationUnavailable };
+  }
 
   try {
     const saved = await service.createFavorite(getDb(), actor.user.id, parsed.data);
-    if (!saved) return { ok: false, message: "The passage could not be saved. Try again." };
+    if (!saved) return { ok: false, message: t.notSaved };
     const favorite = summary(saved.favorite);
     if (saved.existing) {
-      return {
-        ok: true,
-        message: `${favorite.reference} is already saved.`,
-        favorite,
-        existing: true,
-      };
+      return { ok: true, message: t.alreadySaved(favorite.reference), favorite, existing: true };
     }
     revalidatePath(routes.savedScripture);
-    return { ok: true, message: `Saved ${favorite.reference}.`, favorite };
+    return { ok: true, message: t.saved(favorite.reference), favorite };
   } catch (error) {
     console.error("Favorite save failed:", describeDatabaseError(error));
-    return { ok: false, message: "The passage could not be saved. Try again." };
+    return { ok: false, message: t.notSaved };
   }
 }
 
@@ -81,10 +89,12 @@ export async function updateFavorite(id: unknown, change: unknown): Promise<Favo
   const actor = await authorize("active");
   if (!actor.ok) return actor;
 
+  const { t, offered, schemas } = await context();
+
   const favoriteId = favoriteIdSchema.safeParse(id);
-  if (!favoriteId.success) return invalid;
-  const parsed = favoriteChangeSchema.safeParse(change);
-  if (!parsed.success) return firstIssue(parsed.error, "Those changes could not be saved.");
+  if (!favoriteId.success) return { ok: false, message: t.invalid };
+  const parsed = schemas.favoriteChange.safeParse(change);
+  if (!parsed.success) return firstIssue(parsed.error, t.changesNotSaved);
 
   try {
     const result = await service.updateFavorite(
@@ -92,20 +102,18 @@ export async function updateFavorite(id: unknown, change: unknown): Promise<Favo
       actor.user.id,
       favoriteId.data,
       parsed.data,
+      offered,
     );
     if (!result.ok) {
-      if (result.reason === "missing") return missing;
-      return {
-        ok: false,
-        message: "You have already saved that passage. Neither one was changed.",
-        conflictId: result.conflictId,
-      };
+      // The same answer whether the favorite is missing or belongs to someone else.
+      if (result.reason === "missing") return { ok: false, message: t.missing };
+      return { ok: false, message: t.conflict, conflictId: result.conflictId };
     }
     revalidatePath(routes.savedScripture);
-    return { ok: true, message: "Changes saved.", favorite: summary(result.favorite) };
+    return { ok: true, message: t.changesSaved, favorite: summary(result.favorite) };
   } catch (error) {
     console.error("Favorite update failed:", describeDatabaseError(error));
-    return { ok: false, message: "Your changes could not be saved. Try again." };
+    return { ok: false, message: t.yourChangesNotSaved };
   }
 }
 
@@ -114,17 +122,21 @@ export async function deleteFavorite(id: unknown): Promise<ActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
 
+  const { t, offered } = await context();
+
   const favoriteId = favoriteIdSchema.safeParse(id);
-  if (!favoriteId.success) return invalid;
+  if (!favoriteId.success) return { ok: false, message: t.invalid };
 
   try {
-    if (!(await service.deleteFavorite(getDb(), actor.user.id, favoriteId.data))) return missing;
+    if (!(await service.deleteFavorite(getDb(), actor.user.id, favoriteId.data, offered))) {
+      return { ok: false, message: t.missing };
+    }
   } catch (error) {
     console.error("Favorite delete failed:", describeDatabaseError(error));
-    return { ok: false, message: "The passage could not be removed. Try again." };
+    return { ok: false, message: t.notRemoved };
   }
   revalidatePath(routes.savedScripture);
-  return { ok: true, message: "Removed from your saved Scripture." };
+  return { ok: true, message: t.removed };
 }
 
 /**
@@ -135,28 +147,21 @@ export async function setHighlight(input: unknown): Promise<ActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
 
-  const parsed = highlightInputSchema.safeParse(input);
-  if (!parsed.success) return firstIssue(parsed.error, "Those verses could not be highlighted.");
+  const { t, offered, schemas } = await context();
+
+  const parsed = schemas.highlightInput.safeParse(input);
+  if (!parsed.success) return firstIssue(parsed.error, t.highlightInvalid);
   const { translation, verses, color } = parsed.data;
+  if (!offered.includes(translation)) return { ok: false, message: t.translationUnavailable };
 
   try {
     if (color) await setHighlights(getDb(), actor.user.id, translation, verses, color);
     else await clearHighlights(getDb(), actor.user.id, translation, verses);
   } catch (error) {
     console.error("Highlight change failed:", describeDatabaseError(error));
-    return {
-      ok: false,
-      message: color
-        ? "The highlight could not be saved. Try again."
-        : "The highlight could not be removed. Try again.",
-    };
+    return { ok: false, message: color ? t.highlightNotSaved : t.highlightNotRemoved };
   }
   // The library shows and filters by a passage's colors.
   revalidatePath(routes.savedScripture);
-  return {
-    ok: true,
-    message: color
-      ? `Highlighted ${highlightColorLabels[color].toLowerCase()}.`
-      : "Highlight removed.",
-  };
+  return { ok: true, message: color ? t.highlighted(color) : t.highlightRemoved };
 }

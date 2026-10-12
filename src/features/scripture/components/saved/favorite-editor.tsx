@@ -17,14 +17,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { formatNumber } from "@/i18n";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { cn } from "@/lib/utils";
-import { translation } from "../../books";
 import { readerHref } from "../../reader-location";
 import { deleteFavorite, updateFavorite } from "../../saved/actions";
 import { savedLimits, type FavoriteSummary } from "../../saved/model";
-import { savedHref } from "../../saved/saved-query";
+import { defaultSavedQuery, savedHref } from "../../saved/saved-query";
 import { formatVerseSet, parseVerseSet, sameVerses } from "../../saved/verse-set";
+import { translations } from "../../translations";
 import { dropFavorite, putFavorite } from "../../use-chapter-marks";
 
 type FavoriteEditorProps = {
@@ -35,11 +37,6 @@ type FavoriteEditorProps = {
   onDeleted?: (id: string) => void;
   /** Offers the way to the passage in the Bible, where it is not already on screen. */
   linkToBible?: boolean;
-};
-
-const offline: ActionResult = {
-  ok: false,
-  message: "That did not reach the server. Check your connection and try again.",
 };
 
 /**
@@ -111,6 +108,11 @@ function EditorForm({
 }) {
   const id = useId();
   const toast = useToast();
+  const t = useT("scripture").saved.editor;
+  const locale = useLocale();
+  const offline: ActionResult = { ok: false, message: useT("scripture").saved.offline };
+  // A favorite belongs to one translation, and its passage is written as that one names the books.
+  const translation = translations[favorite.translation];
   const [passage, setPassage] = useState(favorite.reference);
   const [label, setLabel] = useState(favorite.label ?? "");
   const [notes, setNotes] = useState(favorite.notes ?? "");
@@ -141,13 +143,13 @@ function EditorForm({
 
   async function save() {
     if (working) return;
-    const read = parseVerseSet(passage);
+    const read = parseVerseSet(passage, locale);
     if (!read.ok) {
       setPassageProblem(read.message);
       return passageBox.current?.focus();
     }
     if (read.verses.length > savedLimits.verses) {
-      setPassageProblem(`A saved passage can hold up to ${savedLimits.verses} verses.`);
+      setPassageProblem(t.tooManyVerses(savedLimits.verses));
       return passageBox.current?.focus();
     }
     if (over) return;
@@ -163,7 +165,9 @@ function EditorForm({
 
     if (!outcome.ok || !("favorite" in outcome) || !outcome.favorite) {
       setResult(outcome);
-      if ("conflictId" in outcome && outcome.conflictId) setConflict(formatVerseSet(read.verses));
+      if ("conflictId" in outcome && outcome.conflictId) {
+        setConflict(formatVerseSet(read.verses, translation.language));
+      }
       return;
     }
     putFavorite(outcome.favorite);
@@ -199,17 +203,17 @@ function EditorForm({
     >
       <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="min-w-0">
-          <DialogTitle>Saved passage</DialogTitle>
+          <DialogTitle>{t.title}</DialogTitle>
           <DialogDescription>
             {favorite.reference} · {translation.name}
           </DialogDescription>
         </div>
-        <DialogClose label="Close" className="-mr-2" disabled={working !== null} />
+        <DialogClose label={t.close} className="-mr-2" disabled={working !== null} />
       </div>
 
       <div className="min-h-0 flex-1 scroll-quiet space-y-4 overflow-y-auto px-5 pb-1">
         <div>
-          <Label htmlFor={`${id}-passage`}>Passage</Label>
+          <Label htmlFor={`${id}-passage`}>{t.passage}</Label>
           <Input
             ref={passageBox}
             id={`${id}-passage`}
@@ -233,21 +237,20 @@ function EditorForm({
               passageProblem ? "font-medium text-destructive" : "text-muted-foreground",
             )}
           >
-            {passageProblem ??
-              "Verses that are apart take commas, and other chapters or books a semicolon."}
+            {passageProblem ?? t.passageHelp}
           </p>
         </div>
 
         <div>
           <Label htmlFor={`${id}-label`}>
-            Label <span className="font-normal text-muted-foreground">(optional)</span>
+            {t.label} <span className="font-normal text-muted-foreground">{t.optional}</span>
           </Label>
           <Input
             id={`${id}-label`}
             value={label}
             onChange={(event) => edited(setLabel)(event.target.value)}
             maxLength={savedLimits.label}
-            placeholder="A name of your own for it"
+            placeholder={t.labelPlaceholder}
             autoComplete="off"
             className="mt-2"
           />
@@ -255,13 +258,13 @@ function EditorForm({
 
         <div>
           <Label htmlFor={`${id}-notes`}>
-            Notes <span className="font-normal text-muted-foreground">(optional)</span>
+            {t.notes} <span className="font-normal text-muted-foreground">{t.optional}</span>
           </Label>
           <Textarea
             id={`${id}-notes`}
             value={notes}
             onChange={(event) => edited(setNotes)(event.target.value)}
-            placeholder="Why you kept it, or what you saw in it."
+            placeholder={t.notesPlaceholder}
             aria-invalid={over ? true : undefined}
             aria-describedby={`${id}-notes-count`}
             className="mt-2"
@@ -273,8 +276,8 @@ function EditorForm({
               over ? "font-medium text-destructive" : "text-muted-foreground",
             )}
           >
-            {notes.length.toLocaleString("en")} of {savedLimits.notes.toLocaleString("en")}
-            <span className="sr-only"> characters</span>
+            {t.count(formatNumber(locale, notes.length), formatNumber(locale, savedLimits.notes))}
+            <span className="sr-only">{t.characters}</span>
           </p>
         </div>
 
@@ -282,10 +285,10 @@ function EditorForm({
         {conflict && (
           <p className="text-sm">
             <Link
-              href={savedHref({ q: conflict, book: null, colors: [], sort: "saved-desc", page: 1 })}
+              href={savedHref({ ...defaultSavedQuery, q: conflict })}
               className="rounded-sm font-medium text-primary link-underline"
             >
-              Find the one you already have
+              {t.findExisting}
             </Link>
           </p>
         )}
@@ -300,11 +303,10 @@ function EditorForm({
           className="mt-3 animate-menu border-t px-5 py-4"
         >
           <p id={`${id}-confirm`} className="text-sm font-semibold">
-            Remove {favorite.reference} from your saved Scripture?
+            {t.confirmRemove(favorite.reference)}
           </p>
           <p id={`${id}-confirm-detail`} className="mt-1 text-sm text-muted-foreground">
-            Its label and notes go with it. Highlights on these verses stay, and so does everything
-            else you have saved.
+            {t.confirmDetail}
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <Button
@@ -315,7 +317,7 @@ function EditorForm({
               disabled={working !== null}
               onClick={() => setConfirming(false)}
             >
-              Keep it
+              {t.keep}
             </Button>
             <Button
               type="button"
@@ -325,7 +327,7 @@ function EditorForm({
               onClick={() => void remove()}
             >
               {working === "delete" && <LoaderCircle className="animate-spin" aria-hidden />}
-              {working === "delete" ? "Removing…" : "Remove"}
+              {working === "delete" ? t.removing : t.remove}
             </Button>
           </div>
         </div>
@@ -339,23 +341,29 @@ function EditorForm({
             onClick={() => setConfirming(true)}
           >
             <Trash2 aria-hidden />
-            Remove
+            {t.remove}
           </Button>
           {linkToBible && first && (
             <Link
-              href={readerHref({ book: first.book, chapter: first.chapter, verse: first.verse })}
+              href={readerHref({
+                book: first.book,
+                chapter: first.chapter,
+                verse: first.verse,
+                // Opened in the translation it was saved from, whatever the reader usually reads.
+                translation: favorite.translation,
+              })}
               className={buttonVariants({
                 variant: "ghost",
                 className: "px-3 text-muted-foreground hover:text-foreground",
               })}
             >
               <BookOpen aria-hidden />
-              Open in Bible
+              {t.openInBible}
             </Link>
           )}
           <div className="ml-auto flex gap-2">
             <Button type="button" variant="outline" disabled={working !== null} onClick={onClose}>
-              Cancel
+              {t.cancel}
             </Button>
             <Button
               type="submit"
@@ -363,7 +371,7 @@ function EditorForm({
               aria-busy={working === "save"}
             >
               {working === "save" && <LoaderCircle className="animate-spin" aria-hidden />}
-              {working === "save" ? "Saving…" : "Save"}
+              {working === "save" ? t.saving : t.save}
             </Button>
           </div>
         </div>

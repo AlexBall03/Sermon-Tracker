@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { themeOptions, useThemeChoice } from "./theme-toggle";
 
@@ -33,8 +34,9 @@ export function initialsOf(name: string) {
 /** Name, email, and picture of the signed-in person, for presentation only. */
 export function useAccountIdentity() {
   const { user } = useUser();
+  const t = useT("navigation");
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const name = user?.fullName || email || "Account";
+  const name = user?.fullName || email || t.account;
   const imageUrl = user?.hasImage ? user.imageUrl : null;
   return { name, email, initials: initialsOf(name), imageUrl };
 }
@@ -55,11 +57,12 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
   const { name, email, initials, imageUrl } = useAccountIdentity();
   const { signOut } = useAccountActions();
   const theme = useThemeChoice();
+  const t = useT("navigation");
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label="Account menu"
+        aria-label={t.accountMenu}
         className="grid size-9 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/70 data-popup-open:border-ring data-popup-open:shadow-focus pointer-coarse:size-11"
       >
         <Avatar imageUrl={imageUrl} initials={initials} className="size-full bg-surface text-xs" />
@@ -74,31 +77,31 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href={routes.settings} />}>
           <Settings aria-hidden />
-          Settings
+          {t.settings}
         </DropdownMenuItem>
         {isAdmin && (
           <DropdownMenuItem render={<Link href={routes.admin} />}>
             <ShieldCheck aria-hidden />
-            Administration
+            {t.administration}
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup
-          aria-label="Color theme"
+          aria-label={t.colorTheme}
           value={theme.current}
           onValueChange={theme.choose}
         >
-          {themeOptions.map(({ value, label, icon: Icon }) => (
+          {themeOptions.map(({ value, icon: Icon }) => (
             <DropdownMenuRadioItem key={value} value={value}>
               <Icon aria-hidden className="text-muted-foreground" />
-              {label}
+              {t.theme[value]}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={signOut}>
           <LogOut aria-hidden />
-          Sign out
+          {t.signOut}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

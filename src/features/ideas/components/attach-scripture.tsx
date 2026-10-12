@@ -20,19 +20,15 @@ import {
   referenceKey,
   type ScriptureReference,
 } from "@/features/scripture/reference";
+import { formatNumber } from "@/i18n";
+import { useLocale, useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { attachScripture, type AttachActionResult } from "../actions";
 import { ideaSearchHref, type IdeaMatch, type IdeaMatches } from "../idea-search";
 import { normaliseSearch } from "../library-query";
-import {
-  ideaKindLabels,
-  ideaLimits,
-  ideaStatusLabels,
-  searchLimits,
-  type IdeaKind,
-} from "../model";
+import { ideaLimits, searchLimits, type IdeaKind } from "../model";
 import { searchDebounceMs } from "./library/library-search";
 import { useQuickCapture } from "./quick-capture";
 
@@ -45,11 +41,7 @@ type AttachScriptureProps = {
 /** Which ideas the list shows. Everything includes the ideas not yet filed as either. */
 type Scope = "all" | "sermon" | "point";
 
-const scopes: { value: Scope; label: string }[] = [
-  { value: "all", label: "All ideas" },
-  { value: "sermon", label: "Sermons" },
-  { value: "point", label: "Points" },
-];
+const scopes: Scope[] = ["all", "sermon", "point"];
 
 /**
  * Room for the dialog to float: wide enough to stand clear of the edges, and
@@ -57,11 +49,6 @@ const scopes: { value: Scope; label: string }[] = [
  * side is wide and not tall, and gets the whole screen as an upright one does.
  */
 const roomToFloat = "(min-width: 48rem) and (min-height: 34rem)";
-
-const offline: AttachActionResult = {
-  ok: false,
-  message: "That did not reach the server. Check your connection and try again.",
-};
 
 /**
  * Puts Scripture on an idea: the one dialog behind "Add to idea" in the Bible
@@ -144,6 +131,10 @@ function AttachForm({
   const id = useId();
   const toast = useToast();
   const capture = useQuickCapture();
+  const t = useT("ideas").attach;
+  const words = useT("ideas");
+  const locale = useLocale();
+  const offline: AttachActionResult = { ok: false, message: t.offline };
   const [text, setText] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -154,7 +145,7 @@ function AttachForm({
   // Typing waits for a pause; the first list and a change of scope do not.
   const paused = useRef(false);
 
-  const passage = formatReferences(references);
+  const passage = formatReferences(references, locale);
   const q = normaliseSearch(text);
   const kind: IdeaKind | null = scope === "all" ? null : scope;
   const key = `${scope}|${q}|${attempt}`;
@@ -176,9 +167,7 @@ function AttachForm({
           if (control.signal.aborted) return;
           setAnswer({
             key,
-            problem:
-              (error instanceof Error && error.message) ||
-              "Your ideas could not be searched. Try again.",
+            problem: (error instanceof Error && error.message) || t.searchFailed,
           });
         }
       },
@@ -189,7 +178,7 @@ function AttachForm({
       window.clearTimeout(timer);
       control.abort();
     };
-  }, [key, q, kind]);
+  }, [key, q, kind, t.searchFailed]);
 
   const loading = answer?.key !== key;
   // The list last received stays, dimmed, until the next one arrives.
@@ -208,7 +197,7 @@ function AttachForm({
     if (!outcome.ok) return setProblem(outcome.message);
     toast({
       message: outcome.message,
-      action: { label: "Open", href: `${routes.library}/${outcome.id ?? idea.id}` },
+      action: { label: t.open, href: `${routes.library}/${outcome.id ?? idea.id}` },
     });
     onClose();
   }
@@ -223,24 +212,24 @@ function AttachForm({
     <div className="flex min-h-0 flex-1 flex-col" aria-busy={attaching !== null}>
       <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="min-w-0">
-          <DialogTitle>Add to an idea</DialogTitle>
+          <DialogTitle>{t.title}</DialogTitle>
           {/* The passage is said whole, and wraps: it is what is about to be added. */}
           <DialogDescription className="mt-0.5 font-serif text-base text-pretty text-foreground italic">
             {passage}
           </DialogDescription>
         </div>
-        <DialogClose label="Close" className="-mr-2" disabled={attaching !== null} />
+        <DialogClose label={t.close} className="-mr-2" disabled={attaching !== null} />
       </div>
 
       <div className="shrink-0 space-y-3 px-5 pb-3">
         <form
           role="search"
-          aria-label="Find an idea"
+          aria-label={t.find}
           onSubmit={(event) => event.preventDefault()}
           className="relative"
         >
           <label htmlFor={`${id}-q`} className="sr-only">
-            Search your ideas
+            {t.searchLabel}
           </label>
           <Search
             className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
@@ -255,7 +244,7 @@ function AttachForm({
               paused.current = true;
               setText(event.target.value);
             }}
-            placeholder="Search your ideas..."
+            placeholder={t.placeholder}
             maxLength={searchLimits.query}
             autoComplete="off"
             spellCheck={false}
@@ -266,7 +255,7 @@ function AttachForm({
           {text && (
             <button
               type="button"
-              aria-label="Clear search"
+              aria-label={t.clear}
               onClick={() => {
                 setText("");
                 box.current?.focus();
@@ -278,10 +267,10 @@ function AttachForm({
           )}
         </form>
         <Segmented
-          label="Kind of idea"
+          label={t.kind}
           hideLabel
           name={`${id}-scope`}
-          options={scopes}
+          options={scopes.map((value) => ({ value, label: t.scopes[value] }))}
           value={scope}
           onChange={setScope}
         />
@@ -305,7 +294,7 @@ function AttachForm({
               className="mt-3"
               onClick={() => setAttempt((count) => count + 1)}
             >
-              Try again
+              {t.tryAgain}
             </Button>
           </div>
         ) : !matches ? (
@@ -323,18 +312,14 @@ function AttachForm({
           </div>
         ) : matches.items.length === 0 ? (
           <p className="px-2.5 py-3 text-sm leading-relaxed text-muted-foreground">
-            {q
-              ? `No ${scope === "all" ? "ideas" : scope === "sermon" ? "sermon ideas" : "point ideas"} match “${q}”.`
-              : scope === "all"
-                ? "You have no ideas yet. Begin one with this passage below."
-                : `You have no ${scope === "sermon" ? "sermon" : "point"} ideas yet. Begin one with this passage below.`}
+            {q ? t.noMatch(scope, q) : scope === "all" ? t.none : t.noneOfKind(scope)}
           </p>
         ) : (
           <>
             <p className="px-2.5 pt-1 pb-1.5 text-xs font-semibold text-muted-foreground">
-              {q ? "Matching ideas" : "Recently changed"}
+              {q ? t.matching : t.recent}
             </p>
-            <ul aria-label={q ? "Matching ideas" : "Recently changed ideas"}>
+            <ul aria-label={q ? t.matching : t.recentIdeas}>
               {matches.items.map((idea) => {
                 const held = holdsAll(idea, references);
                 const working = attaching === idea.id;
@@ -345,9 +330,7 @@ function AttachForm({
                       disabled={held || tooMany || (attaching !== null && !working)}
                       aria-busy={working}
                       aria-label={
-                        held
-                          ? `${idea.title}: already has ${passage}`
-                          : `Add ${passage} to ${idea.title}`
+                        held ? t.alreadyHas(idea.title, passage) : t.addTo(passage, idea.title)
                       }
                       onClick={() => void attach(idea)}
                       className="group/idea flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors duration-150 hover:bg-accent active:bg-foreground/10 disabled:cursor-default disabled:hover:bg-transparent pointer-coarse:min-h-14"
@@ -363,10 +346,10 @@ function AttachForm({
                         </span>
                         <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                           <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
-                            {ideaKindLabels[idea.kind]}
+                            {words.kinds[idea.kind]}
                           </Badge>
                           <span className="text-xs font-medium text-muted-foreground">
-                            {ideaStatusLabels[idea.status]}
+                            {words.statuses[idea.status]}
                           </span>
                           {idea.subject && (
                             <span className="min-w-0 truncate text-xs text-muted-foreground">
@@ -378,7 +361,7 @@ function AttachForm({
                       {held ? (
                         <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
                           <Check className="size-3.5" aria-hidden />
-                          Added
+                          {t.added}
                         </span>
                       ) : working ? (
                         <LoaderCircle
@@ -398,8 +381,7 @@ function AttachForm({
             </ul>
             {matches.total > matches.items.length && (
               <p className="px-2.5 pt-2 pb-1 text-xs text-muted-foreground">
-                Showing {matches.items.length} of {matches.total.toLocaleString("en")}. Type to find
-                another.
+                {t.showing(matches.items.length, formatNumber(locale, matches.total))}
               </p>
             )}
           </>
@@ -409,11 +391,10 @@ function AttachForm({
       <div className="shrink-0 border-t px-5 py-3">
         {(problem || tooMany) && (
           <p role="alert" className="mb-2.5 text-sm font-medium text-destructive">
-            {problem ??
-              `An idea can hold up to ${ideaLimits.references} references, and this is ${references.length}.`}
+            {problem ?? t.tooMany(ideaLimits.references, references.length)}
           </p>
         )}
-        <p className="mb-2 text-xs text-muted-foreground">Or begin a new idea with it</p>
+        <p className="mb-2 text-xs text-muted-foreground">{t.orBegin}</p>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -424,7 +405,7 @@ function AttachForm({
             onClick={() => begin("sermon")}
           >
             <Plus aria-hidden />
-            New sermon idea
+            {t.newSermon}
           </Button>
           <Button
             type="button"
@@ -435,7 +416,7 @@ function AttachForm({
             onClick={() => begin("point")}
           >
             <Plus aria-hidden />
-            New point idea
+            {t.newPoint}
           </Button>
         </div>
       </div>

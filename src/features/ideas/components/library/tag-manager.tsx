@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { tagLimits } from "../../model";
 import { createTag, deleteTag, renameTag } from "../../tag-actions";
@@ -22,13 +23,6 @@ import { useLibrary } from "./library-state";
 
 /** With more tags than this, the dialog offers a box to find one. */
 const searchFrom = 8;
-
-const offline: ActionResult = {
-  ok: false,
-  message: "That could not be done. Check your connection and try again.",
-};
-
-const ideas = (count: number) => (count === 1 ? "1 idea" : `${count} ideas`);
 
 /**
  * Create, rename, and delete the account's tags, from the library.
@@ -40,6 +34,8 @@ const ideas = (count: number) => (count === 1 ? "1 idea" : `${count} ideas`);
  */
 export function TagManager() {
   const { tags, managingTags, setManagingTags, query, apply } = useLibrary();
+  const t = useT("ideas").tags.manage;
+  const offline: ActionResult = { ok: false, message: t.offline };
   const id = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -51,12 +47,9 @@ export function TagManager() {
   const [deleting, setDeleting] = useState<TagSummary | null>(null);
 
   const confirmation: Confirmation | null = deleting && {
-    title: `Delete the tag “${deleting.name}”?`,
-    description:
-      deleting.ideaCount === 0
-        ? "No idea has this tag. This cannot be undone."
-        : `It will come off ${ideas(deleting.ideaCount)}. The ${deleting.ideaCount === 1 ? "idea itself is" : "ideas themselves are"} kept. This cannot be undone.`,
-    confirmLabel: "Delete tag",
+    title: t.deleteTitle(deleting.name),
+    description: deleting.ideaCount === 0 ? t.deleteUnused : t.deleteUsed(deleting.ideaCount),
+    confirmLabel: t.deleteConfirm,
     destructive: true,
     run: () => deleteTag(deleting.id),
   };
@@ -119,12 +112,10 @@ export function TagManager() {
         <DialogContent initialFocus={nameRef} className="max-w-lg">
           <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
             <div className="min-w-0">
-              <DialogTitle>Manage tags</DialogTitle>
-              <DialogDescription>
-                Tags are your own labels. One tag can go on any number of ideas.
-              </DialogDescription>
+              <DialogTitle>{t.title}</DialogTitle>
+              <DialogDescription>{t.description}</DialogDescription>
             </div>
-            <DialogClose label="Close tag management" className="-mr-2" />
+            <DialogClose label={t.close} className="-mr-2" />
           </div>
 
           <form
@@ -137,7 +128,7 @@ export function TagManager() {
             className="border-b px-5 pb-4"
           >
             <label htmlFor={`${id}-name`} className="text-sm leading-none font-medium">
-              New tag
+              {t.newTag}
             </label>
             <div className="mt-2 flex gap-2">
               <Input
@@ -149,7 +140,7 @@ export function TagManager() {
                   if (result && !result.ok) setResult(null);
                 }}
                 maxLength={tagLimits.name}
-                placeholder="Prayer, Advent, Funerals"
+                placeholder={t.placeholder}
                 autoComplete="off"
                 enterKeyHint="done"
                 aria-invalid={result && !result.ok ? true : undefined}
@@ -160,7 +151,7 @@ export function TagManager() {
                 ) : (
                   <Plus aria-hidden />
                 )}
-                {busy === "create" ? "Creating…" : "Create"}
+                {busy === "create" ? t.creating : t.create}
               </Button>
             </div>
             <ActionStatus result={result} />
@@ -169,12 +160,8 @@ export function TagManager() {
           <div className="min-h-0 flex-1 scroll-quiet overflow-y-auto overscroll-contain px-5 py-4">
             {tags.length === 0 ? (
               <div className="rounded-xl border border-dashed border-input px-5 py-8">
-                <p className="font-display text-lg leading-snug font-medium">No tags yet</p>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  A tag gathers ideas that share a theme, a series, or a season, whatever kind of
-                  idea they are. Create one above, then add it to an idea from the idea&rsquo;s own
-                  page.
-                </p>
+                <p className="font-display text-lg leading-snug font-medium">{t.noneTitle}</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t.noneBody}</p>
               </div>
             ) : (
               <>
@@ -186,8 +173,8 @@ export function TagManager() {
                     />
                     <Input
                       type="search"
-                      aria-label="Find a tag"
-                      placeholder="Find a tag"
+                      aria-label={t.find}
+                      placeholder={t.find}
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       autoComplete="off"
@@ -195,7 +182,7 @@ export function TagManager() {
                     />
                   </div>
                 )}
-                <ul aria-label="Your tags" className="divide-y">
+                <ul aria-label={t.yourTags} className="divide-y">
                   {shown.map((tag) =>
                     editing?.id === tag.id ? (
                       <li key={tag.id} className="py-2.5">
@@ -210,7 +197,7 @@ export function TagManager() {
                         >
                           <Input
                             autoFocus
-                            aria-label={`New name for ${tag.name}`}
+                            aria-label={t.newName(tag.name)}
                             value={editing.name}
                             onChange={(event) => {
                               setEditing({ id: tag.id, name: event.target.value });
@@ -235,7 +222,7 @@ export function TagManager() {
                             {busy === "rename" && (
                               <LoaderCircle className="animate-spin" aria-hidden />
                             )}
-                            {busy === "rename" ? "Saving…" : "Save"}
+                            {busy === "rename" ? t.saving : t.save}
                           </Button>
                           <Button
                             type="button"
@@ -247,7 +234,7 @@ export function TagManager() {
                               setEditError(null);
                             }}
                           >
-                            Cancel
+                            {t.cancel}
                           </Button>
                         </form>
                         {editError && (
@@ -265,15 +252,15 @@ export function TagManager() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">{tag.name}</p>
                           <p className="text-xs text-muted-foreground tabular-nums">
-                            {tag.ideaCount === 0 ? "Not on any idea" : `On ${ideas(tag.ideaCount)}`}
+                            {tag.ideaCount === 0 ? t.notOnAny : t.on(tag.ideaCount)}
                           </p>
                         </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label={`Rename ${tag.name}`}
-                          title="Rename"
+                          aria-label={t.renameNamed(tag.name)}
+                          title={t.rename}
                           disabled={busy !== null}
                           onClick={() => {
                             setEditing({ id: tag.id, name: tag.name });
@@ -287,8 +274,8 @@ export function TagManager() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label={`Delete ${tag.name}`}
-                          title="Delete"
+                          aria-label={t.deleteNamed(tag.name)}
+                          title={t.delete}
                           disabled={busy !== null}
                           className="text-destructive hover:bg-destructive/10"
                           onClick={() => {
@@ -303,7 +290,7 @@ export function TagManager() {
                   )}
                 </ul>
                 {shown.length === 0 && (
-                  <p className="py-4 text-sm text-muted-foreground">No tag has that in its name.</p>
+                  <p className="py-4 text-sm text-muted-foreground">{t.noneNamed}</p>
                 )}
               </>
             )}

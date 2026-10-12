@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { inviteUser, resendUserInvitation, revokeUserInvitation } from "../actions";
@@ -20,6 +21,8 @@ type InvitationsPanelProps = {
 };
 
 export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
+  const t = useT("admin").invitations;
+  const locale = useLocale();
   const [inviteResult, invite, inviting] = useActionState(inviteUser, null);
   const [rowResult, setRowResult] = useState<ActionResult | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -36,7 +39,7 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
     <>
       <form action={invite} className="mt-4 flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <Label htmlFor="invite-email">Email address</Label>
+          <Label htmlFor="invite-email">{t.email}</Label>
           <Input
             id="invite-email"
             name="email"
@@ -50,7 +53,7 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
         </div>
         <Button type="submit" disabled={inviting} aria-busy={inviting}>
           {inviting && <LoaderCircle className="animate-spin" aria-hidden />}
-          {inviting ? "Sending…" : "Send invitation"}
+          {inviting ? t.sending : t.send}
         </Button>
       </form>
       <div id="invite-status">
@@ -59,12 +62,10 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
 
       <ActionStatus result={rowResult} />
       {invitations === null ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Pending invitations could not be loaded from the sign-in provider. Reload to try again.
-        </p>
+        <p className="mt-4 text-sm text-muted-foreground">{t.unavailable}</p>
       ) : invitations.length === 0 ? (
         <p className="mt-4 rounded-xl border border-dashed border-input px-5 py-6 text-sm text-muted-foreground">
-          No invitations are waiting. Enter an email address above to send one.
+          {t.none}
         </p>
       ) : (
         <ul className="mt-4 divide-y rounded-xl border bg-surface shadow-card">
@@ -76,8 +77,8 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{invitation.email}</p>
                 <p className="mt-1 flex items-center gap-2 text-[0.8125rem] text-muted-foreground tabular-nums">
-                  <Badge tone="muted">Pending</Badge>
-                  Sent {formatDate(invitation.createdAt)}
+                  <Badge tone="muted">{t.pending}</Badge>
+                  {t.sent} {formatDate(invitation.createdAt, locale)}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -85,28 +86,28 @@ export function InvitationsPanel({ invitations }: InvitationsPanelProps) {
                   variant="outline"
                   size="sm"
                   disabled={busy}
-                  aria-label={`Resend invitation to ${invitation.email}`}
+                  aria-label={t.resendTo(invitation.email)}
                   onClick={() => run(() => resendUserInvitation(invitation.id))}
                 >
-                  Resend
+                  {t.resend}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   disabled={busy}
                   className="text-destructive hover:bg-destructive/10"
-                  aria-label={`Revoke invitation to ${invitation.email}`}
+                  aria-label={t.revokeTo(invitation.email)}
                   onClick={() =>
                     setConfirmation({
-                      title: "Revoke this invitation?",
-                      description: `The link sent to ${invitation.email} will stop working. You can invite them again later.`,
-                      confirmLabel: "Revoke invitation",
+                      title: t.revokeTitle,
+                      description: t.revokeDescription(invitation.email),
+                      confirmLabel: t.revokeConfirm,
                       destructive: true,
                       run: () => revokeUserInvitation(invitation.id),
                     })
                   }
                 >
-                  Revoke
+                  {t.revoke}
                 </Button>
               </div>
             </li>

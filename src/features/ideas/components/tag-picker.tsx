@@ -6,6 +6,7 @@ import { Check, LoaderCircle, Plus, Tag, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { buttonVariants } from "@/components/ui/button";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { tagLimits } from "../model";
 import { createTag } from "../tag-actions";
@@ -37,10 +38,12 @@ export function TagPicker({
   onChange,
   options,
   max = tagLimits.perIdea,
-  label = "Tags",
+  label,
   className,
 }: TagPickerProps) {
   const id = useId();
+  const t = useT("ideas").tags.picker;
+  const tagsLabel = useT("ideas").tags.label;
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [created, setCreated] = useState<IdeaTag[]>([]);
@@ -62,18 +65,18 @@ export function TagPicker({
 
   function add(tag: IdeaTag) {
     if (chosen.has(tag.id)) return;
-    if (full) return setMessage({ text: `An idea can hold up to ${max} tags.`, error: true });
+    if (full) return setMessage({ text: t.full(max), error: true });
     onChange((current) =>
       current.some((item) => item.id === tag.id) || current.length >= max
         ? current
         : [...current, tag].sort(byName),
     );
-    setMessage({ text: `${tag.name} added.`, error: false });
+    setMessage({ text: t.added(tag.name), error: false });
   }
 
   function remove(tag: IdeaTag) {
     onChange((current) => current.filter((item) => item.id !== tag.id));
-    setMessage({ text: `${tag.name} removed.`, error: false });
+    setMessage({ text: t.removed(tag.name), error: false });
   }
 
   function toggle(tag: IdeaTag) {
@@ -83,12 +86,12 @@ export function TagPicker({
 
   async function create() {
     if (creating || !wanted) return;
-    if (full) return setMessage({ text: `An idea can hold up to ${max} tags.`, error: true });
+    if (full) return setMessage({ text: t.full(max), error: true });
     setCreating(true);
     setMessage(null);
     const outcome = await createTag(wanted).catch(() => ({
       ok: false as const,
-      message: "The tag could not be created. Check your connection and try again.",
+      message: t.offline,
       tag: undefined,
     }));
     setCreating(false);
@@ -103,7 +106,7 @@ export function TagPicker({
   return (
     <div className={className}>
       <p id={`${id}-label`} className="text-sm leading-none font-medium">
-        {label}
+        {label ?? tagsLabel}
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -120,7 +123,7 @@ export function TagPicker({
                 </span>
                 <button
                   type="button"
-                  aria-label={`Remove tag ${tag.name}`}
+                  aria-label={t.remove(tag.name)}
                   onClick={() => remove(tag)}
                   className="grid h-full w-7 shrink-0 place-items-center rounded-r-md border-l text-muted-foreground transition-colors duration-150 hover:text-destructive active:bg-foreground/10 pointer-coarse:w-9"
                 >
@@ -142,13 +145,13 @@ export function TagPicker({
             className={buttonVariants({ variant: "outline", size: "sm", className: "px-3" })}
           >
             <Plus aria-hidden />
-            {value.length === 0 ? "Add tags" : "Add"}
+            {value.length === 0 ? t.addTags : t.add}
           </PopoverTrigger>
           <PopoverContent className="w-72 p-3">
-            <PopoverTitle className="sr-only">Choose tags</PopoverTitle>
+            <PopoverTitle className="sr-only">{t.choose}</PopoverTitle>
             <Input
-              aria-label="Find or create a tag"
-              placeholder="Find or create a tag"
+              aria-label={t.findOrCreate}
+              placeholder={t.findOrCreate}
               value={text}
               onChange={(event) => {
                 setText(event.target.value);
@@ -168,7 +171,7 @@ export function TagPicker({
               className="h-9"
             />
             <ul
-              aria-label="Your tags"
+              aria-label={t.yourTags}
               className="mt-2 max-h-56 scroll-quiet overflow-y-auto overscroll-contain"
             >
               {matches.map((tag) => {
@@ -193,9 +196,7 @@ export function TagPicker({
               })}
             </ul>
             {all.length === 0 && !wanted && (
-              <p className="px-1 py-2 text-sm leading-relaxed text-muted-foreground">
-                You have no tags yet. Type a name to create the first.
-              </p>
+              <p className="px-1 py-2 text-sm leading-relaxed text-muted-foreground">{t.none}</p>
             )}
             {wanted && !exact && (
               <button
@@ -210,9 +211,7 @@ export function TagPicker({
                 ) : (
                   <Plus className="size-4 shrink-0 text-primary" aria-hidden />
                 )}
-                <span className="min-w-0 truncate">
-                  {creating ? "Creating…" : `Create “${wanted}”`}
-                </span>
+                <span className="min-w-0 truncate">{creating ? t.creating : t.create(wanted)}</span>
               </button>
             )}
             {message?.error && (
@@ -229,11 +228,7 @@ export function TagPicker({
         aria-live="polite"
         className="mt-1.5 min-h-5 text-[0.8125rem] text-muted-foreground"
       >
-        {message && !message.error
-          ? message.text
-          : value.length === 0
-            ? "No tags on this idea."
-            : ""}
+        {message && !message.error ? message.text : value.length === 0 ? t.noneOnIdea : ""}
       </p>
     </div>
   );

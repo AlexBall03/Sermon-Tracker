@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 
 type AuthNoticeProps = {
@@ -10,10 +12,18 @@ type AuthNoticeProps = {
   children: React.ReactNode;
   /** Replaces the default "Back to home" link. */
   actions?: React.ReactNode;
+  /** The language of the default link. English when omitted. */
+  locale?: Locale;
 };
 
 /** The card used by the auth shell whenever there is a message instead of a form. */
-export function AuthNotice({ eyebrow, title, children, actions }: AuthNoticeProps) {
+export function AuthNotice({
+  eyebrow,
+  title,
+  children,
+  actions,
+  locale = defaultLocale,
+}: AuthNoticeProps) {
   return (
     <div className="rounded-xl border bg-surface p-8 text-center shadow-raised sm:p-10">
       <p className="text-[0.8125rem] font-semibold text-primary">{eyebrow}</p>
@@ -25,7 +35,7 @@ export function AuthNotice({ eyebrow, title, children, actions }: AuthNoticeProp
         {actions ?? (
           <Link href={routes.home} className={buttonVariants({ variant: "outline" })}>
             <ArrowLeft />
-            Back to home
+            {dictionary(locale, "auth").backHome}
           </Link>
         )}
       </div>

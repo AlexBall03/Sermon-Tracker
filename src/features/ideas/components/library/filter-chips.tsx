@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 
+import { useLocale, useT } from "@/i18n/client";
 import { formatDate } from "@/lib/format";
 import {
   activeFilterCount,
@@ -9,20 +10,9 @@ import {
   startOfDay,
   type LibraryQuery,
 } from "../../library-query";
-import { ideaKindLabels, ideaStatusLabels, sermonTypeLabels } from "../../model";
 import { useLibrary } from "./library-state";
 
 type Chip = { key: string; group: string; label: string; remove: Partial<LibraryQuery> };
-
-const shownDay = (value: string) => {
-  const date = startOfDay(value);
-  return date ? formatDate(date) : value;
-};
-
-function range(from: string | null, through: string | null) {
-  if (from && through) return `${shownDay(from)} to ${shownDay(through)}`;
-  return from ? `from ${shownDay(from)}` : `to ${shownDay(through ?? "")}`;
-}
 
 /**
  * The filters in force, each one removable, shown whether the panel is open
@@ -30,40 +20,52 @@ function range(from: string | null, through: string | null) {
  */
 export function FilterChips() {
   const { query, tags, apply } = useLibrary();
+  const t = useT("library").chips;
+  const words = useT("ideas");
+  const locale = useLocale();
   if (activeFilterCount(query) === 0) return null;
+
+  const shownDay = (value: string) => {
+    const date = startOfDay(value);
+    return date ? formatDate(date, locale) : value;
+  };
+  const range = (from: string | null, through: string | null) => {
+    if (from && through) return t.range(shownDay(from), shownDay(through));
+    return from ? t.from(shownDay(from)) : t.to(shownDay(through ?? ""));
+  };
 
   const names = new Map(tags.map((tag) => [tag.id, tag.name]));
   const chips: Chip[] = [
     ...query.kinds.map((kind) => ({
       key: `kind-${kind}`,
-      group: "Kind",
-      label: ideaKindLabels[kind],
+      group: t.kind,
+      label: words.kinds[kind],
       remove: { kinds: query.kinds.filter((value) => value !== kind) },
     })),
     ...query.statuses.map((status) => ({
       key: `status-${status}`,
-      group: "Status",
-      label: ideaStatusLabels[status],
+      group: t.status,
+      label: words.statuses[status],
       remove: { statuses: query.statuses.filter((value) => value !== status) },
     })),
     ...query.sermonTypes.map((type) => ({
       key: `type-${type}`,
-      group: "Sermon type",
-      label: sermonTypeLabels[type],
+      group: t.sermonType,
+      label: words.sermonTypes[type],
       remove: { sermonTypes: query.sermonTypes.filter((value) => value !== type) },
     })),
     ...query.tagIds.map((id) => ({
       key: `tag-${id}`,
-      group: "Tag",
+      group: t.tag,
       // A tag from an old link that has since been deleted, or was never this account's.
-      label: names.get(id) ?? "Unknown tag",
+      label: names.get(id) ?? t.unknownTag,
       remove: { tagIds: query.tagIds.filter((value) => value !== id) },
     })),
   ];
   if (query.createdFrom || query.createdThrough) {
     chips.push({
       key: "created",
-      group: "Created",
+      group: t.created,
       label: range(query.createdFrom, query.createdThrough),
       remove: { createdFrom: null, createdThrough: null },
     });
@@ -71,7 +73,7 @@ export function FilterChips() {
   if (query.updatedFrom || query.updatedThrough) {
     chips.push({
       key: "updated",
-      group: "Changed",
+      group: t.changed,
       label: range(query.updatedFrom, query.updatedThrough),
       remove: { updatedFrom: null, updatedThrough: null },
     });
@@ -79,12 +81,12 @@ export function FilterChips() {
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
-      <ul aria-label="Active filters" className="contents">
+      <ul aria-label={t.label} className="contents">
         {chips.map((chip) => (
           <li key={chip.key} className="max-w-full min-w-0">
             <button
               type="button"
-              aria-label={`Remove filter: ${chip.group} ${chip.label}`}
+              aria-label={t.remove(chip.group, chip.label)}
               onClick={() => apply(chip.remove)}
               className="group/chip inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border bg-surface pr-1.5 pl-2.5 text-[0.8125rem] transition-[border-color,background-color] duration-150 hover:border-foreground/30 active:bg-foreground/5 pointer-coarse:h-9"
             >
@@ -100,7 +102,7 @@ export function FilterChips() {
       </ul>
       {query.tagIds.length > 1 && (
         <p className="text-[0.8125rem] text-muted-foreground">
-          {query.tagMode === "all" ? "Matching all tags" : "Matching any tag"}
+          {query.tagMode === "all" ? t.allTags : t.anyTag}
         </p>
       )}
       <button
@@ -108,7 +110,7 @@ export function FilterChips() {
         onClick={() => apply(clearFilters)}
         className="ml-1 rounded-sm text-[0.8125rem] font-medium text-primary link-underline"
       >
-        Clear filters
+        {t.clear}
       </button>
     </div>
   );

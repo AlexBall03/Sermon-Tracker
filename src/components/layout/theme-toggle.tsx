@@ -5,11 +5,13 @@ import { flushSync } from "react-dom";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
+/** The two themes. Their names are in the navigation dictionary, under `theme`. */
 export const themeOptions = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
 ] as const;
 
 const subscribe = () => () => {};
@@ -50,6 +52,7 @@ export function useThemeChoice() {
 /** Light / Dark selector. The option in effect shows as selected. */
 export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps) {
   const { current, choose } = useThemeChoice();
+  const t = useT("navigation");
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
@@ -65,28 +68,31 @@ export function ThemeToggle({ showLabels = false, className }: ThemeToggleProps)
   return (
     <div
       role="radiogroup"
-      aria-label="Color theme"
+      aria-label={t.colorTheme}
       onKeyDown={onKeyDown}
       className={cn("inline-flex gap-0.5 rounded-lg bg-secondary p-0.5", className)}
     >
-      {themeOptions.map(({ value, label, icon: Icon }) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={current === value}
-          aria-label={showLabels ? undefined : label}
-          title={showLabels ? undefined : label}
-          onClick={() => choose(value)}
-          className={cn(
-            "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:text-foreground not-aria-checked:hover:bg-accent not-aria-checked:active:bg-foreground/10 aria-checked:cursor-default aria-checked:bg-surface-raised aria-checked:text-foreground aria-checked:shadow-card dark:aria-checked:bg-foreground/10",
-            showLabels ? "h-10 flex-1 px-3" : "size-8 pointer-coarse:size-10",
-          )}
-        >
-          <Icon className="size-4" aria-hidden />
-          {showLabels && label}
-        </button>
-      ))}
+      {themeOptions.map(({ value, icon: Icon }) => {
+        const label = t.theme[value];
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={current === value}
+            aria-label={showLabels ? undefined : label}
+            title={showLabels ? undefined : label}
+            onClick={() => choose(value)}
+            className={cn(
+              "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:text-foreground not-aria-checked:hover:bg-accent not-aria-checked:active:bg-foreground/10 aria-checked:cursor-default aria-checked:bg-surface-raised aria-checked:text-foreground aria-checked:shadow-card dark:aria-checked:bg-foreground/10",
+              showLabels ? "h-10 flex-1 px-3" : "size-8 pointer-coarse:size-10",
+            )}
+          >
+            <Icon className="size-4" aria-hidden />
+            {showLabels && label}
+          </button>
+        );
+      })}
     </div>
   );
 }

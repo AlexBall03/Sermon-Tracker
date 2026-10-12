@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, type SelectGroup } from "@/components/ui/select";
+import { useReading } from "@/features/preferences/client";
+import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
-import { bibleBooks, chaptersIn, getBook, oldTestamentBooks, versesIn } from "../books";
+import { bibleBooks, booksIn, chaptersIn, getBook, oldTestamentBooks, versesIn } from "../books";
 import {
   formatReference,
   formatReferences,
@@ -18,6 +20,7 @@ import {
   type ScriptureReference,
 } from "../reference";
 import { searchTips, type SearchScope } from "../search";
+import { translations } from "../translations";
 import { useBibleSearch } from "../use-bible-search";
 import { useChapter } from "../use-chapter";
 import { PassageError, PassageSkeleton, PassageText } from "./passage-text";
@@ -52,17 +55,6 @@ type ScriptureBrowserProps = {
   className?: string;
 };
 
-const bookGroups: SelectGroup[] = [
-  { label: "Old Testament", options: [] as { value: string; label: string }[] },
-  { label: "New Testament", options: [] as { value: string; label: string }[] },
-].map((group, index) => ({
-  ...group,
-  options: (index === 0
-    ? bibleBooks.slice(0, oldTestamentBooks)
-    : bibleBooks.slice(oldTestamentBooks)
-  ).map((book) => ({ value: String(book.id), label: book.name })),
-}));
-
 const numbers = (count: number) =>
   Array.from({ length: count }, (_, index) => ({
     value: String(index + 1),
@@ -81,6 +73,9 @@ const range = (from: number, to: number) =>
  * Chapter, and Verse filters. Tap verses to choose them, any number, and tap
  * one again to unselect it; with none chosen the selection is the whole
  * chapter.
+ *
+ * The text is read in the account's own translation. What is chosen is a
+ * reference, which is numbers, so it is the same passage in any translation.
  */
 export function ScriptureBrowser({
   initial,
@@ -91,6 +86,18 @@ export function ScriptureBrowser({
   className,
 }: ScriptureBrowserProps) {
   const id = useId();
+  const t = useT("scripture").panel;
+  const n = useT("scripture").navigator;
+  const locale = useLocale();
+  const { translation } = useReading();
+  const textLanguage = translations[translation].language;
+  const bookGroups: SelectGroup[] = useMemo(() => {
+    const books = booksIn(locale).map((book) => ({ value: String(book.id), label: book.name }));
+    return [
+      { label: n.oldTestament, options: books.slice(0, oldTestamentBooks) },
+      { label: n.newTestament, options: books.slice(oldTestamentBooks) },
+    ];
+  }, [locale, n.oldTestament, n.newTestament]);
   const start = initial ?? versesToReferences(1, 1, [])[0];
   const startsInOneChapter = start.chapterEnd === null && start.verseStart !== null;
 
@@ -133,7 +140,7 @@ export function ScriptureBrowser({
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const text = useChapter(book, chapter);
+  const text = useChapter(translation, book, chapter);
   const scroller = useRef<HTMLDivElement>(null);
   const ready = text.status === "ready";
 
@@ -194,15 +201,15 @@ export function ScriptureBrowser({
 
   const atStart = book === 1 && chapter === 1;
   const atEnd = book === bibleBooks.length && chapter === chaptersIn(book);
-  const bookName = getBook(book)?.name ?? "";
+  const bookName = getBook(book, locale)?.name ?? "";
   const place = chaptersIn(book) > 1 ? `${bookName} ${chapter}` : bookName;
   // Typing a reference into the search box is a natural slip; offer the passage as well.
-  const typedReference = results ? parseReference(results.query) : null;
+  const typedReference = results ? parseReference(results.query, locale) : null;
 
   const scopeOptions = [
-    { value: "all", label: "Whole Bible" },
-    { value: "old", label: "Old Testament" },
-    { value: "new", label: "New Testament" },
+    { value: "all", label: n.wholeBible },
+    { value: "old", label: n.oldTestament },
+    { value: "new", label: n.newTestament },
     { value: String(book), label: bookName },
   ];
 
@@ -222,7 +229,7 @@ export function ScriptureBrowser({
           }}
         >
           <label htmlFor={`${id}-search`} className="sr-only">
-            Search the Bible
+            {t.searchLabel}
           </label>
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
@@ -235,7 +242,7 @@ export function ScriptureBrowser({
                   setEntry(event.target.value);
                   clearEntryError();
                 }}
-                placeholder="Search the text for words"
+                placeholder={t.placeholder}
                 autoComplete="off"
                 spellCheck={false}
                 enterKeyHint="search"
@@ -248,7 +255,7 @@ export function ScriptureBrowser({
               {entry && (
                 <button
                   type="button"
-                  aria-label="Clear the search"
+                  aria-label={n.clear}
                   onClick={() => {
                     setEntry("");
                     clearEntryError();
@@ -265,7 +272,7 @@ export function ScriptureBrowser({
               variant="outline"
               size="icon"
               className="size-10"
-              aria-label="Search"
+              aria-label={n.search}
             >
               <Search aria-hidden />
             </Button>
@@ -282,7 +289,7 @@ export function ScriptureBrowser({
           {/* Floats over the passage, so opening it moves nothing. */}
           <Popover>
             <PopoverTrigger className="mt-1.5 rounded-sm text-xs font-medium text-muted-foreground link-underline hover:text-foreground">
-              Search options
+              {n.options}
             </PopoverTrigger>
             <PopoverContent
               // Nothing inside to focus. Focus stays on the link: sending it to the
@@ -291,17 +298,14 @@ export function ScriptureBrowser({
               className="w-[22rem] p-3 text-xs"
             >
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                {searchTips.map(([example, meaning]) => (
+                {searchTips(textLanguage, locale).map(([example, meaning]) => (
                   <div key={example} className="contents">
                     <dt className="font-mono font-semibold whitespace-nowrap">{example}</dt>
                     <dd className="text-muted-foreground">{meaning}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-2 text-muted-foreground">
-                Words are matched as written, whatever their capitals. To go to a passage, use Book,
-                Chapter, and Verse below.
-              </p>
+              <p className="mt-2 text-muted-foreground">{t.optionsNote}</p>
             </PopoverContent>
           </Popover>
         </form>
@@ -309,7 +313,7 @@ export function ScriptureBrowser({
         {/* On a phone the book takes a line of its own, so its name is never cut short. */}
         <div
           role="group"
-          aria-label="Go to a passage"
+          aria-label={t.goToPassage}
           className="flex items-center gap-2 max-sm:flex-wrap"
         >
           <Button
@@ -317,21 +321,21 @@ export function ScriptureBrowser({
             variant="outline"
             size="icon"
             className="size-10"
-            aria-label="Previous chapter"
+            aria-label={t.previousChapter}
             disabled={atStart}
             onClick={() => step(-1)}
           >
             <ChevronLeft aria-hidden />
           </Button>
           <Select
-            label="Book"
+            label={t.book}
             value={String(book)}
             onChange={(value) => goTo(Number(value), 1)}
             groups={bookGroups}
             className="flex-1 max-sm:order-first max-sm:basis-full"
           />
           <Select
-            label="Chapter"
+            label={t.chapter}
             value={String(chapter)}
             onChange={(value) => goTo(book, Number(value))}
             options={numbers(chaptersIn(book))}
@@ -339,10 +343,10 @@ export function ScriptureBrowser({
             className="tabular-nums max-sm:flex-1 sm:w-[4.5rem]"
           />
           <Select
-            label="Verse"
+            label={t.verse}
             value={picked.length === 1 && !carried ? String(picked[0]) : "all"}
             onChange={(value) => goTo(book, chapter, value === "all" ? null : Number(value))}
-            options={[{ value: "all", label: "All" }, ...numbers(versesIn(book, chapter))]}
+            options={[{ value: "all", label: t.all }, ...numbers(versesIn(book, chapter))]}
             layout="grid"
             className="tabular-nums max-sm:flex-1 sm:w-[4.5rem]"
           />
@@ -351,7 +355,7 @@ export function ScriptureBrowser({
             variant="outline"
             size="icon"
             className="size-10"
-            aria-label="Next chapter"
+            aria-label={t.nextChapter}
             disabled={atEnd}
             onClick={() => step(1)}
           >
@@ -366,7 +370,7 @@ export function ScriptureBrowser({
         className="min-h-40 flex-1 scroll-quiet overflow-y-auto overscroll-contain px-2 py-4 sm:px-3"
       >
         {view === "results" && results ? (
-          <section aria-label="Search results">
+          <section aria-label={n.results}>
             <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 px-2">
               <Button
                 type="button"
@@ -379,7 +383,7 @@ export function ScriptureBrowser({
                 {place}
               </Button>
               <Select
-                label="Search in"
+                label={n.searchIn}
                 value={String(results.scope)}
                 onChange={(value) =>
                   search(
@@ -414,7 +418,7 @@ export function ScriptureBrowser({
                     }
                   }}
                 >
-                  Go to {formatReference(typedReference.reference)}
+                  {t.goTo(formatReference(typedReference.reference, locale))}
                 </Button>
               )}
             </SearchHits>
@@ -431,7 +435,7 @@ export function ScriptureBrowser({
                   className="-mr-2 px-2"
                   onClick={() => setView("results")}
                 >
-                  Back to results
+                  {n.backToResults}
                 </Button>
               )}
             </div>
@@ -439,6 +443,7 @@ export function ScriptureBrowser({
             {text.status === "error" && <PassageError retry={text.retry} />}
             {text.status === "ready" && (
               <PassageText
+                lang={textLanguage}
                 verses={text.verses}
                 selected={highlighted}
                 onSelectVerse={attach ? toggleVerse : undefined}
@@ -455,7 +460,7 @@ export function ScriptureBrowser({
             data-selection
             className="truncate font-serif text-base font-medium italic"
           >
-            {formatReferences(selection)}
+            {formatReferences(selection, locale)}
           </p>
           {attach && (
             <p className="text-xs text-muted-foreground">
@@ -468,14 +473,14 @@ export function ScriptureBrowser({
                   }}
                   className="rounded-sm font-medium text-primary link-underline"
                 >
-                  Clear, and use the whole chapter
+                  {t.clearWhole}
                 </button>
               ) : attached ? (
                 <span role="status" className="font-medium text-primary">
-                  {attached} added. Choose another, or close.
+                  {t.added(attached)}
                 </span>
               ) : (
-                "The whole chapter. Tap verses to choose them; tap again to unselect."
+                t.wholeHint
               )}
             </p>
           )}
@@ -487,7 +492,7 @@ export function ScriptureBrowser({
               attach.onAttach(selection);
               if (!besideIdea || !attach.repeatable) return onDone();
               // Stay for the next passage, with a clean slate and a word that it worked.
-              setAttached(formatReferences(selection));
+              setAttached(formatReferences(selection, locale));
               setPicked([]);
               setCarried(null);
             }}
@@ -496,7 +501,7 @@ export function ScriptureBrowser({
           </Button>
         ) : (
           <Button type="button" variant="outline" onClick={onDone}>
-            Done
+            {t.done}
           </Button>
         )}
       </div>

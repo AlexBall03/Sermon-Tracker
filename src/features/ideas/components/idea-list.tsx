@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { ReferenceChip } from "@/features/scripture/components/reference-chip";
 import { referenceKey } from "@/features/scripture/reference";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
 import type { IdeaWithReferences } from "../ideas";
-import { ideaKindLabels, ideaStatusLabels } from "../model";
 import { TagList } from "./tag-chip";
 
 /** A row shows this many references; the rest are on the idea's own page. */
@@ -18,7 +19,18 @@ const shownReferences = 3;
  * their preview instead. This is the dashboard's short list; the library
  * draws its pages with `library/idea-results.tsx`, as cards or as rows.
  */
-export function IdeaList({ ideas, label }: { ideas: IdeaWithReferences[]; label: string }) {
+export function IdeaList({
+  ideas,
+  label,
+  locale = defaultLocale,
+}: {
+  ideas: IdeaWithReferences[];
+  label: string;
+  /** The interface language. English when omitted. */
+  locale?: Locale;
+}) {
+  const t = dictionary(locale, "library").results;
+  const words = dictionary(locale, "ideas");
   return (
     <ul aria-label={label} className="grid gap-3">
       {ideas.map((idea) => {
@@ -42,7 +54,7 @@ export function IdeaList({ ideas, label }: { ideas: IdeaWithReferences[]; label:
                 </Link>
               </h3>
               <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
-                {ideaKindLabels[idea.kind]}
+                {words.kinds[idea.kind]}
               </Badge>
             </div>
 
@@ -63,13 +75,15 @@ export function IdeaList({ ideas, label }: { ideas: IdeaWithReferences[]; label:
                   className="relative z-10"
                 />
               ))}
-              {more > 0 && <span className="text-xs text-muted-foreground">and {more} more</span>}
-              <TagList tags={idea.tags} limit={3} />
+              {more > 0 && <span className="text-xs text-muted-foreground">{t.more(more)}</span>}
+              <TagList tags={idea.tags} limit={3} locale={locale} />
               <p className="ml-auto text-xs text-muted-foreground">
-                {ideaStatusLabels[idea.status]}
+                {words.statuses[idea.status]}
                 <span aria-hidden> · </span>
                 <span className="sr-only">, </span>
-                <time dateTime={idea.updatedAt.toISOString()}>{formatDate(idea.updatedAt)}</time>
+                <time dateTime={idea.updatedAt.toISOString()}>
+                  {formatDate(idea.updatedAt, locale)}
+                </time>
               </p>
             </div>
           </li>

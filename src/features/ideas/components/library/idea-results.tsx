@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { ReferenceChip } from "@/features/scripture/components/reference-chip";
 import { referenceKey } from "@/features/scripture/reference";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { formatDate } from "@/lib/format";
 import type { IdeaWithReferences } from "../../ideas";
 import { ideaHref, type LibraryQuery } from "../../library-query";
-import { ideaKindLabels, ideaStatusLabels, sermonTypeLabels } from "../../model";
 import { TagList } from "../tag-chip";
 
 /** A result shows this many references; the rest are on the idea's own page. */
@@ -31,12 +32,17 @@ export function IdeaResults({
   ideas,
   label,
   query,
+  locale = defaultLocale,
 }: {
   ideas: IdeaWithReferences[];
   label: string;
   /** The library the ideas were found in, so each one can lead back to it. */
   query: LibraryQuery;
+  /** The interface language. English when omitted. */
+  locale?: Locale;
 }) {
+  const t = dictionary(locale, "library").results;
+  const words = dictionary(locale, "ideas");
   return (
     <ul
       aria-label={label}
@@ -56,17 +62,17 @@ export function IdeaResults({
           >
             <div className="flex min-w-0 items-center gap-2 list-view:order-2 list-view:md:w-64 list-view:md:justify-end card-view:mb-2.5">
               <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
-                {ideaKindLabels[idea.kind]}
+                {words.kinds[idea.kind]}
               </Badge>
               {sermon && idea.sermonType && (
                 <span className="truncate text-xs text-muted-foreground">
-                  <span className="sr-only">Sermon type: </span>
-                  {sermonTypeLabels[idea.sermonType]}
+                  <span className="sr-only">{t.sermonType} </span>
+                  {words.sermonTypes[idea.sermonType]}
                 </span>
               )}
               <span className="text-xs font-medium whitespace-nowrap text-muted-foreground card-view:ml-auto">
-                <span className="sr-only">Status: </span>
-                {ideaStatusLabels[idea.status]}
+                <span className="sr-only">{t.status} </span>
+                {words.statuses[idea.status]}
               </span>
             </div>
 
@@ -101,18 +107,20 @@ export function IdeaResults({
                         />
                       ))}
                       {more > 0 && (
-                        <span className="text-xs text-muted-foreground">and {more} more</span>
+                        <span className="text-xs text-muted-foreground">{t.more(more)}</span>
                       )}
                     </div>
                   )}
-                  <TagList tags={idea.tags} />
+                  <TagList tags={idea.tags} locale={locale} />
                 </div>
               )}
             </div>
 
             <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums list-view:order-3 list-view:ml-auto list-view:md:w-24 list-view:md:text-right card-view:mt-4">
-              <span className="list-view:md:sr-only">Updated </span>
-              <time dateTime={idea.updatedAt.toISOString()}>{formatDate(idea.updatedAt)}</time>
+              <span className="list-view:md:sr-only">{t.updated} </span>
+              <time dateTime={idea.updatedAt.toISOString()}>
+                {formatDate(idea.updatedAt, locale)}
+              </time>
             </p>
           </li>
         );

@@ -7,6 +7,8 @@ import {
   refineReference,
   type ScriptureReference,
 } from "@/features/scripture/reference";
+import { dictionary, formatNumber } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import {
   ideaKinds,
   ideaLimits,
@@ -22,113 +24,131 @@ import type { IdeaTag } from "./tags";
 /** A passage attached to an idea. A sermon may mark one as its main text. */
 export type IdeaReference = ScriptureReference & { isPrimary: boolean };
 
-const ideaReferenceSchema = z
-  .object({ ...referenceShape, isPrimary: z.boolean().default(false) })
-  .superRefine(refineReference)
-  .transform(({ isPrimary, ...reference }) => ({ ...normaliseReference(reference), isPrimary }));
-
-/** Optional text: trimmed, and stored as null when nothing was written. */
-const optionalText = (limit: number) =>
-  z
-    .string()
-    .trim()
-    .max(limit, `Use ${limit.toLocaleString("en")} characters or fewer.`)
-    .nullish()
-    .transform((value) => value || null);
-
 export const ideaIdSchema = z.uuid();
 export const ideaKindSchema = z.enum(ideaKinds);
 
 export const tagIdSchema = z.uuid();
 
-/** A tag's name: trimmed, with runs of whitespace inside it reduced to one space. */
-export const tagNameSchema = z
-  .string("Give the tag a name.")
-  .transform((value) => value.replace(/\s+/g, " ").trim())
-  .pipe(
+/**
+ * The schemas of ideas and tags, saying what they refuse in one language. The
+ * rules are the same whatever the language; only the words differ. The
+ * browser checks with these before it asks, and the server checks again.
+ */
+export function ideaSchemas(locale: Locale = defaultLocale) {
+  const t = dictionary(locale, "ideas").validation;
+  const inBible = (reference: ScriptureReference, context: z.RefinementCtx) =>
+    refineReference(reference, context, locale);
+
+  const ideaReferenceSchema = z
+    .object({ ...referenceShape, isPrimary: z.boolean().default(false) })
+    .superRefine(inBible)
+    .transform(({ isPrimary, ...reference }) => ({ ...normaliseReference(reference), isPrimary }));
+
+  /** Optional text: trimmed, and stored as null when nothing was written. */
+  const optionalText = (limit: number) =>
     z
       .string()
-      .min(1, "Give the tag a name.")
-      .max(tagLimits.name, `Keep a tag to ${tagLimits.name} characters or fewer.`),
-  );
+      .trim()
+      .max(limit, t.tooLong(formatNumber(locale, limit)))
+      .nullish()
+      .transform((value) => value || null);
 
-/** The tags chosen for an idea. The same tag twice is one tag. */
-export const tagIdsSchema = z
-  .array(tagIdSchema)
-  .max(tagLimits.perIdea, `An idea can hold up to ${tagLimits.perIdea} tags.`)
-  .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
+  /** A tag's name: trimmed, with runs of whitespace inside it reduced to one space. */
+  const tagNameSchema = z
+    .string(t.tagName)
+    .transform((value) => value.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(1, t.tagName).max(tagLimits.name, t.tagTooLong(tagLimits.name)));
 
-/**
- * Everything a person may set on an idea. There is no owner here and no
- * timestamps: the owner is the signed-in account, and any other key in the
- * input is dropped.
- */
-export const ideaInputSchema = z.object({
-  kind: ideaKindSchema.default("undecided"),
-  title: z
-    .string()
-    .trim()
-    .min(1, "Write the idea first. A few words are enough.")
-    .max(
-      ideaLimits.title,
-      `Keep the idea to ${ideaLimits.title} characters; the rest can go in notes.`,
-    ),
-  notes: optionalText(ideaLimits.notes),
-  status: z.enum(ideaStatuses).default("captured"),
-  sermonType: z
-    .enum(sermonTypes)
-    .nullish()
-    .transform((value) => value ?? null),
-  subject: optionalText(ideaLimits.subject),
-  references: z
-    .array(ideaReferenceSchema)
-    .max(ideaLimits.references, `An idea can hold up to ${ideaLimits.references} references.`)
-    .default([])
-    // The same passage twice is one reference.
-    .transform((references) => {
-      const seen = new Set<string>();
-      return references.filter((reference) => {
-        const key = referenceKey(reference);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    })
-    .refine((references) => references.filter((reference) => reference.isPrimary).length <= 1, {
-      message: "Only one reference can be the main text.",
-    }),
-  /** Left out, the idea's tags stay as they are; given, they replace what was there. */
-  tagIds: tagIdsSchema.optional(),
-});
+  /** The tags chosen for an idea. The same tag twice is one tag. */
+  const tagIdsSchema = z
+    .array(tagIdSchema)
+    .max(tagLimits.perIdea, t.tooManyTags(tagLimits.perIdea))
+    .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
+
+  /**
+   * Everything a person may set on an idea. There is no owner here and no
+   * timestamps: the owner is the signed-in account, and any other key in the
+   * input is dropped.
+   */
+  const ideaInputSchema = z.object({
+    kind: ideaKindSchema.default("undecided"),
+    title: z
+      .string()
+      .trim()
+      .min(1, t.titleRequired)
+      .max(ideaLimits.title, t.titleTooLong(ideaLimits.title)),
+    notes: optionalText(ideaLimits.notes),
+    status: z.enum(ideaStatuses).default("captured"),
+    sermonType: z
+      .enum(sermonTypes)
+      .nullish()
+      .transform((value) => value ?? null),
+    subject: optionalText(ideaLimits.subject),
+    references: z
+      .array(ideaReferenceSchema)
+      .max(ideaLimits.references, t.tooManyReferences(ideaLimits.references))
+      .default([])
+      // The same passage twice is one reference.
+      .transform((references) => {
+        const seen = new Set<string>();
+        return references.filter((reference) => {
+          const key = referenceKey(reference);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      })
+      .refine((references) => references.filter((reference) => reference.isPrimary).length <= 1, {
+        message: t.onePrimary,
+      }),
+    /** Left out, the idea's tags stay as they are; given, they replace what was there. */
+    tagIds: tagIdsSchema.optional(),
+  });
+
+  /**
+   * Passages to add to an idea that already exists, from the Bible reader or
+   * from saved Scripture. Each is checked against the Bible; the same passage
+   * twice is one. There is no owner here: the idea is found among the signed-in
+   * account's own, or not at all.
+   */
+  const attachInputSchema = z.object({
+    ideaId: ideaIdSchema,
+    references: z
+      .array(
+        z
+          .object(referenceShape)
+          .superRefine(inBible)
+          .transform((reference) => normaliseReference(reference)),
+      )
+      .min(1, t.choosePassage)
+      .max(ideaLimits.references, t.tooManyReferences(ideaLimits.references))
+      .transform((references) => {
+        const seen = new Set<string>();
+        return references.filter((reference) => {
+          const key = referenceKey(reference);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }),
+  });
+
+  return {
+    tagName: tagNameSchema,
+    tagIds: tagIdsSchema,
+    ideaInput: ideaInputSchema,
+    attachInput: attachInputSchema,
+  };
+}
+
+const inEnglish = ideaSchemas();
+
+// The schemas in English, for callers that only need the shapes and the types.
+export const tagNameSchema = inEnglish.tagName;
+export const tagIdsSchema = inEnglish.tagIds;
+export const ideaInputSchema = inEnglish.ideaInput;
 export type IdeaInput = z.infer<typeof ideaInputSchema>;
-
-/**
- * Passages to add to an idea that already exists, from the Bible reader or
- * from saved Scripture. Each is checked against the Bible; the same passage
- * twice is one. There is no owner here: the idea is found among the signed-in
- * account's own, or not at all.
- */
-export const attachInputSchema = z.object({
-  ideaId: ideaIdSchema,
-  references: z
-    .array(
-      z
-        .object(referenceShape)
-        .superRefine(refineReference)
-        .transform((reference) => normaliseReference(reference)),
-    )
-    .min(1, "Choose a passage first.")
-    .max(ideaLimits.references, `An idea can hold up to ${ideaLimits.references} references.`)
-    .transform((references) => {
-      const seen = new Set<string>();
-      return references.filter((reference) => {
-        const key = referenceKey(reference);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }),
-});
+export const attachInputSchema = inEnglish.attachInput;
 export type AttachInput = z.infer<typeof attachInputSchema>;
 
 /** What the forms hold while someone is writing. */

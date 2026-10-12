@@ -3,7 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { ActionResult } from "@/lib/action-result";
-import { translation } from "./books";
+import { translationParam } from "./reader-location";
 import { setHighlight } from "./saved/actions";
 import {
   noMarks,
@@ -11,10 +11,13 @@ import {
   type FavoriteSummary,
   type HighlightColor,
 } from "./saved/model";
+import { isTranslationId, type TranslationId } from "./translations";
 
 /*
- * What the signed-in account has marked, a chapter at a time: its highlights
- * and the favorites that touch the chapter. The text beside it is the same
+ * What the signed-in account has marked, a chapter of one translation at a
+ * time: its highlights and the favorites that touch the chapter. Marks belong
+ * to the translation they were made in, so the same chapter in two
+ * translations is two entries here and neither shows the other's. The text beside it is the same
  * for everyone and is kept for good (use-chapter.ts); this is one person's and
  * can change, so it is held differently:
  *
@@ -52,7 +55,14 @@ const listeners = new Set<() => void>();
 let queue: Promise<unknown> = Promise.resolve();
 let nextChange = 1;
 
-const keyOf = (book: number, chapter: number) => `${book}.${chapter}`;
+const keyOf = (translation: TranslationId, book: number, chapter: number) =>
+  `${translation}.${book}.${chapter}`;
+
+/** The translation, book, and chapter an entry is for. */
+function placeOf(key: string) {
+  const [translation, book, chapter] = key.split(".");
+  return { translation, book: Number(book), chapter: Number(chapter) };
+}
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -78,6 +88,7 @@ function withColor(
 function settle(key: string, entry: Entry) {
   const base = entry.confirmed ?? noMarks;
   entry.shown = {
+    ...(base.elsewhere ? { elsewhere: base.elsewhere } : {}),
     favorites: base.favorites,
     highlights: entry.pending.reduce(
       (highlights, change) => withColor(highlights, change.verses, change.color),
@@ -96,8 +107,13 @@ function entryFor(key: string): Entry {
 }
 
 /** Keeps marks that arrived another way (with the page), unless newer ones are already held. */
-export function keepMarks(book: number, chapter: number, marks: ChapterMarks) {
-  const key = keyOf(book, chapter);
+export function keepMarks(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+  marks: ChapterMarks,
+) {
+  const key = keyOf(translation, book, chapter);
   if (entries.get(key)?.confirmed) return;
   settle(key, { ...entryFor(key), confirmed: marks, failed: false });
 }
@@ -107,13 +123,17 @@ export function keepMarks(book: number, chapter: number, marks: ChapterMarks) {
  * waits for that one. An answer that was overtaken by a change made here is
  * dropped: what is held is newer than it.
  */
-export function loadMarks(book: number, chapter: number): Promise<void> {
-  const key = keyOf(book, chapter);
+export function loadMarks(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+): Promise<void> {
+  const key = keyOf(translation, book, chapter);
   const waiting = requests.get(key);
   if (waiting) return waiting;
 
   const asked = entryFor(key).version;
-  const request = fetch(`/api/bible/${book}/${chapter}/marks`, {
+  const request = fetch(`/api/bible/${book}/${chapter}/marks?${translationParam}=${translation}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
   })
@@ -146,16 +166,20 @@ export type ChapterMarksState = {
 };
 
 /** The account's marks in one chapter, kept up to date for as long as it is shown. */
-export function useChapterMarks(book: number, chapter: number): ChapterMarksState {
-  const key = keyOf(book, chapter);
+export function useChapterMarks(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+): ChapterMarksState {
+  const key = keyOf(translation, book, chapter);
   const entry = useSyncExternalStore(
     subscribe,
     () => entries.get(key),
     () => undefined,
   );
   useEffect(() => {
-    void loadMarks(book, chapter);
-  }, [book, chapter]);
+    void loadMarks(translation, book, chapter);
+  }, [translation, book, chapter]);
   return {
     marks: entry?.shown ?? noMarks,
     ready: Boolean(entry?.confirmed),
@@ -164,17 +188,20 @@ export function useChapterMarks(book: number, chapter: number): ChapterMarksStat
 }
 
 /**
- * Highlights verses of one chapter in a color, or takes their highlight off
- * with null. They are shown changed at once; the answer says whether the
+ * Highlights verses of one chapter of one translation in a color, or takes
+ * their highlight off with null. They are shown changed at once; the answer says whether the
  * change was kept, and when it was not, it has already been taken back.
  */
 export function highlightVerses(
+  translation: TranslationId,
   book: number,
   chapter: number,
   verses: readonly number[],
   color: HighlightColor | null,
+  /** What to say when the request never arrives, in the interface's language. */
+  offline = "The highlight could not be saved. Check your connection and try again.",
 ): Promise<ActionResult> {
-  const key = keyOf(book, chapter);
+  const key = keyOf(translation, book, chapter);
   const change: Change = { id: nextChange++, verses: [...verses], color };
   const entry = entryFor(key);
   settle(key, { ...entry, pending: [...entry.pending, change] });
@@ -183,16 +210,13 @@ export function highlightVerses(
     let result: ActionResult;
     try {
       result = await setHighlight({
-        translation: translation.id,
+        translation,
         verses: verses.map((verse) => ({ book, chapter, verse })),
         color,
       });
     } catch {
       // The request never arrived, or its answer never came back.
-      result = {
-        ok: false,
-        message: "The highlight could not be saved. Check your connection and try again.",
-      };
+      result = { ok: false, message: offline };
     }
     const now = entryFor(key);
     const pending = now.pending.filter((item) => item.id !== change.id);
@@ -216,10 +240,11 @@ export function highlightVerses(
 export function putFavorite(favorite: FavoriteSummary) {
   for (const [key, entry] of entries) {
     if (!entry.confirmed) continue;
-    const [book, chapter] = key.split(".").map(Number);
+    const { translation, book, chapter } = placeOf(key);
     const others = entry.confirmed.favorites.filter((item) => item.id !== favorite.id);
     const touches =
-      favorite.translation === translation.id &&
+      isTranslationId(translation) &&
+      favorite.translation === translation &&
       favorite.verses.some((verse) => verse.book === book && verse.chapter === chapter);
     if (!touches && others.length === entry.confirmed.favorites.length) continue;
     settle(key, {

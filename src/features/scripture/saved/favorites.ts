@@ -20,13 +20,14 @@ import {
   bibleFavorites,
   bibleFavoriteVerses,
   bibleHighlights,
-  bibleVerses,
+  scriptureVerses,
   type BibleFavorite,
 } from "@/db/schema";
 import { isUniqueViolation, type Database } from "@/db/types";
 import { containing } from "@/features/ideas/ideas";
 import { searchTerms } from "@/features/ideas/library-query";
-import { highlightsInChapter } from "./highlights";
+import { translationIds, translations } from "../translations";
+import { highlightCounts, highlightsInChapter } from "./highlights";
 import {
   highlightColors,
   savedPageSize,
@@ -88,12 +89,17 @@ function selectionKey(verses: readonly VerseRef[]) {
   return createHash("sha256").update(canonicalKey(verses)).digest("hex");
 }
 
-/** The columns that follow from a favorite's verses. Written whenever the verses are. */
-function derived(verses: readonly VerseRef[]) {
+/**
+ * The columns that follow from a favorite's verses. Written whenever the
+ * verses are. The reference is written as its translation names the books
+ * ("Juan 3:16" for the Spanish text), because that is how its reader will
+ * look for it.
+ */
+function derived(verses: readonly VerseRef[], translation: TranslationId) {
   const [first] = verses;
   return {
     selectionKey: selectionKey(verses),
-    reference: formatVerseSet(verses),
+    reference: formatVerseSet(verses, translations[translation].language),
     firstBook: first.book,
     firstChapter: first.chapter,
     firstVerse: first.verse,
@@ -204,7 +210,7 @@ export async function createFavorite(
 ): Promise<SaveResult | null> {
   const verses = normaliseVerses(input.verses);
   if (verses.length === 0) return null;
-  const columns = derived(verses);
+  const columns = derived(verses, input.translation);
 
   return db.transaction(async (tx) => {
     const [created] = await tx
@@ -237,15 +243,24 @@ export async function createFavorite(
  * the change leaves out is left alone. New verses replace the old in the same
  * transaction. If they are the verses of another of the owner's favorites,
  * nothing is changed and that favorite is named: neither is overwritten.
+ *
+ * `among` is the translations on offer: a favorite in one that is not (the
+ * Spanish text while Spanish is switched off) is answered as missing, and is
+ * left exactly as it is.
  */
 export async function updateFavorite(
   db: Database,
   ownerId: string,
   id: string,
   change: FavoriteChange,
+  among: readonly TranslationId[] = translationIds,
 ): Promise<ChangeResult> {
   const verses = change.verses ? normaliseVerses(change.verses) : null;
-  const scoped = and(eq(bibleFavorites.id, id), eq(bibleFavorites.ownerId, ownerId));
+  const scoped = and(
+    eq(bibleFavorites.id, id),
+    eq(bibleFavorites.ownerId, ownerId),
+    inArray(bibleFavorites.translation, [...among]),
+  );
 
   /** The owner's other favorite with these verses, if there is one. */
   const clash = async (reader: Reader, translation: TranslationId, key: string) => {
@@ -269,7 +284,7 @@ export async function updateFavorite(
       const [current] = await tx.select().from(bibleFavorites).where(scoped).limit(1);
       if (!current) return { ok: false, reason: "missing" };
 
-      const columns = verses && verses.length > 0 ? derived(verses) : null;
+      const columns = verses && verses.length > 0 ? derived(verses, current.translation) : null;
       if (columns) {
         const conflictId = await clash(tx, current.translation, columns.selectionKey);
         if (conflictId) return { ok: false, reason: "conflict", conflictId };
@@ -312,12 +327,24 @@ export async function updateFavorite(
 
 /**
  * True when the owner's favorite was deleted. Its verse rows go with it and
- * nothing else does: not a highlight, not another favorite, not an idea.
+ * nothing else does: not a highlight, not another favorite, not an idea. One
+ * in a translation that is not on offer (`among`) is not found, and is kept.
  */
-export async function deleteFavorite(db: Database, ownerId: string, id: string): Promise<boolean> {
+export async function deleteFavorite(
+  db: Database,
+  ownerId: string,
+  id: string,
+  among: readonly TranslationId[] = translationIds,
+): Promise<boolean> {
   const deleted = await db
     .delete(bibleFavorites)
-    .where(and(eq(bibleFavorites.id, id), eq(bibleFavorites.ownerId, ownerId)))
+    .where(
+      and(
+        eq(bibleFavorites.id, id),
+        eq(bibleFavorites.ownerId, ownerId),
+        inArray(bibleFavorites.translation, [...among]),
+      ),
+    )
     .returning({ id: bibleFavorites.id });
   return deleted.length > 0;
 }
@@ -356,10 +383,50 @@ export async function favoritesInChapter(
   return withVerses(db, ownerId, rows);
 }
 
+/** How many of the owner's favorites touch one chapter, in each of these translations. */
+async function favoriteCounts(
+  db: Reader,
+  ownerId: string,
+  among: readonly TranslationId[],
+  book: number,
+  chapter: number,
+): Promise<Partial<Record<TranslationId, number>>> {
+  if (among.length === 0) return {};
+  const rows = await db
+    .select({ translation: bibleFavorites.translation, total: count() })
+    .from(bibleFavorites)
+    .where(
+      and(
+        eq(bibleFavorites.ownerId, ownerId),
+        inArray(bibleFavorites.translation, [...among]),
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(bibleFavoriteVerses)
+            .where(
+              and(
+                eq(bibleFavoriteVerses.favoriteId, bibleFavorites.id),
+                eq(bibleFavoriteVerses.ownerId, ownerId),
+                eq(bibleFavoriteVerses.book, book),
+                eq(bibleFavoriteVerses.chapter, chapter),
+              ),
+            ),
+        ),
+      ),
+    )
+    .groupBy(bibleFavorites.translation);
+  return Object.fromEntries(rows.map((row) => [row.translation, row.total]));
+}
+
 /**
  * Everything the reader needs to mark one chapter for one account: the
- * highlights in it and the favorites that touch it. Two reads, whatever the
- * chapter's length.
+ * highlights in it and the favorites that touch it, in one translation. Two
+ * reads, whatever the chapter's length.
+ *
+ * `offered` is the translations on offer. Marks are never carried from one
+ * translation to another, so for each of the others the answer says how many
+ * the account has in this chapter (`elsewhere`), in two reads more, and a
+ * reader of one text is told about what they marked in the other.
  */
 export async function getChapterMarks(
   db: Reader,
@@ -367,12 +434,24 @@ export async function getChapterMarks(
   translation: TranslationId,
   book: number,
   chapter: number,
+  offered: readonly TranslationId[] = [],
 ): Promise<ChapterMarks> {
-  const [highlights, favorites] = await Promise.all([
+  const others = offered.filter((id) => id !== translation);
+  const [highlights, favorites, otherHighlights, otherFavorites] = await Promise.all([
     highlightsInChapter(db, ownerId, translation, book, chapter),
     favoritesInChapter(db, ownerId, translation, book, chapter),
+    highlightCounts(db, ownerId, others, book, chapter),
+    favoriteCounts(db, ownerId, others, book, chapter),
   ]);
+  const elsewhere = others
+    .map((id) => ({
+      translation: id,
+      highlights: otherHighlights[id] ?? 0,
+      favorites: otherFavorites[id] ?? 0,
+    }))
+    .filter((marks) => marks.highlights + marks.favorites > 0);
   return {
+    ...(elsewhere.length > 0 ? { elsewhere } : {}),
     highlights,
     favorites: favorites.map(({ id, reference, label, notes, verses }) => ({
       id,
@@ -401,9 +480,22 @@ const sortOrders: Record<SavedSort, SQL[]> = {
   ],
 };
 
-/** Everything a query asks of a favorite, as conditions that must all hold. */
-function savedConditions(db: Reader, ownerId: string, query: SavedQuery) {
-  const conditions: (SQL | undefined)[] = [eq(bibleFavorites.ownerId, ownerId)];
+/**
+ * Everything a query asks of a favorite, as conditions that must all hold.
+ * `among` is the translations on offer, and holds whatever the query asks:
+ * a passage saved from a translation that is not on offer is not found.
+ */
+function savedConditions(
+  db: Reader,
+  ownerId: string,
+  query: SavedQuery,
+  among: readonly TranslationId[],
+) {
+  const conditions: (SQL | undefined)[] = [
+    eq(bibleFavorites.ownerId, ownerId),
+    inArray(bibleFavorites.translation, [...among]),
+  ];
+  if (query.translation) conditions.push(eq(bibleFavorites.translation, query.translation));
 
   // Every word must be found, each in the reference, the label, or the notes.
   for (const term of searchTerms(query.q)) {
@@ -485,7 +577,7 @@ async function colorsFor(db: Reader, ownerId: string, ids: string[]) {
   return byFavorite;
 }
 
-/** The first few verses of each of these favorites, with their text, in one query. */
+/** The first few verses of each of these favorites, with their text in its own translation, in one query. */
 async function previewsFor(db: Reader, ownerId: string, ids: string[]) {
   const byFavorite = new Map<string, (VerseRef & { text: string })[]>();
   if (ids.length === 0) return byFavorite;
@@ -495,15 +587,23 @@ async function previewsFor(db: Reader, ownerId: string, ids: string[]) {
       book: bibleFavoriteVerses.book,
       chapter: bibleFavoriteVerses.chapter,
       verse: bibleFavoriteVerses.verse,
-      text: bibleVerses.text,
+      text: scriptureVerses.text,
     })
     .from(bibleFavoriteVerses)
     .innerJoin(
-      bibleVerses,
+      bibleFavorites,
       and(
-        eq(bibleVerses.book, bibleFavoriteVerses.book),
-        eq(bibleVerses.chapter, bibleFavoriteVerses.chapter),
-        eq(bibleVerses.verse, bibleFavoriteVerses.verse),
+        eq(bibleFavorites.id, bibleFavoriteVerses.favoriteId),
+        eq(bibleFavorites.ownerId, ownerId),
+      ),
+    )
+    .innerJoin(
+      scriptureVerses,
+      and(
+        eq(scriptureVerses.translation, bibleFavorites.translation),
+        eq(scriptureVerses.book, bibleFavoriteVerses.book),
+        eq(scriptureVerses.chapter, bibleFavoriteVerses.chapter),
+        eq(scriptureVerses.verse, bibleFavoriteVerses.verse),
       ),
     )
     .where(
@@ -528,15 +628,17 @@ const maxPageSize = 100;
  * counted by the database. Only the passages on the page are read, and their
  * verses, colors, and opening text come in three further queries however
  * many passages there are. A page past the end returns the last page.
+ * `among` is the translations on offer; passages from any other are not listed.
  */
 export async function searchFavorites(
   db: Database,
   ownerId: string,
   query: SavedQuery,
   pageSize: number = savedPageSize,
+  among: readonly TranslationId[] = translationIds,
 ): Promise<SavedPage> {
   const size = Math.min(Math.max(Math.trunc(pageSize) || savedPageSize, 1), maxPageSize);
-  const where = savedConditions(db, ownerId, query);
+  const where = savedConditions(db, ownerId, query, among);
 
   const [{ total }] = await db.select({ total: count() }).from(bibleFavorites).where(where);
   const totalPages = Math.ceil(total / size);
@@ -570,11 +672,17 @@ export async function searchFavorites(
   };
 }
 
-/** How many passages the owner has saved, whatever is being searched for. */
-export async function countFavorites(db: Reader, ownerId: string): Promise<number> {
+/** How many passages the owner has saved from the translations on offer, whatever is being searched for. */
+export async function countFavorites(
+  db: Reader,
+  ownerId: string,
+  among: readonly TranslationId[] = translationIds,
+): Promise<number> {
   const [{ total }] = await db
     .select({ total: count() })
     .from(bibleFavorites)
-    .where(eq(bibleFavorites.ownerId, ownerId));
+    .where(
+      and(eq(bibleFavorites.ownerId, ownerId), inArray(bibleFavorites.translation, [...among])),
+    );
   return total;
 }

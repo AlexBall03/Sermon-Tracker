@@ -8,6 +8,7 @@ import { Logo } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useQuickCapture } from "@/features/ideas/components/quick-capture";
+import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { AccountMenu, useAccountActions, useAccountIdentity } from "./account-menu";
 import { appLinks, type AppLink } from "./app-links";
@@ -28,7 +29,8 @@ type IsCurrent = (href: string) => boolean;
 export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const capture = useQuickCapture();
-  const links = appLinks();
+  const t = useT("navigation");
+  const links = appLinks(t);
   const isCurrent: IsCurrent = (href) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
@@ -38,13 +40,13 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
           <Link
             href={routes.dashboard}
             className="flex items-center rounded-md transition-opacity duration-150 hover:opacity-80"
-            aria-label="Sermon Tracker dashboard"
+            aria-label={t.home}
           >
             <Logo />
           </Link>
 
           <nav
-            aria-label="Application"
+            aria-label={t.application}
             className="hidden flex-1 items-center justify-between gap-6 md:flex"
           >
             <ul className="flex items-center gap-0.5">
@@ -76,7 +78,7 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
                   className="size-4 text-primary transition-transform duration-300 ease-out group-hover/capture:rotate-90"
                   aria-hidden
                 />
-                Capture
+                {t.capture}
               </button>
               <AccountMenu isAdmin={isAdmin} />
             </div>
@@ -106,6 +108,7 @@ function TabBar({
   isCurrent: IsCurrent;
   onCapture: () => void;
 }) {
+  const t = useT("navigation");
   const middle = Math.ceil(links.length / 2);
   const tab = ({ href, label, icon: Icon }: AppLink) => (
     <li key={href} className="flex-1">
@@ -121,7 +124,7 @@ function TabBar({
   );
   return (
     <nav
-      aria-label="Sections"
+      aria-label={t.sections}
       className="fixed inset-x-0 bottom-0 z-40 border-t glass pb-(--bar-lift) md:hidden"
     >
       <ul className="container-page flex h-bar items-stretch">
@@ -129,7 +132,7 @@ function TabBar({
         <li className="flex flex-1 items-center justify-center">
           <button
             type="button"
-            aria-label="Capture an idea"
+            aria-label={t.captureIdea}
             onClick={onCapture}
             // The bar's Capture control as a disc: outlined, the plus in emerald, the same breathing edge.
             className="group/capture breathe-ring grid size-11 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,background-color,box-shadow,scale] duration-300 ease-out hover:border-primary hover:shadow-focus active:scale-[0.96] active:bg-foreground/5"
@@ -158,10 +161,11 @@ function AccountSheet({ isAdmin, isCurrent }: { isAdmin: boolean; isCurrent: IsC
   const { open, mounted, buttonRef, toggle, close, panelProps, scrimProps } = useNavPanel();
   const { name, email, initials, imageUrl } = useAccountIdentity();
   const { signOut } = useAccountActions();
+  const t = useT("navigation");
 
   const items = [
-    { href: routes.settings, label: "Settings", icon: Settings },
-    ...(isAdmin ? [{ href: routes.admin, label: "Administration", icon: ShieldCheck }] : []),
+    { href: routes.settings, label: t.settings, icon: Settings },
+    ...(isAdmin ? [{ href: routes.admin, label: t.administration, icon: ShieldCheck }] : []),
   ];
 
   return (
@@ -172,7 +176,7 @@ function AccountSheet({ isAdmin, isCurrent }: { isAdmin: boolean; isCurrent: IsC
         aria-expanded={open}
         aria-controls="app-account-sheet"
         data-nav-toggle
-        aria-label={open ? "Close account menu" : "Open account menu"}
+        aria-label={open ? t.closeAccountMenu : t.openAccountMenu}
         onClick={toggle}
         className="grid size-9 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/70 aria-expanded:border-ring aria-expanded:shadow-focus pointer-coarse:size-10"
       >
@@ -226,7 +230,7 @@ function AccountSheet({ isAdmin, isCurrent }: { isAdmin: boolean; isCurrent: IsC
               <div style={row(items.length + 1)} className="animate-menu-row pt-5">
                 <Button variant="secondary" className="w-full" onClick={signOut}>
                   <LogOut aria-hidden />
-                  Sign out
+                  {t.signOut}
                 </Button>
               </div>
             </nav>

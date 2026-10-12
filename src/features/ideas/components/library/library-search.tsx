@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { normaliseSearch } from "../../library-query";
 import { searchLimits } from "../../model";
@@ -27,13 +28,14 @@ type SearchBoxProps = {
 /** The ideas' search box. */
 export function LibrarySearch({ className }: { className?: string }) {
   const { query, apply } = useLibrary();
+  const t = useT("library").search;
   return (
     <SearchBox
       q={query.q}
       apply={apply as SearchBoxProps["apply"]}
-      label="Search ideas"
-      landmark="Search your library"
-      placeholder="Search titles, subjects, and notes..."
+      label={t.label}
+      landmark={t.landmark}
+      placeholder={t.placeholder}
       className={className}
     />
   );
@@ -53,6 +55,7 @@ export function LibrarySearch({ className }: { className?: string }) {
  */
 export function SearchBox({ q, apply, label, landmark, placeholder, className }: SearchBoxProps) {
   const id = useId();
+  const clear = useT("library").search.clear;
   const [text, setText] = useState(q);
   // What this box last asked for. A query that differs came from elsewhere.
   const [sent, setSent] = useState(q);
@@ -126,7 +129,7 @@ export function SearchBox({ q, apply, label, landmark, placeholder, className }:
       {text && (
         <button
           type="button"
-          aria-label="Clear search"
+          aria-label={clear}
           onClick={() => {
             setText("");
             submit("", "push");

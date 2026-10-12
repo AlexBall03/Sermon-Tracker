@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { translationParam } from "./reader-location";
+import type { TranslationId } from "./translations";
+
 /** One chapter as it is read: its verses, and the title above them where it has one. */
 export type ChapterText = {
   /** Index 0 is verse 1. */
@@ -10,22 +13,30 @@ export type ChapterText = {
   title: string | null;
 };
 
-// Chapters already read in this tab. The text never changes, so they are kept
-// for the life of the page; only what has been opened is ever held.
+// Chapters already read in this tab, each under its translation. The text never
+// changes, so they are kept for the life of the page; only what has been opened
+// is ever held. Switching translation and back therefore costs no request.
 const loaded = new Map<string, ChapterText>();
 const pending = new Map<string, Promise<ChapterText>>();
 
-const keyOf = (book: number, chapter: number) => `${book}.${chapter}`;
+const keyOf = (translation: TranslationId, book: number, chapter: number) =>
+  `${translation}.${book}.${chapter}`;
 
-/** Fetches one chapter of the King James Bible, once. */
-export function loadChapter(book: number, chapter: number): Promise<ChapterText> {
-  const key = keyOf(book, chapter);
+/** Fetches one chapter of one translation, once. */
+export function loadChapter(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+): Promise<ChapterText> {
+  const key = keyOf(translation, book, chapter);
   const ready = loaded.get(key);
   if (ready) return Promise.resolve(ready);
 
   let request = pending.get(key);
   if (!request) {
-    request = fetch(`/api/bible/${book}/${chapter}`, { headers: { Accept: "application/json" } })
+    request = fetch(`/api/bible/${book}/${chapter}?${translationParam}=${translation}`, {
+      headers: { Accept: "application/json" },
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Chapter request failed: ${response.status}`);
         const body = (await response.json()) as { verses: string[]; title?: string | null };
@@ -40,8 +51,13 @@ export function loadChapter(book: number, chapter: number): Promise<ChapterText>
 }
 
 /** Keeps a chapter that arrived another way (with the page), so it is not fetched again. */
-export function keepChapter(book: number, chapter: number, text: ChapterText) {
-  const key = keyOf(book, chapter);
+export function keepChapter(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+  text: ChapterText,
+) {
+  const key = keyOf(translation, book, chapter);
   if (!loaded.has(key)) loaded.set(key, text);
 }
 
@@ -51,22 +67,26 @@ export type ChapterState =
   | { status: "error"; retry: () => void };
 
 /** A chapter's verses for display: index 0 is verse 1. */
-export function useChapter(book: number, chapter: number): ChapterState {
-  const key = keyOf(book, chapter);
+export function useChapter(
+  translation: TranslationId,
+  book: number,
+  chapter: number,
+): ChapterState {
+  const key = keyOf(translation, book, chapter);
   const [settled, setSettled] = useState<{ key: string; failed: boolean } | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (loaded.has(key)) return;
     let current = true;
-    loadChapter(book, chapter).then(
+    loadChapter(translation, book, chapter).then(
       () => current && setSettled({ key, failed: false }),
       () => current && setSettled({ key, failed: true }),
     );
     return () => {
       current = false;
     };
-  }, [book, chapter, key, attempt]);
+  }, [translation, book, chapter, key, attempt]);
 
   const retry = useCallback(() => {
     setSettled(null);

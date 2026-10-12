@@ -7,6 +7,8 @@ import { BookOpen, ChevronDown, ExternalLink, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReading } from "@/features/preferences/client";
+import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { readerHref, referenceLocation } from "../reader-location";
 import {
@@ -17,6 +19,7 @@ import {
   referenceKey,
   type ScriptureReference,
 } from "../reference";
+import { translations } from "../translations";
 import { Passage } from "./passage-text";
 import { ReferenceChip } from "./reference-chip";
 import { useScripture } from "./scripture-provider";
@@ -76,10 +79,13 @@ function ReferenceRow({
 }) {
   const id = useId();
   const scripture = useScripture();
+  const t = useT("scripture").field;
+  const locale = useLocale();
+  const { translation } = useReading();
   const [open, setOpen] = useState(false);
   // Once opened, the text stays mounted, so closing and opening again is only the motion.
   const [opened, setOpened] = useState(false);
-  const name = formatReference(reference);
+  const name = formatReference(reference, locale);
   const more = countReferenceVerses(reference) > rowVerses;
 
   return (
@@ -89,7 +95,7 @@ function ReferenceRow({
           type="button"
           aria-expanded={open}
           aria-controls={`${id}-text`}
-          aria-label={`${name}: ${open ? "hide" : "show"} the passage`}
+          aria-label={t.togglePassage(name, open)}
           onClick={() => {
             setOpen((shown) => !shown);
             setOpened(true);
@@ -107,13 +113,13 @@ function ReferenceRow({
             {name}
           </span>
           {allowPrimary && reference.isPrimary && (
-            <span className="shrink-0 text-xs font-semibold text-gold-ink">Main text</span>
+            <span className="shrink-0 text-xs font-semibold text-gold-ink">{t.mainText}</span>
           )}
         </button>
         <Link
           href={readerHref(referenceLocation(reference, origin))}
-          aria-label={`Open ${name} in the Bible`}
-          title="Open in the Bible"
+          aria-label={t.openNamed(name)}
+          title={t.openInTheBible}
           className={cn(rowButton, "border-l")}
         >
           <ExternalLink className="size-4" aria-hidden />
@@ -122,8 +128,8 @@ function ReferenceRow({
           <button
             type="button"
             aria-pressed={reference.isPrimary}
-            aria-label={`${name}: main text`}
-            title={reference.isPrimary ? "Main text" : "Make this the main text"}
+            aria-label={t.mainTextOf(name)}
+            title={reference.isPrimary ? t.mainText : t.makeMain}
             onClick={onTogglePrimary}
             className={cn(rowButton, "border-l", reference.isPrimary && "text-gold-ink")}
           >
@@ -132,8 +138,8 @@ function ReferenceRow({
         )}
         <button
           type="button"
-          aria-label={`Remove ${name}`}
-          title="Remove"
+          aria-label={t.removeNamed(name)}
+          title={t.remove}
           onClick={onRemove}
           className={cn(rowButton, "border-l hover:text-destructive")}
         >
@@ -161,14 +167,16 @@ function ReferenceRow({
                   onClick={() =>
                     scripture.openPanel({
                       reference,
-                      attach: { label: "Update reference", onAttach: onChange },
+                      attach: { label: t.updateReference, onAttach: onChange },
                     })
                   }
                 >
                   <BookOpen aria-hidden />
-                  {more ? "Read all or change" : "Read or change"}
+                  {more ? t.readAllOrChange : t.readOrChange}
                 </Button>
-                <span className="text-xs text-muted-foreground">King James Version</span>
+                <span className="text-xs text-muted-foreground">
+                  {translations[translation].name}
+                </span>
               </div>
             </div>
           )}
@@ -181,7 +189,7 @@ function ReferenceRow({
 /**
  * The Scripture selector: the references chosen so far, a box to type one
  * ("John 3:16", then Enter), and Browse for the panel. Everything it adds is
- * checked against the King James Bible first. Changing the list never touches
+ * checked against the Bible first. Changing the list never touches
  * the rest of the form it sits in.
  */
 export function ScriptureField({
@@ -191,11 +199,14 @@ export function ScriptureField({
   max = 25,
   layout = "chips",
   origin,
-  label = "Scripture",
+  label,
   className,
 }: ScriptureFieldProps) {
   const id = useId();
   const scripture = useScripture();
+  const t = useT("scripture").field;
+  const locale = useLocale();
+  const named = (references: readonly ScriptureReference[]) => formatReferences(references, locale);
   const [entry, setEntry] = useState("");
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const full = value.length >= max;
@@ -208,14 +219,11 @@ export function ScriptureField({
   function add(references: ScriptureReference[]) {
     const fresh = references.filter((reference) => !has(value, reference));
     if (fresh.length === 0) {
-      return setMessage({
-        text: `${formatReferences(references)} is already here.`,
-        error: false,
-      });
+      return setMessage({ text: t.alreadyHere(named(references)), error: false });
     }
     const room = max - value.length;
     if (room <= 0) {
-      return setMessage({ text: `An idea can hold up to ${max} references.`, error: true });
+      return setMessage({ text: t.full(max), error: true });
     }
     onChange((current) => {
       const next = [...current];
@@ -229,11 +237,8 @@ export function ScriptureField({
     });
     setMessage(
       fresh.length > room
-        ? {
-            text: `Only ${room} more would fit: an idea can hold up to ${max} references.`,
-            error: true,
-          }
-        : { text: `${formatReferences(fresh)} added.`, error: false },
+        ? { text: t.onlyRoom(room, max), error: true }
+        : { text: t.added(named(fresh)), error: false },
     );
   }
 
@@ -254,13 +259,13 @@ export function ScriptureField({
         }));
       return [...current.slice(0, at), ...fresh, ...current.slice(at + 1)];
     });
-    setMessage({ text: `Changed to ${formatReferences(chosen)}.`, error: false });
+    setMessage({ text: t.changed(named(chosen)), error: false });
   }
 
   function remove(reference: ScriptureReference) {
     const key = referenceKey(reference);
     onChange((current) => current.filter((item) => referenceKey(item) !== key));
-    setMessage({ text: `${formatReference(reference)} removed.`, error: false });
+    setMessage({ text: t.removed(formatReference(reference, locale)), error: false });
   }
 
   function togglePrimary(reference: ScriptureReference) {
@@ -282,7 +287,7 @@ export function ScriptureField({
 
   function submitEntry() {
     if (!entry.trim()) return;
-    const result = parseReference(entry);
+    const result = parseReference(entry, locale);
     if (!result.ok) return setMessage({ text: result.message, error: true });
     add([result.reference]);
     setEntry("");
@@ -290,10 +295,10 @@ export function ScriptureField({
 
   return (
     <div className={className}>
-      <Label htmlFor={`${id}-entry`}>{label}</Label>
+      <Label htmlFor={`${id}-entry`}>{label ?? t.label}</Label>
 
       {value.length > 0 && layout === "rows" && (
-        <ul aria-label="References" className="mt-2 space-y-2">
+        <ul aria-label={t.references} className="mt-2 space-y-2">
           {value.map((reference) => (
             <ReferenceRow
               key={referenceKey(reference)}
@@ -308,9 +313,9 @@ export function ScriptureField({
         </ul>
       )}
       {value.length > 0 && layout === "chips" && (
-        <ul aria-label="References" className="mt-2 flex flex-wrap gap-2">
+        <ul aria-label={t.references} className="mt-2 flex flex-wrap gap-2">
           {value.map((reference) => {
-            const name = formatReference(reference);
+            const name = formatReference(reference, locale);
             return (
               <li
                 key={referenceKey(reference)}
@@ -327,8 +332,8 @@ export function ScriptureField({
                   <button
                     type="button"
                     aria-pressed={reference.isPrimary}
-                    aria-label={`${name}: main text`}
-                    title={reference.isPrimary ? "Main text" : "Make this the main text"}
+                    aria-label={t.mainTextOf(name)}
+                    title={reference.isPrimary ? t.mainText : t.makeMain}
                     onClick={() => togglePrimary(reference)}
                     className={cn(iconButton, "border-l", reference.isPrimary && "text-gold-ink")}
                   >
@@ -340,7 +345,7 @@ export function ScriptureField({
                 )}
                 <button
                   type="button"
-                  aria-label={`Remove ${name}`}
+                  aria-label={t.removeNamed(name)}
                   onClick={() => remove(reference)}
                   className={cn(iconButton, "rounded-r-md border-l hover:text-destructive")}
                 >
@@ -366,7 +371,7 @@ export function ScriptureField({
             event.preventDefault();
             submitEntry();
           }}
-          placeholder="John 3:16, Romans 12:1-2, Psalm 23"
+          placeholder={t.placeholder}
           autoComplete="off"
           autoCapitalize="words"
           spellCheck={false}
@@ -376,7 +381,7 @@ export function ScriptureField({
         />
         {entry.trim() ? (
           <Button type="button" variant="outline" onClick={submitEntry}>
-            Add
+            {t.add}
           </Button>
         ) : (
           <Button
@@ -386,7 +391,7 @@ export function ScriptureField({
             onClick={() =>
               scripture.openPanel({
                 attach: {
-                  label: "Add to idea",
+                  label: t.addToIdea,
                   repeatable: true,
                   onAttach: (references) => latestAdd.current(references),
                 },
@@ -394,7 +399,7 @@ export function ScriptureField({
             }
           >
             <BookOpen aria-hidden />
-            Browse
+            {t.browse}
           </Button>
         )}
       </div>
@@ -407,8 +412,7 @@ export function ScriptureField({
           message?.error ? "font-medium text-destructive" : "text-muted-foreground",
         )}
       >
-        {message?.text ??
-          (allowPrimary && value.length > 1 ? "The star marks the sermon's main text." : "")}
+        {message?.text ?? (allowPrimary && value.length > 1 ? t.starHint : "")}
       </p>
     </div>
   );

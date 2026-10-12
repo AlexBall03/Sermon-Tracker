@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import Link from "next/link";
 import { CircleCheck, X } from "lucide-react";
 
+import { useT } from "@/i18n/client";
+
 type Toast = {
   message: string;
   /** One follow-up, such as opening what was just saved. */
@@ -34,6 +36,7 @@ export function ToastProvider({
   /** The shell shows the small-screen tab bar, so the message sits above it there. */
   aboveTabBar?: boolean;
 }) {
+  const dismissLabel = useT("navigation").dismiss;
   const [toast, setToast] = useState<Shown | null>(null);
   const show = useCallback((next: Toast) => setToast({ ...next, key: Date.now() }), []);
   const dismiss = useCallback(() => setToast(null), []);
@@ -74,7 +77,7 @@ export function ToastProvider({
             )}
             <button
               type="button"
-              aria-label="Dismiss"
+              aria-label={dismissLabel}
               onClick={dismiss}
               className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10"
             >

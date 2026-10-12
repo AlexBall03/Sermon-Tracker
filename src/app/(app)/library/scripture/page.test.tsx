@@ -132,25 +132,39 @@ describe("the saved Scripture section", () => {
   it("asks for the signed-in account's passages with the query from the address", async () => {
     state.favorites = [favorite()];
     await show("q=grace&book=45&color=yellow&sort=bible&page=2&owner=someone-else");
-    expect(state.searchFavorites).toHaveBeenCalledWith("database", "owner-1", {
-      q: "grace",
-      book: 45,
-      colors: ["yellow"],
-      sort: "bible",
-      page: 2,
-    });
+    expect(state.searchFavorites).toHaveBeenCalledWith(
+      "database",
+      "owner-1",
+      {
+        q: "grace",
+        book: 45,
+        translation: null,
+        colors: ["yellow"],
+        sort: "bible",
+        page: 2,
+      },
+      undefined,
+      ["kjv", "rvg"],
+    );
   });
 
   it("reads a nonsense address as the default query", async () => {
     state.favorites = [favorite()];
     await show("book=999&color=pink&sort=drop&page=-1");
-    expect(state.searchFavorites).toHaveBeenCalledWith("database", "owner-1", {
-      q: "",
-      book: null,
-      colors: [],
-      sort: "saved-desc",
-      page: 1,
-    });
+    expect(state.searchFavorites).toHaveBeenCalledWith(
+      "database",
+      "owner-1",
+      {
+        q: "",
+        book: null,
+        translation: null,
+        colors: [],
+        sort: "saved-desc",
+        page: 1,
+      },
+      undefined,
+      ["kjv", "rvg"],
+    );
   });
 
   it("belongs to the library: its heading, and the way between its sections", async () => {
@@ -174,7 +188,7 @@ describe("the saved Scripture section", () => {
     expect(within(gospel).getByRole("heading", { level: 3 })).toHaveTextContent("The gospel");
     expect(within(gospel).getByRole("link", { name: /John 3:16–17/ })).toHaveAttribute(
       "href",
-      "/bible?book=43&chapter=3&verse=16",
+      "/bible?book=43&chapter=3&verse=16&t=kjv",
     );
     expect(gospel).toHaveTextContent("For God so loved the world.");
     expect(gospel).toHaveTextContent("For Easter.");
@@ -188,7 +202,7 @@ describe("the saved Scripture section", () => {
     );
     expect(within(road).getByRole("link", { name: /Romans 3:10, 23; 6:23/ })).toHaveAttribute(
       "href",
-      "/bible?book=45&chapter=3&verse=10",
+      "/bible?book=45&chapter=3&verse=10&t=kjv",
     );
     expect(road).not.toHaveTextContent("Highlighted");
     expect(screen.getByText("2 saved passages")).toHaveAttribute("role", "status");
@@ -270,7 +284,7 @@ describe("the saved Scripture section", () => {
     state.saved = 0;
     await show("q=zebra");
     expect(screen.getByRole("heading", { name: "No Scripture saved yet" })).toBeInTheDocument();
-    expect(state.countFavorites).toHaveBeenCalledWith("database", "owner-1");
+    expect(state.countFavorites).toHaveBeenCalledWith("database", "owner-1", ["kjv", "rvg"]);
   });
 });
 
@@ -350,7 +364,7 @@ describe("managing a saved passage from the library", () => {
     expect(within(dialog).getByLabelText(/^Notes/)).toHaveValue("For Easter.");
     expect(within(dialog).getByRole("link", { name: "Open in Bible" })).toHaveAttribute(
       "href",
-      "/bible?book=43&chapter=3&verse=16",
+      "/bible?book=43&chapter=3&verse=16&t=kjv",
     );
 
     fireEvent.change(within(dialog).getByLabelText(/^Label/), { target: { value: "Renamed" } });

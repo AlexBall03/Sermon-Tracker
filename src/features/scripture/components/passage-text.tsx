@@ -3,10 +3,14 @@
 import { Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useReading } from "@/features/preferences/client";
+import { useT } from "@/i18n/client";
+import type { Locale } from "@/i18n/locales";
 import { cn } from "@/lib/utils";
 import { referenceSpans, type ChapterSpan, type ScriptureReference } from "../reference";
 import { highlightBackground } from "../saved/highlight-style";
-import { highlightColorLabels, type HighlightColor } from "../saved/model";
+import type { HighlightColor } from "../saved/model";
+import { translations, type TranslationId } from "../translations";
 import { useChapter } from "../use-chapter";
 
 type VerseRange = { from: number; to: number };
@@ -49,6 +53,11 @@ type PassageTextProps = {
   located?: number | null;
   /** `reader` is the Bible page: larger type and more air than a panel has room for. */
   size?: "default" | "reader";
+  /**
+   * The language of the text, when it may not be the interface's: said on the
+   * element, so a screen reader pronounces Spanish text as Spanish.
+   */
+  lang?: Locale;
   className?: string;
 };
 
@@ -82,8 +91,10 @@ export function PassageText({
   superscription,
   located,
   size = "default",
+  lang,
   className,
 }: PassageTextProps) {
+  const t = useT("scripture").passage;
   const from = show?.from ?? 1;
   const to = Math.min(show?.to ?? verses.length, verses.length);
   const chosen = new Set(selected);
@@ -115,8 +126,8 @@ export function PassageText({
           {/* Said as well as shown: neither mark rests on color or a glyph alone. */}
           {(highlight || favorite) && (
             <span className="sr-only">
-              {highlight && ` Highlighted ${highlightColorLabels[highlight].toLowerCase()}.`}
-              {favorite && " In your favorites."}
+              {highlight && ` ${t.highlighted(highlight)}`}
+              {favorite && ` ${t.inFavorites}`}
             </span>
           )}
         </span>
@@ -166,6 +177,7 @@ export function PassageText({
 
   return (
     <div
+      lang={lang}
       className={cn(
         "font-serif text-foreground",
         reader
@@ -192,9 +204,10 @@ export function PassageText({
 
 /** Lines standing in for verses while a chapter loads. */
 export function PassageSkeleton({ lines = 3 }: { lines?: number }) {
+  const t = useT("scripture").passage;
   return (
     <div role="status" aria-live="polite" className="space-y-2.5 px-2 py-1.5">
-      <span className="sr-only">Loading the passage</span>
+      <span className="sr-only">{t.loading}</span>
       {Array.from({ length: lines }, (_, index) => (
         <div
           key={index}
@@ -207,37 +220,42 @@ export function PassageSkeleton({ lines = 3 }: { lines?: number }) {
 }
 
 export function PassageError({ retry }: { retry: () => void }) {
+  const t = useT("scripture").passage;
   return (
     <div role="alert" className="px-2 py-1.5 text-sm text-muted-foreground">
-      <p>The passage could not be loaded.</p>
+      <p>{t.unavailable}</p>
       <Button variant="outline" size="sm" className="mt-3" onClick={retry}>
-        Try again
+        {t.tryAgain}
       </Button>
     </div>
   );
 }
 
 function SpanText({
+  translation,
   span,
   heading,
   limit,
 }: {
+  translation: TranslationId;
   span: ChapterSpan;
   heading: boolean;
   limit: number;
 }) {
-  const chapter = useChapter(span.book, span.chapter);
+  const t = useT("scripture").passage;
+  const chapter = useChapter(translation, span.book, span.chapter);
   return (
     <div>
       {heading && (
         <p className="mb-1 px-2 font-sans text-xs font-semibold text-muted-foreground">
-          Chapter {span.chapter}
+          {t.chapter(span.chapter)}
         </p>
       )}
       {chapter.status === "loading" && <PassageSkeleton />}
       {chapter.status === "error" && <PassageError retry={chapter.retry} />}
       {chapter.status === "ready" && (
         <PassageText
+          lang={translations[translation].language}
           verses={chapter.verses}
           show={{ from: span.from, to: Math.min(span.to, span.from + limit - 1) }}
         />
@@ -247,18 +265,24 @@ function SpanText({
 }
 
 /**
- * The text of a reference, fetched a chapter at a time. `limit` caps how many
- * verses are shown, for a preview; the caller is told how many were left out.
+ * The text of a reference, fetched a chapter at a time, in the account's own
+ * translation unless another is named. `limit` caps how many verses are
+ * shown, for a preview; the caller is told how many were left out.
  */
 export function Passage({
   reference,
   limit = Infinity,
+  translation,
   className,
 }: {
   reference: ScriptureReference;
   limit?: number;
+  translation?: TranslationId;
   className?: string;
 }) {
+  const t = useT("scripture").passage;
+  const reading = useReading();
+  const shownIn = translation ?? reading.translation;
   const spans = referenceSpans(reference);
   let room = limit;
   const shown: { span: ChapterSpan; take: number }[] = [];
@@ -274,13 +298,15 @@ export function Passage({
   return (
     <div className={cn("space-y-4", className)}>
       {shown.map(({ span, take }) => (
-        <SpanText key={span.chapter} span={span} heading={spans.length > 1} limit={take} />
+        <SpanText
+          key={span.chapter}
+          translation={shownIn}
+          span={span}
+          heading={spans.length > 1}
+          limit={take}
+        />
       ))}
-      {hidden > 0 && (
-        <p className="px-2 text-sm text-muted-foreground">
-          And {hidden} more {hidden === 1 ? "verse" : "verses"}.
-        </p>
-      )}
+      {hidden > 0 && <p className="px-2 text-sm text-muted-foreground">{t.more(hidden)}</p>}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-import { bibleBooks, chaptersIn, findBook, getBook, versesIn } from "./books";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
+import { bibleBooks, chapterBookName, chaptersIn, findBook, getBook, versesIn } from "./books";
 
 /**
  * A passage, as numbers. This is the one shape used by the database, the
@@ -23,37 +25,44 @@ export type ScriptureReference = {
   verseEnd: number | null;
 };
 
-/** Why a reference does not exist in the King James Bible, or null when it does. */
-export function checkReference(reference: ScriptureReference): string | null {
+/**
+ * Why a reference does not exist in the Bible, or null when it does. The
+ * reason is said in `locale`. Every translation numbers alike, so what
+ * exists in one exists in all.
+ */
+export function checkReference(
+  reference: ScriptureReference,
+  locale: Locale = defaultLocale,
+): string | null {
+  const t = dictionary(locale, "scripture").reference;
   const { book, chapterStart, verseStart, chapterEnd, verseEnd } = reference;
-  const name = getBook(book)?.name;
-  if (!name) return "That is not a book of the Bible.";
+  const name = getBook(book, locale)?.name;
+  if (!name) return t.notABook;
 
   const chapters = chaptersIn(book);
   const lastChapter = chapterEnd ?? chapterStart;
   for (const chapter of [chapterStart, lastChapter]) {
     if (!Number.isInteger(chapter) || chapter < 1 || chapter > chapters) {
-      return chapters === 1
-        ? `${name} has one chapter.`
-        : `${name} has ${chapters} chapters; there is no chapter ${chapter}.`;
+      return chapters === 1 ? t.oneChapter(name) : t.noChapter(name, chapters, chapter);
     }
   }
-  if (chapterEnd !== null && chapterEnd <= chapterStart) return "A range must end after it starts.";
-  if (verseEnd !== null && verseStart === null) return "A range needs a starting verse.";
+  if (chapterEnd !== null && chapterEnd <= chapterStart) return t.rangeBackwards;
+  if (verseEnd !== null && verseStart === null) return t.rangeNeedsStart;
   if (chapterEnd !== null && (verseStart === null) !== (verseEnd === null)) {
-    return "Give a verse at both ends of the range, or at neither.";
+    return t.rangeHalfVerses;
   }
 
   const outOfRange = (chapter: number, verse: number | null) => {
     if (verse === null) return null;
     const verses = versesIn(book, chapter);
     if (Number.isInteger(verse) && verse >= 1 && verse <= verses) return null;
-    return `${chapters === 1 ? name : `${displayName(book)} ${chapter}`} has ${verses} verses; there is no verse ${verse}.`;
+    const place = chapters === 1 ? name : `${chapterBookName(book, locale)} ${chapter}`;
+    return t.noVerse(place, verses, verse);
   };
   const problem = outOfRange(chapterStart, verseStart) ?? outOfRange(lastChapter, verseEnd);
   if (problem) return problem;
   if (chapterEnd === null && verseEnd !== null && verseStart !== null && verseEnd <= verseStart) {
-    return "A range must end after it starts.";
+    return t.rangeBackwards;
   }
   return null;
 }
@@ -69,30 +78,38 @@ export const referenceShape = {
   verseEnd: part,
 };
 
-/** Reports a reference that the King James Bible does not contain. */
-export function refineReference(reference: ScriptureReference, context: z.RefinementCtx) {
-  const problem = checkReference(reference);
+/** Reports a reference that the Bible does not contain. */
+export function refineReference(
+  reference: ScriptureReference,
+  context: z.RefinementCtx,
+  locale: Locale = defaultLocale,
+) {
+  const problem = checkReference(reference, locale);
   if (problem) context.addIssue({ code: "custom", message: problem });
 }
 
 /** Validates a reference against the real chapter and verse counts. */
 export const scriptureReferenceSchema = z.object(referenceShape).superRefine(refineReference);
 
-/** "Psalm 23", not "Psalms 23": one psalm is singular. */
-function displayName(book: number) {
-  return book === 19 ? "Psalm" : (getBook(book)?.name ?? "");
-}
-
-/** The reference as it is written: "John 3:16–18", "Genesis 1–2", "Jude 5". */
-export function formatReference(reference: ScriptureReference): string {
+/**
+ * The reference as it is written: "John 3:16–18", "Genesis 1–2", "Jude 5". The
+ * numbers are the reference; the book's name is only how it is said, in
+ * `language`: "Juan 3:16–18" beside the Spanish text or in a Spanish interface.
+ */
+export function formatReference(
+  reference: ScriptureReference,
+  language: Locale = defaultLocale,
+): string {
   const { book, chapterStart, verseStart, chapterEnd, verseEnd } = reference;
   const single = chaptersIn(book) === 1;
   if (single) {
-    const name = getBook(book)?.name ?? "";
+    const name = getBook(book, language)?.name ?? "";
     if (verseStart === null) return name;
     return `${name} ${verseStart}${verseEnd === null ? "" : `–${verseEnd}`}`;
   }
-  const name = chapterEnd !== null && book === 19 ? (getBook(book)?.name ?? "") : displayName(book);
+  // "Psalm 23", not "Psalms 23": one psalm is singular; several are from the "Psalms".
+  const name =
+    chapterEnd !== null ? (getBook(book, language)?.name ?? "") : chapterBookName(book, language);
   let text = `${name} ${chapterStart}`;
   if (verseStart !== null) text += `:${verseStart}`;
   if (chapterEnd !== null) text += `–${chapterEnd}${verseEnd === null ? "" : `:${verseEnd}`}`;
@@ -107,28 +124,36 @@ const numbers = /^(\d+)(?:[:.](\d+))?(?:-(\d+)(?:[:.](\d+))?)?$/;
 
 /**
  * Reads a typed reference: "John 3:16", "Romans 12:1-2", "Psalm 23",
- * "1 Cor 13:4–7", "Gen 1-2", "John 3:16-4:2", "Jude 5". The result is checked
- * against the King James Bible, so a verse that does not exist is refused.
+ * "1 Cor 13:4–7", "Gen 1-2", "John 3:16-4:2", "Jude 5", and the same with a
+ * book's Spanish name ("Juan 3:16", "1 Reyes 8"), whatever the interface is
+ * in. The result is checked against the Bible, so a verse that does not exist
+ * is refused. What is wrong with it is said in `locale`.
  */
-export function parseReference(input: string): ParsedReference {
+export function parseReference(input: string, locale: Locale = defaultLocale): ParsedReference {
+  const t = dictionary(locale, "scripture").reference;
   const text = input
     .trim()
     .replace(/[‐-―]/g, "-")
     .replace(/\s*-\s*/g, "-")
     .replace(/\s*:\s*/g, ":")
     .replace(/\s+/g, " ");
-  if (!text) return { ok: false, message: "Type a reference, such as John 3:16." };
+  if (!text) return { ok: false, message: t.empty };
 
   // The book is everything before the last run of numbers.
-  const split = /^(.*?[a-z.]) ?(\d[\d:.-]*)?$/i.exec(text);
-  const book = split ? findBook(split[1]) : undefined;
+  const split = /^(.*?[\p{L}.]) ?(\d[\d:.-]*)?$/u.exec(text);
+  const book = split ? findBook(split[1], locale) : undefined;
   if (!split || !book) {
-    return { ok: false, message: "That book was not recognized. Try John 3:16 or Psalm 23." };
+    return { ok: false, message: t.unknownBook };
   }
+  const finish = (reference: ScriptureReference): ParsedReference => {
+    const tidy = normaliseReference(reference);
+    const problem = checkReference(tidy, locale);
+    return problem ? { ok: false, message: problem } : { ok: true, reference: tidy };
+  };
 
   const single = chaptersIn(book.id) === 1;
   if (!split[2]) {
-    if (!single) return { ok: false, message: `Add a chapter, such as ${book.name} 1.` };
+    if (!single) return { ok: false, message: t.addChapter(book.name) };
     return finish({
       book: book.id,
       chapterStart: 1,
@@ -140,7 +165,7 @@ export function parseReference(input: string): ParsedReference {
 
   const match = numbers.exec(split[2]);
   if (!match) {
-    return { ok: false, message: "That reference could not be read. Try John 3:16–18." };
+    return { ok: false, message: t.unreadable };
   }
   const [a, b, c, d] = match.slice(1).map((value) => (value ? Number(value) : null));
 
@@ -161,12 +186,6 @@ export function parseReference(input: string): ParsedReference {
     reference = { book: book.id, chapterStart: a!, verseStart: b, chapterEnd: c, verseEnd: d };
   }
   return finish(reference);
-}
-
-function finish(reference: ScriptureReference): ParsedReference {
-  const tidy = normaliseReference(reference);
-  const problem = checkReference(tidy);
-  return problem ? { ok: false, message: problem } : { ok: true, reference: tidy };
 }
 
 /** Removes an end that only repeats the start, so equal passages compare equal. */
@@ -242,7 +261,10 @@ export function versesToReferences(
 }
 
 /** Several passages on one line: "Genesis 1:1–4, 7, 9–10", or "John 3:16; Psalm 23". */
-export function formatReferences(references: readonly ScriptureReference[]): string {
+export function formatReferences(
+  references: readonly ScriptureReference[],
+  language: Locale = defaultLocale,
+): string {
   const [first, ...rest] = references;
   if (!first) return "";
   const sameChapter = references.every(
@@ -252,9 +274,11 @@ export function formatReferences(references: readonly ScriptureReference[]): str
       reference.chapterEnd === null &&
       reference.verseStart !== null,
   );
-  if (!sameChapter) return references.map(formatReference).join("; ");
+  if (!sameChapter) {
+    return references.map((reference) => formatReference(reference, language)).join("; ");
+  }
   const verses = rest.map(
     ({ verseStart, verseEnd }) => `${verseStart}${verseEnd === null ? "" : `–${verseEnd}`}`,
   );
-  return [formatReference(first), ...verses].join(", ");
+  return [formatReference(first, language), ...verses].join(", ");
 }

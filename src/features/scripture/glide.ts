@@ -1,5 +1,6 @@
 /**
- * Moves the page to a position in one continuous ease, frame by frame.
+ * Moves the page, or one scrolling element in it, to a position in one
+ * continuous ease, frame by frame.
  *
  * The browser's own smooth scrolling is not used for this: started while a
  * menu is closing, it was seen to jump, stand still for a moment, and then
@@ -7,13 +8,22 @@
  * motion is the same each time, its end is known exactly (`onArrive`), and
  * the reader's own wheel, touch, or key takes over at once.
  *
+ * `scroller` is the element that scrolls: a pane of the Bible reader when two
+ * are open side by side, each scrolling by itself. Without it, the page.
+ *
  * Returns a function that stops it. `onArrive` is called once, when the page
  * is there or the reader has taken over; never after it has been stopped.
  */
-export function glideTo(top: number, onArrive: () => void): () => void {
-  const limit = document.documentElement.scrollHeight - window.innerHeight;
+export function glideTo(
+  top: number,
+  onArrive: () => void,
+  scroller?: HTMLElement | null,
+): () => void {
+  const limit = scroller
+    ? scroller.scrollHeight - scroller.clientHeight
+    : document.documentElement.scrollHeight - window.innerHeight;
   const to = Math.max(0, Math.min(top, Math.max(0, limit)));
-  const from = window.scrollY;
+  const from = scroller ? scroller.scrollTop : window.scrollY;
   const distance = to - from;
   // Longer for further, within limits: a short hop is brisk and a long one is not a blur.
   const duration = Math.min(900, Math.max(320, Math.abs(distance) * 0.45));
@@ -45,7 +55,7 @@ export function glideTo(top: number, onArrive: () => void): () => void {
     // Ease in and out: it gathers pace, and settles.
     const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
     // `instant`, because the page's own `scroll-behavior: smooth` would ease each step again.
-    window.scrollTo({ top: from + distance * eased, behavior: "instant" });
+    (scroller ?? window).scrollTo({ top: from + distance * eased, behavior: "instant" });
     if (progress < 1) frame = requestAnimationFrame(step);
     else finish(true);
   };

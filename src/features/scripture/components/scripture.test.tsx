@@ -30,7 +30,9 @@ beforeEach(() => {
   clearChapterCache();
   requests.length = 0;
   failNext = false;
-  vi.stubGlobal("fetch", async (url: string) => {
+  vi.stubGlobal("fetch", async (address: string) => {
+    // Every request names its translation; the King James is recorded without, as before.
+    const url = address.replace(/[?&]t=kjv$/, "").replace(/([?&])t=kjv&/, "$1");
     requests.push(url);
     if (failNext) {
       failNext = false;

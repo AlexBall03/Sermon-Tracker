@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useT } from "@/i18n/client";
 
 type Pending = { to: "link"; href: string } | { to: "back" } | { to: "forward" };
 
@@ -48,6 +49,7 @@ const here = () => window.location.pathname + window.location.search;
  * first or call `allowLeaving()`. Render the returned element once.
  */
 export function useLeaveGuard(dirty: boolean, description: string, onLeave?: () => void) {
+  const t = useT("navigation").leave;
   const router = useRouter();
   const [pending, setPending] = useState<Pending | null>(null);
   // True once leaving has been agreed, so the guard does not catch its own navigation.
@@ -137,13 +139,13 @@ export function useLeaveGuard(dirty: boolean, description: string, onLeave?: () 
     <AlertDialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+          <AlertDialogTitle>{t.title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Stay on this page</AlertDialogCancel>
+          <AlertDialogCancel>{t.stay}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={leave}>
-            Leave without saving
+            {t.leave}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

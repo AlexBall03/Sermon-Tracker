@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bibleVerses } from "@/db/schema";
+import { scriptureVerses } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
@@ -129,8 +129,8 @@ describe("searchVerses and GET /api/bible/search", () => {
     [46, 11, 20, "this is not to eat the Lord’s supper."],
     [66, 22, 17, "let him take the water of life freely."],
   ] as const;
-  const found = async (input: string, scope: Parameters<typeof searchVerses>[2] = "all") =>
-    (await searchVerses(db, query(input), scope)).hits.map(
+  const found = async (input: string, scope: Parameters<typeof searchVerses>[3] = "all") =>
+    (await searchVerses(db, "kjv", query(input), scope)).hits.map(
       (hit) => `${hit.book}.${hit.chapter}.${hit.verse}`,
     );
   const request = (params: Record<string, string>) =>
@@ -140,9 +140,15 @@ describe("searchVerses and GET /api/bible/search", () => {
     db = await createTestDatabase();
     state.db = db;
     state.access = { ok: true, user: { id: "1" } };
-    await db
-      .insert(bibleVerses)
-      .values(verses.map(([book, chapter, verse, text]) => ({ book, chapter, verse, text })));
+    await db.insert(scriptureVerses).values(
+      verses.map(([book, chapter, verse, text]) => ({
+        translation: "kjv" as const,
+        book,
+        chapter,
+        verse,
+        text,
+      })),
+    );
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -164,7 +170,7 @@ describe("searchVerses and GET /api/bible/search", () => {
     expect(await found("shepherd", "new")).toEqual(["43.10.11"]);
     expect(await found("water", 66)).toEqual(["66.22.17"]);
 
-    const page = await searchVerses(db, query("shepherd"), "all", 1, 1);
+    const page = await searchVerses(db, "kjv", query("shepherd"), "all", 1, 1);
     expect(page.total).toBe(3);
     expect(page.hits).toEqual([
       {
@@ -177,7 +183,8 @@ describe("searchVerses and GET /api/bible/search", () => {
   });
 
   it("serves a page of results to a signed-in account", async () => {
-    const response = await request({ q: "living water", in: "new" });
+    // Kept by the browser only when the address names the text, and it is the one always on offer.
+    const response = await request({ q: "living water", in: "new", t: "kjv" });
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toMatch(/^private/);
     expect(await response.json()).toEqual({

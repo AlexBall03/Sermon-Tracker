@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, count, eq, inArray, or } from "drizzle-orm";
 
 import { bibleHighlights } from "@/db/schema";
 import type { Database } from "@/db/types";
@@ -106,4 +106,28 @@ export async function highlightsInChapter(
       ),
     );
   return Object.fromEntries(rows.map((row) => [row.verse, row.color]));
+}
+
+/** How many verses of one chapter the owner has highlighted in each of these translations. */
+export async function highlightCounts(
+  db: Reader,
+  ownerId: string,
+  translations: readonly TranslationId[],
+  book: number,
+  chapter: number,
+): Promise<Partial<Record<TranslationId, number>>> {
+  if (translations.length === 0) return {};
+  const rows = await db
+    .select({ translation: bibleHighlights.translation, total: count() })
+    .from(bibleHighlights)
+    .where(
+      and(
+        eq(bibleHighlights.ownerId, ownerId),
+        inArray(bibleHighlights.translation, [...translations]),
+        eq(bibleHighlights.book, book),
+        eq(bibleHighlights.chapter, chapter),
+      ),
+    )
+    .groupBy(bibleHighlights.translation);
+  return Object.fromEntries(rows.map((row) => [row.translation, row.total]));
 }

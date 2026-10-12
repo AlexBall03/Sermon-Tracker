@@ -43,6 +43,13 @@
       "when": 1791694797429,
       "tag": "0005_bible_favorites_and_highlights",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791823337753,
+      "tag": "0006_scripture_translations_and_languages",
+      "breakpoints": true
     }
   ]
 }

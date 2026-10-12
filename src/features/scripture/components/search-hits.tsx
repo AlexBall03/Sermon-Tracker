@@ -3,8 +3,11 @@
 import { LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatNumber } from "@/i18n";
+import { useLocale, useT } from "@/i18n/client";
 import { formatReference } from "../reference";
 import { splitHit, type SearchHit, type SearchScope } from "../search";
+import { translations } from "../translations";
 import type { SearchResults } from "../use-bible-search";
 import { PassageSkeleton } from "./passage-text";
 
@@ -25,14 +28,18 @@ type SearchHitsProps = {
  * failed states. The same list wherever the Bible is searched.
  */
 export function SearchHits({ results, onSearch, onOpen, current, children }: SearchHitsProps) {
+  const t = useT("scripture").hits;
+  const locale = useLocale();
+  // A verse is quoted in its translation's language, and so is named in it.
+  const language = translations[results.translation].language;
   return (
     <>
       <p role="status" aria-live="polite" className="px-2 text-sm text-muted-foreground">
-        {results.status === "loading" && "Searching…"}
+        {results.status === "loading" && t.searching}
         {results.status === "ready" &&
           (results.total === 0
-            ? "No verses match. Check the spelling, try fewer words, or end a word with * to match its beginning."
-            : `${results.total.toLocaleString("en")} ${results.total === 1 ? "verse" : "verses"}`)}
+            ? t.none
+            : t.count(results.total, formatNumber(locale, results.total)))}
       </p>
       {results.status === "loading" && <PassageSkeleton lines={6} />}
       {results.status === "error" && (
@@ -45,7 +52,7 @@ export function SearchHits({ results, onSearch, onOpen, current, children }: Sea
             className="mt-3"
             onClick={() => onSearch(results.query, results.scope)}
           >
-            Try again
+            {t.tryAgain}
           </Button>
         </div>
       )}
@@ -68,15 +75,18 @@ export function SearchHits({ results, onSearch, onOpen, current, children }: Sea
                   className="block w-full rounded-md px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:bg-foreground/10 aria-[current=true]:bg-primary-soft"
                 >
                   <span className="block font-serif text-[0.8125rem] font-medium text-primary italic">
-                    {formatReference({
-                      book: hit.book,
-                      chapterStart: hit.chapter,
-                      verseStart: hit.verse,
-                      chapterEnd: null,
-                      verseEnd: null,
-                    })}
+                    {formatReference(
+                      {
+                        book: hit.book,
+                        chapterStart: hit.chapter,
+                        verseStart: hit.verse,
+                        chapterEnd: null,
+                        verseEnd: null,
+                      },
+                      language,
+                    )}
                   </span>
-                  <span className="mt-0.5 block font-serif text-base leading-[1.6]">
+                  <span lang={language} className="mt-0.5 block font-serif text-base leading-[1.6]">
                     {splitHit(hit.text).map((run, index) =>
                       index % 2 === 1 ? (
                         <mark
@@ -107,7 +117,7 @@ export function SearchHits({ results, onSearch, onOpen, current, children }: Sea
             onClick={() => onSearch(results.query, results.scope, results.hits.length)}
           >
             {results.more && <LoaderCircle className="animate-spin" aria-hidden />}
-            {results.more ? "Loading…" : "Show more"}
+            {results.more ? t.loading : t.more}
           </Button>
           {results.message && (
             <p role="alert" className="mt-2 text-sm text-destructive">
