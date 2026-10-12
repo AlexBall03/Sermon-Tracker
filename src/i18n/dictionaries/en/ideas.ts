@@ -23,7 +23,7 @@ export const ideas = {
   },
   formats: {
     full_length: "Full-Length",
-    mini: "Mini Sermon",
+    mini: "Mini",
     flexible: "Flexible",
     unspecified: "Not Specified",
   },
@@ -43,32 +43,44 @@ export const ideas = {
   sermonTypeGuide: {
     topical: {
       definition:
-        "A sermon organized around a particular subject, drawing teaching and support from relevant Scripture passages.",
+        "A sermon organized around a particular subject or doctrine, drawing on Scripture passages relevant to that subject.",
       example:
-        "“The Importance of Soul Winning,” developed using Proverbs 11:30, Matthew 28:19–20, and Daniel 12:3.",
+        "“The Importance of Prayer,” a sermon examining prayer through multiple Scripture passages.",
     },
     textual: {
       definition:
-        "A sermon whose main points are developed from the words, phrases, or central ideas of a particular verse or short passage.",
-      example: "“Is There Not a Cause?”, developing preaching points from 1 Samuel 17:29.",
+        "A sermon organized around the wording or main ideas of a particular verse or short passage.",
+      example:
+        "“Is There Not a Cause?” from 1 Samuel 17:29, where the sermon’s structure develops the central ideas of the text.",
     },
     expository: {
       definition:
-        "A sermon that explains and applies Scripture by developing its meaning within the passage’s context, structure, and progression.",
-      example: "“David and Goliath,” explaining and applying 1 Samuel 17:32–50.",
+        "A sermon explaining a passage of Scripture in its context, following its meaning and progression.",
+      example:
+        "An exposition of Psalm 23 that systematically explains the passage and develops its central themes.",
     },
     unspecified: {
-      definition: "The preaching approach has not yet been determined.",
-      example: "A newly captured idea that the preacher has not classified.",
+      definition: "The sermon has not yet been assigned a primary preaching structure.",
+      example: "",
     },
   },
+  /** Said with the guide: the types are a first sorting, not walls. */
+  sermonTypeNote:
+    "These name a sermon’s primary structure, not hard boundaries. A sermon can show traits of more than one; choose the one that fits best.",
+  /** The mark on an idea that has been archived. Not a status. */
+  archived: "Archived",
   fields: {
     kind: "Kind of idea",
     idea: "Idea",
     notes: "Notes",
     notesPlaceholder: "Anything that belongs with it.",
-    status: "Status",
+    classification: "Classification & Status",
+    status: "Development status",
+    intendedFormat: "Intended format",
     sermonType: "Sermon type",
+    sermonTypeHelp: "What the sermon types mean",
+    sermonTypeHelpTitle: "Sermon types",
+    example: "Example:",
     subject: "Subject or theme",
     subjectPlaceholder: "Grace, prayer, the cross",
   },
@@ -86,6 +98,16 @@ export const ideas = {
       `“${title}” and its Scripture references will be deleted. This cannot be undone.`,
     deleteConfirm: (kind: IdeaKind) => `Delete ${kinds[kind].toLowerCase()}`,
     delete: "Delete idea",
+    archive: "Archive idea",
+    archiveTitle: "Archive this idea?",
+    archiveDescription: (title: string) =>
+      `“${title}” will be hidden from your library, not deleted. Everything on it is kept, and you can restore it at any time from the archived ideas.`,
+    archiveConfirm: "Archive",
+    archivedOn: (date: string) => `Archived ${date}.`,
+    archivedHint:
+      "It is hidden from your library until you restore it. Nothing else about it changed.",
+    restore: "Restore idea",
+    restoring: "Restoring…",
     back: "Library",
   },
   capture: {

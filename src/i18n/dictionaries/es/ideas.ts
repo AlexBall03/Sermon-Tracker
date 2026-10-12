@@ -22,7 +22,7 @@ export const ideas: Untranslated<typeof english> = {
   },
   formats: {
     full_length: "Completo",
-    mini: "Minisermón",
+    mini: "Mini",
     flexible: "Flexible",
     unspecified: "Sin especificar",
   },
@@ -41,32 +41,42 @@ export const ideas: Untranslated<typeof english> = {
   sermonTypeGuide: {
     topical: {
       definition:
-        "Un sermón organizado en torno a un tema, que toma su enseñanza y su apoyo de los pasajes de la Escritura que tratan de él.",
+        "Un sermón organizado en torno a un tema o una doctrina, que se apoya en los pasajes de la Escritura que tratan de ese tema.",
       example:
-        "“La importancia de ganar almas”, desarrollado con Proverbios 11:30, Mateo 28:19–20 y Daniel 12:3.",
+        "“La importancia de la oración”, un sermón que examina la oración a través de varios pasajes de la Escritura.",
     },
     textual: {
       definition:
-        "Un sermón cuyos puntos principales salen de las palabras, las frases o las ideas centrales de un versículo o de un pasaje corto.",
-      example: "“¿No hay una causa?”, con puntos de predicación tomados de 1 Samuel 17:29.",
+        "Un sermón organizado en torno a las palabras o las ideas principales de un versículo o de un pasaje corto.",
+      example:
+        "“¿Acaso no hay una causa?”, de 1 Samuel 17:29, donde la estructura del sermón desarrolla las ideas centrales del texto.",
     },
     expository: {
       definition:
-        "Un sermón que explica y aplica la Escritura desarrollando su sentido dentro del contexto, la estructura y el avance del pasaje.",
-      example: "“David y Goliat”, que explica y aplica 1 Samuel 17:32–50.",
+        "Un sermón que explica un pasaje de la Escritura en su contexto, siguiendo su sentido y su desarrollo.",
+      example:
+        "Una exposición del Salmo 23 que explica el pasaje de forma ordenada y desarrolla sus temas centrales.",
     },
     unspecified: {
-      definition: "Todavía no se ha decidido el enfoque de la predicación.",
-      example: "Una idea recién capturada que el predicador aún no ha clasificado.",
+      definition: "Todavía no se le ha asignado al sermón una estructura principal de predicación.",
+      example: "",
     },
   },
+  sermonTypeNote:
+    "Estos tipos nombran la estructura principal de un sermón; no son límites rígidos. Un sermón puede tener rasgos de más de uno: elige el que mejor le corresponda.",
+  archived: "Archivada",
   fields: {
     kind: "Tipo de idea",
     idea: "Idea",
     notes: "Notas",
     notesPlaceholder: "Todo lo que vaya con ella.",
-    status: "Estado",
+    classification: "Clasificación y estado",
+    status: "Estado de desarrollo",
+    intendedFormat: "Formato previsto",
     sermonType: "Tipo de sermón",
+    sermonTypeHelp: "Qué significan los tipos de sermón",
+    sermonTypeHelpTitle: "Tipos de sermón",
+    example: "Ejemplo:",
     subject: "Tema",
     subjectPlaceholder: "La gracia, la oración, la cruz",
   },
@@ -84,6 +94,16 @@ export const ideas: Untranslated<typeof english> = {
       `Se eliminarán “${title}” y sus referencias bíblicas. Esto no se puede deshacer.`,
     deleteConfirm: (kind) => `Eliminar ${kinds[kind].toLowerCase()}`,
     delete: "Eliminar idea",
+    archive: "Archivar idea",
+    archiveTitle: "¿Archivar esta idea?",
+    archiveDescription: (title) =>
+      `“${title}” dejará de verse en tu biblioteca, pero no se eliminará. Se conserva todo lo que tiene, y puedes restaurarla cuando quieras desde las ideas archivadas.`,
+    archiveConfirm: "Archivar",
+    archivedOn: (date) => `Archivada el ${date}.`,
+    archivedHint:
+      "No aparece en tu biblioteca hasta que la restaures. Nada más en ella ha cambiado.",
+    restore: "Restaurar idea",
+    restoring: "Restaurando…",
     back: "Biblioteca",
   },
   capture: {

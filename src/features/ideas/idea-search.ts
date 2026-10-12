@@ -12,7 +12,8 @@ import type { IdeaReference } from "./schemas";
  *   /api/ideas/search?q=grace&kind=point   the point ideas among them
  *
  * `q` and `kind` mean what they mean in the library's address and are read by
- * the same parser. Nothing else in the address is used.
+ * the same parser. Nothing else in the address is used, so the answer is the
+ * library's default: archived ideas are never offered.
  */
 export const ideaSearchPath = "/api/ideas/search";
 

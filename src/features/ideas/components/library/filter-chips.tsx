@@ -54,6 +54,12 @@ export function FilterChips() {
       label: words.sermonTypes[type],
       remove: { sermonTypes: query.sermonTypes.filter((value) => value !== type) },
     })),
+    ...query.formats.map((format) => ({
+      key: `format-${format}`,
+      group: t.format,
+      label: words.formats[format],
+      remove: { formats: query.formats.filter((value) => value !== format) },
+    })),
     ...query.tagIds.map((id) => ({
       key: `tag-${id}`,
       group: t.tag,
@@ -62,6 +68,15 @@ export function FilterChips() {
       remove: { tagIds: query.tagIds.filter((value) => value !== id) },
     })),
   ];
+  // Taking this one off goes back to the active ideas, as Clear filters does.
+  if (query.archive !== "active") {
+    chips.push({
+      key: "archive",
+      group: t.archive,
+      label: t.archiveViews[query.archive],
+      remove: { archive: "active" },
+    });
+  }
   if (query.createdFrom || query.createdThrough) {
     chips.push({
       key: "created",

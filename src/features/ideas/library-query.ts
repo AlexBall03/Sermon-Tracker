@@ -2,16 +2,20 @@ import { z } from "zod";
 
 import { routes } from "@/lib/site";
 import {
+  archiveViews,
   ideaKinds,
   ideaStatuses,
+  intendedFormats,
   legacyIdeaStatus,
   librarySorts,
   searchLimits,
   sermonTypes,
   tagFilterLimit,
   tagModes,
+  type ArchiveView,
   type IdeaKind,
   type IdeaStatus,
+  type IntendedFormat,
   type LibrarySort,
   type SermonType,
   type TagMode,
@@ -36,6 +40,10 @@ export type LibraryQuery = {
   statuses: IdeaStatus[];
   /** Matches sermon ideas only, whatever `kinds` says. */
   sermonTypes: SermonType[];
+  /** Matches sermon ideas only, whatever `kinds` says. */
+  formats: IntendedFormat[];
+  /** Active ideas, archived ones, or both. Not a status: an archived idea keeps its own. */
+  archive: ArchiveView;
   tagIds: string[];
   /** `any`: an idea with one of the tags matches. `all`: it must have every one. */
   tagMode: TagMode;
@@ -49,12 +57,15 @@ export type LibraryQuery = {
 
 export const defaultLibrarySort: LibrarySort = librarySorts[0];
 export const defaultTagMode: TagMode = tagModes[0];
+export const defaultArchiveView: ArchiveView = archiveViews[0];
 
 export const defaultLibraryQuery: LibraryQuery = {
   q: "",
   kinds: [],
   statuses: [],
   sermonTypes: [],
+  formats: [],
+  archive: defaultArchiveView,
   tagIds: [],
   tagMode: defaultTagMode,
   createdFrom: null,
@@ -71,6 +82,8 @@ export const libraryParams = {
   kinds: "kind",
   statuses: "status",
   sermonTypes: "type",
+  formats: "format",
+  archive: "archived",
   tagIds: "tag",
   tagMode: "tag_mode",
   createdFrom: "created_from",
@@ -186,6 +199,8 @@ export function parseLibraryQuery(params: LibrarySearchParams): LibraryQuery {
       ),
     ),
     sermonTypes: manyOf(sermonTypes, allValues(params, libraryParams.sermonTypes)),
+    formats: manyOf(intendedFormats, allValues(params, libraryParams.formats)),
+    archive: oneOf(archiveViews, first(libraryParams.archive)) ?? defaultArchiveView,
     tagIds: tagList(allValues(params, libraryParams.tagIds)),
     tagMode: oneOf(tagModes, first(libraryParams.tagMode)) ?? defaultTagMode,
     createdFrom: day(first(libraryParams.createdFrom)),
@@ -216,6 +231,8 @@ export function serializeLibraryQuery(query: LibraryQuery): URLSearchParams {
   each(libraryParams.kinds, manyOf(ideaKinds, query.kinds));
   each(libraryParams.statuses, manyOf(ideaStatuses, query.statuses));
   each(libraryParams.sermonTypes, manyOf(sermonTypes, query.sermonTypes));
+  each(libraryParams.formats, manyOf(intendedFormats, query.formats));
+  if (query.archive !== defaultArchiveView) params.set(libraryParams.archive, query.archive);
   each(libraryParams.tagIds, tagIds);
   // The mode means nothing without a tag to apply it to.
   if (query.tagMode !== defaultTagMode && tagIds.length > 0) {
@@ -238,13 +255,16 @@ export function libraryHref(query: LibraryQuery): string {
 
 /**
  * How many filters are in force, counting each chosen value once and each
- * date range once. The search is not a filter: it has its own box.
+ * date range once. Showing anything but the active ideas is one. The search
+ * is not a filter: it has its own box.
  */
 export function activeFilterCount(query: LibraryQuery) {
   return (
     query.kinds.length +
     query.statuses.length +
     query.sermonTypes.length +
+    query.formats.length +
+    Number(query.archive !== defaultArchiveView) +
     query.tagIds.length +
     Number(Boolean(query.createdFrom || query.createdThrough)) +
     Number(Boolean(query.updatedFrom || query.updatedThrough))

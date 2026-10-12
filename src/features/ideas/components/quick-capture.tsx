@@ -40,12 +40,12 @@ import { cn } from "@/lib/utils";
 import { createIdea } from "../actions";
 import type { IdeaKind } from "../model";
 import { emptyDraft, fieldErrors, hasContent, ideaSchemas, type IdeaDraft } from "../schemas";
+import { ClassificationSection } from "./classification-section";
 import {
   KindField,
   NotesField,
   ReferencesField,
-  SermonFields,
-  StatusField,
+  SubjectField,
   TitleField,
   type UpdateDraft,
 } from "./idea-fields";
@@ -99,7 +99,7 @@ const form = "capture";
 /**
  * Quick capture: one dialog for the whole shell. Only the thought itself is
  * required; its kind starts as Undecided, and everything else waits behind
- * "More details".
+ * "More details", where the classifications are closed again until wanted.
  *
  * Nothing typed is lost by accident. Closing the dialog, or leaving the page,
  * with something written asks first; choosing to go discards it, and every
@@ -119,6 +119,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [more, setMore] = useState(false);
+  const [captures, setCaptures] = useState(0);
   const [panel, setPanel] = useState<PanelRequest | null>(null);
   const [panelOpening, setPanelOpening] = useState(0);
   const [discarding, setDiscarding] = useState(false);
@@ -158,6 +159,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     setErrors({});
     setResult(null);
     setMore(false);
+    setCaptures((count) => count + 1);
     setPanel(null);
     ideaId.current = null;
   }
@@ -304,9 +306,10 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                         onSubmitShortcut={() => void save()}
                       />
                       {draft.kind === "sermon" && (
-                        <SermonFields form={form} draft={draft} update={update} errors={errors} />
+                        <SubjectField form={form} draft={draft} update={update} errors={errors} />
                       )}
-                      <StatusField form={form} draft={draft} update={update} />
+                      {/* Remounted with each capture, so it is closed again for the next. */}
+                      <ClassificationSection key={captures} draft={draft} update={update} />
                     </div>
                   </div>
                 </div>

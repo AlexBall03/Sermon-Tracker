@@ -16,7 +16,15 @@ import {
   toggled,
   type LibraryQuery,
 } from "../../library-query";
-import { ideaKinds, ideaStatuses, sermonTypes, tagFilterLimit, tagModes } from "../../model";
+import {
+  archiveViews,
+  ideaKinds,
+  ideaStatuses,
+  intendedFormats,
+  sermonTypes,
+  tagFilterLimit,
+  tagModes,
+} from "../../model";
 import { useLibrary } from "./library-state";
 import { filtersPanelId } from "./library-toolbar";
 
@@ -149,13 +157,15 @@ function DateRange({
  * address and the results follow; there is no Apply button to forget.
  *
  * Within a group, any chosen value will do. Between groups, every one must
- * hold. Tags can be either, and say which.
+ * hold. Tags can be either, and say which. Whether archived ideas are shown
+ * is one choice of three, and is active ideas only until it is changed.
  */
 export function LibraryFilters() {
   const { query, tags, apply, filtersOpen, setManagingTags } = useLibrary();
   const [tagSearch, setTagSearch] = useState("");
   const t = useT("library").filters;
   const modes = useT("library").tagModes;
+  const views = useT("library").archiveViews;
   const words = useT("ideas");
   const active = activeFilterCount(query);
 
@@ -219,6 +229,33 @@ export function LibraryFilters() {
             ))}
           </div>
         </Group>
+
+        <Group label={t.format} hint={t.formatHint}>
+          <div className="flex flex-wrap gap-2">
+            {intendedFormats.map((format) => (
+              <Toggle
+                key={format}
+                pressed={query.formats.includes(format)}
+                onToggle={() => apply((current) => ({ formats: toggled(current.formats, format) }))}
+              >
+                {words.formats[format]}
+              </Toggle>
+            ))}
+          </div>
+        </Group>
+
+        {/* The control is its own group, so it is named once. */}
+        <div className="min-w-0 md:col-span-2">
+          <Segmented
+            label={t.archive}
+            name="library-archive"
+            options={archiveViews.map((value) => ({ value, label: views[value] }))}
+            value={query.archive}
+            onChange={(archive) => apply({ archive })}
+            className="max-w-sm [&>legend]:mb-2.5 [&>legend]:font-semibold"
+          />
+          <p className="mt-2 text-[0.8125rem] text-muted-foreground">{t.archiveHint}</p>
+        </div>
 
         <Group label={t.tags} className="md:col-span-2 xl:col-span-3">
           {tags.length === 0 ? (

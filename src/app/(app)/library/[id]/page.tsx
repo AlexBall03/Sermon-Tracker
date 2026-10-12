@@ -59,12 +59,12 @@ export default async function IdeaPage({
         allTags={tags.map(({ id, name }) => ({ id, name }))}
         createdAt={idea.createdAt}
         updatedAt={idea.updatedAt}
+        archivedAt={idea.archivedAt}
         initial={{
           kind: idea.kind,
           title: idea.title,
           notes: idea.notes ?? "",
           status: idea.status,
-          // Not shown yet, and sent back with every save as it is.
           intendedFormat: idea.intendedFormat,
           sermonType: idea.sermonType,
           subject: idea.subject ?? "",

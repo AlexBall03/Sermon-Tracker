@@ -6,7 +6,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { ScriptureField } from "@/features/scripture/components/scripture-field";
 import { useT } from "@/i18n/client";
-import { ideaKinds, ideaLimits, ideaStatuses, sermonTypes, type IdeaKind } from "../model";
+import { ideaKinds, ideaLimits, type IdeaKind } from "../model";
 import type { IdeaDraft } from "../schemas";
 import type { IdeaTag } from "../tags";
 import { TagPicker } from "./tag-picker";
@@ -178,48 +178,29 @@ export function TagsField({
   );
 }
 
-export function StatusField({ form, draft, update }: FieldProps) {
-  const t = useT("ideas");
-  return (
-    <Segmented
-      label={t.fields.status}
-      name={`${form}-status`}
-      options={ideaStatuses.map((value) => ({ value, label: t.statuses[value] }))}
-      value={draft.status}
-      onChange={(status) => update((current) => ({ ...current, status }))}
-    />
-  );
-}
-
-/** What only a sermon has. Shown for sermons; kept, unseen, for anything else. */
-export function SermonFields({ form, draft, update, errors }: FieldProps) {
+/**
+ * A sermon's subject. Shown for sermons; kept, unseen, for anything else. Its
+ * format and type are chosen with its status, in `ClassificationSection`.
+ */
+export function SubjectField({ form, draft, update, errors }: FieldProps) {
   const id = `${form}-subject`;
   const t = useT("ideas");
   return (
-    <>
-      <Segmented
-        label={t.fields.sermonType}
-        name={`${form}-sermon-type`}
-        options={sermonTypes.map((value) => ({ value, label: t.sermonTypes[value] }))}
-        value={draft.sermonType}
-        onChange={(sermonType) => update((current) => ({ ...current, sermonType }))}
+    <div>
+      <Label htmlFor={id}>{t.fields.subject}</Label>
+      <Input
+        id={id}
+        name="subject"
+        value={draft.subject}
+        onChange={(event) => update((current) => ({ ...current, subject: event.target.value }))}
+        maxLength={ideaLimits.subject}
+        placeholder={t.fields.subjectPlaceholder}
+        autoComplete="off"
+        aria-invalid={errors?.subject ? true : undefined}
+        aria-describedby={errors?.subject ? `${id}-error` : undefined}
+        className="mt-2"
       />
-      <div>
-        <Label htmlFor={id}>{t.fields.subject}</Label>
-        <Input
-          id={id}
-          name="subject"
-          value={draft.subject}
-          onChange={(event) => update((current) => ({ ...current, subject: event.target.value }))}
-          maxLength={ideaLimits.subject}
-          placeholder={t.fields.subjectPlaceholder}
-          autoComplete="off"
-          aria-invalid={errors?.subject ? true : undefined}
-          aria-describedby={errors?.subject ? `${id}-error` : undefined}
-          className="mt-2"
-        />
-        <FieldError id={`${id}-error`} message={errors?.subject} />
-      </div>
-    </>
+      <FieldError id={`${id}-error`} message={errors?.subject} />
+    </div>
   );
 }

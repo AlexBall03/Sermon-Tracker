@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Sermon Tracker project notes
 
-- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`, `docs/HANDOFF-2C.1B.md`, `docs/HANDOFF-2C.1C.md`, `docs/HANDOFF-2C.2.md`, `docs/HANDOFF-2D.1.md`.
+- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`, `docs/HANDOFF-2C.1B.md`, `docs/HANDOFF-2C.1C.md`, `docs/HANDOFF-2C.2.md`, `docs/HANDOFF-2D.1.md`, `docs/HANDOFF-2D.2.md`.
 - Stay inside the current phase. Do not build later-phase features early.
 - The repository owner manages Git. Run read-only Git commands only: no commit, stage, branch, push, pull, or config changes.
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.
@@ -42,5 +42,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Archiving is `archived_at` and nothing else, through `archiveIdea` and `restoreIdea`. It is never a status, never a delete, and never changes another column, `updated_at` included.
 - A save of an existing idea is parsed with `ideaUpdate`, where a classification has no default: one left out is left alone. `ideaInput`, which has the defaults, is for a new idea and for a form that sends the whole draft. A form that saves an idea must carry `intendedFormat` in its draft, as the idea page does.
 - The `ideas` table may still hold `status = 'captured'` and a null `sermon_type` from before Phase 2D.1. They are read as `idea` and `unspecified` by `asRead` in `src/features/ideas/ideas.ts`, which every idea returned from that file passes through; never read an idea's row around it, and never write either old value. The migration that removes them is described in `docs/DATABASE.md` and must not ship in the same release as `0007`.
+- An idea's status, format, and type are chosen in `ClassificationSection` (`src/features/ideas/components/classification-section.tsx`) and nowhere else. It only changes the draft. A sermon shows all three; a point or an undecided idea shows its status only, and nothing shows, filters by, or infers a format or a sermon type on one.
+- Archived ideas are left out by the query, never by the screen. A list of ideas goes through `searchIdeas` (where `LibraryQuery.archive` is `active` unless the address says otherwise) or `recentIdeas`; a new list of ideas must exclude archived ones the same way. `getIdea` returns an archived idea on purpose, so its address and the Bible reader's way back still work; do not "fix" that.
 - Main navigation is `src/components/layout/app-links.ts`. Add the outline page there when it exists. Administration stays in the account menu.
 - Dropdowns use `src/components/ui/select.tsx`, not a native `<select>`.

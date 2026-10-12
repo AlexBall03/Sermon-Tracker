@@ -226,4 +226,112 @@ test.describe("library, signed in", () => {
       }
     }
   });
+
+  test("classify a sermon, archive it, find it among the archived, and restore it as it was", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    const run = `e2e${Date.now().toString(36)}${testInfo.project.name}`;
+    const sermon = `${run} classified sermon`;
+    const point = `${run} plain point`;
+    const classification = page.getByRole("button", { name: /Classification & Status/ });
+    const choose = async (label: string, option: string) => {
+      await page.getByRole("combobox", { name: label }).click();
+      await page.getByRole("option", { name: option }).click();
+    };
+    const openIdea = async (title: string, archived = false) => {
+      await page.goto(`/library?q=${encodeURIComponent(title)}${archived ? "&archived=all" : ""}`);
+      await page.getByRole("link", { name: title }).click();
+      await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(title);
+    };
+
+    await signIn(page);
+
+    try {
+      await capture(page, sermon);
+      await capture(page, point);
+
+      // A sermon has all three; they are saved with the idea.
+      await openIdea(sermon);
+      await page.getByRole("radio", { name: "Sermon" }).check({ force: true });
+      await expect(page.getByText("Now filed as: Sermon idea.")).toBeVisible();
+      await classification.click();
+      await choose("Development status", "Ready");
+      await choose("Intended format", "Mini");
+      await choose("Sermon type", "Textual");
+      // The types are explained on request.
+      await page.getByRole("button", { name: "What the sermon types mean" }).click();
+      await expect(page.getByRole("dialog", { name: "Sermon types" })).toContainText(
+        "1 Samuel 17:29",
+      );
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Save changes" }).click();
+      await expect(page.getByText("Changes saved.")).toBeVisible();
+      await page.reload();
+      await expect(classification).toContainText("Ready · Mini · Textual");
+
+      // A point has a status and nothing of a sermon's.
+      await openIdea(point);
+      await page.getByRole("radio", { name: "Point" }).check({ force: true });
+      await expect(page.getByText("Now filed as: Point idea.")).toBeVisible();
+      await classification.click();
+      await expect(page.getByRole("combobox")).toHaveCount(1);
+      await choose("Development status", "Developing");
+      await page.getByRole("button", { name: "Save changes" }).click();
+      await expect(page.getByText("Changes saved.")).toBeVisible();
+
+      // The library finds the sermon by its format and type, and not the point.
+      await page.goto(`/library?q=${run}&format=mini&type=textual`);
+      await expect(results(page)).toHaveCount(1);
+      await expect(results(page).first()).toContainText(sermon);
+      await page.goto(`/library?q=${run}&status=developing`);
+      await expect(results(page)).toHaveCount(1);
+      await expect(results(page).first()).toContainText(point);
+
+      // Archiving asks first, and takes the sermon out of the library as it opens.
+      await openIdea(sermon);
+      await page.getByRole("button", { name: "Archive idea" }).click();
+      const confirm = page.getByRole("alertdialog", { name: "Archive this idea?" });
+      await expect(confirm).toContainText("not deleted");
+      await confirm.getByRole("button", { name: "Archive" }).click();
+      await expect(page.getByText(/^Archived /)).toBeVisible();
+      await page.goto(`/library?q=${run}`);
+      await expect(results(page)).toHaveCount(1);
+      await expect(results(page).first()).toContainText(point);
+
+      // Asked for, it is there, marked, with its classifications; restoring brings it back whole.
+      await page.getByRole("button", { name: /^Filters/ }).click();
+      await page.getByRole("radio", { name: "Archived" }).check({ force: true });
+      await expect(page).toHaveURL(/[?&]archived=archived/);
+      await expect(results(page)).toHaveCount(1);
+      await expect(results(page).first()).toContainText("Archived");
+      await expect(results(page).first()).toContainText("Ready");
+      await results(page)
+        .first()
+        .getByRole("button", { name: /^Restore/ })
+        .click();
+      await expect(page.getByText("Idea restored.")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "No ideas match these filters" }),
+      ).toBeVisible();
+
+      await openIdea(sermon);
+      await expect(classification).toContainText("Ready · Mini · Textual");
+      await expect(page.getByRole("button", { name: "Archive idea" })).toBeVisible();
+    } finally {
+      // Remove what this run made, archived or not.
+      for (const title of [sermon, point]) {
+        await page.goto(`/library?q=${encodeURIComponent(title)}&archived=all`);
+        const link = page.getByRole("link", { name: title });
+        if ((await link.count()) === 0) continue;
+        await link.click();
+        await page.getByRole("button", { name: "Delete idea" }).click();
+        await page
+          .getByRole("alertdialog")
+          .getByRole("button", { name: /^Delete/ })
+          .click();
+        await expect(page).toHaveURL(/\/library(\?|$)/);
+      }
+    }
+  });
 });

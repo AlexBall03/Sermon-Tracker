@@ -8,6 +8,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lt,
   or,
@@ -167,7 +168,10 @@ export async function getIdea(
   return idea ?? null;
 }
 
-/** The owner's few most recently changed ideas, for the dashboard. The library uses `searchIdeas`. */
+/**
+ * The owner's few most recently changed ideas, for the dashboard. An archived
+ * idea has been put away and is not among them. The library uses `searchIdeas`.
+ */
 export async function recentIdeas(
   db: Database,
   ownerId: string,
@@ -176,10 +180,19 @@ export async function recentIdeas(
   const rows = await db
     .select()
     .from(ideas)
-    .where(eq(ideas.ownerId, ownerId))
+    .where(and(eq(ideas.ownerId, ownerId), isNull(ideas.archivedAt)))
     .orderBy(desc(ideas.updatedAt), desc(ideas.id))
     .limit(limit);
   return withReferences(db, ownerId, rows);
+}
+
+/** How many of the owner's ideas are archived: what a library with nothing active in it may still hold. */
+export async function archivedCount(db: Reader, ownerId: string): Promise<number> {
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(ideas)
+    .where(and(eq(ideas.ownerId, ownerId), isNotNull(ideas.archivedAt)));
+  return total;
 }
 
 /**
@@ -238,6 +251,16 @@ function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
         : chosen,
     );
   }
+
+  // A format, like a type, is a sermon's: the default a point's row holds is not one.
+  if (query.formats.length > 0) {
+    conditions.push(eq(ideas.kind, "sermon"), inArray(ideas.intendedFormat, query.formats));
+  }
+
+  // Archived ideas are left out here, in the query, unless they were asked for;
+  // the count and every page therefore agree.
+  if (query.archive === "active") conditions.push(isNull(ideas.archivedAt));
+  else if (query.archive === "archived") conditions.push(isNotNull(ideas.archivedAt));
 
   // Tags are matched in a subquery, never a join, so an idea with two of them
   // is still one row. The same tag asked for twice is one tag.

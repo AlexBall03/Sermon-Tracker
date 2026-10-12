@@ -16,10 +16,11 @@ import { Pagination } from "@/features/ideas/components/library/pagination";
 import { TagManager } from "@/features/ideas/components/library/tag-manager";
 import { LibraryViewScript } from "@/features/ideas/components/library/view-switcher";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
-import { searchIdeas } from "@/features/ideas/ideas";
+import { archivedCount, searchIdeas } from "@/features/ideas/ideas";
 import {
   activeFilterCount,
   clearFilters,
+  defaultLibraryQuery,
   invertedRange,
   isFiltered,
   libraryHref,
@@ -62,6 +63,10 @@ function countLine(
  * (features/ideas/library-query.ts) and the database does the work; the
  * controls here only change the address. Everything interactive sits inside
  * `LibraryProvider`; the results and the pager are rendered on the server.
+ *
+ * Archived ideas are left out by the query unless the address asks for them.
+ * A library whose every idea is archived is not an empty one: it says so and
+ * leads to them, and does not invite the same thought to be captured twice.
  */
 export default async function LibraryPage({
   searchParams,
@@ -92,8 +97,14 @@ export default async function LibraryPage({
     />
   );
 
+  // Only looked for when nothing active was found and nothing narrowed the search.
+  const archived = total === 0 && !filtered ? await archivedCount(db, user.id) : 0;
+  // The archive was asked for by itself, and holds nothing.
+  const emptyArchive =
+    total === 0 && !searching && query.archive === "archived" && activeFilterCount(query) === 1;
+
   // Nothing captured at all: there is nothing to search or filter yet.
-  if (total === 0 && !filtered) {
+  if (total === 0 && !filtered && archived === 0) {
     return (
       <div className="container-page py-10 lg:py-12">
         {header}
@@ -124,7 +135,26 @@ export default async function LibraryPage({
         <FilterChips />
 
         <LibraryResults>
-          {total === 0 ? (
+          {archived > 0 || emptyArchive ? (
+            <section aria-labelledby="empty-heading" className={emptyState}>
+              <h2 id="empty-heading" className={emptyHeading}>
+                {emptyArchive ? t.empty.noArchived : t.empty.allArchived}
+              </h2>
+              <p role="status" className={emptyCopy}>
+                {emptyArchive ? t.empty.noArchivedBody : t.empty.allArchivedBody(archived)}
+              </p>
+              <Link
+                href={libraryHref({
+                  ...defaultLibraryQuery,
+                  sort: query.sort,
+                  archive: emptyArchive ? "active" : "archived",
+                })}
+                className={buttonVariants({ variant: "outline", className: "mt-6" })}
+              >
+                {emptyArchive ? t.empty.showActive : t.empty.showArchived}
+              </Link>
+            </section>
+          ) : total === 0 ? (
             <section aria-labelledby="empty-heading" className={emptyState}>
               <h2 id="empty-heading" className={emptyHeading}>
                 {filtering ? t.empty.noFilterMatch : t.empty.noSearchMatch}

@@ -43,6 +43,13 @@ export const classificationDefaults = {
   sermonType: "unspecified",
 } as const satisfies { status: IdeaStatus; intendedFormat: IntendedFormat; sermonType: SermonType };
 
+/**
+ * Which ideas a list shows by whether they are archived. The first is the
+ * default: an archived idea is only ever listed because it was asked for.
+ */
+export const archiveViews = ["active", "archived", "all"] as const;
+export type ArchiveView = (typeof archiveViews)[number];
+
 /** The database enforces the same limits with CHECK constraints. */
 export const ideaLimits = { title: 200, subject: 200, notes: 20000, references: 25 } as const;
 

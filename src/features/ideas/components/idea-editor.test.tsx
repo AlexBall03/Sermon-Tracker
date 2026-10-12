@@ -9,15 +9,22 @@ const state = vi.hoisted(() => ({
   changeIdeaKind: vi.fn(),
   deleteIdea: vi.fn(),
   createTag: vi.fn(),
+  archiveIdea: vi.fn(),
+  restoreIdea: vi.fn(),
   push: vi.fn(),
+  refresh: vi.fn(),
 }));
 vi.mock("../tag-actions", () => ({ createTag: state.createTag }));
 vi.mock("../actions", () => ({
   updateIdea: state.updateIdea,
   changeIdeaKind: state.changeIdeaKind,
   deleteIdea: state.deleteIdea,
+  archiveIdea: state.archiveIdea,
+  restoreIdea: state.restoreIdea,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: state.push }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: state.push, refresh: state.refresh }),
+}));
 
 import { IdeaEditor } from "./idea-editor";
 
@@ -64,6 +71,18 @@ const sentTags = () => state.updateIdea.mock.calls.at(-1)?.[1].tagIds;
 const title = () => screen.getByRole("textbox", { name: "Idea" });
 const save = () => screen.getByRole("button", { name: "Save changes" });
 
+/** Picks a value in one of the dropdowns, as a pointer does. */
+async function choose(label: string, option: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  const item = await screen.findByRole("option", { name: option });
+  fireEvent.pointerDown(item, { pointerType: "mouse" });
+  fireEvent.mouseMove(item);
+  fireEvent.pointerUp(item, { pointerType: "mouse" });
+  fireEvent.mouseUp(item);
+  fireEvent.click(item);
+}
+const classification = () => screen.getByRole("button", { name: /Classification & Status/ });
+
 beforeEach(() => {
   vi.clearAllMocks();
   state.updateIdea.mockResolvedValue({ ok: true, message: "Changes saved." });
@@ -83,7 +102,8 @@ describe("IdeaEditor", () => {
   it("saves the whole idea and then has nothing left to save", async () => {
     edit();
     fireEvent.change(title(), { target: { value: "It is Well with My Soul" } });
-    fireEvent.click(screen.getByRole("radio", { name: "Ready" }));
+    fireEvent.click(classification());
+    await choose("Development status", "Ready");
     fireEvent.click(save());
 
     expect(await screen.findByText("Changes saved.")).toBeVisible();
@@ -92,6 +112,9 @@ describe("IdeaEditor", () => {
       expect.objectContaining({
         title: "It is Well with My Soul",
         status: "ready",
+        // What was not touched goes back as it was.
+        intendedFormat: "unspecified",
+        sermonType: "topical",
         notes: "2 Kings 4.",
         references: initial.references,
       }),
@@ -132,7 +155,60 @@ describe("IdeaEditor", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "Sermon" }));
     expect(await screen.findByRole("textbox", { name: "Subject or theme" })).toHaveValue("Faith");
-    expect(screen.getByRole("radio", { name: "Topical" })).toBeChecked();
+    expect(classification()).toHaveTextContent("Idea · Topical");
+  });
+
+  it("archives only once it is confirmed, and says that is not a deletion", async () => {
+    state.archiveIdea.mockResolvedValue({ ok: true, message: "Idea archived." });
+    edit();
+    fireEvent.change(title(), { target: { value: "Edited but not saved" } });
+    fireEvent.click(screen.getByRole("button", { name: "Archive idea" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Archive this idea?" });
+    expect(dialog).toHaveTextContent(/hidden from your library, not deleted/);
+    expect(dialog).toHaveTextContent(/restore it at any time/);
+    expect(state.archiveIdea).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(state.refresh).toHaveBeenCalled());
+    expect(state.archiveIdea).toHaveBeenCalledWith(id);
+    // Nothing else was sent, and the unsaved edit is still here.
+    expect(state.updateIdea).not.toHaveBeenCalled();
+    expect(state.push).not.toHaveBeenCalled();
+    expect(title()).toHaveValue("Edited but not saved");
+  });
+
+  it("says so when archiving is refused, and does not pretend it happened", async () => {
+    state.archiveIdea.mockResolvedValue({ ok: false, message: "The idea could not be archived." });
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "Archive idea" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Archive" }),
+    );
+    expect(await screen.findByText("The idea could not be archived.")).toBeVisible();
+    expect(state.refresh).not.toHaveBeenCalled();
+  });
+
+  it("marks an archived idea and offers to restore it in place of archiving it", async () => {
+    state.restoreIdea.mockResolvedValue({ ok: true, message: "Idea restored." });
+    render(
+      <IdeaEditor
+        id={id}
+        initial={{ ...initial, status: "ready" }}
+        createdAt={new Date(0)}
+        updatedAt={new Date(0)}
+        archivedAt={new Date("2026-10-05T10:00:00Z")}
+      />,
+    );
+    expect(screen.getByText("Archived Oct 5, 2026.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Archive idea" })).not.toBeInTheDocument();
+    // Archived is not a status: the idea is still Ready, and can still be edited.
+    expect(classification()).toHaveTextContent("Ready · Topical");
+    expect(title()).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore idea" }));
+    await waitFor(() => expect(state.refresh).toHaveBeenCalled());
+    expect(state.restoreIdea).toHaveBeenCalledWith(id);
+    expect(state.updateIdea).not.toHaveBeenCalled();
   });
 
   it("puts the kind back when reclassifying fails", async () => {

@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ideas, ideaTags, tags, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
-import { searchIdeas } from "./ideas";
+import { archivedCount, recentIdeas, searchIdeas } from "./ideas";
 import { defaultLibraryQuery, type LibraryQuery } from "./library-query";
 import { librarySorts, libraryPageSize } from "./model";
 
@@ -560,5 +560,134 @@ describe("pagination", () => {
       pageSize: libraryPageSize,
       totalPages: 0,
     });
+  });
+});
+
+/*
+ * Format and the archive, in a library of their own so the counts above are
+ * undisturbed. Two rows are written as the code before Phase 2D.1 wrote them.
+ */
+describe("format and archive", () => {
+  let owner: string;
+  let series: string;
+  const archived = new Date("2026-06-01T00:00:00Z");
+
+  beforeAll(async () => {
+    const [user] = await db.insert(users).values({ clerkUserId: "user_archive" }).returning();
+    owner = user.id;
+    const rows = await db
+      .insert(ideas)
+      .values([
+        {
+          ownerId: owner,
+          kind: "sermon",
+          title: "Grace mini",
+          intendedFormat: "mini",
+          status: "ready",
+        },
+        { ownerId: owner, kind: "sermon", title: "Grace full", intendedFormat: "full_length" },
+        // A point's row holds a format too: the default, or one kept from its time as a sermon.
+        { ownerId: owner, kind: "point", title: "Grace point", intendedFormat: "mini" },
+        { ownerId: owner, kind: "point", title: "Plain point" },
+        {
+          ownerId: owner,
+          kind: "sermon",
+          title: "Grace put away",
+          intendedFormat: "mini",
+          status: "ready",
+          sermonType: "textual",
+          archivedAt: archived,
+        },
+        { ownerId: owner, kind: "point", title: "Point put away", archivedAt: archived },
+        // As saved before the classifications were renamed, and archived since.
+        {
+          ownerId: owner,
+          kind: "sermon",
+          title: "Old grace",
+          status: "captured",
+          sermonType: null,
+          archivedAt: archived,
+        },
+      ])
+      .returning();
+    const [tagged] = await db.insert(tags).values({ ownerId: owner, name: "Series" }).returning();
+    series = tagged.id;
+    await db
+      .insert(ideaTags)
+      .values(
+        rows
+          .filter((row) => row.title.startsWith("Grace"))
+          .map((row) => ({ ideaId: row.id, tagId: series, ownerId: owner })),
+      );
+  });
+
+  const mine = async (fields: Partial<LibraryQuery> = {}) =>
+    sorted(await found({ sort: "title-asc", ...fields }, owner));
+
+  it("leaves archived ideas out unless they are asked for", async () => {
+    expect(await mine()).toEqual(["Grace full", "Grace mini", "Grace point", "Plain point"]);
+    expect(await mine({ archive: "archived" })).toEqual([
+      "Grace put away",
+      "Old grace",
+      "Point put away",
+    ]);
+    expect(await mine({ archive: "all" })).toHaveLength(7);
+  });
+
+  it("filters by format among sermons only, whatever a point's row holds", async () => {
+    expect(await mine({ formats: ["mini"] })).toEqual(["Grace mini"]);
+    expect(await mine({ formats: ["mini", "full_length"] })).toEqual(["Grace full", "Grace mini"]);
+    // A point holds the default, and is still not a sermon without a format.
+    expect(await mine({ formats: ["unspecified"] })).toEqual([]);
+    expect(await mine({ formats: ["mini"], kinds: ["point"] })).toEqual([]);
+    expect(await mine({ formats: ["mini"], archive: "all" })).toEqual([
+      "Grace mini",
+      "Grace put away",
+    ]);
+  });
+
+  it("applies the archive view with the search and every other filter, and counts the same", async () => {
+    const asked = { q: "grace", statuses: ["ready" as const], tagIds: [series] };
+    expect(await mine(asked)).toEqual(["Grace mini"]);
+    expect(await mine({ ...asked, archive: "archived" })).toEqual(["Grace put away"]);
+    expect(await mine({ ...asked, archive: "all" })).toEqual(["Grace mini", "Grace put away"]);
+
+    // The total is of what matches, so the pages of an archive view add up.
+    const page = await searchIdeas(db, owner, query({ archive: "archived", page: 2 }), 2);
+    expect(page).toMatchObject({ total: 3, totalPages: 2, page: 2 });
+    expect(page.items).toHaveLength(1);
+  });
+
+  it("reads an archived idea from before the renaming in the new words, wherever it is found", async () => {
+    expect(await mine({ archive: "archived", statuses: ["idea"] })).toEqual([
+      "Old grace",
+      "Point put away",
+    ]);
+    expect(await mine({ archive: "archived", sermonTypes: ["unspecified"] })).toEqual([
+      "Old grace",
+    ]);
+    const { items } = await searchIdeas(db, owner, query({ q: "old", archive: "all" }));
+    expect(items[0]).toMatchObject({ status: "idea", sermonType: "unspecified" });
+    expect(items[0].archivedAt).toEqual(archived);
+  });
+
+  it("keeps a status filter open to points, archived or not", async () => {
+    expect(await mine({ statuses: ["idea"], kinds: ["point"], archive: "all" })).toEqual([
+      "Grace point",
+      "Plain point",
+      "Point put away",
+    ]);
+  });
+
+  it("does not count or list archived ideas as recent, and counts them for their owner only", async () => {
+    expect(sorted((await recentIdeas(db, owner, 10)).map((idea) => idea.title))).toEqual([
+      "Grace full",
+      "Grace mini",
+      "Grace point",
+      "Plain point",
+    ]);
+    expect(await archivedCount(db, owner)).toBe(3);
+    expect(await archivedCount(db, me)).toBe(0);
+    expect(await archivedCount(db, nobody)).toBe(0);
   });
 });

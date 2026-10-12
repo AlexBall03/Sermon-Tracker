@@ -1,5 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Only an archived idea's Restore button reaches these.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("../../actions", () => ({ restoreIdea: vi.fn() }));
 
 import type { IdeaWithReferences } from "../../ideas";
 import { defaultLibraryQuery, type LibraryQuery } from "../../library-query";
@@ -67,6 +71,34 @@ describe("IdeaResults", () => {
         .getAllByRole("listitem")
         .map((tag) => tag.textContent),
     ).toEqual(["Faith", "Prayer"]);
+  });
+
+  it("names a sermon's format beside its type, and marks an archived idea apart from its status", () => {
+    render(
+      <IdeaResults
+        ideas={[
+          idea({ intendedFormat: "mini", status: "ready", archivedAt: new Date(0) }),
+          idea({ id: "22222222-2222-4222-8222-222222222222", title: "Still active" }),
+        ]}
+        label="Your ideas"
+        query={query({ archive: "all" })}
+      />,
+    );
+    const [archived, active] = within(
+      screen.getByRole("list", { name: "Your ideas" }),
+    ).getAllByRole("listitem");
+    expect(archived).toHaveTextContent("Sermon type: Expository");
+    expect(archived).toHaveTextContent("Intended format: Mini");
+    expect(archived).toHaveTextContent("Archived");
+    // Archived, and Ready still.
+    expect(archived).toHaveTextContent("Status: Ready");
+    expect(
+      within(archived).getByRole("button", { name: "Restore His Grace is Sufficient" }),
+    ).toBeVisible();
+
+    expect(active).not.toHaveTextContent("Archived");
+    expect(active).not.toHaveTextContent("Intended format");
+    expect(within(active).queryByRole("button", { name: /^Restore/ })).not.toBeInTheDocument();
   });
 
   it("shows nothing of a sermon's on a point, even where the record kept it", () => {

@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/format";
 import type { IdeaWithReferences } from "../../ideas";
 import { ideaHref, type LibraryQuery } from "../../library-query";
 import { TagList } from "../tag-chip";
+import { RestoreButton } from "./restore-button";
 
 /** A result shows this many references; the rest are on the idea's own page. */
 const shownReferences = 3;
@@ -25,8 +26,12 @@ const shownReferences = 3;
  *
  * The whole card is its link's target. The Scripture references sit above it,
  * so they open their preview instead. Only what an idea actually has is
- * shown: a point has no sermon type and no subject, even if it kept them
- * from its time as a sermon.
+ * shown: a point has no sermon type, format, or subject, even if it kept them
+ * from its time as a sermon, and a type or format nobody chose is not named.
+ *
+ * An archived idea is only here because it was asked for. It is marked as
+ * archived, apart from its status, which it keeps, and can be restored where
+ * it stands.
  */
 export function IdeaResults({
   ideas,
@@ -55,6 +60,19 @@ export function IdeaResults({
           (a, b) => Number(b.isPrimary) - Number(a.isPrimary),
         );
         const more = references.length - shownReferences;
+        // A sermon's type and format, where either was chosen, as one quiet line.
+        const details = sermon
+          ? [
+              idea.sermonType !== "unspecified" && {
+                name: t.sermonType,
+                value: words.sermonTypes[idea.sermonType],
+              },
+              idea.intendedFormat !== "unspecified" && {
+                name: t.format,
+                value: words.formats[idea.intendedFormat],
+              },
+            ].filter((detail) => detail !== false)
+          : [];
         return (
           <li
             key={idea.id}
@@ -64,10 +82,19 @@ export function IdeaResults({
               <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
                 {words.kinds[idea.kind]}
               </Badge>
-              {sermon && idea.sermonType !== "unspecified" && (
+              {idea.archivedAt && <Badge tone="muted">{words.archived}</Badge>}
+              {details.length > 0 && (
                 <span className="truncate text-xs text-muted-foreground">
-                  <span className="sr-only">{t.sermonType} </span>
-                  {words.sermonTypes[idea.sermonType]}
+                  {details.map((detail, index) => (
+                    <span key={detail.name}>
+                      {index > 0 && <span aria-hidden> · </span>}
+                      <span className="sr-only">
+                        {index > 0 && ", "}
+                        {detail.name}{" "}
+                      </span>
+                      {detail.value}
+                    </span>
+                  ))}
                 </span>
               )}
               <span className="text-xs font-medium whitespace-nowrap text-muted-foreground card-view:ml-auto">
@@ -116,12 +143,15 @@ export function IdeaResults({
               )}
             </div>
 
-            <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums list-view:order-3 list-view:ml-auto list-view:md:w-24 list-view:md:text-right card-view:mt-4">
-              <span className="list-view:md:sr-only">{t.updated} </span>
-              <time dateTime={idea.updatedAt.toISOString()}>
-                {formatDate(idea.updatedAt, locale)}
-              </time>
-            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 list-view:order-3 list-view:ml-auto card-view:mt-4 card-view:justify-between">
+              <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums list-view:md:w-24 list-view:md:text-right">
+                <span className="list-view:md:sr-only">{t.updated} </span>
+                <time dateTime={idea.updatedAt.toISOString()}>
+                  {formatDate(idea.updatedAt, locale)}
+                </time>
+              </p>
+              {idea.archivedAt && <RestoreButton id={idea.id} title={idea.title} />}
+            </div>
           </li>
         );
       })}

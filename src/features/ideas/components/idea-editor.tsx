@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, LoaderCircle, Trash2 } from "lucide-react";
 
 import { useLeaveGuard } from "@/components/layout/leave-guard";
 import { ActionStatus } from "@/components/ui/action-status";
@@ -14,16 +14,16 @@ import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
-import { changeIdeaKind, deleteIdea, updateIdea } from "../actions";
+import { archiveIdea, changeIdeaKind, deleteIdea, restoreIdea, updateIdea } from "../actions";
 import type { IdeaKind } from "../model";
 import { draftTagIds, fieldErrors, ideaSchemas, type IdeaDraft } from "../schemas";
 import type { IdeaTag } from "../tags";
+import { ClassificationSection } from "./classification-section";
 import {
   KindField,
   NotesField,
   ReferencesField,
-  SermonFields,
-  StatusField,
+  SubjectField,
   TagsField,
   TitleField,
   type UpdateDraft,
@@ -39,6 +39,8 @@ type IdeaEditorProps = {
   backHref?: string;
   createdAt: Date;
   updatedAt: Date;
+  /** When the idea was archived, if it is. Never part of the draft: a save does not touch it. */
+  archivedAt?: Date | null;
 };
 
 const form = "idea";
@@ -52,7 +54,12 @@ const form = "idea";
  *
  * Tags are saved with the rest. The draft starts from the tags the idea
  * already has and every save sends the draft's tags, so changing only the
- * title sends the same tags back and none is lost.
+ * title sends the same tags back and none is lost. The classifications are in
+ * the draft too, behind `ClassificationSection`, and go back the same way.
+ *
+ * Archiving and restoring are their own steps, like reclassifying: they change
+ * only whether the idea is archived, leave the draft and any unsaved edits as
+ * they are, and say nothing has happened until the server says so.
  */
 export function IdeaEditor({
   id,
@@ -61,6 +68,7 @@ export function IdeaEditor({
   backHref = routes.library,
   createdAt,
   updatedAt,
+  archivedAt = null,
 }: IdeaEditorProps) {
   const router = useRouter();
   const toast = useToast();
@@ -71,7 +79,7 @@ export function IdeaEditor({
   const [saved, setSaved] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ActionResult | null>(null);
-  const [busy, setBusy] = useState<"save" | "kind" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"save" | "kind" | "delete" | "archive" | "restore" | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
@@ -151,12 +159,30 @@ export function IdeaEditor({
     else setDraft((current) => ({ ...current, kind: previous }));
   }
 
-  async function confirmDelete(request: Confirmation) {
-    setBusy("delete");
+  async function restore() {
+    if (busy) return;
+    setBusy("restore");
+    setResult(null);
+    const outcome = await restoreIdea(id).catch(() => offline);
+    setBusy(null);
+    if (!outcome.ok) return setResult(outcome);
+    toast({ message: outcome.message });
+    router.refresh();
+  }
+
+  async function confirmed(request: Confirmation) {
+    const deleting = request.destructive === true;
+    setBusy(deleting ? "delete" : "archive");
     const outcome = await request.run().catch(() => offline);
     setBusy(null);
     setConfirmation(null);
     if (!outcome.ok) return setResult(outcome);
+    if (!deleting) {
+      // Archived, and still here: the page says so once the server sends it again.
+      toast({ message: outcome.message });
+      router.refresh();
+      return;
+    }
     // The idea is gone; there is nothing left to lose by leaving.
     guard.allowLeaving();
     setSaved(draft);
@@ -166,6 +192,32 @@ export function IdeaEditor({
 
   return (
     <>
+      {archivedAt && (
+        <div className="mt-6 flex max-w-2xl flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl border bg-muted/50 px-4 py-3">
+          <p className="min-w-0 text-sm">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <Archive className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              {t.archivedOn(formatDate(archivedAt, locale))}
+            </span>
+            <span className="mt-0.5 block text-muted-foreground">{t.archivedHint}</span>
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy !== null}
+            aria-busy={busy === "restore"}
+            onClick={() => void restore()}
+          >
+            {busy === "restore" ? (
+              <LoaderCircle className="animate-spin" aria-hidden />
+            ) : (
+              <ArchiveRestore aria-hidden />
+            )}
+            {busy === "restore" ? t.restoring : t.restore}
+          </Button>
+        </div>
+      )}
       <form
         noValidate
         aria-busy={busy === "save"}
@@ -173,7 +225,7 @@ export function IdeaEditor({
           event.preventDefault();
           void save();
         }}
-        className="mt-8 max-w-2xl space-y-6"
+        className={`${archivedAt ? "mt-6" : "mt-8"} max-w-2xl space-y-6`}
       >
         <TitleField form={form} draft={draft} update={update} errors={errors} />
         <div>
@@ -195,9 +247,9 @@ export function IdeaEditor({
           onSubmitShortcut={() => void save()}
         />
         {draft.kind === "sermon" && (
-          <SermonFields form={form} draft={draft} update={update} errors={errors} />
+          <SubjectField form={form} draft={draft} update={update} errors={errors} />
         )}
-        <StatusField form={form} draft={draft} update={update} />
+        <ClassificationSection draft={draft} update={update} />
 
         <div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -220,32 +272,53 @@ export function IdeaEditor({
           {t.lastChanged}{" "}
           <time dateTime={updatedAt.toISOString()}>{formatDate(updatedAt, locale)}</time>
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy !== null}
-          className="text-destructive hover:border-destructive/60"
-          onClick={() =>
-            setConfirmation({
-              title: t.deleteTitle,
-              description: t.deleteDescription(saved.title),
-              confirmLabel: t.deleteConfirm(saved.kind),
-              destructive: true,
-              run: () => deleteIdea(id),
-            })
-          }
-        >
-          <Trash2 aria-hidden />
-          {t.delete}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!archivedAt && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() =>
+                setConfirmation({
+                  title: t.archiveTitle,
+                  description: t.archiveDescription(saved.title),
+                  confirmLabel: t.archiveConfirm,
+                  run: () => archiveIdea(id),
+                })
+              }
+            >
+              <Archive aria-hidden />
+              {t.archive}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy !== null}
+            className="text-destructive hover:border-destructive/60"
+            onClick={() =>
+              setConfirmation({
+                title: t.deleteTitle,
+                description: t.deleteDescription(saved.title),
+                confirmLabel: t.deleteConfirm(saved.kind),
+                destructive: true,
+                run: () => deleteIdea(id),
+              })
+            }
+          >
+            <Trash2 aria-hidden />
+            {t.delete}
+          </Button>
+        </div>
       </footer>
 
       {guard.dialog}
       <ConfirmDialog
         confirmation={confirmation}
-        busy={busy === "delete"}
-        onConfirm={(request) => void confirmDelete(request)}
+        busy={busy === "delete" || busy === "archive"}
+        onConfirm={(request) => void confirmed(request)}
         onCancel={() => setConfirmation(null)}
       />
     </>

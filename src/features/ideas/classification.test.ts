@@ -117,7 +117,11 @@ describe("the classification vocabulary", () => {
     const words = [
       ...options.statuses.flatMap((option) => [option.label, option.meaning]),
       ...options.formats.flatMap((option) => [option.label, option.meaning]),
-      ...options.sermonTypes.flatMap((option) => [option.label, option.definition, option.example]),
+      ...options.sermonTypes.flatMap((option) => [option.label, option.definition]),
+      // A sermon with no type yet is not an example of anything.
+      ...options.sermonTypes
+        .filter((option) => option.value !== "unspecified")
+        .map((option) => option.example),
     ];
     for (const word of words) expect(word.trim()).not.toBe("");
   });
@@ -132,7 +136,7 @@ describe("the classification vocabulary", () => {
     ]);
     expect(formats.map((option) => option.label)).toEqual([
       "Full-Length",
-      "Mini Sermon",
+      "Mini",
       "Flexible",
       "Not Specified",
     ]);
@@ -143,13 +147,15 @@ describe("the classification vocabulary", () => {
       "Not Specified",
     ]);
     expect(types[0].definition).toMatch(/organized around a particular subject/);
-    expect(types[0].example).toMatch(/Proverbs 11:30/);
+    expect(types[0].example).toMatch(/The Importance of Prayer/);
     expect(types[1].example).toMatch(/1 Samuel 17:29/);
-    expect(types[2].example).toMatch(/1 Samuel 17:32–50/);
+    expect(types[2].example).toMatch(/Psalm 23/);
     // Spanish says the same things in its own words.
     const spanish = classificationOptions("es");
     expect(spanish.statuses[3].label).toBe("En pausa");
-    expect(spanish.sermonTypes[0].example).toMatch(/Proverbios 11:30/);
+    expect(spanish.sermonTypes[0].example).toMatch(/La importancia de la oración/);
+    // The title is the verse as the RVG has it, not the English put into Spanish.
+    expect(spanish.sermonTypes[1].example).toMatch(/¿Acaso no hay una causa\?/);
   });
 
   it("reads a library address from when `idea` was called `captured`", () => {
@@ -505,12 +511,15 @@ describe("classifications in the database", () => {
       expect(await restoreIdea(db, me, unknown)).toBeNull();
     });
 
-    it("does not delete: the idea is still read, listed, and found", async () => {
+    it("does not delete: the idea is still read, and found when the archive is asked for", async () => {
       const { id } = await whole();
       await archiveIdea(db, me, id);
       expect(await getIdea(db, me, id)).not.toBeNull();
-      expect((await recentIdeas(db, me, 10)).map((idea) => idea.id)).toEqual([id]);
-      expect((await searchIdeas(db, me, defaultLibraryQuery)).total).toBe(1);
+      // Put away: not among the recent ideas, and not in the library as it opens.
+      expect(await recentIdeas(db, me, 10)).toEqual([]);
+      expect((await searchIdeas(db, me, defaultLibraryQuery)).total).toBe(0);
+      const archived = await searchIdeas(db, me, { ...defaultLibraryQuery, archive: "archived" });
+      expect(archived.items.map((idea) => idea.id)).toEqual([id]);
     });
   });
 

@@ -219,10 +219,11 @@ describe("filters", () => {
   it("filters by tags, and switches between any and all without losing them", () => {
     render(<Library />);
     openFilters();
-    const all = screen.getByRole("radio", { name: "All" });
+    const tags = within(screen.getByRole("group", { name: "Tags" }));
+    const all = tags.getByRole("radio", { name: "All" });
     // With no tag chosen there is nothing for the mode to apply to.
     expect(all).toBeDisabled();
-    expect(screen.getByRole("radio", { name: "Any" })).toBeChecked();
+    expect(tags.getByRole("radio", { name: "Any" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: /^Faith/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Prayer/ }));
@@ -240,8 +241,30 @@ describe("filters", () => {
   it("resets the page when the tag mode changes", () => {
     render(<Library at={query({ tagIds: [faith, prayer], page: 5 })} />);
     openFilters();
-    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Tags" })).getByRole("radio", { name: "All" }),
+    );
     expect(went(state.push)).toEqual([`/library?tag=${faith}&tag=${prayer}&tag_mode=all`]);
+  });
+
+  it("filters by intended format, and shows archived ideas only when asked", () => {
+    render(<Library />);
+    openFilters();
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Intended format" })).getByRole("button", {
+        name: "Mini",
+      }),
+    );
+    expect(went(state.push).at(-1)).toBe("/library?format=mini");
+
+    const show = within(screen.getByRole("group", { name: "Show" }));
+    expect(show.getByRole("radio", { name: "Active" })).toBeChecked();
+    fireEvent.click(show.getByRole("radio", { name: "Archived" }));
+    expect(went(state.push).at(-1)).toBe("/library?format=mini&archived=archived");
+
+    // Each is a chip of its own, and taking the archive's off goes back to active ideas.
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter: Showing Archived only" }));
+    expect(went(state.push).at(-1)).toBe("/library?format=mini");
   });
 
   it("sets either end of a date range", () => {

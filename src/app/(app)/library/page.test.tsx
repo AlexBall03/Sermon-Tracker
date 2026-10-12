@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   getIdea: vi.fn(),
   tags: [] as unknown[],
   listTags: vi.fn(),
+  // How many of the account's ideas are archived.
+  archived: 0,
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -43,6 +45,8 @@ vi.mock("@/features/ideas/actions", () => ({
   changeIdeaKind: vi.fn(),
   deleteIdea: vi.fn(),
   createIdea: vi.fn(),
+  archiveIdea: vi.fn(),
+  restoreIdea: vi.fn(),
 }));
 vi.mock("@/features/ideas/ideas", () => ({
   searchIdeas: async (...args: unknown[]) => {
@@ -60,6 +64,7 @@ vi.mock("@/features/ideas/ideas", () => ({
     state.getIdea(...args);
     return state.idea;
   },
+  archivedCount: async () => state.archived,
 }));
 
 import IdeaPage from "./[id]/page";
@@ -74,7 +79,9 @@ const sermon = {
   title: "His Grace is Sufficient",
   notes: "Paul's thorn.",
   status: "developing",
+  intendedFormat: "unspecified",
   sermonType: "expository",
+  archivedAt: null,
   subject: "Grace",
   createdAt: new Date("2026-10-01T10:00:00Z"),
   updatedAt: new Date("2026-10-02T10:00:00Z"),
@@ -108,7 +115,14 @@ const library = (searchParams: Record<string, string | string[]>) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.assign(state, { signedIn: true, ideas: [], paging: {}, idea: null, tags: [] });
+  Object.assign(state, {
+    signedIn: true,
+    ideas: [],
+    paging: {},
+    idea: null,
+    tags: [],
+    archived: 0,
+  });
 });
 
 describe("LibraryPage", () => {
@@ -126,6 +140,29 @@ describe("LibraryPage", () => {
     // Nothing to search or filter yet.
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Filters/ })).not.toBeInTheDocument();
+  });
+
+  it("says so when every idea is archived, and leads to them instead of to a new capture", async () => {
+    state.archived = 2;
+    render(await LibraryPage());
+    expect(screen.getByRole("heading", { name: "Every idea is archived" })).toBeVisible();
+    expect(screen.getByText(/2 archived ideas/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Show archived ideas" })).toHaveAttribute(
+      "href",
+      "/library?archived=archived",
+    );
+    expect(screen.queryByRole("heading", { name: "Nothing here yet" })).not.toBeInTheDocument();
+    // The library's controls are there, so the archive can be reached from them too.
+    expect(screen.getByRole("button", { name: /^Filters/ })).toBeVisible();
+  });
+
+  it("says the archive is empty when it was asked for and holds nothing", async () => {
+    render(await library({ archived: "archived" }));
+    expect(screen.getByRole("heading", { name: "No archived ideas" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Back to active ideas" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
   });
 
   it("has a search box, filters, an order, a view, and tag management", async () => {
@@ -368,8 +405,10 @@ describe("IdeaPage", () => {
     expect(screen.getByRole("textbox", { name: "Notes" })).toHaveValue("Paul's thorn.");
     expect(screen.getByRole("textbox", { name: "Subject or theme" })).toHaveValue("Grace");
     expect(screen.getByRole("radio", { name: "Sermon" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "Expository" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "Developing" })).toBeChecked();
+    // Its classifications, in one line until the section is opened.
+    expect(screen.getByRole("button", { name: /Classification & Status/ })).toHaveTextContent(
+      "Developing · Expository",
+    );
     // Each reference is a row that opens its text in place, and leads to the Bible and back.
     expect(screen.getAllByRole("button", { name: /show the passage/ })).toHaveLength(2);
     for (const link of screen.getAllByRole("link", { name: /in the Bible$/ })) {

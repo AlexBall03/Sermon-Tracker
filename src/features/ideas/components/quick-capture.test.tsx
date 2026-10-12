@@ -34,6 +34,18 @@ const type = (element: HTMLElement, value: string) =>
   fireEvent.change(element, { target: { value } });
 const submit = () => fireEvent.submit(title().closest("form")!);
 
+/** Picks a value in one of the dropdowns, as a pointer does. */
+async function choose(label: string, option: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  const item = await screen.findByRole("option", { name: option });
+  fireEvent.pointerDown(item, { pointerType: "mouse" });
+  fireEvent.mouseMove(item);
+  fireEvent.pointerUp(item, { pointerType: "mouse" });
+  fireEvent.mouseUp(item);
+  fireEvent.click(item);
+}
+const classification = () => screen.getByRole("button", { name: /Classification & Status/ });
+
 beforeEach(() => {
   vi.clearAllMocks();
   state.createIdea.mockResolvedValue(saved);
@@ -222,7 +234,10 @@ describe("quick capture", () => {
 
     fireEvent.click(within(dialog).getByRole("radio", { name: "Sermon" }));
     type(within(dialog).getByRole("textbox", { name: "Subject or theme" }), "Grace");
-    fireEvent.click(within(dialog).getByRole("radio", { name: "Expository" }));
+    // The classifications wait, closed, behind their own heading.
+    expect(classification()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(classification());
+    await choose("Sermon type", "Expository");
     const scripture = within(dialog).getByRole("textbox", { name: "Scripture" });
     type(scripture, "2 Corinthians 12:9");
     fireEvent.keyDown(scripture, { key: "Enter" });

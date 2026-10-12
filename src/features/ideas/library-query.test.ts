@@ -29,6 +29,8 @@ const full: LibraryQuery = {
   kinds: ["sermon", "point"],
   statuses: ["developing"],
   sermonTypes: ["topical"],
+  formats: ["mini"],
+  archive: "all",
   tagIds: [tagA, tagB],
   tagMode: "all",
   createdFrom: "2026-01-01",
@@ -53,6 +55,8 @@ describe("parseLibraryQuery", () => {
       kind: ["sermon", "point"],
       status: "developing",
       type: "topical",
+      format: "mini",
+      archived: "all",
       tag: [tagA, tagB],
       tag_mode: "all",
       created_from: "2026-01-01",
@@ -229,6 +233,37 @@ describe("dates", () => {
   });
 });
 
+describe("format and archive", () => {
+  it("shows active ideas unless the address asks otherwise, and leaves the default out", () => {
+    expect(defaultLibraryQuery).toMatchObject({ formats: [], archive: "active" });
+    expect(parseLibraryQuery({ archived: "archived" }).archive).toBe("archived");
+    expect(parseLibraryQuery({ archived: ["all", "archived"] }).archive).toBe("all");
+    for (const value of ["true", "1", "ARCHIVED", "", "deleted"]) {
+      expect(parseLibraryQuery({ archived: value }).archive).toBe("active");
+    }
+    expect(libraryHref({ ...defaultLibraryQuery, archive: "active" })).toBe("/library");
+    expect(libraryHref({ ...defaultLibraryQuery, archive: "archived" })).toBe(
+      "/library?archived=archived",
+    );
+  });
+
+  it("keeps the formats it knows, each once, in the model's order", () => {
+    expect(parseLibraryQuery({ format: ["mini", "long", "full_length", "mini"] }).formats).toEqual([
+      "full_length",
+      "mini",
+    ]);
+    expect(libraryHref({ ...defaultLibraryQuery, formats: ["unspecified", "flexible"] })).toBe(
+      "/library?format=flexible&format=unspecified",
+    );
+  });
+
+  it("goes back to active ideas when the filters are cleared", () => {
+    expect(clearFilters({ ...defaultLibraryQuery, archive: "all", formats: ["mini"] })).toEqual(
+      defaultLibraryQuery,
+    );
+  });
+});
+
 describe("serializeLibraryQuery", () => {
   it("leaves every default out", () => {
     expect(serializeLibraryQuery(defaultLibraryQuery).toString()).toBe("");
@@ -243,6 +278,8 @@ describe("serializeLibraryQuery", () => {
       "kind",
       "status",
       "type",
+      "format",
+      "archived",
       "tag",
       "tag",
       "tag_mode",
@@ -310,6 +347,8 @@ describe("isFiltered", () => {
     expect(isFiltered({ ...defaultLibraryQuery, tagMode: "all" })).toBe(false);
     expect(isFiltered({ ...defaultLibraryQuery, tagIds: [tagA] })).toBe(true);
     expect(isFiltered({ ...defaultLibraryQuery, updatedThrough: "2026-01-01" })).toBe(true);
+    expect(isFiltered({ ...defaultLibraryQuery, formats: ["flexible"] })).toBe(true);
+    expect(isFiltered({ ...defaultLibraryQuery, archive: "archived" })).toBe(true);
   });
 });
 
@@ -317,7 +356,9 @@ describe("filter helpers", () => {
   it("counts each chosen value, and each date range once", () => {
     expect(activeFilterCount(defaultLibraryQuery)).toBe(0);
     expect(activeFilterCount({ ...defaultLibraryQuery, q: "faith", sort: "title-asc" })).toBe(0);
-    expect(activeFilterCount(full)).toBe(8);
+    // Two kinds, a status, a type, a format, the archive view, two tags, two ranges.
+    expect(activeFilterCount(full)).toBe(10);
+    expect(activeFilterCount({ ...defaultLibraryQuery, archive: "archived" })).toBe(1);
     expect(activeFilterCount({ ...defaultLibraryQuery, createdFrom: "2026-01-01" })).toBe(1);
   });
 
