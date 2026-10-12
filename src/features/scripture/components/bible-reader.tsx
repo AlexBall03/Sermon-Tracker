@@ -16,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns2,
+  Link2,
+  Link2Off,
   LoaderCircle,
   TextSearch,
   X,
@@ -67,6 +69,13 @@ import {
   storeSidebarOpen,
   subscribeSidebar,
 } from "../reader-sidebar";
+import {
+  lockScrolling,
+  readScrollLocked,
+  storeScrollLocked,
+  subscribeScrollLock,
+  type Alignment,
+} from "../scroll-lock";
 import { formatReference, formatReferences, type ScriptureReference } from "../reference";
 import { noMarks, type ChapterMarks, type FavoriteSummary } from "../saved/model";
 import { versesInChapter } from "../saved/verse-set";
@@ -182,10 +191,11 @@ export function ReaderSidebarScript() {
  *
  * Two panes are two readers that share this one address: each has its own
  * translation, its own place, its own selection and marks, and scrolls by
- * itself. They are joined in one place only, here, where `go` moves a pane
- * and `linked` says whether the other follows; nothing in a pane knows of
- * the other. Moving and scrolling them together later is a change to this
- * component alone.
+ * itself unless the reader locks the two together. They are joined in one
+ * place only, here: `go` moves a pane and `linked` says whether the other
+ * follows (it does not), and the lock on the line between them makes them
+ * scroll as one (features/scripture/scroll-lock.ts). Nothing in a pane knows
+ * of the other.
  */
 export function BibleReader({
   initial,
@@ -248,8 +258,11 @@ export function BibleReader({
   // Two panes and no room left for the docked navigation: it is opened over them instead.
   const navigationOver = comparing && !roomBeside;
   const active: PaneId = comparing ? touched : "primary";
-  // Whether moving one pane moves the other. Not yet: each is read on its own.
+  // Whether moving one pane moves the other. It does not: each turns its own chapters,
+  // even while their scrolling is locked.
   const linked = false;
+  // Whether the two panes scroll as one: this browser's choice, and off until asked for.
+  const scrollLocked = useSyncExternalStore(subscribeScrollLock, readScrollLocked, () => false);
 
   // The address named no place: go to the one last read here. It replaces the
   // entry, so Back does not return to an address that only sends forward again.
@@ -349,6 +362,9 @@ export function BibleReader({
       // Alone, the reader scrolls the page. Side by side, each pane scrolls by itself,
       // and a new chapter is a new pane, which starts at its head.
       if (!comparing) window.scrollTo({ top: 0, behavior: "instant" });
+      // The lock held the two at one place in their reading, and that place is gone: a
+      // pane that turns its chapter is let go, and the reader locks them again if wanted.
+      if (comparing && scrollLocked) storeScrollLocked(false);
       setAnnouncement(placeName(to, language((panes[pane] ?? panes.primary).translation)));
     }
     // `linked` is where a move in one pane would be repeated in the other.
@@ -448,6 +464,48 @@ export function BibleReader({
   const first = paneProps("primary");
   const second = paneProps("beside");
 
+  // Locked, the two panes scroll as one. A pane is a new element whenever its chapter
+  // or its translation changes, so they are bound again each time either does.
+  const panesBox = useRef<HTMLDivElement>(null);
+  const bound = useRef<{ panes: readonly HTMLElement[]; owed: Alignment | null }>({
+    panes: [],
+    owed: null,
+  });
+  const paneKey = (shown: typeof first) =>
+    shown ? `${shown.translation}.${shown.location.book}.${shown.location.chapter}` : "";
+  const [firstKey, secondKey] = [paneKey(first), paneKey(second)];
+  const locking = scrollLocked && Boolean(firstKey && secondKey);
+  const samePlace =
+    first?.location.book === second?.location.book &&
+    first?.location.chapter === second?.location.chapter;
+  useEffect(() => {
+    const was = bound.current;
+    const find = (pane: PaneId) =>
+      panesBox.current?.querySelector<HTMLElement>(`[data-pane="${pane}"] [data-pane-scroller]`);
+    const [one, two] = [find("primary"), find("beside")];
+    if (!locking || !one || !two) {
+      bound.current = { panes: [], owed: null };
+      return;
+    }
+    const fresh = [one, two].filter((pane) => !was.panes.includes(pane));
+    const align: Alignment | null =
+      was.panes.length === 0
+        ? // Just locked: the other pane is seen to come into line with the one in use.
+          { follower: active === "primary" ? two : one, glide: true }
+        : fresh.length === 1
+          ? // A pane was replaced: the new one takes its place beside the one that stayed.
+            { follower: fresh[0], glide: false, atHead: true }
+          : was.owed && [one, two].includes(was.owed.follower)
+            ? was.owed
+            : null;
+    const held = { panes: [one, two], owed: null as Alignment | null };
+    bound.current = held;
+    const stop = lockScrolling(one, two, { sameChapter: samePlace, align });
+    return () => {
+      held.owed = stop();
+    };
+  }, [locking, firstKey, secondKey, samePlace, active]);
+
   return (
     <div className="flex min-h-[calc(100dvh-var(--bar-h))] flex-1">
       <aside
@@ -527,8 +585,9 @@ export function BibleReader({
         ) : (
           // Two panes fill the window beneath the bar and scroll apart, each by itself.
           <div
+            ref={panesBox}
             data-comparing
-            className="flex h-[calc(100dvh-var(--bar-h))] flex-col max-md:h-[calc(100dvh-var(--bar-h)*2-var(--bar-lift))]"
+            className="relative flex h-[calc(100dvh-var(--bar-h))] flex-col max-md:h-[calc(100dvh-var(--bar-h)*2-var(--bar-lift))]"
           >
             <div className="grid min-h-0 flex-1 grid-cols-2 divide-x">
               {[first, second].map((props) => (
@@ -548,6 +607,37 @@ export function BibleReader({
                 />
               ))}
             </div>
+            {/*
+             * The lock on the panes' scrolling: one control, astride the line between
+             * them and level with their bars, as the navigation's handle is on its own
+             * line. Emerald while they are locked together.
+             */}
+            <button
+              type="button"
+              aria-pressed={scrollLocked}
+              aria-label={scrollLocked ? t.unlockScrolling : t.lockScrolling}
+              title={scrollLocked ? t.unlockScrolling : t.lockScrolling}
+              onClick={() => {
+                storeScrollLocked(!scrollLocked);
+                setAnnouncement(scrollLocked ? t.scrollingUnlocked : t.scrollingLocked);
+              }}
+              className="absolute top-7 left-1/2 z-40 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-input bg-surface-raised text-muted-foreground shadow-card transition-[color,border-color,box-shadow] duration-200 hover:border-primary/70 hover:text-primary hover:shadow-raised active:bg-accent aria-pressed:border-primary/70 aria-pressed:text-primary pointer-coarse:size-9"
+            >
+              {/* Keyed, so the change of state is seen: the new icon grows into place. */}
+              {scrollLocked ? (
+                <Link2
+                  key="locked"
+                  className="size-4 animate-in duration-300 zoom-in-50"
+                  aria-hidden
+                />
+              ) : (
+                <Link2Off
+                  key="free"
+                  className="size-4 animate-in duration-300 zoom-in-50"
+                  aria-hidden
+                />
+              )}
+            </button>
           </div>
         )}
       </div>

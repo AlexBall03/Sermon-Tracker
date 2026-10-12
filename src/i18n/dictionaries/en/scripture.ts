@@ -97,6 +97,10 @@ export const scripture = {
     compareLabel: "Compare with another translation or passage",
     closePane: (place: string) => `Close ${place}`,
     closeComparison: "Close this pane",
+    lockScrolling: "Scroll both panes together",
+    unlockScrolling: "Scroll each pane by itself",
+    scrollingLocked: "The panes now scroll together.",
+    scrollingUnlocked: "Each pane now scrolls by itself.",
     panes: "Reading pane",
     elsewhere: (highlights: number, favorites: number, translation: string) => {
       const parts = [

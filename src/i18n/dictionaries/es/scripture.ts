@@ -98,6 +98,10 @@ export const scripture: Untranslated<typeof english> = {
     compareLabel: "Comparar con otra traducción u otro pasaje",
     closePane: (place) => `Cerrar ${place}`,
     closeComparison: "Cerrar este panel",
+    lockScrolling: "Desplazar ambos paneles juntos",
+    unlockScrolling: "Desplazar cada panel por separado",
+    scrollingLocked: "Los paneles ahora se desplazan juntos.",
+    scrollingUnlocked: "Cada panel ahora se desplaza por separado.",
     panes: "Panel de lectura",
     elsewhere: (highlights, favorites, translation) => {
       const parts = [

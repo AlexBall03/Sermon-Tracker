@@ -153,7 +153,8 @@ export function PassageText({
           className={cn(
             verseRow,
             reader && readerRow,
-            "transition-colors duration-150 hover:bg-accent active:bg-foreground/10",
+            // Quieter than a control's hover: it is under the eye the whole time the text is read.
+            "transition-colors duration-150 hover:bg-accent/55 active:bg-accent",
             isSelected && "bg-primary-soft hover:bg-primary-soft",
             joined,
           )}
