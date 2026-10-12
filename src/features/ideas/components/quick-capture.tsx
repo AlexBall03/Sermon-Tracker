@@ -29,11 +29,13 @@ import {
   ScriptureHost,
   type PanelRequest,
 } from "@/features/scripture/components/scripture-provider";
+import type { ScriptureReference } from "@/features/scripture/reference";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { createIdea } from "../actions";
+import type { IdeaKind } from "../model";
 import { emptyDraft, fieldErrors, hasContent, ideaInputSchema, type IdeaDraft } from "../schemas";
 import {
   KindField,
@@ -45,7 +47,32 @@ import {
   type UpdateDraft,
 } from "./idea-fields";
 
-const QuickCaptureContext = createContext<{ open: () => void }>({ open: () => {} });
+/** What a capture can begin with: a kind already chosen, and passages already on it. */
+export type CaptureSeed = { kind?: IdeaKind; references?: readonly ScriptureReference[] };
+
+type QuickCapture = {
+  open: () => void;
+  /**
+   * Opens capture with something already in it: the Scripture an idea is
+   * being started from. Nothing is saved by opening; closing it untouched
+   * leaves no trace.
+   */
+  openWith: (seed: CaptureSeed) => void;
+};
+
+const QuickCaptureContext = createContext<QuickCapture>({ open: () => {}, openWith: () => {} });
+
+/** The draft a seed makes. A sermon's first passage is its main text, as when one is added by hand. */
+export function seededDraft({ kind = emptyDraft.kind, references = [] }: CaptureSeed): IdeaDraft {
+  return {
+    ...emptyDraft,
+    kind,
+    references: references.map((reference, index) => ({
+      ...reference,
+      isPrimary: kind === "sermon" && index === 0,
+    })),
+  };
+}
 
 /** Opens quick capture from anywhere in the signed-in shell. */
 export function useQuickCapture() {
@@ -82,6 +109,8 @@ const form = "capture";
 export function QuickCaptureProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<IdeaDraft>(emptyDraft);
+  // What the capture was opened with. Only what is written beyond it is the person's to lose.
+  const [seed, setSeed] = useState<IdeaDraft>(emptyDraft);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,7 +123,22 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
   const toast = useToast();
   const wide = useMediaQuery(wideEnough);
 
-  const value = useMemo(() => ({ open: () => setOpen(true) }), []);
+  const value = useMemo(
+    () => ({
+      open: () => setOpen(true),
+      openWith: (given: CaptureSeed) => {
+        const next = seededDraft(given);
+        setSeed(next);
+        setDraft(next);
+        setErrors({});
+        setResult(null);
+        setPanel(null);
+        ideaId.current = null;
+        setOpen(true);
+      },
+    }),
+    [],
+  );
   const update: UpdateDraft = useCallback((change) => {
     setDraft(change);
     setErrors({});
@@ -106,6 +150,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
 
   function clear() {
     setDraft(emptyDraft);
+    setSeed(emptyDraft);
     setErrors({});
     setResult(null);
     setMore(false);
@@ -151,7 +196,8 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     });
   }
 
-  const dirty = hasContent(draft);
+  // Opened from a passage and left as it came, there is nothing to ask about.
+  const dirty = hasContent(draft) && JSON.stringify(draft) !== JSON.stringify(seed);
   const unsaved = "This idea has not been saved.";
   // Leaving the page with something written asks first, and leaving discards it.
   const guard = useLeaveGuard(open && dirty, unsaved, () => {

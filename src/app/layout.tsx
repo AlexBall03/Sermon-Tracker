@@ -56,6 +56,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // Without this a phone reports no safe-area insets, and the tab bar sits on the home indicator.
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f5f0" },
     { media: "(prefers-color-scheme: dark)", color: "#0e0f11" },

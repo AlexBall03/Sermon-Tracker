@@ -2,20 +2,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { Lightbulb, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { AttachScripture } from "@/features/ideas/components/attach-scripture";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { chaptersIn } from "../../books";
 import { firstLocation, readerHref } from "../../reader-location";
+import type { ScriptureReference } from "../../reference";
 import { deleteFavorite } from "../../saved/actions";
 import type { ListedFavorite } from "../../saved/favorites";
 import { highlightBackground } from "../../saved/highlight-style";
 import { highlightColorLabels, type FavoriteSummary } from "../../saved/model";
+import { versesToRuns } from "../../saved/verse-set";
 import { dropFavorite } from "../../use-chapter-marks";
 import { FavoriteEditor } from "./favorite-editor";
 
@@ -35,10 +38,15 @@ function place({ book, chapter, verse }: { book: number; chapter: number; verse:
  * was noted beside it. The reference leads to the passage in the Bible; a
  * passage is changed in the same dialog the reader uses, and removed behind a
  * confirmation.
+ *
+ * "Add to idea" is the reader's own dialog, given the passage's verses as
+ * references. What reaches the idea is those references and nothing of the
+ * favorite: removing either afterwards leaves the other as it is.
  */
 export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]; label: string }) {
   const toast = useToast();
   const [editing, setEditing] = useState<FavoriteSummary | null>(null);
+  const [attaching, setAttaching] = useState<ScriptureReference[] | null>(null);
   const [removing, setRemoving] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -163,7 +171,19 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
                     {formatDate(favorite.createdAt)}
                   </time>
                 </p>
-                <div className="-mr-2 -mb-1.5 ml-auto flex gap-0.5">
+                <div className="-mr-2 -mb-1.5 ml-auto flex flex-wrap justify-end gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="px-2.5 text-muted-foreground hover:text-foreground"
+                    aria-label={`Add ${name} to an idea`}
+                    aria-haspopup="dialog"
+                    onClick={() => setAttaching(versesToRuns(favorite.verses))}
+                  >
+                    <Lightbulb aria-hidden />
+                    Add to idea
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -196,6 +216,7 @@ export function SavedResults({ favorites, label }: { favorites: ListedFavorite[]
       </ul>
 
       <FavoriteEditor favorite={editing} onClose={() => setEditing(null)} linkToBible />
+      <AttachScripture references={attaching} onClose={() => setAttaching(null)} />
       <ConfirmDialog
         confirmation={removing}
         busy={busy}

@@ -57,6 +57,10 @@ const verseRow = "flex w-full scroll-mt-32 scroll-mb-32 gap-3 rounded-md px-2 py
 const verseMargin = "flex w-6 shrink-0 flex-col items-end gap-0.5 pt-[0.4em]";
 const verseNumber = "font-sans text-[0.6875rem] leading-none font-semibold tabular-nums";
 // The highlighter's stroke: behind the words alone, line by line, and it comes and goes gently.
+// On the Bible page at full width, the row keeps as much room right of the
+// words as the number takes on their left, so the text sits in the middle.
+const readerRow = "max-md:gap-2.5 max-md:pr-9 max-md:pl-1.5";
+const readerMargin = "max-md:w-5";
 const verseWords =
   "rounded-[0.2em] box-decoration-clone px-[0.12em] py-[0.08em] transition-colors duration-200";
 
@@ -83,6 +87,7 @@ export function PassageText({
   const from = show?.from ?? 1;
   const to = Math.min(show?.to ?? verses.length, verses.length);
   const chosen = new Set(selected);
+  const reader = size === "reader";
   const rows = [];
 
   for (let verse = from; verse <= to; verse++) {
@@ -97,7 +102,7 @@ export function PassageText({
     const favorite = favorites?.has(verse) ?? false;
     const content = (
       <>
-        <span className={verseMargin}>
+        <span className={cn(verseMargin, reader && readerMargin)}>
           <span className={cn(verseNumber, isSelected ? "text-primary" : "text-muted-foreground")}>
             {verse}
           </span>
@@ -136,6 +141,7 @@ export function PassageText({
           }
           className={cn(
             verseRow,
+            reader && readerRow,
             "transition-colors duration-150 hover:bg-accent active:bg-foreground/10",
             isSelected && "bg-primary-soft hover:bg-primary-soft",
             joined,
@@ -150,7 +156,7 @@ export function PassageText({
           {...marks}
           aria-current={verse === located ? "location" : undefined}
           data-located={verse === located ? "" : undefined}
-          className={cn(verseRow, isSelected && "bg-primary-soft", joined)}
+          className={cn(verseRow, reader && readerRow, isSelected && "bg-primary-soft", joined)}
         >
           {content}
         </p>
@@ -162,7 +168,7 @@ export function PassageText({
     <div
       className={cn(
         "font-serif text-foreground",
-        size === "reader"
+        reader
           ? "text-[1.125rem] leading-[1.75] sm:text-[1.1875rem]"
           : "text-[1.0625rem] leading-[1.65]",
         className,
@@ -171,7 +177,10 @@ export function PassageText({
       {superscription && from === 1 && (
         <p
           data-superscription
-          className="mb-2 px-2 pl-11 text-[0.9375em] text-muted-foreground italic"
+          className={cn(
+            "mb-2 px-2 pl-11 text-[0.9375em] text-muted-foreground italic",
+            reader && "max-md:pr-9 max-md:pl-9",
+          )}
         >
           {superscription}
         </p>

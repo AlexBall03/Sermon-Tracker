@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   replace: vi.fn(),
   updateFavorite: vi.fn(),
   deleteFavorite: vi.fn(),
+  attachScripture: vi.fn(),
+  createIdea: vi.fn(),
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -29,7 +31,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: state.push, replace: state.replace }),
 }));
 vi.mock("@/db", () => ({ getDb: () => "database" }));
-vi.mock("@/features/ideas/actions", () => ({ createIdea: vi.fn() }));
+vi.mock("@/features/ideas/actions", () => ({
+  createIdea: state.createIdea,
+  attachScripture: state.attachScripture,
+}));
 vi.mock("@/features/scripture/saved/actions", () => ({
   updateFavorite: state.updateFavorite,
   deleteFavorite: state.deleteFavorite,
@@ -407,5 +412,103 @@ describe("managing a saved passage from the library", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("That did not reach the server."),
     );
+  });
+});
+
+describe("putting a saved passage on an idea", () => {
+  const found = [
+    {
+      id: "idea-1",
+      title: "So loved",
+      kind: "sermon",
+      status: "captured",
+      subject: null,
+      references: [],
+    },
+    {
+      id: "idea-2",
+      title: "The wages of sin",
+      kind: "point",
+      status: "captured",
+      subject: null,
+      references: [],
+    },
+  ];
+  const attach = async (name: string) => {
+    fireEvent.click(screen.getByRole("button", { name: `Add ${name} to an idea` }));
+    return within(await screen.findByRole("dialog", { name: "Add to an idea" }));
+  };
+
+  beforeEach(() => {
+    state.attachScripture.mockReset();
+    state.createIdea.mockReset();
+    state.attachScripture.mockResolvedValue({
+      ok: true,
+      id: "idea-1",
+      added: 1,
+      message: "Added.",
+    });
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: found, total: found.length }),
+    }));
+    return () => vi.unstubAllGlobals();
+  });
+
+  it("adds a saved passage as one reference, through the reader's own dialog", async () => {
+    state.favorites = [favorite()];
+    state.saved = 1;
+    await show();
+    const dialog = await attach("The gospel");
+    expect(dialog.getByText("John 3:16–17")).toBeVisible();
+    fireEvent.click(await dialog.findByRole("button", { name: "Add John 3:16–17 to So loved" }));
+    await waitFor(() => expect(state.attachScripture).toHaveBeenCalledTimes(1));
+    expect(state.attachScripture).toHaveBeenCalledWith({
+      ideaId: "idea-1",
+      references: [{ book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: 17 }],
+    });
+    // Only its verses went: the favorite itself was neither changed nor removed.
+    expect(state.updateFavorite).not.toHaveBeenCalled();
+    expect(state.deleteFavorite).not.toHaveBeenCalled();
+    expect(await screen.findByRole("link", { name: "Open" })).toHaveAttribute(
+      "href",
+      "/library/idea-1",
+    );
+  });
+
+  it("adds a grouped passage whole, each run of verses a reference of its own", async () => {
+    state.favorites = [romans];
+    state.saved = 1;
+    await show();
+    const dialog = await attach("Romans 3:10, 23; 6:23");
+    fireEvent.click(await dialog.findByRole("button", { name: /to The wages of sin$/ }));
+    await waitFor(() => expect(state.attachScripture).toHaveBeenCalledTimes(1));
+    const single = (chapterStart: number, verseStart: number) => ({
+      book: 45,
+      chapterStart,
+      verseStart,
+      chapterEnd: null,
+      verseEnd: null,
+    });
+    expect(state.attachScripture).toHaveBeenCalledWith({
+      ideaId: "idea-2",
+      references: [single(3, 10), single(3, 23), single(6, 23)],
+    });
+  });
+
+  it("begins a new idea with the whole saved passage", async () => {
+    state.favorites = [romans];
+    state.saved = 1;
+    await show();
+    const dialog = await attach("Romans 3:10, 23; 6:23");
+    fireEvent.click(dialog.getByRole("button", { name: "New point idea" }));
+    const capture = within(await screen.findByRole("dialog", { name: "Capture an idea" }));
+    expect(capture.getByRole("radio", { name: "Point" })).toBeChecked();
+    expect(
+      within(capture.getByRole("list", { name: "References" })).getAllByRole("listitem"),
+    ).toHaveLength(3);
+    expect(state.createIdea).not.toHaveBeenCalled();
+    expect(state.attachScripture).not.toHaveBeenCalled();
   });
 });

@@ -5,11 +5,12 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import { formatReferences } from "@/features/scripture/reference";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import * as service from "./ideas";
-import { ideaKindLabels } from "./model";
-import { ideaIdSchema, ideaInputSchema, ideaKindSchema } from "./schemas";
+import { ideaKindLabels, ideaLimits } from "./model";
+import { attachInputSchema, ideaIdSchema, ideaInputSchema, ideaKindSchema } from "./schemas";
 import { UnknownTagError } from "./tags";
 
 export type IdeaActionResult = ActionResult & { id?: string };
@@ -77,6 +78,67 @@ export async function updateIdea(id: unknown, input: unknown): Promise<ActionRes
   }
   refresh(ideaId.data);
   return { ok: true, message: "Changes saved." };
+}
+
+export type AttachActionResult = ActionResult & {
+  /** The idea the passages went to, so the caller can offer the way to it. */
+  id?: string;
+  /** How many passages were added now; none when the idea had them all. */
+  added?: number;
+};
+
+/**
+ * Adds passages to one of the caller's ideas, from the Bible reader or from
+ * saved Scripture. Nothing else about the idea changes, and a passage it
+ * already has is not added again.
+ */
+export async function attachScripture(input: unknown): Promise<AttachActionResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+
+  const parsed = attachInputSchema.safeParse(input);
+  if (!parsed.success) {
+    // A malformed idea ID says nothing about the passage; a passage that does not exist does.
+    const [issue] = parsed.error.issues;
+    return issue?.path[0] === "references" ? firstIssue(parsed.error, invalid.message) : invalid;
+  }
+  const { ideaId, references } = parsed.data;
+
+  let outcome: service.AttachOutcome;
+  try {
+    outcome = await service.attachReferences(getDb(), actor.user.id, ideaId, references);
+  } catch (error) {
+    console.error("Scripture attach failed:", describeDatabaseError(error));
+    return { ok: false, message: "The passage could not be added. Try again." };
+  }
+  if (outcome.status === "missing") return missing;
+  if (outcome.status === "full") {
+    return {
+      ok: false,
+      message:
+        outcome.room === 0
+          ? `That idea already holds ${ideaLimits.references} references, the most it can.`
+          : `That idea has room for ${outcome.room} more ${outcome.room === 1 ? "reference" : "references"}, and this is ${references.length}.`,
+    };
+  }
+
+  const { idea, added, already } = outcome;
+  const title = `“${idea.title}”`;
+  if (added.length === 0) {
+    return {
+      ok: true,
+      id: idea.id,
+      added: 0,
+      message: `${formatReferences(already)} is already on ${title}.`,
+    };
+  }
+  refresh(idea.id);
+  return {
+    ok: true,
+    id: idea.id,
+    added: added.length,
+    message: `Added ${formatReferences(added)} to ${title}.`,
+  };
 }
 
 export async function changeIdeaKind(id: unknown, kind: unknown): Promise<ActionResult> {

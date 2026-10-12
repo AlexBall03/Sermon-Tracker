@@ -41,6 +41,11 @@
   --radius: 0.5rem;
   /* Height of the fixed bar. Shells offset `main` by it. */
   --bar-h: 3.5rem;
+  /*
+   * Space under the small-screen tab bar, lifting it clear of the screen's
+   * edge and the home indicator. Less than the full inset, which sits it high.
+   */
+  --bar-lift: max(0.625rem, calc(env(safe-area-inset-bottom) - 0.75rem));
 }
 
 :root {
@@ -443,10 +448,11 @@
   width: 100%;
   max-width: 76rem;
   margin-inline: auto;
-  padding-inline: 1.25rem;
+  /* Never under a notch when the phone is on its side. */
+  padding-inline: max(1.25rem, env(safe-area-inset-left)) max(1.25rem, env(safe-area-inset-right));
 
   @media (min-width: 40rem) {
-    padding-inline: 2rem;
+    padding-inline: max(2rem, env(safe-area-inset-left)) max(2rem, env(safe-area-inset-right));
   }
 }
 

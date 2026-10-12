@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Eraser, Highlighter, LoaderCircle, Star } from "lucide-react";
+import { Check, Eraser, Highlighter, Lightbulb, LoaderCircle, Star } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -37,6 +37,8 @@ type SelectionActionsProps = {
   onProblem: (message: string | null) => void;
   /** Opens a favorite to be changed or removed. */
   onManage: (favorite: FavoriteSummary) => void;
+  /** Opens the way to put the selection on an idea. Without it, that action is not offered. */
+  onAttach?: () => void;
 };
 
 /** The colors the selected verses carry, and whether any of them carries none. */
@@ -63,9 +65,9 @@ function listed(colors: readonly HighlightColor[]) {
 }
 
 /**
- * What 2C.1B adds to the selection toolbar: highlighting the selected verses,
- * and saving them as a favorite. Both act on exactly the verses selected and
- * on no others.
+ * What is kept from a selection: highlighting the selected verses, saving
+ * them as a favorite, and putting them on an idea. Each acts on exactly the
+ * verses selected and on no others, and leaves the selection as it is.
  */
 export function SelectionActions({
   book,
@@ -74,6 +76,7 @@ export function SelectionActions({
   marks,
   onProblem,
   onManage,
+  onAttach,
 }: SelectionActionsProps) {
   const toast = useToast();
   const [picking, setPicking] = useState(false);
@@ -215,6 +218,26 @@ export function SelectionActions({
         )}
         <span className={label}>{saved ? "Saved" : "Favorite"}</span>
       </Button>
+
+      {onAttach && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={action}
+          aria-haspopup="dialog"
+          aria-label="Add to an idea"
+          title="Add to an idea"
+          onClick={() => {
+            onProblem(null);
+            onAttach();
+          }}
+        >
+          <Lightbulb aria-hidden />
+          {/* One word, as its neighbours are: six of them share a line. Its name says the rest. */}
+          <span className={label}>Idea</span>
+        </Button>
+      )}
     </>
   );
 }
@@ -230,7 +253,7 @@ export function SelectionFavorites({
   verses,
   marks,
   onManage,
-}: Omit<SelectionActionsProps, "onProblem">) {
+}: Omit<SelectionActionsProps, "onProblem" | "onAttach">) {
   const chosen = new Set(verses);
   const selected: VerseRef[] = verses.map((verse) => ({ book, chapter, verse }));
   const holding = marks.favorites.filter(

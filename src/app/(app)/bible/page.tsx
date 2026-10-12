@@ -4,10 +4,12 @@ import type { Metadata } from "next";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { requireActiveUser } from "@/features/auth/access";
+import { getIdea } from "@/features/ideas/ideas";
 import {
   BibleReader,
   ReaderSidebarScript,
   type InitialChapter,
+  type ReaderOrigin,
 } from "@/features/scripture/components/bible-reader";
 import { translation } from "@/features/scripture/books";
 import { getChapter, getChapterTitle } from "@/features/scripture/passages";
@@ -45,6 +47,26 @@ async function chapterFor(
 }
 
 /**
+ * The idea the address says the reader was opened from, if it is this
+ * account's. One that is missing or someone else's is simply not offered as a
+ * way back: the address is not trusted to name it, and nothing is said.
+ */
+async function originFor(
+  params: ReaderSearchParams | undefined,
+  ownerId: string,
+): Promise<ReaderOrigin | undefined> {
+  const id = parseReaderLocation(params)?.idea;
+  if (!id) return undefined;
+  try {
+    const idea = await getIdea(getDb(), ownerId, id);
+    return idea ? { id: idea.id, title: idea.title } : undefined;
+  } catch (error) {
+    console.error("Bible page origin read failed:", describeDatabaseError(error));
+    return undefined;
+  }
+}
+
+/**
  * The Bible, for reading. For active accounts, like every page in the shell.
  * The address says where it is open (features/scripture/reader-location.ts);
  * nothing in it is trusted beyond a book, a chapter, and a verse that exist.
@@ -57,14 +79,18 @@ export default async function BiblePage({
   searchParams?: Promise<ReaderSearchParams>;
 } = {}) {
   const user = await requireActiveUser();
-  const initial = await chapterFor(await searchParams, user.id);
+  const params = await searchParams;
+  const [initial, origin] = await Promise.all([
+    chapterFor(params, user.id),
+    originFor(params, user.id),
+  ]);
 
   return (
     <>
       <ReaderSidebarScript />
       {/* The reader follows the address in the browser, which needs a boundary under Cache Components. */}
       <Suspense fallback={<BibleLoading />}>
-        <BibleReader initial={initial} />
+        <BibleReader initial={initial} origin={origin} />
       </Suspense>
     </>
   );

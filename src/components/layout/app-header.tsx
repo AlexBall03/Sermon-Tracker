@@ -122,7 +122,7 @@ function TabBar({
   return (
     <nav
       aria-label="Sections"
-      className="fixed inset-x-0 bottom-0 z-40 border-t glass pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t glass pb-(--bar-lift) md:hidden"
     >
       <ul className="container-page flex h-bar items-stretch">
         {links.slice(0, middle).map(tab)}

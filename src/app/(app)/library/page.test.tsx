@@ -370,7 +370,11 @@ describe("IdeaPage", () => {
     expect(screen.getByRole("radio", { name: "Sermon" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Expository" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Developing" })).toBeChecked();
-    expect(screen.getAllByRole("button", { name: /preview the passage/ })).toHaveLength(2);
+    // Each reference is a row that opens its text in place, and leads to the Bible and back.
+    expect(screen.getAllByRole("button", { name: /show the passage/ })).toHaveLength(2);
+    for (const link of screen.getAllByRole("link", { name: /in the Bible$/ })) {
+      expect(link.getAttribute("href")).toContain(`idea=${id}`);
+    }
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
     // The tags it has now are what the editor starts from.
     expect(state.listTags).toHaveBeenCalledWith("database", "owner-1");

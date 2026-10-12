@@ -5,6 +5,7 @@ import { users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
+import { normaliseReference } from "@/features/scripture/reference";
 
 // The access helper is mocked; the database is a real in-memory PostgreSQL.
 const state = vi.hoisted(() => ({
@@ -18,7 +19,7 @@ vi.mock("@/features/auth/access", () => ({
   authorize: async (): Promise<Authorization> => state.access as Authorization,
 }));
 
-import { changeIdeaKind, createIdea, deleteIdea, updateIdea } from "./actions";
+import { attachScripture, changeIdeaKind, createIdea, deleteIdea, updateIdea } from "./actions";
 import { getIdea, recentIdeas } from "./ideas";
 
 let db: Database;
@@ -60,6 +61,7 @@ describe("idea actions", () => {
     ]) {
       state.access = { ok: false, message };
       for (const result of [
+        await attachScripture({ ideaId: id, references: [] }),
         await createIdea({ title: "Thought" }),
         await updateIdea(id, { title: "Thought" }),
         await changeIdeaKind(id, "sermon"),
@@ -166,6 +168,119 @@ describe("idea actions", () => {
     };
     const result = await createIdea({ title: "Thought" });
     expect(result).toEqual({ ok: false, message: "The idea could not be saved. Try again." });
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
+  });
+});
+
+describe("attachScripture", () => {
+  const john316 = { book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: null };
+  const romans = { book: 45, chapterStart: 10, verseStart: 9, chapterEnd: null, verseEnd: 10 };
+  const references = async (owner: string, id: string) =>
+    (await getIdea(db, owner, id))!.references.map(normaliseReference);
+
+  it("adds the passages to the caller's idea and says which idea", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ title: "Confess and believe", kind: "point" });
+    expect(await attachScripture({ ideaId: id, references: [romans] })).toEqual({
+      ok: true,
+      id,
+      added: 1,
+      message: "Added Romans 10:9–10 to “Confess and believe”.",
+    });
+    expect(await references(me, id!)).toEqual([romans]);
+  });
+
+  it("answers a repeat as done, without adding it again", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ title: "Loved" });
+    const [first, second] = await Promise.all([
+      attachScripture({ ideaId: id, references: [john316] }),
+      attachScripture({ ideaId: id, references: [john316] }),
+    ]);
+    expect([first.added, second.added].sort()).toEqual([0, 1]);
+    expect(await attachScripture({ ideaId: id, references: [john316] })).toEqual({
+      ok: true,
+      id,
+      added: 0,
+      message: "John 3:16 is already on “Loved”.",
+    });
+    expect(await references(me, id!)).toEqual([john316]);
+  });
+
+  it("takes the owner from the session, whatever the input claims", async () => {
+    signInAs(other);
+    const theirs = await createIdea({ title: "Theirs" });
+    signInAs(me);
+    const result = await attachScripture({
+      ideaId: theirs.id,
+      ownerId: other,
+      owner_id: other,
+      references: [john316],
+    });
+    // The same answer as for an idea that does not exist.
+    expect(result).toEqual({ ok: false, message: "That idea no longer exists." });
+    expect(
+      await attachScripture({
+        ideaId: "77777777-7777-4777-8777-777777777777",
+        references: [john316],
+      }),
+    ).toEqual(result);
+    expect(await references(other, theirs.id!)).toEqual([]);
+  });
+
+  it("refuses what is not a passage, in plain words, and changes nothing", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ title: "Untouched" });
+    const invalid = { ok: false, message: "That request was not valid." };
+    expect(await attachScripture(null)).toEqual(invalid);
+    expect(await attachScripture({ ideaId: "nope", references: [john316] })).toEqual(invalid);
+    expect(await attachScripture({ ideaId: id, references: [] })).toEqual({
+      ok: false,
+      message: "Choose a passage first.",
+    });
+    expect(
+      await attachScripture({ ideaId: id, references: [{ ...john316, verseStart: 37 }] }),
+    ).toMatchObject({ ok: false, message: expect.stringMatching(/36 verses/) });
+    expect(await references(me, id!)).toEqual([]);
+  });
+
+  it("says when the idea has no room, and adds none of them", async () => {
+    signInAs(me);
+    const held = Array.from({ length: 24 }, (_, index) => ({
+      book: 19,
+      chapterStart: index + 1,
+      verseStart: null,
+      chapterEnd: null,
+      verseEnd: null,
+    }));
+    const { id } = await createIdea({ title: "Nearly full", references: held });
+    expect(await attachScripture({ ideaId: id, references: [john316, romans] })).toEqual({
+      ok: false,
+      message: "That idea has room for 1 more reference, and this is 2.",
+    });
+    expect(await attachScripture({ ideaId: id, references: [john316] })).toMatchObject({
+      ok: true,
+    });
+    expect(await attachScripture({ ideaId: id, references: [romans] })).toEqual({
+      ok: false,
+      message: "That idea already holds 25 references, the most it can.",
+    });
+    expect(await references(me, id!)).toHaveLength(25);
+  });
+
+  it("answers a database failure with a fixed message", async () => {
+    signInAs(me);
+    state.db = {
+      transaction: () => {
+        throw new Error("postgres://user:secret@host/db refused");
+      },
+    };
+    expect(
+      await attachScripture({
+        ideaId: "77777777-7777-4777-8777-777777777777",
+        references: [john316],
+      }),
+    ).toEqual({ ok: false, message: "The passage could not be added. Try again." });
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
   });
 });

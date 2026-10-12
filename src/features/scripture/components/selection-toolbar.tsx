@@ -19,9 +19,10 @@ type SelectionToolbarProps = {
   /** Why the last action failed, said here because it concerns these buttons. */
   problem?: string | null;
   /**
-   * Further actions on the selection, placed after the copies: a highlight
-   * and a favorite today, and an idea in a later phase. Each acts on the
-   * same `references`.
+   * Further actions on the selection, placed after the copies: a highlight,
+   * a favorite, and an idea. Each acts on the same `references`. Six words
+   * fit one line of the reading column only just, so a word added here must
+   * be short, and the width below at which words give way to icons goes up with it.
    */
   children?: React.ReactNode;
   /** A quiet line beneath the buttons, for something the selection is already part of. */
@@ -36,8 +37,8 @@ type SelectionToolbarProps = {
  * window can leave it less than a phone does. Actions added as `children`
  * use the same two classes.
  */
-export const toolbarAction = "px-2.5 @max-[39rem]:size-10 @max-[39rem]:px-0";
-export const toolbarLabel = "@max-[39rem]:sr-only";
+export const toolbarAction = "px-2.5 @max-[41.5rem]:size-10 @max-[41.5rem]:px-0";
+export const toolbarLabel = "@max-[41.5rem]:sr-only";
 const action = toolbarAction;
 const label = toolbarLabel;
 
@@ -90,7 +91,7 @@ export function SelectionToolbar({
           type="button"
           variant="ghost"
           size="icon"
-          className="@max-[39rem]:size-10"
+          className="@max-[41.5rem]:size-10"
           aria-label="Clear selection"
           onClick={onClear}
         >

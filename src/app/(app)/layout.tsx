@@ -40,7 +40,7 @@ async function Shell({ children }: { children: React.ReactNode }) {
           {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
           <main
             id="main"
-            className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+env(safe-area-inset-bottom))]"
+            className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
           >
             {children}
           </main>

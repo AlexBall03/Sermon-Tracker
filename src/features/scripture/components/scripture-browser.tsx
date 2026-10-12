@@ -122,9 +122,14 @@ export function ScriptureBrowser({
   const searchBox = useRef<HTMLInputElement>(null);
 
   // The panel opens ready to search. After the frame, so it follows whatever
-  // the surface holding the panel did with focus as it opened.
+  // the surface holding the panel did with focus as it opened. On a touch
+  // screen the passage takes focus instead: the search box would raise the
+  // keyboard over the text, and the passage will not scroll while it settles.
   useEffect(() => {
-    const frame = requestAnimationFrame(() => searchBox.current?.focus({ preventScroll: true }));
+    const frame = requestAnimationFrame(() => {
+      const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+      (touch ? scroller : searchBox).current?.focus({ preventScroll: true });
+    });
     return () => cancelAnimationFrame(frame);
   }, []);
 

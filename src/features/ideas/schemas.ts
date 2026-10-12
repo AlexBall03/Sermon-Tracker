@@ -102,6 +102,35 @@ export const ideaInputSchema = z.object({
 });
 export type IdeaInput = z.infer<typeof ideaInputSchema>;
 
+/**
+ * Passages to add to an idea that already exists, from the Bible reader or
+ * from saved Scripture. Each is checked against the Bible; the same passage
+ * twice is one. There is no owner here: the idea is found among the signed-in
+ * account's own, or not at all.
+ */
+export const attachInputSchema = z.object({
+  ideaId: ideaIdSchema,
+  references: z
+    .array(
+      z
+        .object(referenceShape)
+        .superRefine(refineReference)
+        .transform((reference) => normaliseReference(reference)),
+    )
+    .min(1, "Choose a passage first.")
+    .max(ideaLimits.references, `An idea can hold up to ${ideaLimits.references} references.`)
+    .transform((references) => {
+      const seen = new Set<string>();
+      return references.filter((reference) => {
+        const key = referenceKey(reference);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }),
+});
+export type AttachInput = z.infer<typeof attachInputSchema>;
+
 /** What the forms hold while someone is writing. */
 export type IdeaDraft = {
   kind: IdeaKind;

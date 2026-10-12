@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Sermon Tracker project notes
 
-- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`, `docs/HANDOFF-2C.1B.md`.
+- Read `ARCHITECTURE.md` first; it is the technical source of truth. Current status and next steps: `docs/ROADMAP.md`, `docs/HANDOFF-1B.md`, `docs/HANDOFF-1B.1.md`, `docs/HANDOFF-1B.2.md`, `docs/HANDOFF-1C.1.md`, `docs/HANDOFF-2A.md`, `docs/HANDOFF-2B.1.md`, `docs/HANDOFF-2B.2.md`, `docs/HANDOFF-2C.1A.md`, `docs/HANDOFF-2C.1B.md`, `docs/HANDOFF-2C.1C.md`.
 - Stay inside the current phase. Do not build later-phase features early.
 - The repository owner manages Git. Run read-only Git commands only: no commit, stage, branch, push, pull, or config changes.
 - Stop every dev, preview, or test server you start before finishing. Never kill processes you did not start.
@@ -28,5 +28,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Favorites and highlights are `src/features/scripture/saved`. Every query there filters by owner in its WHERE clause, and every one carries a translation (`translation.id`); keep both. A favorite is its verses and its translation, never its label: do not add a second way to save one that goes round `createFavorite`. A verse has one highlight color; a highlight is never stored on a favorite.
 - In the reader, an account's marks are read and changed only through `src/features/scripture/use-chapter-marks.ts`, which shows a change at once and takes it back if the server refuses it. `PassageText` draws a highlight behind the words and a selection across the row; keep them apart, a verse can be both.
 - Saved Scripture is a section of the library (`/library/scripture`), reached from `LibrarySections`, and is not in the main navigation. Its search, filters, order, and page are URL parameters read and written only through `src/features/scripture/saved/saved-query.ts`, and its controls change the address only through `useSavedScripture().apply`.
+- Scripture reaches an existing idea, from anywhere but its own editor, only through `attachReferences` (`src/features/ideas/ideas.ts`) behind the `attachScripture` action, and only through the `AttachScripture` dialog. It adds and never replaces, and locks the idea's row; do not write `idea_scripture_references` another way. A reference is five numbers and no translation: never store verse text or a translation on one.
+- A favorite put on an idea is copied as references. Nothing links the two afterwards; do not add a link.
+- The reader's address also carries `through` (the end of a passage pointed out) and `idea` (the idea it was opened from), both through `reader-location.ts` like the rest. `idea` is only ever looked up among the signed-in account's own ideas.
 - Main navigation is `src/components/layout/app-links.ts`. Add the outline page there when it exists. Administration stays in the account menu.
 - Dropdowns use `src/components/ui/select.tsx`, not a native `<select>`.

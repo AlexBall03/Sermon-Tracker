@@ -16,8 +16,9 @@ import {
 
 import { ideas, ideaScriptureReferences, ideaTags, type Idea } from "@/db/schema";
 import type { Database } from "@/db/types";
+import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { searchTerms, startOfDay, startOfNextDay, type LibraryQuery } from "./library-query";
-import { libraryPageSize, type IdeaKind, type LibrarySort } from "./model";
+import { ideaLimits, libraryPageSize, type IdeaKind, type LibrarySort } from "./model";
 import type { IdeaInput, IdeaReference } from "./schemas";
 import { tagsForIdeas, writeIdeaTags, type IdeaTag } from "./tags";
 
@@ -311,6 +312,90 @@ export async function updateIdea(
     if (!updated) return null;
     await writeReferences(tx, updated.id, input.references);
     return { ...updated, references: input.references, tags: await saveTags(tx, updated, input) };
+  });
+}
+
+/** What became of an attempt to put passages on an idea. */
+export type AttachOutcome =
+  | { status: "missing" }
+  /** The idea has no room for them all; nothing was added. `room` is how many would fit. */
+  | { status: "full"; room: number }
+  | {
+      status: "attached";
+      idea: Pick<Idea, "id" | "title" | "kind">;
+      /** The passages added now, in the order given. */
+      added: ScriptureReference[];
+      /** The passages the idea already had, which were left as they were. */
+      already: ScriptureReference[];
+    };
+
+/**
+ * Adds passages to an idea without touching the ones it has, or anything else
+ * about it. This is how Scripture reaches an idea from outside its editor: the
+ * Bible reader and saved Scripture. A passage the idea already holds, exactly,
+ * is left alone, so asking twice is asking once; a passage that only overlaps
+ * one is a different passage and is added. It is all or nothing: more than the
+ * idea has room for adds none.
+ *
+ * The idea's row is locked for the length of the transaction, so two requests
+ * at once add one after the other and neither can repeat a passage or take
+ * the other's position. Something was added, so the idea counts as changed.
+ */
+export async function attachReferences(
+  db: Database,
+  ownerId: string,
+  id: string,
+  references: ScriptureReference[],
+): Promise<AttachOutcome> {
+  return db.transaction(async (tx) => {
+    const [idea] = await tx
+      .select({ id: ideas.id, title: ideas.title, kind: ideas.kind })
+      .from(ideas)
+      .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+      .for("update");
+    // References are touched only once the owner-scoped read has matched.
+    if (!idea) return { status: "missing" } as const;
+
+    const held = await tx
+      .select({
+        position: ideaScriptureReferences.position,
+        book: ideaScriptureReferences.book,
+        chapterStart: ideaScriptureReferences.chapterStart,
+        verseStart: ideaScriptureReferences.verseStart,
+        chapterEnd: ideaScriptureReferences.chapterEnd,
+        verseEnd: ideaScriptureReferences.verseEnd,
+      })
+      .from(ideaScriptureReferences)
+      .where(eq(ideaScriptureReferences.ideaId, idea.id));
+
+    const before = new Set(held.map(referenceKey));
+    // Each passage is counted once, however often the request names it.
+    const taken = new Set<string>();
+    const added: ScriptureReference[] = [];
+    const already: ScriptureReference[] = [];
+    for (const reference of references) {
+      const key = referenceKey(reference);
+      if (taken.has(key)) continue;
+      taken.add(key);
+      (before.has(key) ? already : added).push(reference);
+    }
+
+    const room = ideaLimits.references - held.length;
+    if (added.length > room) return { status: "full", room: Math.max(room, 0) } as const;
+    if (added.length === 0) return { status: "attached", idea, added, already } as const;
+
+    const next = held.reduce((last, row) => Math.max(last, row.position), -1) + 1;
+    await tx.insert(ideaScriptureReferences).values(
+      added.map((reference, index) => ({
+        ...reference,
+        ideaId: idea.id,
+        position: next + index,
+        // A sermon's main text is chosen in its editor, never by an addition from elsewhere.
+        isPrimary: false,
+      })),
+    );
+    await tx.update(ideas).set({ updatedAt: new Date() }).where(eq(ideas.id, idea.id));
+    return { status: "attached", idea, added, already } as const;
   });
 }
 

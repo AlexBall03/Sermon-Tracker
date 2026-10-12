@@ -6,6 +6,7 @@ import {
   parseReaderLocation,
   readerHref,
   readSavedLocation,
+  referenceLocation,
   sameChapter,
   savedLocationKey,
   saveLocation,
@@ -195,5 +196,84 @@ describe("the saved reading position", () => {
 
   it("falls back to Genesis 1 in the reader's order of preference", () => {
     expect(readSavedLocation() ?? firstLocation).toEqual(at(1, 1));
+  });
+});
+
+describe("a passage and where it was opened from", () => {
+  const idea = "11111111-1111-4111-8111-111111111111";
+  const read = (text: string) => {
+    const parsed = parseReference(text);
+    if (!parsed.ok) throw new Error(parsed.message);
+    return parsed.reference;
+  };
+
+  it("reads how far a passage runs, in the chapter it starts in", () => {
+    expect(parseReaderLocation({ book: "43", chapter: "3", verse: "16", through: "18" })).toEqual({
+      book: 43,
+      chapter: 3,
+      verse: 16,
+      through: 18,
+    });
+  });
+
+  it("drops an end that is not after the start, is past the chapter, or has no start", () => {
+    for (const through of ["16", "15", "0", "37", "x", "-18", ""]) {
+      expect(parseReaderLocation({ book: "43", chapter: "3", verse: "16", through })).toEqual(
+        at(43, 3, 16),
+      );
+    }
+    expect(parseReaderLocation({ book: "43", chapter: "3", through: "18" })).toEqual(at(43, 3));
+    expect(parseReaderLocation({ book: "43", chapter: "3", verse: "40", through: "41" })).toEqual(
+      at(43, 3),
+    );
+  });
+
+  it("reads the idea it was opened from only when that is an ID", () => {
+    expect(parseReaderLocation({ book: "43", chapter: "3", idea })).toEqual({ ...at(43, 3), idea });
+    expect(parseReaderLocation({ book: "43", chapter: "3", idea: idea.toUpperCase() })).toEqual({
+      ...at(43, 3),
+      idea,
+    });
+    for (const value of ["1", "../admin", "https://example.com", `${idea}'--`, ""]) {
+      expect(parseReaderLocation({ book: "43", chapter: "3", idea: value })).toEqual(at(43, 3));
+    }
+    // An idea is no place: without a book there is still no location.
+    expect(parseReaderLocation({ idea })).toBeNull();
+  });
+
+  it("writes one address for each, in a fixed order", () => {
+    expect(readerHref({ book: 43, chapter: 3, verse: 16, through: 18, idea })).toBe(
+      `/bible?book=43&chapter=3&verse=16&through=18&idea=${idea}`,
+    );
+    expect(readerHref({ book: 43, chapter: 3, verse: null, through: 18 })).toBe(
+      "/bible?book=43&chapter=3",
+    );
+    expect(readerHref({ book: 43, chapter: 3, verse: 16, through: 16 })).toBe(
+      "/bible?book=43&chapter=3&verse=16",
+    );
+    const href = readerHref({ book: 43, chapter: 3, verse: 16, through: 18, idea });
+    expect(readerHref(parseReaderLocation(new URLSearchParams(href.split("?")[1]))!)).toBe(href);
+  });
+
+  it("opens a reference at its first verse and points out the rest of it", () => {
+    expect(referenceLocation(read("John 3:16"))).toEqual(at(43, 3, 16));
+    expect(referenceLocation(read("John 3:16-18"))).toEqual({ ...at(43, 3, 16), through: 18 });
+    expect(referenceLocation(read("Romans 10:9-10"), idea)).toEqual({
+      ...at(45, 10, 9),
+      through: 10,
+      idea,
+    });
+    // A whole chapter, or several, is opened at its head with nothing pointed out.
+    expect(referenceLocation(read("Psalm 23"))).toEqual(at(19, 23));
+    expect(referenceLocation(read("Genesis 1-2"))).toEqual(at(1, 1));
+    // One that runs into the next chapter is pointed out to the end of its first.
+    expect(referenceLocation(read("John 3:30-4:2"))).toEqual({ ...at(43, 3, 30), through: 36 });
+    expect(referenceLocation(read("Jude 5-7"))).toEqual({ ...at(65, 1, 5), through: 7 });
+  });
+
+  it("carries no translation", () => {
+    const href = readerHref(referenceLocation(read("Ephesians 2:8-9"), idea));
+    expect(href).toBe(`/bible?book=49&chapter=2&verse=8&through=9&idea=${idea}`);
+    expect(href).not.toMatch(/kjv|translation|version/i);
   });
 });

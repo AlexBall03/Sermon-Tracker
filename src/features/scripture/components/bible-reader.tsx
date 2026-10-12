@@ -9,8 +9,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, TextSearch } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, TextSearch } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -22,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/components/ui/toast";
+import { AttachScripture } from "@/features/ideas/components/attach-scripture";
+import { routes, siteConfig } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { translation, versesIn } from "../books";
 import {
@@ -49,7 +52,7 @@ import {
   storeSidebarOpen,
   subscribeSidebar,
 } from "../reader-sidebar";
-import { formatReference, formatReferences } from "../reference";
+import { formatReference, formatReferences, type ScriptureReference } from "../reference";
 import { noMarks, type ChapterMarks, type FavoriteSummary } from "../saved/model";
 import { versesInChapter } from "../saved/verse-set";
 import {
@@ -80,6 +83,9 @@ export type InitialChapter = {
   text: ChapterText;
   marks?: ChapterMarks;
 };
+
+/** The idea the reader was opened from, as the server found it among the account's own. */
+export type ReaderOrigin = { id: string; title: string };
 
 const sidebarId = "bible-navigation";
 
@@ -122,7 +128,14 @@ export function ReaderSidebarScript() {
  * shares. What is selected is not in the address and does not outlive its
  * chapter.
  */
-export function BibleReader({ initial }: { initial?: InitialChapter }) {
+export function BibleReader({
+  initial,
+  origin,
+}: {
+  initial?: InitialChapter;
+  /** Given when the address names an idea of the account's: the way back to it is then offered. */
+  origin?: ReaderOrigin;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const query = params.toString();
@@ -163,8 +176,16 @@ export function BibleReader({ initial }: { initial?: InitialChapter }) {
     if (book && chapter) saveLocation({ book, chapter, verse: null });
   }, [book, chapter]);
 
-  function go(next: ReaderLocation, how?: Arrival) {
+  // The chapter is the page's name, so a tab, a bookmark, and the history list say where it is.
+  const titled = location ? placeName(location) : null;
+  useEffect(() => {
+    if (titled) document.title = `${titled} · ${siteConfig.name}`;
+  }, [titled]);
+
+  function go(to: ReaderLocation, how?: Arrival) {
     setSheetOpen(false);
+    // Reading on from an idea, the way back to it comes along.
+    const next = { ...to, idea: to.idea ?? location?.idea ?? null };
     const href = readerHref(next);
     // Exactly one thing changes per move, so the chapter's view answers it once: the
     // address when the place is new, and the count only when it is the place already
@@ -320,6 +341,7 @@ export function BibleReader({ initial }: { initial?: InitialChapter }) {
             previous={previous}
             next={next}
             onGo={go}
+            origin={origin && location.idea === origin.id ? origin : undefined}
           />
         ) : (
           <div className="mx-auto max-w-[46rem] px-3 py-8 sm:px-5">
@@ -372,6 +394,7 @@ type ChapterViewProps = {
   previous: ReaderLocation | null;
   next: ReaderLocation | null;
   onGo: (location: ReaderLocation, how?: Arrival) => void;
+  origin?: ReaderOrigin;
 };
 
 /** One chapter's text, what is selected in it, and what can be done with the selection. */
@@ -383,8 +406,10 @@ function ChapterView({
   previous,
   next,
   onGo,
+  origin,
 }: ChapterViewProps) {
   const { book, chapter, verse } = location;
+  const through = location.through ?? null;
   const toast = useToast();
   const verseCount = versesIn(book, chapter);
   const [selection, setSelection] = useState<VerseSelection>(noSelection);
@@ -419,6 +444,8 @@ function ChapterView({
     [marks.favorites, book, chapter],
   );
   const [managing, setManaging] = useState<FavoriteSummary | null>(null);
+  // The passages being put on an idea: the selection as it stood when that was asked for.
+  const [attaching, setAttaching] = useState<readonly ScriptureReference[] | null>(null);
   // The verse last clicked, which Shift and a click reach from.
   const anchor = useRef<number | null>(null);
 
@@ -441,7 +468,8 @@ function ChapterView({
 
   // Bring the verse that was gone to into view, once there is text to find it in,
   // and light it for a moment so the eye lands on it. The light fades by itself:
-  // there is nothing to clear, and nothing is selected.
+  // there is nothing to clear, and nothing is selected. A passage gone to (an
+  // idea's reference) is lit from its first verse to its last, as one.
   //
   // Arriving in a chapter at a verse (a link, a search result) starts there at
   // once. Within the chapter already being read (Go to verse) the page glides
@@ -457,18 +485,24 @@ function ChapterView({
     if (!verse) return;
     const row = document.querySelector<HTMLElement>(`[data-reader-text] [data-verse="${verse}"]`);
     if (!row) return;
+    const within = row.closest("[data-reader-text]");
+    const rows = [row];
+    for (let number = verse + 1; number <= (through ?? verse); number++) {
+      const further = within?.querySelector<HTMLElement>(`[data-verse="${number}"]`);
+      if (further) rows.push(further);
+    }
 
-    // One verse at a time: a verse still tinted from a moment ago lets go at once,
-    // so going to a second verse soon after a first lights only the second.
-    for (const lit of row.closest("[data-reader-text]")?.querySelectorAll("[data-found]") ?? []) {
+    // One place at a time: verses still tinted from a moment ago let go at once,
+    // so going to a second place soon after a first lights only the second.
+    for (const lit of within?.querySelectorAll("[data-found]") ?? []) {
       lit.removeAttribute("data-found");
     }
     // Taken off when it has played, so nothing later (a re-render, a theme change) can replay it.
-    const done = () => row.removeAttribute("data-found");
+    const done = () => rows.forEach((lit) => lit.removeAttribute("data-found"));
     const light = () => {
       // The layout is read first, so it plays again even on the verse it last played on.
       void row.offsetWidth;
-      row.setAttribute("data-found", "");
+      rows.forEach((lit) => lit.setAttribute("data-found", ""));
     };
     row.addEventListener("animationend", done);
     row.addEventListener("animationcancel", done);
@@ -494,7 +528,7 @@ function ChapterView({
       row.removeEventListener("animationend", done);
       row.removeEventListener("animationcancel", done);
     };
-  }, [ready, verse, moves]);
+  }, [ready, verse, through, moves]);
 
   const references = useMemo(
     () => selectionReferences(book, chapter, selection),
@@ -553,7 +587,22 @@ function ChapterView({
   }, []);
 
   return (
-    <article className="mx-auto flex min-h-[calc(100dvh-var(--bar-h)-3.5rem)] max-w-[46rem] flex-col px-3 pt-5 pb-20 sm:px-5 sm:pt-7">
+    <article className="mx-auto flex min-h-[calc(100dvh-var(--bar-h)-3.5rem)] max-w-[46rem] flex-col px-2 pt-5 pb-20 sm:px-5 sm:pt-7">
+      {origin && (
+        // Opened from an idea: the way back to it, for as long as the reading goes on from there.
+        <Link
+          href={`${routes.library}/${origin.id}`}
+          className="group/back mb-3 flex max-w-full items-center gap-1.5 self-start rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-11"
+        >
+          <ArrowLeft
+            className="size-4 shrink-0 transition-transform duration-150 group-hover/back:-translate-x-0.5"
+            aria-hidden
+          />
+          <span className="min-w-0 truncate">
+            Back to <span className="font-serif text-foreground italic">{origin.title}</span>
+          </span>
+        </Link>
+      )}
       <div className="mb-3 flex items-center justify-between gap-3 px-2">
         <p className="text-xs font-medium text-muted-foreground">{translation.name}</p>
         <div className="-mr-2 flex items-center gap-1">
@@ -690,7 +739,7 @@ function ChapterView({
       {/* The space beneath is the Back to top button's, which floats in that corner. */}
       {/* Rests at the foot of the window, above the tab bar where there is one, and never beyond the column. */}
       <SelectionToolbar
-        className="sticky bottom-[calc(var(--bar-h)+env(safe-area-inset-bottom)+0.75rem)] z-20 mt-4 md:bottom-6"
+        className="sticky bottom-[calc(var(--bar-h)+var(--bar-lift)+0.75rem)] z-20 mt-4 md:bottom-6"
         references={references}
         problem={problem}
         shortcut={shortcut}
@@ -715,9 +764,11 @@ function ChapterView({
           marks={marks}
           onProblem={setProblem}
           onManage={setManaging}
+          onAttach={() => setAttaching(references)}
         />
       </SelectionToolbar>
       <FavoriteEditor favorite={managing} onClose={() => setManaging(null)} />
+      <AttachScripture references={attaching} onClose={() => setAttaching(null)} />
     </article>
   );
 }

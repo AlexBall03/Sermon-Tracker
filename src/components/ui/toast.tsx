@@ -53,7 +53,7 @@ export function ToastProvider({
         role="status"
         aria-live="polite"
         className={`pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4 sm:bottom-8 ${
-          aboveTabBar ? "max-md:bottom-[calc(var(--bar-h)+env(safe-area-inset-bottom)+1rem)]" : ""
+          aboveTabBar ? "max-md:bottom-[calc(var(--bar-h)+var(--bar-lift)+1rem)]" : ""
         }`}
       >
         {toast && (

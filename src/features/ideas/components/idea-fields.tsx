@@ -149,10 +149,20 @@ export function NotesField({
   );
 }
 
-/** The idea's passages. A sermon may star one as its main text. */
-export function ReferencesField({ draft, update }: Pick<FieldProps, "draft" | "update">) {
+/**
+ * The idea's passages. A sermon may star one as its main text. On the idea's
+ * own page (`ideaId`) each is a row that opens its text in place and leads to
+ * the Bible and back; in capture they stay a compact line.
+ */
+export function ReferencesField({
+  draft,
+  update,
+  ideaId,
+}: Pick<FieldProps, "draft" | "update"> & { ideaId?: string }) {
   return (
     <ScriptureField
+      layout={ideaId ? "rows" : "chips"}
+      origin={ideaId}
       value={draft.references}
       onChange={(change) =>
         update((current) => ({ ...current, references: change(current.references) }))

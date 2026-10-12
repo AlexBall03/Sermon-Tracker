@@ -10,7 +10,7 @@ import type { ChapterMarks, FavoriteSummary, HighlightColor } from "../saved/mod
 import type { VerseRef } from "../saved/verse-set";
 import { clearChapterCache } from "../use-chapter";
 import { clearMarksCache } from "../use-chapter-marks";
-import { BibleReader, type InitialChapter } from "./bible-reader";
+import { BibleReader, type InitialChapter, type ReaderOrigin } from "./bible-reader";
 
 // The address is the browser's own, as it is in the application: the router's
 // hooks are stood in for by ones that read and write `window.history`.
@@ -160,6 +160,13 @@ vi.mock("../saved/actions", async () => {
   };
 });
 
+// Putting Scripture on an idea: the action is stood in for, and records what it was sent.
+const ideas = vi.hoisted(() => ({ attachScripture: vi.fn(), createIdea: vi.fn() }));
+vi.mock("@/features/ideas/actions", () => ({
+  attachScripture: ideas.attachScripture,
+  createIdea: ideas.createIdea,
+}));
+
 /** What the marks endpoint answers for a chapter, from the account above. */
 function marksOf(book: number, chapter: number): ChapterMarks {
   const highlights: Record<number, HighlightColor> = {};
@@ -195,11 +202,11 @@ let clipboardFails = false;
 const verseText = (book: number, chapter: number, verse: number) =>
   `Text of ${book}.${chapter}.${verse}`;
 
-function show(href: string, initial?: InitialChapter) {
+function show(href: string, initial?: InitialChapter, origin?: ReaderOrigin) {
   window.history.replaceState(null, "", href);
   return render(
     <ToastProvider>
-      <BibleReader initial={initial} />
+      <BibleReader initial={initial} origin={origin} />
     </ToastProvider>,
   );
 }
@@ -229,6 +236,13 @@ beforeEach(() => {
   account.hold = null;
   account.nextId = 1;
   marksFail = false;
+  ideas.attachScripture.mockReset();
+  ideas.attachScripture.mockResolvedValue({
+    ok: true,
+    id: "idea-1",
+    added: 1,
+    message: "Added to “So loved”.",
+  });
   window.localStorage.clear();
   delete document.documentElement.dataset.bibleSidebar;
   requests.length = 0;
@@ -270,6 +284,27 @@ beforeEach(() => {
         status: 200,
         json: async () => ({ total: 2, hits: hits.slice(offset, offset + 1) }),
       };
+    }
+    if (url.startsWith("/api/ideas/search")) {
+      const items = [
+        {
+          id: "idea-1",
+          title: "So loved",
+          kind: "sermon",
+          status: "captured",
+          subject: null,
+          references: [],
+        },
+        {
+          id: "idea-2",
+          title: "Born again",
+          kind: "point",
+          status: "captured",
+          subject: null,
+          references: [],
+        },
+      ];
+      return { ok: true, status: 200, json: async () => ({ items, total: items.length }) };
     }
     if (url.endsWith("/marks")) {
       const [book, chapter] = url.split("/").slice(-3, -1).map(Number);
@@ -1630,5 +1665,193 @@ describe("favorites", () => {
     for (const name of ["Yellow", "Green", "Blue", "Red"]) {
       expect(swatch(name).tagName).toBe("BUTTON");
     }
+  });
+});
+
+describe("putting a selection on an idea", () => {
+  const passage = (verseStart: number, verseEnd: number | null = null) => ({
+    book: 43,
+    chapterStart: 3,
+    verseStart,
+    chapterEnd: null,
+    verseEnd,
+  });
+  const attach = async () => {
+    fireEvent.click(action("Add to an idea"));
+    return within(await screen.findByRole("dialog", { name: "Add to an idea" }));
+  };
+  const closed = () =>
+    waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add to an idea" })).not.toBeInTheDocument(),
+    );
+
+  it("is offered with the selection, beside the highlight and the favorite", async () => {
+    await john3();
+    expect(toolbar()).not.toBeInTheDocument();
+    fireEvent.click(await verse(16));
+    const button = action("Add to an idea");
+    expect(button.tagName).toBe("BUTTON");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
+    expect(action("Highlight")).toBeInTheDocument();
+    expect(action("Add to favorites")).toBeInTheDocument();
+  });
+
+  it("adds one verse to the idea chosen, and leaves the reading where it was", async () => {
+    await john3();
+    fireEvent.click(await verse(16));
+    const dialog = await attach();
+    expect(dialog.getByText("John 3:16")).toBeVisible();
+    fireEvent.click(await dialog.findByRole("button", { name: "Add John 3:16 to So loved" }));
+    await closed();
+    expect(ideas.attachScripture).toHaveBeenCalledWith({
+      ideaId: "idea-1",
+      references: [passage(16)],
+    });
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/library/idea-1");
+    // Still in John 3, with the verse still chosen, as after a copy or a highlight.
+    expect(here()).toBe("/bible?book=43&chapter=3");
+    expect(await verse(16)).toHaveAttribute("aria-pressed", "true");
+    expect(toolbar()).toBeInTheDocument();
+  });
+
+  it("adds a passage as one reference", async () => {
+    await john3();
+    fireEvent.click(await verse(16));
+    fireEvent.click(await verse(18), { shiftKey: true });
+    const dialog = await attach();
+    fireEvent.click(await dialog.findByRole("button", { name: "Add John 3:16–18 to Born again" }));
+    await closed();
+    expect(ideas.attachScripture).toHaveBeenCalledWith({
+      ideaId: "idea-2",
+      references: [passage(16, 18)],
+    });
+  });
+
+  it("adds verses that are apart as the separate references they are", async () => {
+    await john3();
+    for (const number of [3, 5, 6, 8]) fireEvent.click(await verse(number));
+    const dialog = await attach();
+    expect(dialog.getByText("John 3:3, 5–6, 8")).toBeVisible();
+    fireEvent.click(await dialog.findByRole("button", { name: /to So loved$/ }));
+    await closed();
+    expect(ideas.attachScripture).toHaveBeenCalledWith({
+      ideaId: "idea-1",
+      references: [passage(3), passage(5, 6), passage(8)],
+    });
+  });
+
+  it("adds a whole chapter as the chapter, not as its verses", async () => {
+    await john3();
+    fireEvent.click(screen.getByRole("button", { name: "Select chapter" }));
+    const dialog = await attach();
+    fireEvent.click(await dialog.findByRole("button", { name: "Add John 3 to So loved" }));
+    await closed();
+    expect(ideas.attachScripture.mock.calls[0][0].references).toEqual([
+      { book: 43, chapterStart: 3, verseStart: null, chapterEnd: null, verseEnd: null },
+    ]);
+  });
+
+  it("changes nothing when the dialog is closed", async () => {
+    await john3();
+    fireEvent.click(await verse(16));
+    const dialog = await attach();
+    fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+    await closed();
+    expect(ideas.attachScripture).not.toHaveBeenCalled();
+    expect(await verse(16)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps the highlights and favorites of the verses as they were", async () => {
+    highlighted(john(16), "yellow");
+    await john3();
+    await waitFor(() => expect(row(16)).toHaveAttribute("data-highlight", "yellow"));
+    fireEvent.click(row(16));
+    const dialog = await attach();
+    fireEvent.click(await dialog.findByRole("button", { name: /to So loved$/ }));
+    await closed();
+    expect(row(16)).toHaveAttribute("data-highlight", "yellow");
+    expect(account.calls).toEqual([]);
+  });
+});
+
+describe("arriving from an idea", () => {
+  const idea = "11111111-1111-4111-8111-111111111111";
+  const origin = { id: idea, title: "So loved" };
+  const back = () => screen.queryByRole("link", { name: /^Back to/ });
+
+  it("lights the whole passage, and selects none of it", async () => {
+    show("/bible?book=43&chapter=3&verse=16&through=18");
+    await verse(16);
+    await waitFor(() => expect(lit()).toEqual(["16", "17", "18"]));
+    for (const number of [16, 17, 18]) {
+      expect(await verse(number)).toHaveAttribute("aria-pressed", "false");
+      // A light that passes, not a highlight that is kept.
+      expect(row(number)).not.toHaveAttribute("data-highlight");
+    }
+    expect(toolbar()).not.toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    // It goes out by itself, all of it together.
+    fireEvent.animationEnd(row(16));
+    expect(lit()).toEqual([]);
+    expect(account.calls).toEqual([]);
+  });
+
+  it("does not disturb a highlight on a verse it lights", async () => {
+    highlighted(john(17), "blue");
+    show("/bible?book=43&chapter=3&verse=16&through=18");
+    await verse(16);
+    await waitFor(() => expect(lit()).toEqual(["16", "17", "18"]));
+    await waitFor(() => expect(row(17)).toHaveAttribute("data-highlight", "blue"));
+    fireEvent.animationEnd(row(16));
+    expect(row(17)).toHaveAttribute("data-highlight", "blue");
+  });
+
+  it("lights one verse when the address gives an end that is no passage", async () => {
+    show("/bible?book=43&chapter=3&verse=16&through=99");
+    await verse(16);
+    await waitFor(() => expect(lit()).toEqual(["16"]));
+    await waitFor(() => expect(here()).toBe("/bible?book=43&chapter=3&verse=16"));
+  });
+
+  it("offers the way back to the idea it was opened from", async () => {
+    show(`/bible?book=43&chapter=3&verse=16&idea=${idea}`, undefined, origin);
+    await verse(16);
+    expect(back()).toHaveAttribute("href", `/library/${idea}`);
+    expect(back()).toHaveTextContent("Back to So loved");
+    // The address is left as it came: Back in the browser returns to the idea too.
+    expect(here()).toBe(`/bible?book=43&chapter=3&verse=16&idea=${idea}`);
+  });
+
+  it("keeps the way back while the reading goes on, and out of a copied link", async () => {
+    show(`/bible?book=43&chapter=3&idea=${idea}`, undefined, origin);
+    await verse(1);
+    fireEvent.click(screen.getByRole("button", { name: "Next chapter" }));
+    await waitFor(() => expect(here()).toBe(`/bible?book=43&chapter=4&idea=${idea}`));
+    expect(await verse(1, 43, 4)).toBeInTheDocument();
+    expect(back()).toHaveAttribute("href", `/library/${idea}`);
+
+    fireEvent.click(await verse(10, 43, 4));
+    fireEvent.click(action("Copy link"));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toMatch(/\/bible\?book=43&chapter=4&verse=10$/);
+  });
+
+  it("offers no way back to an idea the server did not find", async () => {
+    // Someone else's, or none at all: the address alone names nothing.
+    show(`/bible?book=43&chapter=3&idea=${idea}`);
+    await verse(1);
+    expect(back()).not.toBeInTheDocument();
+    show("/bible?book=43&chapter=3", undefined, origin);
+    expect(back()).not.toBeInTheDocument();
+  });
+});
+
+describe("the page's name", () => {
+  it("is the chapter being read", async () => {
+    show("/bible?book=43&chapter=3");
+    await verse(1);
+    await waitFor(() => expect(document.title).toBe("John 3 · Sermon Tracker"));
+    fireEvent.click(screen.getByRole("button", { name: "Next chapter" }));
+    await waitFor(() => expect(document.title).toBe("John 4 · Sermon Tracker"));
   });
 });

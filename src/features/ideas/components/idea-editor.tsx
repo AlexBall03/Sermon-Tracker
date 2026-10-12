@@ -9,6 +9,7 @@ import { ActionStatus } from "@/components/ui/action-status";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type Confirmation } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { referenceKey } from "@/features/scripture/reference";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/site";
@@ -74,6 +75,33 @@ export function IdeaEditor({
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  // The idea can change while this page is kept: a passage added to it from the
+  // Bible, or an edit made in another tab. The server then sends it again. With
+  // nothing unsaved here, the page simply shows it. With edits under way they
+  // are kept, and only passages added elsewhere are brought in, so the next
+  // Save does not take them off again.
+  const incoming = JSON.stringify(initial);
+  const [seen, setSeen] = useState(incoming);
+  if (incoming !== seen) {
+    setSeen(incoming);
+    setSaved(initial);
+    if (!dirty) {
+      setDraft(initial);
+    } else {
+      const before = new Set((JSON.parse(seen) as IdeaDraft).references.map(referenceKey));
+      const arrived = initial.references.filter((item) => !before.has(referenceKey(item)));
+      if (arrived.length > 0) {
+        setDraft((current) => {
+          const held = new Set(current.references.map(referenceKey));
+          const fresh = arrived
+            .filter((item) => !held.has(referenceKey(item)))
+            .map((item) => ({ ...item, isPrimary: false }));
+          return { ...current, references: [...current.references, ...fresh] };
+        });
+      }
+    }
+  }
 
   // Leaving with unsaved edits asks first, however the page is left.
   const guard = useLeaveGuard(dirty, "Your changes to this idea have not been saved.", () => {
@@ -156,7 +184,7 @@ export function IdeaEditor({
             Changing this takes effect straight away and keeps everything else as it is.
           </p>
         </div>
-        <ReferencesField draft={draft} update={update} />
+        <ReferencesField draft={draft} update={update} ideaId={id} />
         <TagsField draft={draft} update={update} options={allTags} />
         <NotesField
           form={form}

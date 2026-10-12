@@ -1,19 +1,23 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpen, Star, X } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, ChevronDown, ExternalLink, Star, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { readerHref, referenceLocation } from "../reader-location";
 import {
+  countReferenceVerses,
   formatReference,
   formatReferences,
   parseReference,
   referenceKey,
   type ScriptureReference,
 } from "../reference";
+import { Passage } from "./passage-text";
 import { ReferenceChip } from "./reference-chip";
 import { useScripture } from "./scripture-provider";
 
@@ -28,12 +32,151 @@ type ScriptureFieldProps = {
   allowPrimary?: boolean;
   /** The most references the field will hold. */
   max?: number;
+  /**
+   * How the chosen references are shown. `chips` is a compact line of them,
+   * each opening its preview; `rows` is one to a line, each opening its text
+   * in place, for the page where an idea is read as well as written.
+   */
+  layout?: "chips" | "rows";
+  /** The idea being edited, so a reference opened in the Bible can lead back to it. */
+  origin?: string;
   label?: string;
   className?: string;
 };
 
 const iconButton =
   "grid h-8 w-7 shrink-0 place-items-center text-muted-foreground transition-colors duration-150 hover:text-foreground active:bg-foreground/10 pointer-coarse:h-10 pointer-coarse:w-9";
+
+/** A row shows this many verses in place; the panel has the rest. */
+const rowVerses = 12;
+
+const rowButton =
+  "grid h-11 w-9 shrink-0 place-items-center text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:w-11";
+
+/**
+ * One reference on a line of its own. Closed, it is only its name and what
+ * can be done with it, so a long list stays short. Opened, its text is read
+ * beneath it, without leaving the idea. The text is fetched when it is first
+ * opened and not before.
+ */
+function ReferenceRow({
+  reference,
+  allowPrimary,
+  origin,
+  onChange,
+  onRemove,
+  onTogglePrimary,
+}: {
+  reference: FieldReference;
+  allowPrimary: boolean;
+  origin?: string;
+  onChange: (references: ScriptureReference[]) => void;
+  onRemove: () => void;
+  onTogglePrimary: () => void;
+}) {
+  const id = useId();
+  const scripture = useScripture();
+  const [open, setOpen] = useState(false);
+  // Once opened, the text stays mounted, so closing and opening again is only the motion.
+  const [opened, setOpened] = useState(false);
+  const name = formatReference(reference);
+  const more = countReferenceVerses(reference) > rowVerses;
+
+  return (
+    <li className="min-w-0 overflow-hidden rounded-lg border bg-surface shadow-card transition-[border-color] duration-150 focus-within:border-primary/70 hover:border-primary/70">
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-text`}
+          aria-label={`${name}: ${open ? "hide" : "show"} the passage`}
+          onClick={() => {
+            setOpen((shown) => !shown);
+            setOpened(true);
+          }}
+          className="flex h-11 min-w-0 flex-1 items-center gap-2 px-3 text-left transition-colors duration-150 hover:bg-accent active:bg-foreground/10"
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              open && "rotate-180",
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0 truncate font-serif text-[0.9375rem] font-medium italic">
+            {name}
+          </span>
+          {allowPrimary && reference.isPrimary && (
+            <span className="shrink-0 text-xs font-semibold text-gold-ink">Main text</span>
+          )}
+        </button>
+        <Link
+          href={readerHref(referenceLocation(reference, origin))}
+          aria-label={`Open ${name} in the Bible`}
+          title="Open in the Bible"
+          className={cn(rowButton, "border-l")}
+        >
+          <ExternalLink className="size-4" aria-hidden />
+        </Link>
+        {allowPrimary && (
+          <button
+            type="button"
+            aria-pressed={reference.isPrimary}
+            aria-label={`${name}: main text`}
+            title={reference.isPrimary ? "Main text" : "Make this the main text"}
+            onClick={onTogglePrimary}
+            className={cn(rowButton, "border-l", reference.isPrimary && "text-gold-ink")}
+          >
+            <Star className={cn("size-4", reference.isPrimary && "fill-current")} aria-hidden />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label={`Remove ${name}`}
+          title="Remove"
+          onClick={onRemove}
+          className={cn(rowButton, "border-l hover:text-destructive")}
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </div>
+      {/* The height is animated through the grid row, from nothing to whatever the text needs. */}
+      <div
+        id={`${id}-text`}
+        inert={!open}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {opened && (
+            <div className="border-t px-2 pt-3 pb-3">
+              <Passage reference={reference} limit={rowVerses} />
+              <div className="mt-3 flex flex-wrap items-center gap-2 px-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    scripture.openPanel({
+                      reference,
+                      attach: { label: "Update reference", onAttach: onChange },
+                    })
+                  }
+                >
+                  <BookOpen aria-hidden />
+                  {more ? "Read all or change" : "Read or change"}
+                </Button>
+                <span className="text-xs text-muted-foreground">King James Version</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
 
 /**
  * The Scripture selector: the references chosen so far, a box to type one
@@ -46,6 +189,8 @@ export function ScriptureField({
   onChange,
   allowPrimary = false,
   max = 25,
+  layout = "chips",
+  origin,
   label = "Scripture",
   className,
 }: ScriptureFieldProps) {
@@ -147,7 +292,22 @@ export function ScriptureField({
     <div className={className}>
       <Label htmlFor={`${id}-entry`}>{label}</Label>
 
-      {value.length > 0 && (
+      {value.length > 0 && layout === "rows" && (
+        <ul aria-label="References" className="mt-2 space-y-2">
+          {value.map((reference) => (
+            <ReferenceRow
+              key={referenceKey(reference)}
+              reference={reference}
+              allowPrimary={allowPrimary}
+              origin={origin}
+              onChange={(next) => replace(reference, next)}
+              onRemove={() => remove(reference)}
+              onTogglePrimary={() => togglePrimary(reference)}
+            />
+          ))}
+        </ul>
+      )}
+      {value.length > 0 && layout === "chips" && (
         <ul aria-label="References" className="mt-2 flex flex-wrap gap-2">
           {value.map((reference) => {
             const name = formatReference(reference);
@@ -160,6 +320,7 @@ export function ScriptureField({
                   reference={reference}
                   onChange={(next) => replace(reference, next)}
                   onRemove={() => remove(reference)}
+                  origin={origin}
                   className="min-w-0 rounded-r-none border-0 shadow-none"
                 />
                 {allowPrimary && (

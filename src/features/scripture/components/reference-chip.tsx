@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, ExternalLink, Trash2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -14,6 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
+import { readerHref, referenceLocation } from "../reader-location";
 import { countReferenceVerses, formatReference, type ScriptureReference } from "../reference";
 import { Passage } from "./passage-text";
 import { useScripture } from "./scripture-provider";
@@ -26,6 +28,8 @@ type ReferenceChipProps = {
    */
   onChange?: (references: ScriptureReference[]) => void;
   onRemove?: () => void;
+  /** The idea the reference is on, so the Bible can offer the way back to it. */
+  origin?: string;
   className?: string;
 };
 
@@ -40,7 +44,13 @@ export const chipClass =
  * Quick Preview: a popover where there is room beside it, a sheet from the
  * foot of a narrow screen. "Read" carries the same passage into the panel.
  */
-export function ReferenceChip({ reference, onChange, onRemove, className }: ReferenceChipProps) {
+export function ReferenceChip({
+  reference,
+  onChange,
+  onRemove,
+  origin,
+  className,
+}: ReferenceChipProps) {
   const [open, setOpen] = useState(false);
   const wide = useMediaQuery(wideEnough);
   const scripture = useScripture();
@@ -66,6 +76,14 @@ export function ReferenceChip({ reference, onChange, onRemove, className }: Refe
               ? "Read all"
               : "Read"}
         </Button>
+        <Link
+          href={readerHref(referenceLocation(reference, origin))}
+          onClick={() => setOpen(false)}
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+        >
+          <ExternalLink aria-hidden />
+          Open in Bible
+        </Link>
         {onRemove && (
           <Button
             type="button"

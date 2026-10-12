@@ -41,7 +41,7 @@ export function BackToTop({ aboveTabBar = false }: BackToTopProps) {
       className={cn(
         // On hover the rim and arrow turn emerald and the arrow rises; the button itself stays put.
         "group fixed right-5 bottom-5 z-40 grid size-11 place-items-center rounded-full glass-float text-muted-foreground transition-[opacity,translate,color,border-color] duration-200 hover:border-primary/70 hover:text-primary active:border-primary active:text-primary sm:right-8 sm:bottom-8",
-        aboveTabBar && "max-md:bottom-[calc(var(--bar-h)+env(safe-area-inset-bottom)+1rem)]",
+        aboveTabBar && "max-md:bottom-[calc(var(--bar-h)+var(--bar-lift)+1rem)]",
         !visible && "pointer-events-none translate-y-2 opacity-0",
         "[body:has([data-selection-toolbar])_&]:invisible",
       )}

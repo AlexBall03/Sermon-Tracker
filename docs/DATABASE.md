@@ -115,6 +115,10 @@ The passages attached to an idea, in order, as numbers. No verse text is stored 
 
 CHECK constraints keep the four range columns coherent (an end after its start; a verse at both ends of a cross-chapter range or at neither). Whether the chapter and verse exist is validated by the application against the real verse counts.
 
+A row names a passage and no translation: it is the same reference whatever text it is read in, and a second translation needs no change here and no second row.
+
+**Adding to an idea (Phase 2C.1C)** changed no table. `attachReferences` runs in one transaction: it reads the idea `WHERE id = … AND owner_id = … FOR UPDATE`, which both checks ownership and holds the idea's row; reads the references it has; inserts those not already there, by all five numbers, at the positions after the last; and sets `updated_at`. Two requests for one idea therefore run one after the other, and the second sees what the first added. An editor's Save takes the same row lock through its `UPDATE` before it replaces the references. `UNIQUE (idea_id, position)` would refuse a collision if the lock were ever lost. There is deliberately no unique constraint over the passage itself: the code that was live before this phase replaces an idea's references by deleting and inserting, and a constraint added under it would have been a second thing to keep in step for no gain while every writer takes the lock.
+
 ### `bible_verses`
 
 The King James Bible, one row per verse: 31,102 rows. Shared, read-only reference data with no owner. The application never writes to it.
@@ -325,7 +329,8 @@ Database tests use PGlite, an in-process PostgreSQL, and apply the committed mig
 
 See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
-- **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above). **Favorites and highlights** — implemented in Phase 2C.1B (above).
+- **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above). **Favorites and highlights** — implemented in Phase 2C.1B (above). **Scripture from the Bible to an idea** — Phase 2C.1C, with no schema change (see `idea_scripture_references`).
+- **A second translation** — `bible_verses` and `bible_psalm_titles` hold one text and have no translation column; that is the change the bilingual milestone makes. Favorites and highlights already carry a translation. References on ideas carry none and need none.
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Preaching occurrences** (Phase 3) — when, where, and in what context a sermon was preached.

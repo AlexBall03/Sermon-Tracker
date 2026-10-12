@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { versesIn } from "../books";
@@ -307,6 +307,24 @@ describe("ScriptureBrowser", () => {
     expect(pressed()).toEqual(["1", "2"]);
   });
 
+  it("opens ready to search with a mouse, and on the passage on a touch screen", async () => {
+    browse();
+    const box = () => screen.getByRole("searchbox", { name: "Search the Bible" });
+    await waitFor(() => expect(box()).toHaveFocus());
+    cleanup();
+
+    // The search box would raise the keyboard over the text.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(pointer: coarse)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    browse();
+    const verse = await screen.findByText("Text of 1.1.1");
+    await waitFor(() => expect(verse.closest("[tabindex='-1']")).toHaveFocus());
+    expect(box()).not.toHaveFocus();
+  });
+
   it("lists the search options on request", async () => {
     browse();
     const toggle = screen.getByRole("button", { name: "Search options" });
@@ -328,6 +346,30 @@ describe("ScriptureBrowser", () => {
 });
 
 describe("ReferenceChip", () => {
+  it("leads to the passage in the Bible, pointing out all of it", async () => {
+    render(
+      <ScriptureProvider>
+        <ReferenceChip reference={ref("John 3:16-18")} />
+        <ReferenceChip reference={ref("Psalm 23")} origin="11111111-1111-4111-8111-111111111111" />
+      </ScriptureProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "John 3:16–18: preview the passage" }));
+    const john = await screen.findByRole("dialog", { name: "John 3:16–18" });
+    expect(within(john).getByRole("link", { name: "Open in Bible" })).toHaveAttribute(
+      "href",
+      "/bible?book=43&chapter=3&verse=16&through=18",
+    );
+    fireEvent.click(within(john).getByRole("button", { name: "Close preview" }));
+
+    // On an idea's own page the address also says which idea, for the way back.
+    fireEvent.click(screen.getByRole("button", { name: "Psalm 23: preview the passage" }));
+    const psalm = await screen.findByRole("dialog", { name: "Psalm 23" });
+    expect(within(psalm).getByRole("link", { name: "Open in Bible" })).toHaveAttribute(
+      "href",
+      "/bible?book=19&chapter=23&idea=11111111-1111-4111-8111-111111111111",
+    );
+  });
+
   it("previews the passage, then carries it into the panel", async () => {
     render(
       <ScriptureProvider>

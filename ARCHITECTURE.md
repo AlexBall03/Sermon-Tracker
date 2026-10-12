@@ -30,6 +30,7 @@ src/
     (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
     (app)/                  Authenticated shell: dashboard, library, bible, settings, admin
     api/bible/              Route handlers: one chapter, and word search
+    api/ideas/              Route handler: the account's ideas by name, for the picker
     icon.svg                Favicon (small-size mark)
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
@@ -94,6 +95,7 @@ Conventions:
 | `/library/scripture` | Saved Scripture, a section of the library  | 2C.1B | No      |
 | `/bible`             | The Bible reader                           | 2C.1A | No      |
 | `/api/bible/…`       | A chapter, its marks, or a word search     | 2A    | No      |
+| `/api/ideas/search`  | The account's own ideas, found by name     | 2C.1C | No      |
 | `/history`           | Preaching history                          | 3     | No      |
 | `/analytics`         | Statistics (not in the route map yet)      | 5     | No      |
 
@@ -156,11 +158,12 @@ Disabling an account takes effect on that person's next request, because status 
 
 One record, three kinds. `features/ideas/model.ts` holds the vocabulary (kinds, statuses, sermon types, length limits) as plain values, so the schema, the actions, and the browser read one list.
 
-- **Service** (`ideas.ts`): `createIdea`, `getIdea`, `recentIdeas` (the dashboard's five), `searchIdeas` (the library), `updateIdea`, `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
-- **Actions** (`actions.ts`): `createIdea`, `updateIdea`, `changeIdeaKind`, `deleteIdea`. Each calls `authorize("active")`, validates with Zod, and takes the owner from the session. No input can name an owner: the schema drops unknown keys and the service names each column it writes.
+- **Service** (`ideas.ts`): `createIdea`, `getIdea`, `recentIdeas` (the dashboard's five), `searchIdeas` (the library), `updateIdea`, `attachReferences` (see "Scripture on an idea"), `setIdeaKind`, `deleteIdea`. Each takes the database and the owner, and **every statement has the owner in its WHERE clause**. An idea that is missing and one that belongs to someone else are indistinguishable, here and in every message. References are replaced in the same transaction, and only after the owner-scoped write matched a row.
+- **Actions** (`actions.ts`): `createIdea`, `updateIdea`, `attachScripture`, `changeIdeaKind`, `deleteIdea`. Each calls `authorize("active")`, validates with Zod, and takes the owner from the session. No input can name an owner: the schema drops unknown keys and the service names each column it writes.
 - **Create is idempotent.** The browser generates the UUID before the first attempt; the insert is `ON CONFLICT (id) DO NOTHING` followed by an owner-scoped read. A double submit or a retry is one idea; an ID that exists under another account fails without revealing it.
 - **Reclassifying changes only `kind`.** A sermon's type and subject stay in their columns when it becomes a point or undecided, and return when it becomes a sermon again. The editor applies a reclassification at once, separately from Save.
 - **Pages**: `/library` reads its query from the URL and shows one page of results (see "Library" below). `/library/<id>` validates the ID as a UUID before querying and calls `notFound()` for anything the owner-scoped query does not return.
+- **The editor follows the saved idea.** Next keeps a page it has left, so the editor can be on screen, or kept, while the idea changes elsewhere (a passage added from the Bible, another tab). When the server sends the idea again, an editor with nothing unsaved simply shows it; one with edits under way keeps them and brings in only the passages added elsewhere, so the next Save cannot take them off again.
 
 ### Library
 
@@ -246,6 +249,7 @@ A tag belongs to one account and can go on any of that account's ideas, of any k
 `QuickCaptureProvider` (`features/ideas/components/quick-capture.tsx`) is one dialog for the whole shell; `useQuickCapture().open()` opens it from the bar, the tab bar, the dashboard, and the library.
 
 - Only the idea is required. Kind starts as Undecided, Scripture is always visible, and notes, status, and sermon details are behind "More details".
+- `useQuickCapture().openWith({ kind, references })` opens it already holding a kind and passages: how an idea is begun from Scripture. Nothing is saved by opening. What it was opened with is not the person's own work, so closing it untouched asks nothing and leaves no trace; anything written beyond it is guarded as usual.
 - Enter saves from the idea field. In notes, Enter is a new line and Ctrl or Command with Enter saves. Enter in the Scripture field adds the reference and never submits.
 - A failed save changes nothing on screen. Closing with something written (the X, Escape, a click outside) asks "Discard this idea?"; discarding empties the form, and any close clears its validation messages. Leaving the page while something is written goes through `useLeaveGuard`. A save in flight cannot be closed or submitted again.
 - Success closes the dialog and shows a toast linking to the idea.
@@ -301,7 +305,7 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 ### Bible reader
 
-`/bible` is Phase 2C.1A: the whole King James Bible to read, with book, chapter, and verse navigation, the existing word search, verse selection, and copying. Phase 2C.1B added highlighting and favorites to it (see "Saved Scripture" below). Attaching a selection to an idea (2C.1C) is not built.
+`/bible` is Phase 2C.1A: the whole King James Bible to read, with book, chapter, and verse navigation, the existing word search, verse selection, and copying. Phase 2C.1B added highlighting and favorites to it (see "Saved Scripture" below), and Phase 2C.1C the way from a selection to an idea and from an idea back to its passage (see "Scripture on an idea" below).
 
 **The page** (`app/(app)/bible/page.tsx`) is a Server Component: `requireActiveUser()`, then the chapter the address names is read with the cached `getChapter` and sent with the page, so a link arrives with its text. Everything after that happens in the browser, in `BibleReader`, a chapter at a time through `/api/bible`, which authorises every request itself.
 
@@ -312,10 +316,14 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 | `/bible`                            | The chapter last read in this browser, or Genesis 1 |
 | `/bible?book=43&chapter=3`          | John 3                                              |
 | `/bible?book=43&chapter=3&verse=16` | John 3, brought to verse 16                         |
+| `…&verse=16&through=18`             | The same, pointing out verses 16 to 18              |
+| `…&idea=<id>`                       | Opened from that idea, which is the way back        |
 
 - `book` is the canonical number, 1 to 66. Everything is checked against `versification.ts`.
 - `parseReaderLocation` never throws. No real book: no location. A chapter the book does not have: chapter 1 (and the verse is dropped with it). A verse the chapter does not have: dropped. Other parameters are ignored and of a repeated one the first is used.
-- `readerHref` writes one address per place, in the order `book`, `chapter`, `verse`. An address that says a place another way is rewritten in place (`replaceState`).
+- `readerHref` writes one address per place, in the order `book`, `chapter`, `verse`, `through`, `idea`. An address that says a place another way is rewritten in place (`replaceState`).
+- `through` is the last verse of a passage, in the chapter it starts in. It must be after `verse` and exist, or it is dropped. The whole run is tinted together, by the same passing light as one verse, and none of it is selected or highlighted. `referenceLocation(reference, idea?)` makes the location of an idea's reference: a passage that runs into later chapters is pointed out to the end of its first, and a whole chapter is opened at its head with nothing pointed out.
+- `idea` is an idea's ID and nothing else. The Bible page looks it up among the signed-in account's own ideas and, if it is there, the reader offers "Back to …" above the text. An ID that is malformed, unknown, or someone else's offers nothing and says nothing. Moving about in the reader carries it along; Copy link leaves it out.
 - `verse` says where to look. It scrolls the verse into view and tints it faintly for under two seconds (`data-found`, the `verse-found` animation in `globals.css`), then lets it go: there is nothing to clear, and it is never a selection. Only one verse is ever tinted: going to another takes it off the first at once, the attribute is removed when the animation ends, and going to the same verse again plays it again. Neither the verse nor the Go to verse menu keeps any mark afterwards.
 - **The chapters either side are fetched ahead** once a chapter is shown, so Previous and Next show text at once and not the loading lines.
 - **Moving about** (the sidebar, Previous and Next, Go to verse, a search result, a typed reference) is `window.history.pushState`, which Next keeps in step with `useSearchParams`: no request to the server for the page, and Back and Forward retrace the reading. A new chapter starts at the top of the page.
@@ -332,7 +340,7 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 - A selection is temporary: it is React state inside the chapter's view, which is keyed by book and chapter, so it cannot outlive its chapter. It is not in the address.
 - Interactive selection is within the chapter on screen. References across chapters remain valid everywhere else.
 
-**`SelectionToolbar`** appears with a selection and goes with it. It has two lines: the reference in words with Clear at its end, and beneath it Copy text, Copy reference, Copy link, then a hairline and its `children`, which today are Highlight and Favorite (`components/saved/selection-actions.tsx`) and are where 2C.1C adds its own. A third, quiet line (`footer`) names the favorites the selected verses already belong to. Each button shows its word where the toolbar has room for every word and its icon alone, still named, where it has not; the room is the toolbar's own width (a container query, `toolbarAction` and `toolbarLabel`), because beside an open sidebar a wide window can leave it less than a phone does. It rests at the foot of the reading column (above the tab bar and the safe-area inset on a narrow screen), and `BackToTop` steps aside while it is shown.
+**`SelectionToolbar`** appears with a selection and goes with it. It has two lines: the reference in words with Clear at its end, and beneath it Copy text, Copy reference, Copy link, then a hairline and its `children`: Highlight, Favorite, and Idea (`components/saved/selection-actions.tsx`). Six words only just fit one line of the reading column, which is why the third is one word and is named "Add to an idea" in full for assistive technology and on hover. A third, quiet line (`footer`) names the favorites the selected verses already belong to. Each button shows its word where the toolbar has room for every word and its icon alone, still named, where it has not; the room is the toolbar's own width (a container query, `toolbarAction` and `toolbarLabel`), because beside an open sidebar a wide window can leave it less than a phone does. It rests at the foot of the reading column (above the tab bar and the safe-area inset on a narrow screen), and `BackToTop` steps aside while it is shown.
 
 - **Copy text** is `formatSelectionText`: the reference and "(KJV)", then directly beneath it each verse on its own line with its number; where verses were passed over, a line of three dots stands between the passages and none of those verses is included. A psalm's title is not copied.
 - **Copy link** is the chapter's address at the first verse chosen. The selection itself is not serialised.
@@ -349,7 +357,9 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 **Motion.** The sidebar's width, slide, fade, and handle share one 0.38 second ease-in-out curve; a verse gone to is lit and fades (held, not faded, under reduced motion); a chapter's text settles into place over 0.3 seconds from 16px to the side it lies on, the next chapter from the right and the one before from the left, and is fully opaque throughout: nothing fades in, because text that starts from clear leaves the page blank for an instant, which the owner saw as a flash. The links at the foot of a chapter are reading on, not turning aside, so from them the next chapter comes up from below and the one before down from above. The chapter's name simply changes, and a first arrival is not animated. The text's container clips sideways, so the slide never widens the page. Go to verse moves the page with `glideTo` (`glide.ts`), one ease set frame by frame, because the browser's own smooth scrolling stuttered when started as the menu closed; the verse is lit as the glide ends, a verse already in view is lit without moving the page, and the reader's own wheel, touch, or key takes over at once. Nothing loops, and the global reduced-motion rule stills all of it.
 
-**Later translations.** References and `reader-location` carry no translation. The translation is one constant (`translation` in `books.ts`: `id`, `short`, `name`), and text is reached only through `passages.ts` and `/api/bible`. Favorites and highlights do carry one: every row is stored under `translation.id`, it is part of what identifies them, and every read and write names it, so a second translation's marks will be separate rows and nothing is carried across. Nothing else was built ahead of need: there is no translation picker, no second text, and no setting.
+- **The page's name is the chapter** ("John 3 · Sermon Tracker"), set by the reader as it moves, so a tab and the history list say where each entry is.
+
+**Later translations.** References and `reader-location` carry no translation, and neither does a reference on an idea: `idea_scripture_references` is five numbers, so one row is the same passage in any translation and nothing is duplicated per translation. A translation, when there is more than one, belongs in the reader's address as one more parameter beside `book`, and in what text is fetched for a reference; the reference itself does not change. The translation is one constant (`translation` in `books.ts`: `id`, `short`, `name`), and text is reached only through `passages.ts` and `/api/bible`. Favorites and highlights do carry one: every row is stored under `translation.id`, it is part of what identifies them, and every read and write names it, so a second translation's marks will be separate rows and nothing is carried across. Nothing else was built ahead of need: there is no translation picker, no second text, and no setting.
 
 ### Saved Scripture
 
@@ -359,7 +369,7 @@ Phase 2C.1B: favorites and highlights. Both are a person's own, kept in the data
 
 - `normaliseVerses` puts them in the Bible's order, each once, and drops what does not exist. `canonicalKey` is the string two equal sets share. A psalm's title has no verse number and can never be one of them.
 - `formatVerseSet` writes a set as it is said: "John 3:16", "Psalm 23:1–6", "Romans 3:10, 23; 6:23", "John 3:16; Romans 6:23", "Jude 5, 7". `parseVerseSet` reads the same form back (each part through `parseReference`; a part with no book belongs to the book before it, and a bare number after a comma to the chapter before it), and is how a favorite's passage is edited.
-- `referencesToVerses` and `versesToRuns` convert to and from `ScriptureReference[]`, the shape the reader's selection and 2C.1C's idea references use.
+- `referencesToVerses` and `versesToRuns` convert to and from `ScriptureReference[]`, the shape the reader's selection and an idea's references use.
 - The reader selects within one chapter, so a favorite made there is in one chapter. The model, the table, the formatter, and the editor's typed passage all handle verses across chapters and books.
 
 **Favorites** (`favorites.ts`, `actions.ts`).
@@ -389,6 +399,29 @@ Phase 2C.1B: favorites and highlights. Both are a person's own, kept in the data
 - **A result** shows the label where there is one, the reference as a link to the passage in the Bible (`readerHref` at its first verse), its first three verses with a count of the rest, its notes, the colors its verses carry by name, and when it was saved, with Edit and Remove. Remove asks first and says what is kept.
 - **Empty states** are three, as for ideas: nothing saved at all (no controls, "Open the Bible"), a search that finds nothing, and filters that find nothing.
 - **A page is five queries** whatever its size (docs/DATABASE.md).
+
+### Scripture on an idea
+
+Phase 2C.1C. A reference on an idea is a row of `idea_scripture_references`, as it has been since 2A; this phase added the ways to put one there from outside the idea's own form, and the way from it to the Bible. Sermon, point, and undecided ideas are one table, so everything here is the same for all three, and a point needs no sermon to hold Scripture.
+
+**Adding** is `attachReferences(db, ownerId, ideaId, references)`, behind the `attachScripture` action. It is the only way Scripture reaches an existing idea other than its editor's Save.
+
+- It adds to what the idea has and changes nothing else: not the other references, their order, the main text, or any field. A passage added this way is never the main text.
+- **A passage the idea already holds, exactly, is not added again**, so a repeat is harmless and is answered as done ("… is already on …"). "Exactly" is `referenceKey`. A passage that only overlaps another (John 3:16 beside John 3:16–18) is a different passage, chosen on purpose, and is kept.
+- **Verses that are apart stay separate references.** The reader's selection arrives as one reference for each unbroken run (`selectionReferences`), and each is its own row.
+- **All or nothing.** More than the idea has room for (25) adds none, and says how many would fit.
+- **Safe at once.** The idea's row is locked (`SELECT … FOR UPDATE`, owner in the WHERE clause) for the transaction, so two requests add one after the other; an editor's Save takes the same lock through its `UPDATE`. `UNIQUE (idea_id, position)` stands behind it.
+- An idea that is missing and one that is someone else's are the same answer, and nothing is written. Something added counts as a change to the idea (`updated_at`); nothing added does not.
+
+**Finding the idea** is `GET /api/ideas/search?q=&kind=` (`idea-search.ts` is its contract): the library's own `searchIdeas`, so the owner is in its WHERE clause, with only the words and the kind taken from the address through `parseLibraryQuery`. It answers eight ideas, most recently changed first, with the count of all that match, and only what the picker shows: title, kind, status, a sermon's subject, and the references held. It is never cached.
+
+**`AttachScripture`** (`features/ideas/components/attach-scripture.tsx`) is the one dialog, opened by "Idea" in the reader's toolbar and by "Add to idea" on a saved passage. It names the passage, searches after a 300 ms pause (a search that has been replaced is withdrawn), switches between all ideas, sermons, and points, and marks an idea that already has the passage. Choosing an idea adds to it at once, closes the dialog, and says so in a toast that links to the idea; the reader stays where it was with its selection, as after a copy. A refusal is said in the dialog, which stays open. "New sermon idea" and "New point idea" close it and hand the passage to quick capture. It floats where the window is wide and tall enough and takes the whole of a smaller screen, a phone on its side included.
+
+**From a favorite** the same dialog is given `versesToRuns(favorite.verses)`. What reaches the idea is references; nothing links the two afterwards. Removing the favorite leaves the idea's references, and taking the references off the idea, or deleting the idea, leaves the favorite. Both are tested on the database.
+
+**On the idea's page** `ScriptureField` has `layout="rows"`: each reference is a closed row (its name, Open in the Bible, the main-text star on a sermon, Remove) that opens its text in place, up to twelve verses, fetched when first opened. Quick capture and the library's cards keep the chip and its preview, which also gained "Open in Bible". Removal there is part of the draft and is saved with Save, as before.
+
+**From an idea to the Bible** is an ordinary link to `readerHref(referenceLocation(reference, ideaId))`: the chapter, the passage pointed out, and the way back (see "Bible reader"). With unsaved edits, `useLeaveGuard` asks first. The browser's Back returns to the idea as it would from any page.
 
 ### Account management
 
@@ -591,7 +624,7 @@ These are settled and constrain later phases. The first and fourth are implement
 
 - **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, Scripture, and saved Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
-- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
+- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`, `scripture-ideas.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 

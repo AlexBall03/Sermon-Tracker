@@ -23,6 +23,7 @@ test.describe("guests and application routes", () => {
     "/library/scripture?q=grace&book=45&color=yellow",
     "/bible",
     "/bible?book=43&chapter=3&verse=16",
+    "/bible?book=43&chapter=3&verse=16&through=18&idea=00000000-0000-4000-8000-000000000000",
   ]) {
     test(`${path} sends a guest to sign-in`, async ({ page }) => {
       await page.goto(path);
@@ -74,5 +75,14 @@ test("robots.txt keeps the new routes out of search", async ({ request }) => {
   const body = await (await request.get("/robots.txt")).text();
   for (const path of ["/admin", "/accept-invitation", "/access-denied", "/sign-in", "/bible"]) {
     expect(body).toContain(`Disallow: ${path}`);
+  }
+});
+
+test("the idea search answers a guest with nothing", async ({ request }) => {
+  for (const path of ["/api/ideas/search", "/api/ideas/search?q=a&kind=sermon"]) {
+    const response = await request.get(path, { maxRedirects: 0 });
+    // Refused outright or sent to sign in: either way, no idea is named.
+    expect([401, 302, 303, 307, 308, 404]).toContain(response.status());
+    expect(await response.text()).not.toContain('"items"');
   }
 });
