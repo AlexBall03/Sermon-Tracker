@@ -34,12 +34,16 @@ async function rememberLocale(locale: Locale) {
 
 /*
  * As with every action: each authorises itself when it runs and takes the
- * account from the session. The two preferences are saved apart and neither
- * writes the other. Spanish is refused here, on the server, while an
- * administrator has it switched off; what was saved before is left as it was.
+ * account from the session. Choosing another language returns the Bible
+ * translation to following it; choosing a translation never writes the
+ * language. Spanish is refused here, on the server, while an administrator has
+ * it switched off; what was saved before is left as it was.
  */
 
-/** Saves the account's interface language. The Bible translation is not touched. */
+/**
+ * Saves the account's interface language. A language that differs from the
+ * one saved takes the Bible translation with it; the same one changes nothing.
+ */
 export async function setLocale(locale: unknown): Promise<ActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
@@ -52,7 +56,10 @@ export async function setLocale(locale: unknown): Promise<ActionResult> {
   if (parsed.data === "es" && !spanishEnabled) return { ok: false, message: t.spanishOff };
 
   try {
-    if (!(await saveLocale(getDb(), actor.user.id, parsed.data))) {
+    if (
+      parsed.data !== actor.user.locale &&
+      !(await saveLocale(getDb(), actor.user.id, parsed.data))
+    ) {
       return { ok: false, message: t.notSaved };
     }
   } catch (error) {

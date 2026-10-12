@@ -2,6 +2,7 @@ import { count, eq, sql } from "drizzle-orm";
 
 import { users, type AppUser } from "@/db/schema";
 import type { Database } from "@/db/types";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 
 /**
  * Taken by every transaction that changes a role or status, so checks such as
@@ -19,6 +20,11 @@ type ProvisionOptions = {
   initialAdminId?: string;
   /** Whether Clerk records this identity as invited. Only called for new identities. */
   isInvited: () => Promise<boolean>;
+  /**
+   * The interface language a new account starts in, which is the browser's.
+   * Only called for new identities; an existing account keeps what it saved.
+   */
+  locale?: () => Promise<Locale>;
 };
 
 async function findByClerkId(db: Database, clerkUserId: string) {
@@ -37,7 +43,7 @@ async function findByClerkId(db: Database, clerkUserId: string) {
 export async function provisionUser(
   db: Database,
   clerkUserId: string,
-  { initialAdminId, isInvited }: ProvisionOptions,
+  { initialAdminId, isInvited, locale }: ProvisionOptions,
 ): Promise<ProvisionResult> {
   const isInitialAdmin = Boolean(initialAdminId) && clerkUserId === initialAdminId;
 
@@ -46,7 +52,11 @@ export async function provisionUser(
     if (!isInitialAdmin && !(await isInvited())) return { ok: false, reason: "not-invited" };
     await db
       .insert(users)
-      .values({ clerkUserId, role: isInitialAdmin ? "admin" : "user" })
+      .values({
+        clerkUserId,
+        role: isInitialAdmin ? "admin" : "user",
+        locale: (await locale?.()) ?? defaultLocale,
+      })
       .onConflictDoNothing({ target: users.clerkUserId });
     user = await findByClerkId(db, clerkUserId);
     if (!user) throw new Error("User provisioning failed.");

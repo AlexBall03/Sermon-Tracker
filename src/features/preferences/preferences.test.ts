@@ -128,20 +128,28 @@ describe("setLocale", () => {
     expect((await row(reader.id)).locale).toBe("en");
   });
 
-  it("moves an unchosen translation with it, and leaves a chosen one alone", async () => {
+  it("takes the translation with it, chosen or not", async () => {
     await signInAs(reader);
     // Nothing chosen: the Bible follows the interface.
     await setLocale("es");
     expect((await row(reader.id)).bibleTranslation).toBeNull();
     expect((await inForce(reader)).translation).toBe("rvg");
 
-    // Chosen: the interface changes and the Bible stays.
+    // Chosen: a new language still brings its own translation.
     await signInAs(reader);
     expect(await setBibleTranslation("rvg")).toMatchObject({ ok: true });
     await signInAs(reader);
     await setLocale("en");
+    expect(await row(reader.id)).toMatchObject({ locale: "en", bibleTranslation: null });
+    expect(await inForce(reader)).toMatchObject({ locale: "en", translation: "kjv" });
+  });
+
+  it("leaves a chosen translation alone when the language is the one already saved", async () => {
+    await signInAs(reader);
+    await setBibleTranslation("rvg");
+    await signInAs(reader);
+    expect((await setLocale("en")).ok).toBe(true);
     expect(await row(reader.id)).toMatchObject({ locale: "en", bibleTranslation: "rvg" });
-    expect(await inForce(reader)).toMatchObject({ locale: "en", translation: "rvg" });
   });
 });
 
@@ -158,7 +166,7 @@ describe("setBibleTranslation", () => {
       message: "Your Bible translation is now the RVG.",
     });
     expect(await row(reader.id)).toMatchObject({ locale: "en", bibleTranslation: "rvg" });
-    // English interface, Spanish Bible: the two are independent.
+    // English interface, Spanish Bible.
     expect(await inForce(reader)).toMatchObject({ locale: "en", translation: "rvg" });
 
     await signInAs(reader);
@@ -223,6 +231,7 @@ describe("the administrator's switch for Spanish", () => {
     await setLocale("es");
     await signInAs(reader);
     await setBibleTranslation("rvg");
+    expect(await row(reader.id)).toMatchObject({ locale: "es", bibleTranslation: "rvg" });
     await db.insert(bibleHighlights).values({
       ownerId: reader.id,
       translation: "rvg",

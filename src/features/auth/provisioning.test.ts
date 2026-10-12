@@ -38,6 +38,19 @@ describe("provisionUser", () => {
     expect(result).toMatchObject({ ok: true, user: { role: "user", status: "active" } });
   });
 
+  it("starts a new account in the browser's language, and never changes it afterwards", async () => {
+    const spanish = { ...invited, locale: async () => "es" as const };
+    expect(await provisionUser(db, "user_a", spanish)).toMatchObject({ user: { locale: "es" } });
+    // Without one it is English.
+    expect(await provisionUser(db, "user_b", invited)).toMatchObject({ user: { locale: "en" } });
+
+    const locale = vi.fn(async () => "es" as const);
+    expect(await provisionUser(db, "user_b", { ...invited, locale })).toMatchObject({
+      user: { locale: "en" },
+    });
+    expect(locale).not.toHaveBeenCalled();
+  });
+
   it("is idempotent, including under concurrent first requests", async () => {
     const results = await Promise.all(
       Array.from({ length: 5 }, () => provisionUser(db, "user_a", invited)),

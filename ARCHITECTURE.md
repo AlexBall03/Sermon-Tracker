@@ -415,13 +415,14 @@ The King James Bible is in the database (see docs/DATABASE.md) and `features/scr
 
 ### Languages and translations
 
-Phase 2C.2. The interface is in English or Spanish, the Bible is the King James (KJV) or the Reina-Valera Gómez (shown as RVG, never with its revision year), and the two choices are independent.
+Phase 2C.2. The interface is in English or Spanish, the Bible is the King James (KJV) or the Reina-Valera Gómez (shown as RVG, never with its revision year). Either can be chosen on its own, and choosing a language brings its translation with it.
 
 **Preferences** (`features/preferences`). `users.locale` is the interface language and `users.bible_translation` the Bible, null until one is chosen. `resolvePreferences` (`resolve.ts`, no server code, and the one statement of the rule) turns what is stored into what is in force:
 
 - Nobody has chosen a translation: it is the one in the interface's language, KJV for English and RVG for Spanish.
-- Once a translation is chosen it stays, whatever the interface language is changed to. `setLocale` never writes the translation and `setBibleTranslation` never writes the language; `setBibleTranslation(null)` goes back to following the language.
+- A chosen translation stays until another is chosen or the interface language is changed. `setLocale` with a language that differs from the one saved writes the translation back to null (`saveLocale`), so the new language brings its own translation, and the person can then choose the other; with the same language it writes nothing. `setBibleTranslation` never writes the language; `setBibleTranslation(null)` goes back to following the language.
 - `getPreferences()` (`current.ts`) is what every page, action, and route asks. It is decided once per request from the session and the database. Before sign-in there is no account, and the language is the `st_locale` cookie, which is written when the preference is saved or chosen on a sign-in page, holds a language code, and grants nothing.
+- With no cookie the language is the browser's (`Accept-Language`, through `preferredLocale` in `i18n/locales.ts`), and a new account starts in that same language (`deviceLocale` in `i18n/device.ts`, handed to `provisionUser`). An account that exists keeps what it has saved. The theme follows the device too, in the browser, until one is chosen.
 
 **The Spanish switch.** `app_settings.spanish_enabled`, changed only by `setSpanishEnabled` (`authorize("admin")`) from the Languages section of `/admin`. It is applied in `resolvePreferences` and nowhere else, and is for everyone, administrators included:
 

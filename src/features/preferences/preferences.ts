@@ -18,11 +18,15 @@ export function storedPreferences(
   return { locale: user.locale, bibleTranslation: user.bibleTranslation };
 }
 
-/** Saves an account's interface language. The Bible translation is not touched. */
+/**
+ * Saves an account's interface language, and returns its Bible translation to
+ * following it: a new language brings its own translation, which the person
+ * can then change again. For a language that differs from the one saved.
+ */
 export async function saveLocale(db: Pick<Database, "update">, userId: string, locale: Locale) {
   const updated = await db
     .update(users)
-    .set({ locale })
+    .set({ locale, bibleTranslation: null })
     .where(eq(users.id, userId))
     .returning({ id: users.id });
   return updated.length > 0;

@@ -16,6 +16,28 @@ export function isLocale(value: unknown): value is Locale {
 }
 
 /**
+ * The language a browser asks for, from its `Accept-Language` header: the
+ * first it lists, in its own order of preference, that the interface is
+ * written in ("es-MX" is Spanish). English when it lists none of them.
+ */
+export function preferredLocale(acceptLanguage: string | null | undefined): Locale {
+  const asked = (acceptLanguage ?? "")
+    .split(",")
+    .map((entry) => {
+      const [tag, ...parameters] = entry.trim().split(";");
+      const quality = parameters
+        .map((parameter) => parameter.trim())
+        .find((p) => p.startsWith("q="));
+      const weight = quality ? Number(quality.slice(2)) : 1;
+      return { language: tag.trim().toLowerCase().split("-")[0], weight };
+    })
+    .filter((entry) => entry.weight > 0)
+    // Stable, so languages of equal weight keep the order they were listed in.
+    .sort((a, b) => b.weight - a.weight);
+  return asked.map((entry) => entry.language).find(isLocale) ?? defaultLocale;
+}
+
+/**
  * The cookie that carries the interface language to the pages shown before
  * signing in, where there is no account to read it from. It is written when
  * the preference is saved, holds a language code and nothing else, and grants

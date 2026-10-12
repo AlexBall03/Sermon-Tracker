@@ -24,9 +24,9 @@ const follow = "follow";
  * beside them these are saved to the account, so they follow the person to
  * every device.
  *
- * They are two choices and neither moves the other: the interface can be in
- * English with the Bible in Spanish. Until a translation is chosen it is the
- * one in the interface's language, and choosing one fixes it.
+ * Choosing a language brings its translation with it, and the translation can
+ * then be chosen on its own: the interface can be in English with the Bible in
+ * Spanish. A chosen translation stays until the language is changed again.
  *
  * While an administrator has Spanish switched off there is nothing to choose
  * between, and this says so; what was saved is kept.
@@ -58,11 +58,17 @@ export function LanguageSettings({ preferences }: { preferences: Preferences }) 
   }
 
   function chooseLocale(next: Locale) {
-    const before = locale;
+    if (next === locale) return;
+    const before = { locale, translation };
     setChosenLocale(next);
+    // The translation goes with the language, as the server will save it.
+    setChosenTranslation(null);
     run(
       () => setLocale(next),
-      () => setChosenLocale(before),
+      () => {
+        setChosenLocale(before.locale);
+        setChosenTranslation(before.translation);
+      },
     );
   }
 

@@ -11,6 +11,9 @@ const state = vi.hoisted(() => ({
   userId: null as string | null,
   metadata: {} as Record<string, unknown>,
   configured: true,
+  /** What the browser sends: its language cookie, and the languages it asks for. */
+  localeCookie: undefined as string | undefined,
+  acceptLanguage: null as string | null,
 }));
 
 vi.mock("react", async (original) => ({
@@ -29,6 +32,13 @@ vi.mock("@clerk/nextjs/server", () => ({
   }),
 }));
 vi.mock("next/server", () => ({ connection: async () => {} }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: () => (state.localeCookie ? { value: state.localeCookie } : undefined),
+  }),
+  headers: async () =>
+    new Headers(state.acceptLanguage ? { "accept-language": state.acceptLanguage } : {}),
+}));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => {
     throw new Error(`redirect:${path}`);
@@ -41,6 +51,7 @@ let db: Database;
 beforeEach(async () => {
   db = await createTestDatabase();
   Object.assign(state, { db, userId: null, metadata: {}, configured: true });
+  Object.assign(state, { localeCookie: undefined, acceptLanguage: null });
 });
 
 describe("getAccess", () => {
@@ -67,6 +78,19 @@ describe("getAccess", () => {
     await expect(requireAdmin()).rejects.toThrow("redirect:/access-denied");
     expect(await authorize("active")).toMatchObject({ ok: true });
     expect(await authorize("admin")).toMatchObject({ ok: false });
+  });
+
+  it("starts a new account in the browser's language, the language cookie's first", async () => {
+    Object.assign(state, { metadata: { appAccess: true }, acceptLanguage: "es-MX,es;q=0.9" });
+    state.userId = "user_a";
+    expect(await getAccess()).toMatchObject({ state: "active", user: { locale: "es" } });
+
+    Object.assign(state, { userId: "user_b", localeCookie: "en" });
+    expect(await getAccess()).toMatchObject({ state: "active", user: { locale: "en" } });
+
+    // An account that exists keeps what it saved, whatever the browser asks for.
+    Object.assign(state, { userId: "user_a", localeCookie: undefined, acceptLanguage: "en" });
+    expect(await getAccess()).toMatchObject({ state: "active", user: { locale: "es" } });
   });
 
   it("only accepts the exact metadata flag", async () => {

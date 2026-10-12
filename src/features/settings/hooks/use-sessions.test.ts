@@ -2,7 +2,27 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@clerk/nextjs", () => ({ useReverification: vi.fn(), useSession: vi.fn() }));
 
-import { describeDevice, describeLocation } from "./use-sessions";
+import { describeDevice, describeLocation, orderSessions } from "./use-sessions";
+
+describe("the order of sessions", () => {
+  it("is this device, then the others from the most recently active", () => {
+    const entry = (id: string, day: number, current = false) => ({
+      id,
+      current,
+      device: "Chrome on Windows",
+      location: null,
+      ipAddress: null,
+      lastActiveAt: new Date(2026, 0, day),
+    });
+    const sessions = [entry("old", 1), entry("this", 2, true), entry("new", 9), entry("mid", 5)];
+    expect(orderSessions(sessions).map((session) => session.id)).toEqual([
+      "this",
+      "new",
+      "mid",
+      "old",
+    ]);
+  });
+});
 
 describe("session descriptions", () => {
   it("names the browser and device when both are known", () => {

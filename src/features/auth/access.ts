@@ -7,6 +7,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 
 import { getDb } from "@/db";
 import type { AppUser } from "@/db/schema";
+import { deviceLocale } from "@/i18n/device";
 import { env, isAuthConfigured } from "@/lib/env";
 import { routes } from "@/lib/site";
 import { appAccessMetadataKey, provisionUser } from "./provisioning";
@@ -35,6 +36,7 @@ export const getAccess = cache(async (): Promise<Access> => {
       const identity = await client.users.getUser(userId);
       return identity.publicMetadata[appAccessMetadataKey] === true;
     },
+    locale: deviceLocale,
   });
 
   if (!result.ok) return { state: "denied", reason: result.reason };

@@ -46,9 +46,23 @@ export const settings: Untranslated<typeof english> = {
     devices: "Dispositivos",
     devicesDescription: "Dónde está abierta tu cuenta en este momento.",
   },
+  devices: {
+    showMore: (count) => `Mostrar ${count} más`,
+    showFewer: "Mostrar menos",
+    signOutOthers: "Cerrar sesión en los demás dispositivos",
+    signOutOthersTitle: "¿Cerrar sesión en los demás dispositivos?",
+    signOutOthersDescription: (count) =>
+      count === 1
+        ? "Se cerrará la sesión de Sermon Tracker en el otro dispositivo, que tendrá que iniciarla de nuevo. Este dispositivo sigue con la sesión abierta."
+        : `Se cerrará la sesión de Sermon Tracker en los otros ${count} dispositivos, que tendrán que iniciarla de nuevo. Este dispositivo sigue con la sesión abierta.`,
+    signOutOthersConfirm: "Cerrar las demás sesiones",
+    signedOutOthers: "Se cerró la sesión en todos los demás dispositivos.",
+    signOutOthersFailed: "No se pudo cerrar la sesión en algunos dispositivos. Inténtalo de nuevo.",
+  },
   language: {
     interface: "Idioma de la interfaz",
-    interfaceHelp: "Menús, botones y mensajes. Lo que tú has escrito nunca se traduce.",
+    interfaceHelp:
+      "Menús, botones y mensajes. Lo que tú has escrito nunca se traduce. Al cambiarlo, la traducción de la Biblia cambia con él, y puedes elegir otra abajo.",
     translation: "Traducción de la Biblia",
     follow: (translation) => `Según el idioma de la interfaz (${translation})`,
     translationHelp:

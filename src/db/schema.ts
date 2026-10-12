@@ -44,7 +44,7 @@ export const users = pgTable(
     /**
      * The Bible translation the person chose. Null until they choose one, and
      * until then it follows the interface language (KJV in English, RVG in
-     * Spanish). Changing the language never writes here.
+     * Spanish). Changing the language sets it back to null.
      */
     bibleTranslation: text("bible_translation", { enum: translationIds }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

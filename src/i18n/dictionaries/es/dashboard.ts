@@ -3,8 +3,8 @@ import type { dashboard as english } from "../en/dashboard";
 
 export const dashboard: Untranslated<typeof english> = {
   metaTitle: "Inicio",
-  welcome: "Qué gusto verte de nuevo",
-  welcomeNamed: (name) => `Qué gusto verte de nuevo, ${name}`,
+  welcome: "Te damos la bienvenida",
+  welcomeNamed: (name) => `Te damos la bienvenida, ${name}`,
   description: "Tu espacio para las ideas de sermones y para los puntos que las construyen.",
   empty: {
     title: "Todavía no hay ideas",

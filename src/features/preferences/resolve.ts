@@ -7,8 +7,8 @@ import {
 import { defaultLocale, type Locale } from "@/i18n/locales";
 
 /**
- * What a person chose, as it is stored. The two are independent: the
- * interface can be in one language and the Bible in the other.
+ * What a person chose, as it is stored. The interface can be in one language
+ * and the Bible in the other.
  */
 export type StoredPreferences = {
   locale: Locale;
@@ -42,8 +42,9 @@ export const defaultStoredPreferences: StoredPreferences = {
  * - With Spanish switched off the interface is English and the Spanish Bible
  *   is not on offer, whatever is stored. Nothing stored is changed, so
  *   switching it back on restores every choice.
- * - A translation someone chose is theirs until they choose another: changing
- *   the interface language does not move it.
+ * - A translation someone chose is theirs until they choose another, or choose
+ *   another interface language: saving a new language clears it (`saveLocale`),
+ *   so nothing here has to move it.
  * - Someone who has chosen none reads the translation in their interface's
  *   language.
  */

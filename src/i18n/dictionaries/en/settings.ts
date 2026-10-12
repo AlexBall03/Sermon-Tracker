@@ -44,10 +44,23 @@ export const settings = {
     devices: "Devices",
     devicesDescription: "Where your account is signed in right now.",
   },
+  devices: {
+    showMore: (count: number) => `Show ${count} more`,
+    showFewer: "Show fewer",
+    signOutOthers: "Sign out all other devices",
+    signOutOthersTitle: "Sign out all other devices?",
+    signOutOthersDescription: (count: number) =>
+      count === 1
+        ? "The other device will be signed out of Sermon Tracker and will need to sign in again. This device stays signed in."
+        : `The ${count} other devices will be signed out of Sermon Tracker and will need to sign in again. This device stays signed in.`,
+    signOutOthersConfirm: "Sign out the others",
+    signedOutOthers: "Every other device was signed out.",
+    signOutOthersFailed: "Some devices could not be signed out. Try again.",
+  },
   language: {
     interface: "Interface language",
     interfaceHelp:
-      "Menus, buttons, and messages. What you have written yourself is never translated.",
+      "Menus, buttons, and messages. What you have written yourself is never translated. Changing it changes the Bible translation to match, and you can choose another below.",
     translation: "Bible translation",
     follow: (translation: string) => `Match the interface language (${translation})`,
     translationHelp:
