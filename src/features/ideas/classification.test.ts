@@ -9,6 +9,7 @@ import { locales } from "@/i18n/locales";
 import { classificationOptions } from "./classification";
 import {
   archiveIdea,
+  asRead,
   classifyIdea,
   createIdea,
   getIdea,
@@ -19,14 +20,7 @@ import {
   updateIdea,
 } from "./ideas";
 import { defaultLibraryQuery, parseLibraryQuery } from "./library-query";
-import {
-  classificationDefaults,
-  ideaStatuses,
-  intendedFormats,
-  sermonTypes,
-  type IdeaStatus,
-  type SermonType,
-} from "./model";
+import { classificationDefaults, ideaStatuses, intendedFormats, sermonTypes } from "./model";
 import {
   classificationInputSchema,
   emptyDraft,
@@ -547,81 +541,31 @@ describe("classifications in the database", () => {
   });
 
   /*
-   * The deployment that was live while this migration ran writes `captured`
-   * and no sermon type, and rows from before it hold them still. They are
-   * admitted by the table and read as `idea` and `unspecified`.
+   * `captured` and a missing sermon type are what `idea` and `unspecified`
+   * were before Phase 2D.1. Migration 0008 rewrote them and the table now
+   * refuses both; the read still knows them, for a database it has not reached.
    */
-  describe("an idea saved before the classifications were renamed", () => {
-    /** PGlite answers a raw statement with its rows. */
-    const rowsOf = (result: unknown) => (result as { rows: Record<string, unknown>[] }).rows;
-
-    async function legacy(fields: { kind?: string; sermonType?: string | null } = {}) {
-      const result = await db.execute(sql`
-        insert into ideas (owner_id, kind, title, notes, status, sermon_type, subject)
-        values (${me}, ${fields.kind ?? "sermon"}, 'From before', null, 'captured',
-                ${fields.sermonType ?? null}, null)
-        returning id
-      `);
-      return rowsOf(result)[0].id as string;
-    }
-    const stored = async (id: string) => {
-      const result = await db.execute(
-        sql`select status, sermon_type, intended_format, archived_at from ideas where id = ${id}`,
-      );
-      return rowsOf(result)[0];
-    };
-
-    it("is accepted as the old code writes it, and read in the new words", async () => {
-      const id = await legacy();
-      expect(await stored(id)).toEqual({
-        status: "captured",
-        sermon_type: null,
-        intended_format: "unspecified",
-        archived_at: null,
-      });
-      expect(await getIdea(db, me, id)).toMatchObject({
-        ...classificationDefaults,
-        archivedAt: null,
-      });
-      expect((await recentIdeas(db, me, 5))[0]).toMatchObject(classificationDefaults);
-      const page = await searchIdeas(db, me, defaultLibraryQuery);
-      expect(page.items[0]).toMatchObject(classificationDefaults);
+  describe("the values from before the classifications were renamed", () => {
+    it("are refused by the table", async () => {
+      const raw = (status: string, sermonType: string | null) =>
+        db.execute(sql`
+          insert into ideas (owner_id, kind, title, status, sermon_type)
+          values (${me}, 'sermon', 'From before', ${status}, ${sermonType})
+        `);
+      await expect(raw("captured", "unspecified")).rejects.toThrow();
+      await expect(raw("idea", null)).rejects.toThrow();
+      await expect(raw("idea", "unspecified")).resolves.toBeDefined();
     });
 
-    it("is found by the filters for `idea` and for no stated type", async () => {
-      const id = await legacy();
-      const found = async (fields: { statuses?: IdeaStatus[]; sermonTypes?: SermonType[] }) =>
-        (await searchIdeas(db, me, { ...defaultLibraryQuery, ...fields })).items.map(
-          (idea) => idea.id,
-        );
-      expect(await found({ statuses: ["idea"] })).toEqual([id]);
-      expect(await found({ statuses: ["idea", "ready"] })).toEqual([id]);
-      expect(await found({ statuses: ["developing", "ready", "on_hold"] })).toEqual([]);
-      expect(await found({ sermonTypes: ["unspecified"] })).toEqual([id]);
-      expect(await found({ sermonTypes: ["topical", "unspecified"] })).toEqual([id]);
-      expect(await found({ sermonTypes: ["topical", "textual", "expository"] })).toEqual([]);
-      // A type, stated or not, is still a sermon's alone.
-      const point = await legacy({ kind: "point" });
-      expect(await found({ sermonTypes: ["unspecified"] })).toEqual([id]);
-      expect(await found({ statuses: ["idea"] })).toHaveLength(2);
-      expect(point).not.toBe(id);
-    });
-
-    it("is written in the new words by the next thing that sets them, and not before", async () => {
-      const id = await legacy({ sermonType: "expository" });
-      // Reclassifying, archiving, and restoring name neither column.
-      await setIdeaKind(db, me, id, "point");
-      await archiveIdea(db, me, id);
-      await restoreIdea(db, me, id);
-      expect(await stored(id)).toMatchObject({ status: "captured", sermon_type: "expository" });
-      expect(await getIdea(db, me, id)).toMatchObject({ status: "idea", sermonType: "expository" });
-
-      // A save that names only the title leaves them too.
-      await updateIdea(db, me, id, change({ kind: "point", title: "Renamed" }));
-      expect(await stored(id)).toMatchObject({ status: "captured", sermon_type: "expository" });
-
-      await classifyIdea(db, me, id, { status: "developing" });
-      expect(await stored(id)).toMatchObject({ status: "developing", sermon_type: "expository" });
+    it("are read in the new words, and nothing else is changed or guessed", async () => {
+      const { id } = await whole();
+      const [row] = await db.select().from(ideas).where(eq(ideas.id, id));
+      expect(asRead(row)).toEqual(row);
+      const old = { ...row, status: "captured", sermonType: null } as unknown as typeof row;
+      expect(asRead(old)).toEqual({ ...row, status: "idea", sermonType: "unspecified" });
+      // A value that is on no list is not turned into one.
+      const unknown = { ...row, status: "preached" } as unknown as typeof row;
+      expect(asRead(unknown).status).toBe("preached");
     });
 
     it("is never written as `captured` by anything here", async () => {

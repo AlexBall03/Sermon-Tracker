@@ -57,6 +57,13 @@
       "when": 1791836490579,
       "tag": "0007_idea_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791843104339,
+      "tag": "0008_idea_classification_tightening",
+      "breakpoints": true
     }
   ]
 }

@@ -78,7 +78,7 @@ export function IdeaResults({
             key={idea.id}
             className="relative flex min-w-0 transition-[border-color,background-color,box-shadow] duration-150 has-[a:active]:bg-foreground/5 list-view:flex-wrap list-view:items-center list-view:gap-x-5 list-view:gap-y-2 list-view:border-b list-view:px-4 list-view:py-3 list-view:last:border-b-0 list-view:focus-within:bg-foreground/[0.03] list-view:focus-within:shadow-[inset_2px_0_0_var(--primary)] list-view:hover:bg-foreground/[0.03] list-view:hover:shadow-[inset_2px_0_0_var(--primary)] card-view:flex-col card-view:rounded-xl card-view:border card-view:bg-surface card-view:p-4 card-view:shadow-card card-view:focus-within:border-primary/70 card-view:hover:border-primary/70"
           >
-            <div className="flex min-w-0 items-center gap-2 list-view:order-2 list-view:md:w-64 list-view:md:justify-end card-view:mb-2.5">
+            <div className="flex min-w-0 items-center gap-2 list-view:order-2 list-view:flex-wrap list-view:md:w-64 list-view:md:justify-end list-view:xl:w-[30rem] card-view:mb-2.5">
               <Badge tone={idea.kind === "undecided" ? "muted" : "accent"}>
                 {words.kinds[idea.kind]}
               </Badge>
@@ -104,7 +104,7 @@ export function IdeaResults({
             </div>
 
             <div className="min-w-0 list-view:order-1 list-view:basis-full list-view:md:flex-1 list-view:md:basis-0 card-view:flex-1">
-              <h3 className="font-serif font-medium text-pretty list-view:line-clamp-2 list-view:text-base list-view:leading-snug list-view:md:line-clamp-1 card-view:line-clamp-3 card-view:text-lg card-view:leading-snug">
+              <h3 className="font-serif font-medium text-pretty list-view:line-clamp-2 list-view:text-base list-view:leading-snug list-view:md:line-clamp-2 list-view:xl:line-clamp-1 card-view:line-clamp-3 card-view:text-lg card-view:leading-snug">
                 <Link
                   href={ideaHref(idea.id, query)}
                   className="rounded-sm outline-offset-4 after:absolute after:inset-0 card-view:after:rounded-xl"

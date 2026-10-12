@@ -26,23 +26,13 @@ import {
   legacyIdeaStatus,
   libraryPageSize,
   type IdeaKind,
-  type IdeaStatus,
   type LibrarySort,
-  type SermonType,
-  type StoredIdeaStatus,
 } from "./model";
 import type { ClassificationInput, IdeaInput, IdeaReference, IdeaUpdate } from "./schemas";
 import { tagsForIdeas, writeIdeaTags, type IdeaTag } from "./tags";
 
-/**
- * An idea as the application reads it. The table may still hold what the
- * classifications were before Phase 2D.1 (`captured`, and no sermon type);
- * nothing outside this file ever sees those.
- */
-export type IdeaRecord = Omit<Idea, "status" | "sermonType"> & {
-  status: IdeaStatus;
-  sermonType: SermonType;
-};
+/** An idea as the application reads it: a row that has passed through `asRead`. */
+export type IdeaRecord = Idea;
 
 export type IdeaWithReferences = IdeaRecord & { references: IdeaReference[]; tags: IdeaTag[] };
 
@@ -60,12 +50,19 @@ export type LibraryPage = {
 /** The most a caller may ask for on one page. */
 const maxPageSize = 100;
 
-/** A stored row as it is read: `captured` is `idea`, and no sermon type is `unspecified`. */
-function asRead(row: Idea): IdeaRecord {
+/**
+ * A stored row as it is read. Since migration 0008 the table holds only the
+ * current values, so this changes nothing. It is kept as a guard for a
+ * database that migration has not reached yet (a preview deployment shares
+ * the development database): there `captured` is `idea` and no sermon type is
+ * `unspecified`, the two old values and no others. Nothing is guessed.
+ */
+export function asRead(row: Idea): IdeaRecord {
+  const stored: { status: string; sermonType: string | null } = row;
   return {
     ...row,
-    status: row.status === legacyIdeaStatus ? classificationDefaults.status : row.status,
-    sermonType: row.sermonType ?? classificationDefaults.sermonType,
+    status: stored.status === legacyIdeaStatus ? classificationDefaults.status : row.status,
+    sermonType: stored.sermonType === null ? classificationDefaults.sermonType : row.sermonType,
   };
 }
 
@@ -233,23 +230,10 @@ function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
 
   // Within a filter any chosen value will do; an empty filter asks nothing.
   if (query.kinds.length > 0) conditions.push(inArray(ideas.kind, query.kinds));
-  if (query.statuses.length > 0) {
-    // An idea saved before the status was renamed is an idea still.
-    const stored: StoredIdeaStatus[] = query.statuses.includes(classificationDefaults.status)
-      ? [...query.statuses, legacyIdeaStatus]
-      : query.statuses;
-    conditions.push(inArray(ideas.status, stored));
-  }
+  if (query.statuses.length > 0) conditions.push(inArray(ideas.status, query.statuses));
   // A type kept from when an idea was a sermon does not count.
   if (query.sermonTypes.length > 0) {
-    const chosen = inArray(ideas.sermonType, query.sermonTypes);
-    conditions.push(
-      eq(ideas.kind, "sermon"),
-      // A sermon saved before there was an `unspecified` has no type at all.
-      query.sermonTypes.includes(classificationDefaults.sermonType)
-        ? or(chosen, isNull(ideas.sermonType))
-        : chosen,
-    );
+    conditions.push(eq(ideas.kind, "sermon"), inArray(ideas.sermonType, query.sermonTypes));
   }
 
   // A format, like a type, is a sermon's: the default a point's row holds is not one.

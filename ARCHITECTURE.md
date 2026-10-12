@@ -196,11 +196,11 @@ Phase 2D.1 built the data model and Phase 2D.2 the interface (see "Classificatio
 - `classificationInputSchema` is a change to the classifications alone: any of the three, at least one. It is what `classifyIdea` takes, on the pattern of `changeIdeaKind`.
 - A value on no list is refused everywhere, by Zod and then by the table's CHECK.
 
-**Values from before this phase.** `status` was `captured`, `developing`, or `ready`, and `sermon_type` was `topical`, `expository`, or null. Production migrates during the build, while the previous deployment is still writing `captured` and null, so migration 0007 widens and adds and rewrites no row (docs/DATABASE.md). Until a later migration tightens the table:
+**Values from before this phase.** `status` was `captured`, `developing`, or `ready`, and `sermon_type` was `topical`, `expository`, or null. Migration 0007 widened the table and rewrote no row, because the deployment live while it ran still wrote `captured` and null. Migration 0008 (Phase 2D.3) then rewrote `captured` to `idea` and null to `unspecified`, and the table refuses both (docs/DATABASE.md). What is left of them:
 
-- A stored `captured` is read as `idea` and a null type as `unspecified`, in one function, `asRead` in `ideas.ts`, which every read and every returned row passes through. `IdeaRecord` is the type of what comes out, and nothing outside that file sees the old values.
-- Nothing writes `captured` or a null type any more. A row keeps its old value until something sets that column.
-- The library's status filter for `idea` also matches `captured`, and its type filter for `unspecified` also matches null. An address with `status=captured` reads as `status=idea`.
+- `asRead` in `ideas.ts`, which every read and every returned row passes through, still reads a `captured` as `idea` and a missing type as `unspecified`. On a migrated database it changes nothing. It is a guard for a database 0008 has not reached (a preview deployment shares the development database), and it maps those two values and no others.
+- Nothing writes either value, and the table would refuse it.
+- The library's filters match the current values only. An address with `status=captured` still reads as `status=idea`: that is an old bookmark, not stored data.
 
 **Classification in the interface (Phase 2D.2).** No migration and no new action: the screens use what 2D.1 built.
 
@@ -808,7 +808,7 @@ These are settled and constrain later phases. The first and fourth are implement
 | History changed with a null state                      | Next ignores a call that hands it back its own state object                             |
 | Comparing by window width; navigation steps aside      | Two columns must be readable, and must not be squeezed by the sidebar                   |
 | Classifications as CHECKed text on `ideas`, no tables  | Fixed product values, not a person's taxonomy; a new value is a plain migration         |
-| `captured` and a null type read as the new values      | The live deployment writes them during the migration; rows are tightened later          |
+| `captured` and a null type rewritten in a second step  | The deployment live during 0007 still wrote them; 0008 rewrote and refuses them         |
 | Archiving is a date, not a status                      | An archived idea keeps its status and comes back with it; either changes alone          |
 | Archive and restore leave `updated_at` alone           | Putting an idea away is not an edit, and must not reorder the library                   |
 | A save has no default classification                   | Defaults are for new ideas; an update that names only a title must not reset a status   |

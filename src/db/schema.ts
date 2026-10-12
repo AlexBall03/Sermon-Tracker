@@ -15,12 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import {
-  ideaKinds,
-  intendedFormats,
-  sermonTypes,
-  storedIdeaStatuses,
-} from "../features/ideas/model";
+import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
 import { highlightColors } from "../features/scripture/saved/model";
 import { accentFold } from "../features/scripture/search-fold";
 import { translationIds } from "../features/scripture/translations";
@@ -106,12 +101,10 @@ export const ideas = pgTable(
     title: text("title").notNull(),
     notes: text("notes"),
     /**
-     * The development status. `captured` is what `idea` was called before
-     * Phase 2D.1: it is still admitted, because the deployment live while that
-     * migration ran writes it, and it is read as `idea` (features/ideas/ideas.ts).
-     * A later migration rewrites those rows and drops it.
+     * The development status. `captured`, which is what `idea` was called
+     * before Phase 2D.1, was rewritten and refused by migration 0008.
      */
-    status: text("status", { enum: storedIdeaStatuses }).notNull().default("idea"),
+    status: text("status", { enum: ideaStatuses }).notNull().default("idea"),
     /** The length the sermon is meant for, not how it was delivered on any occasion. */
     intendedFormat: text("intended_format", { enum: intendedFormats })
       .notNull()
@@ -120,11 +113,10 @@ export const ideas = pgTable(
      * Sermon details. They are kept when an idea is reclassified, so turning
      * it back into a sermon loses nothing; only sermons show them.
      *
-     * Null is what `unspecified` was before Phase 2D.1 and is read as it, for
-     * the same reason `captured` is kept; the same later migration fills the
-     * nulls and makes the column NOT NULL.
+     * Null is what `unspecified` was before Phase 2D.1; migration 0008 filled
+     * the nulls and made the column NOT NULL.
      */
-    sermonType: text("sermon_type", { enum: sermonTypes }).default("unspecified"),
+    sermonType: text("sermon_type", { enum: sermonTypes }).notNull().default("unspecified"),
     subject: text("subject"),
     /**
      * When the idea was archived; null while it is not. It is no status: an
@@ -140,17 +132,14 @@ export const ideas = pgTable(
   },
   (table) => [
     check("ideas_kind_check", sql`${table.kind} in ('sermon', 'point', 'undecided')`),
-    check(
-      "ideas_status_check",
-      sql`${table.status} in ('idea', 'developing', 'ready', 'on_hold', 'captured')`,
-    ),
+    check("ideas_status_check", sql`${table.status} in ('idea', 'developing', 'ready', 'on_hold')`),
     check(
       "ideas_intended_format_check",
       sql`${table.intendedFormat} in ('full_length', 'mini', 'flexible', 'unspecified')`,
     ),
     check(
       "ideas_sermon_type_check",
-      sql`${table.sermonType} is null or ${table.sermonType} in ('topical', 'textual', 'expository', 'unspecified')`,
+      sql`${table.sermonType} in ('topical', 'textual', 'expository', 'unspecified')`,
     ),
     check("ideas_title_check", sql`char_length(btrim(${table.title})) between 1 and 200`),
     check(

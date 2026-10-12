@@ -599,15 +599,8 @@ describe("format and archive", () => {
           archivedAt: archived,
         },
         { ownerId: owner, kind: "point", title: "Point put away", archivedAt: archived },
-        // As saved before the classifications were renamed, and archived since.
-        {
-          ownerId: owner,
-          kind: "sermon",
-          title: "Old grace",
-          status: "captured",
-          sermonType: null,
-          archivedAt: archived,
-        },
+        // Never classified, and archived since.
+        { ownerId: owner, kind: "sermon", title: "Old grace", archivedAt: archived },
       ])
       .returning();
     const [tagged] = await db.insert(tags).values({ ownerId: owner, name: "Series" }).returning();

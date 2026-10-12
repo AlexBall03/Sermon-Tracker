@@ -15,15 +15,11 @@ export const ideaStatuses = ["idea", "developing", "ready", "on_hold"] as const;
 export type IdeaStatus = (typeof ideaStatuses)[number];
 
 /**
- * What `idea` was called before Phase 2D.1. Rows saved then, or by a
- * deployment from then, may still hold it; it is read as `idea` and never
- * written. A later migration rewrites those rows and drops it from the CHECK.
+ * What `idea` was called before Phase 2D.1. Migration 0008 rewrote the rows
+ * that held it and the table now refuses it. It is still recognized in an old
+ * library address and by the defensive read in `ideas.ts`, and never written.
  */
 export const legacyIdeaStatus = "captured";
-
-/** Everything the `status` column may hold until that migration. */
-export const storedIdeaStatuses = [...ideaStatuses, legacyIdeaStatus] as const;
-export type StoredIdeaStatus = (typeof storedIdeaStatuses)[number];
 
 /**
  * The length a sermon is meant for. It says nothing of how it was delivered

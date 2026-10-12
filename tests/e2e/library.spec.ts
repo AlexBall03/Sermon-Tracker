@@ -80,7 +80,7 @@ test.describe("library, signed in", () => {
     }
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByText("Changes saved.")).toBeVisible();
+    await expect(page.getByText("Changes saved.").filter({ visible: true })).toBeVisible();
   }
 
   const results = (page: Page) => page.getByRole("list", { name: "Your ideas" }).locator("> li");
@@ -125,21 +125,21 @@ test.describe("library, signed in", () => {
 
       // Alpha gets both tags and beta one, each saved with the idea.
       await tagIdea(page, alpha, [faith, prayer]);
-      await page.getByRole("link", { name: "Library", exact: true }).first().click();
+      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
       await expect(search).toHaveValue(run);
       await tagIdea(page, beta, [faith]);
-      await page.getByRole("link", { name: "Library", exact: true }).first().click();
+      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
       await expect(results(page)).toHaveCount(2);
 
       // Changing something else leaves an idea's tags as they were.
       await page.getByRole("link", { name: alpha }).click();
       await page.getByRole("textbox", { name: "Notes" }).fill("A note added later.");
       await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(page.getByText("Changes saved.")).toBeVisible();
+      await expect(page.getByText("Changes saved.").filter({ visible: true })).toBeVisible();
       await page.reload();
       await expect(page.getByRole("list", { name: "Tags" })).toContainText(faith);
       await expect(page.getByRole("list", { name: "Tags" })).toContainText(prayer);
-      await page.getByRole("link", { name: "Library", exact: true }).first().click();
+      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
 
       // Several filters at once; any tag, then all tags.
       await page.getByRole("button", { name: /^Filters/ }).click();
@@ -151,7 +151,11 @@ test.describe("library, signed in", () => {
       await filters.getByRole("button", { name: new RegExp(`^${faith}`) }).click();
       await filters.getByRole("button", { name: new RegExp(`^${prayer}`) }).click();
       await expect(results(page)).toHaveCount(2);
-      await filters.getByText("All", { exact: true }).click();
+      // "All" is also one of the archive choices; this is the tags' own.
+      await filters
+        .locator('label:has(input[name="library-tag-mode"])')
+        .getByText("All", { exact: true })
+        .click();
       await expect(page).toHaveURL(/tag_mode=all/);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page)).toContainText(alpha);
@@ -170,12 +174,13 @@ test.describe("library, signed in", () => {
       // Into the idea and back: the same search, filters, and mode.
       await page.getByRole("link", { name: alpha }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(alpha);
-      await page.getByRole("link", { name: "Library", exact: true }).first().click();
+      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
       await expect(page).toHaveURL(address);
       await expect(search).toHaveValue(run);
       await expect(results(page)).toHaveCount(1);
       // And the browser's own Back does the same.
       await page.getByRole("link", { name: alpha }).click();
+      await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(alpha);
       await page.goBack();
       await expect(page).toHaveURL(address);
 
@@ -266,7 +271,7 @@ test.describe("library, signed in", () => {
       );
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(page.getByText("Changes saved.")).toBeVisible();
+      await expect(page.getByText("Changes saved.").filter({ visible: true })).toBeVisible();
       await page.reload();
       await expect(classification).toContainText("Ready · Mini · Textual");
 
@@ -278,7 +283,7 @@ test.describe("library, signed in", () => {
       await expect(page.getByRole("combobox")).toHaveCount(1);
       await choose("Development status", "Developing");
       await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(page.getByText("Changes saved.")).toBeVisible();
+      await expect(page.getByText("Changes saved.").filter({ visible: true })).toBeVisible();
 
       // The library finds the sermon by its format and type, and not the point.
       await page.goto(`/library?q=${run}&format=mini&type=textual`);
@@ -294,14 +299,18 @@ test.describe("library, signed in", () => {
       const confirm = page.getByRole("alertdialog", { name: "Archive this idea?" });
       await expect(confirm).toContainText("not deleted");
       await confirm.getByRole("button", { name: "Archive" }).click();
-      await expect(page.getByText(/^Archived /)).toBeVisible();
+      await expect(page.getByText(/^Archived /).filter({ visible: true })).toBeVisible();
       await page.goto(`/library?q=${run}`);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page).first()).toContainText(point);
 
       // Asked for, it is there, marked, with its classifications; restoring brings it back whole.
       await page.getByRole("button", { name: /^Filters/ }).click();
-      await page.getByRole("radio", { name: "Archived" }).check({ force: true });
+      // The choice is the address's: it is checked once the address has changed.
+      await page
+        .getByRole("region", { name: "Filters" })
+        .getByText("Archived", { exact: true })
+        .click();
       await expect(page).toHaveURL(/[?&]archived=archived/);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page).first()).toContainText("Archived");
@@ -310,7 +319,7 @@ test.describe("library, signed in", () => {
         .first()
         .getByRole("button", { name: /^Restore/ })
         .click();
-      await expect(page.getByText("Idea restored.")).toBeVisible();
+      await expect(page.getByText("Idea restored.").filter({ visible: true })).toBeVisible();
       await expect(
         page.getByRole("heading", { name: "No ideas match these filters" }),
       ).toBeVisible();
