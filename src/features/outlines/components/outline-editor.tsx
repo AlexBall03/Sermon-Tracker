@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
+  BookmarkPlus,
   ChevronsDownUp,
   ChevronsUpDown,
   ListOrdered,
@@ -25,7 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
-import { useT } from "@/i18n/client";
+import { formatReferences } from "@/features/scripture/reference";
+import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,7 @@ import {
   deleteOutline,
   moveEntry,
   removeEntry,
+  setEntryReferences,
   setOutlineNumbering,
   updateEntry,
 } from "../actions";
@@ -55,6 +58,8 @@ import {
 import { outlineLimits, type SectionType } from "../model";
 import { numberOutline } from "../numbering";
 import { orderEntries, subtreeIds } from "../tree";
+import { AddSavedPoint, type SavedPointPlace, type SavedPointTarget } from "./add-saved-point";
+import { EntryPassages } from "./entry-passages";
 import { NumberingDialog } from "./numbering-dialog";
 import { ConflictPanel, OutlineRow, type RowActions } from "./outline-row";
 import { SaveStatus } from "./save-status";
@@ -80,9 +85,14 @@ type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, num
  *
  * Points are moved three ways that all end in the store's `move`: dragging by
  * the grip, the row menu, and Alt+Shift with an arrow in a heading.
+ *
+ * A saved point idea is placed through the store's `addPoint`, as a copy, and
+ * an entry's passages are changed through its `setReferences`: both go through
+ * the same queue as everything else, and neither is saved from here.
  */
 export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
   const t = useT("outlines").editor;
+  const locale = useLocale();
   const router = useRouter();
   const toast = useToast();
   const sermonHref = `${routes.library}/${sermon.id}`;
@@ -90,7 +100,7 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
   const [store] = useState<OutlineStore>(() =>
     createOutlineStore(
       snapshot,
-      { addEntry, updateEntry, moveEntry, removeEntry, setOutlineNumbering },
+      { addEntry, updateEntry, moveEntry, removeEntry, setEntryReferences, setOutlineNumbering },
       {
         reload: () => router.refresh(),
         messages: { offline: t.offline, reloadFailed: t.reloadFailed },
@@ -141,6 +151,8 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
     nothingCollapsed,
   );
   const [notesOpen, setNotesOpen] = useState<ReadonlySet<string>>(new Set());
+  const [passagesOpen, setPassagesOpen] = useState<ReadonlySet<string>>(new Set());
+  const [savedPoint, setSavedPoint] = useState<SavedPointTarget | null>(null);
   const [numberingOpen, setNumberingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -274,7 +286,12 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
         });
         return;
       }
-      if (row.title.trim() === "" && row.notes.trim() === "" && under === 0) {
+      if (
+        row.title.trim() === "" &&
+        row.notes.trim() === "" &&
+        row.references.length === 0 &&
+        under === 0
+      ) {
         // Nothing is lost: it goes at once, and the heading before it takes the focus.
         const at = order.current.indexOf(id);
         const before = order.current[at - 1] ?? order.current[at + 1];
@@ -298,6 +315,15 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
       setNotesOpen((open) => new Set(open).add(id));
       focus.current = { id, field: "notes" };
     },
+    openPassages(id: string) {
+      setPassagesOpen((open) => new Set(open).add(id));
+    },
+    addSavedPoint(id: string) {
+      const row = store.getState().rows.find((candidate) => candidate.id === id);
+      if (!row) return;
+      const name = [labels.get(id), row.title.trim() || t.untitled].filter(Boolean).join(" ");
+      setSavedPoint({ anchor: { id, name } });
+    },
     toggle(id: string) {
       const folded = new Set(readCollapsed(snapshot.id));
       if (!folded.delete(id)) folded.add(id);
@@ -316,16 +342,39 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
       setNotes: store.setNotes,
       blur: store.blur,
       resolve: store.resolveConflict,
+      setReferences: store.setReferences,
       startDrag,
       addBelow: (id) => latest.current.addBelow(id),
       addSubpoint: (id) => latest.current.addSubpoint(id),
       move: (id, direction) => latest.current.move(id, direction),
       remove: (id) => latest.current.remove(id),
       openNotes: (id) => latest.current.openNotes(id),
+      openPassages: (id) => latest.current.openPassages(id),
+      addSavedPoint: (id) => latest.current.addSavedPoint(id),
       toggle: (id) => latest.current.toggle(id),
     }),
     [store, startDrag],
   );
+
+  /** Places a copy of a saved point where the picker was asked for it. False when there is no room. */
+  function placeSavedPoint(point: { id: string; title: string }, place: SavedPointPlace) {
+    const seed = { title: point.title, sourcePointId: point.id };
+    const anchor = savedPoint?.anchor
+      ? store.getState().rows.find((row) => row.id === savedPoint.anchor?.id)
+      : undefined;
+    let made: string | null;
+    if (!anchor) made = store.addPoint(null, undefined, seed);
+    else if (place === "under") made = store.addPoint(anchor.id, undefined, seed);
+    else made = store.addPoint(anchor.parentId, anchor.position + 1, seed);
+    if (!made) {
+      setSavedPoint(null);
+      setResult({ ok: false, message: t.full(outlineLimits.entries) });
+      return false;
+    }
+    setResult(null);
+    if (anchor && place === "under") expand(anchor.id);
+    return true;
+  }
 
   async function confirmed(request: Confirmation) {
     setDeleting(true);
@@ -446,6 +495,11 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
                     {draft.notes}
                   </p>
                 )}
+                {draft.references.length > 0 && (
+                  <p className="mt-1 font-serif text-sm text-muted-foreground italic">
+                    {formatReferences(draft.references, locale)}
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -477,6 +531,9 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
           type="introduction"
           row={introduction}
           conflict={introduction && state.conflicts[introduction.id]}
+          outlineId={snapshot.id}
+          passagesOpen={introduction !== undefined && passagesOpen.has(introduction.id)}
+          onOpenPassages={handlers.openPassages}
           store={store}
           disabled={full}
           onAdd={() => added(store.addSection("introduction"))}
@@ -505,6 +562,10 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
                     nested={nested.get(point.id) ?? 0}
                     collapsed={collapsed.has(point.id)}
                     notesOpen={notesOpen.has(point.id)}
+                    references={point.references}
+                    passagesOpen={passagesOpen.has(point.id)}
+                    sourcePointId={point.sourcePointId}
+                    outlineId={snapshot.id}
                     moves={possibleMoves(point, beside.get(point.parentId) ?? 1)}
                     dragging={drag.dragging?.id === point.id}
                     conflict={state.conflicts[point.id]}
@@ -524,23 +585,38 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
               )}
             </div>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            disabled={full}
-            onClick={() => added(store.addPoint(null))}
-          >
-            <Plus aria-hidden />
-            {t.addPoint}
-          </Button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={full}
+              onClick={() => added(store.addPoint(null))}
+            >
+              <Plus aria-hidden />
+              {t.addPoint}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={full}
+              aria-haspopup="dialog"
+              onClick={() => setSavedPoint({ anchor: null })}
+            >
+              <BookmarkPlus aria-hidden />
+              {t.addSavedPoint}
+            </Button>
+          </div>
         </section>
 
         <SectionBlock
           type="conclusion"
           row={conclusion}
           conflict={conclusion && state.conflicts[conclusion.id]}
+          outlineId={snapshot.id}
+          passagesOpen={conclusion !== undefined && passagesOpen.has(conclusion.id)}
+          onOpenPassages={handlers.openPassages}
           store={store}
           disabled={full}
           onAdd={() => added(store.addSection("conclusion"))}
@@ -548,6 +624,11 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
         />
       </div>
 
+      <AddSavedPoint
+        target={full ? null : savedPoint}
+        onAdd={placeSavedPoint}
+        onClose={() => setSavedPoint(null)}
+      />
       <NumberingDialog
         open={numberingOpen}
         onOpenChange={setNumberingOpen}
@@ -605,6 +686,9 @@ function SectionBlock({
   type,
   row,
   conflict,
+  outlineId,
+  passagesOpen,
+  onOpenPassages,
   store,
   disabled,
   onAdd,
@@ -613,6 +697,9 @@ function SectionBlock({
   type: SectionType;
   row: EditorRow | undefined;
   conflict: Conflict | undefined;
+  outlineId: string;
+  passagesOpen: boolean;
+  onOpenPassages: (id: string) => void;
   store: OutlineStore;
   disabled: boolean;
   onAdd: () => void;
@@ -695,6 +782,24 @@ function SectionBlock({
           <p className="px-2 text-right text-xs text-muted-foreground tabular-nums">
             {t.remaining(left)}
           </p>
+        )}
+        {passagesOpen || row.references.length > 0 ? (
+          <EntryPassages
+            entryId={row.id}
+            outlineId={outlineId}
+            references={row.references}
+            setReferences={store.setReferences}
+            className="mt-1 mb-2 ml-2 animate-menu"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpenPassages(row.id)}
+            className="mb-1 ml-2 inline-flex min-h-7 items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-9"
+          >
+            <Plus className="size-3.5" aria-hidden />
+            {t.addPassage}
+          </button>
         )}
         {conflict && (
           <ConflictPanel id={row.id} conflict={conflict} resolve={store.resolveConflict} />

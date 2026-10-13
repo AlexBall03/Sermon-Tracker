@@ -58,7 +58,7 @@ test.describe("Scripture and ideas, signed in", () => {
   /** Deletes the idea this run made, if it got as far as making it. */
   async function tidy(page: Page, title: string) {
     await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
-    const link = page.getByRole("link", { name: title });
+    const link = page.getByRole("link", { name: title, exact: true });
     if (!(await link.isVisible())) return;
     await link.click();
     await page.getByRole("button", { name: "Delete idea" }).click();
@@ -110,7 +110,11 @@ test.describe("Scripture and ideas, signed in", () => {
       await verse(page, 4).click();
       await toolbar(page).getByRole("button", { name: "Add to an idea" }).click();
       await picker(page).getByRole("searchbox", { name: "Search your ideas" }).fill(title);
-      await picker(page).getByRole("radio", { name: "Points" }).check({ force: true });
+      // The radio itself is not drawn; its label is what is pressed.
+      await picker(page)
+        .locator("label")
+        .filter({ hasText: /^Points$/ })
+        .click();
       await picker(page)
         .getByRole("button", { name: `Add 1 Chronicles 26:4 to ${title}` })
         .click();
@@ -127,7 +131,7 @@ test.describe("Scripture and ideas, signed in", () => {
 
       // To the idea, which shows both references, closed until opened.
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
-      await page.getByRole("link", { name: title }).click();
+      await page.getByRole("link", { name: title, exact: true }).click();
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Point idea");
       const references = page.getByRole("list", { name: "References" });
       await expect(references.getByRole("listitem")).toHaveCount(2);

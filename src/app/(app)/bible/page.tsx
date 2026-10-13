@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { requireActiveUser } from "@/features/auth/access";
 import { getIdea } from "@/features/ideas/ideas";
+import { getOutlineSermon } from "@/features/outlines/outlines";
 import { getPreferences } from "@/features/preferences/current";
 import type { Preferences } from "@/features/preferences/resolve";
 import {
@@ -65,17 +66,23 @@ async function chapterFor(
 }
 
 /**
- * The idea the address says the reader was opened from, if it is this
- * account's. One that is missing or someone else's is simply not offered as a
- * way back: the address is not trusted to name it, and nothing is said.
+ * The idea or the outline the address says the reader was opened from, if it
+ * is this account's. One that is missing or someone else's is simply not
+ * offered as a way back: the address is not trusted to name it, and nothing is
+ * said.
  */
 async function originFor(
   params: ReaderSearchParams | undefined,
   ownerId: string,
 ): Promise<ReaderOrigin | undefined> {
-  const id = parseReaderLocation(params)?.idea;
-  if (!id) return undefined;
+  const location = parseReaderLocation(params);
+  const id = location?.idea;
   try {
+    if (location?.outline) {
+      const outline = await getOutlineSermon(getDb(), ownerId, location.outline);
+      return outline ? { id: outline.id, title: outline.sermon.title, outline: true } : undefined;
+    }
+    if (!id) return undefined;
     const idea = await getIdea(getDb(), ownerId, id);
     return idea ? { id: idea.id, title: idea.title } : undefined;
   } catch (error) {

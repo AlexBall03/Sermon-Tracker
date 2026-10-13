@@ -41,6 +41,8 @@ type IdeaEditorProps = {
   updatedAt: Date;
   /** When the idea was archived, if it is. Never part of the draft: a save does not touch it. */
   archivedAt?: Date | null;
+  /** True when the idea has an outline, which a deletion takes with it and so must say. */
+  hasOutline?: boolean;
   /** Shown between the form and the footer: the sermon's preaching history, which is not part of the draft. */
   children?: React.ReactNode;
 };
@@ -71,6 +73,7 @@ export function IdeaEditor({
   createdAt,
   updatedAt,
   archivedAt = null,
+  hasOutline = false,
   children,
 }: IdeaEditorProps) {
   const router = useRouter();
@@ -344,7 +347,7 @@ export function IdeaEditor({
               setPreached(null);
               setConfirmation({
                 title: t.deleteTitle,
-                description: t.deleteDescription(saved.title),
+                description: t.deleteDescription(saved.title, hasOutline),
                 confirmLabel: t.deleteConfirm(saved.kind),
                 destructive: true,
                 run: () => deleteIdea(id),

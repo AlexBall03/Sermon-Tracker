@@ -66,12 +66,17 @@ const maxPageSize = 100;
  * `unspecified`, the two old values and no others. Nothing is guessed.
  */
 export function asRead(row: Idea): IdeaRecord {
-  const stored: { status: string; sermonType: string | null } = row;
+  const stored: { sermonType: string | null } = row;
   return {
     ...row,
-    status: stored.status === legacyIdeaStatus ? classificationDefaults.status : row.status,
+    status: statusAsRead(row.status),
     sermonType: stored.sermonType === null ? classificationDefaults.sermonType : row.sermonType,
   };
+}
+
+/** The status half of `asRead`, for a query that reads an idea's status and not its whole row. */
+export function statusAsRead(status: Idea["status"]): Idea["status"] {
+  return (status as string) === legacyIdeaStatus ? classificationDefaults.status : status;
 }
 
 type Reader = Pick<Database, "select">;
@@ -565,6 +570,22 @@ export async function attachReferences(
       .where(eq(ideas.id, idea.id));
     return { status: "attached", idea, added, already } as const;
   });
+}
+
+/**
+ * Says an idea's content was worked on somewhere other than its own row: in
+ * its outline (features/outlines). It moves `updated_at` and
+ * `last_developed_at`, as a passage added from outside the editor does, and
+ * nothing else: no status, no classification, no archive date. The caller
+ * decides that the work was real and holds the idea's row; this is the only
+ * write to `ideas` made on an outline's behalf.
+ */
+export async function markDeveloped(db: Pick<Database, "update">, ownerId: string, id: string) {
+  const now = new Date();
+  await db
+    .update(ideas)
+    .set({ updatedAt: now, lastDevelopedAt: now })
+    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)));
 }
 
 /** Reclassifies an idea. Only `kind` changes; everything else is kept as it was. */

@@ -1,10 +1,24 @@
-import { and, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { ideas, outlineEntries, sermonOutlines, type Idea, type SermonOutline } from "@/db/schema";
 import type { Database } from "@/db/types";
+import { containing, statusAsRead } from "@/features/ideas/ideas";
+import { searchTerms } from "@/features/ideas/library-query";
 import type { ArchiveView } from "@/features/ideas/model";
 import { listEntries, type PlacedEntry } from "./entries";
-import { outlinePageSize } from "./model";
+import { outlinePageSize, type OutlineSort } from "./model";
 import { readNumbering, type NumberingConfig } from "./numbering";
 
 /*
@@ -17,8 +31,9 @@ import { readNumbering, type NumberingConfig } from "./numbering";
  *
  * Nothing here writes to `ideas`. Making, numbering, or deleting an outline
  * leaves the sermon's status, its classifications, `updated_at`, and
- * `last_developed_at` exactly as they were. An outline has no status of its
- * own: it is there or it is not.
+ * `last_developed_at` exactly as they were: an empty outline is not yet work
+ * on the sermon. What is put in it is (see entries.ts). An outline has no
+ * status of its own: it is there or it is not.
  */
 
 /** An outline as it is read: how it is numbered, and how often its shape has changed. */
@@ -43,7 +58,8 @@ export type OutlineWithEntries = OutlineRecord & {
 
 /** An outline as a list shows it. */
 export type OutlineSummary = OutlineRecord & {
-  sermon: OutlineSermon;
+  /** With the sermon's own status: an outline has none. */
+  sermon: OutlineSermon & Pick<Idea, "status">;
   /** Every entry, sections included. An outline with none is still an outline. */
   entryCount: number;
 };
@@ -173,6 +189,21 @@ export async function getOutline(
   return withEntries(db, ownerId, row);
 }
 
+/**
+ * One of the owner's outlines and the sermon it is of, without its entries:
+ * enough to name it, for a page that only leads back to it.
+ */
+export async function getOutlineSermon(
+  db: Reader,
+  ownerId: string,
+  id: string,
+): Promise<{ id: string; sermon: OutlineSermon } | null> {
+  const [row] = await outlineRows(db)
+    .where(and(eq(sermonOutlines.id, id), eq(sermonOutlines.ownerId, ownerId)))
+    .limit(1);
+  return row ? { id: row.outline.id, sermon: row.sermon } : null;
+}
+
 /** The outline of one of the owner's sermons with its entries, or null when it has none. */
 export async function getOutlineForSermon(
   db: Reader,
@@ -186,9 +217,44 @@ export async function getOutlineForSermon(
 }
 
 /**
- * One page of the owner's outlines, most recently worked on first, each with
- * its sermon and how many entries it has. An empty outline is listed like any
- * other.
+ * The outlines of these sermons, by sermon: one query, for a page that shows
+ * several sermons and says of each whether it has an outline. A sermon that
+ * has none, or is not the owner's, is simply not in the answer.
+ */
+export async function outlineIdsForSermons(
+  db: Reader,
+  ownerId: string,
+  sermonIds: string[],
+): Promise<Map<string, string>> {
+  if (sermonIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: sermonOutlines.id, sermonId: sermonOutlines.sermonId })
+    .from(sermonOutlines)
+    .where(and(eq(sermonOutlines.ownerId, ownerId), inArray(sermonOutlines.sermonId, sermonIds)));
+  return new Map(rows.map((row) => [row.sermonId, row.id]));
+}
+
+/**
+ * The orders a list of outlines may be in. A sort arrives as one of these
+ * keys and never as a column name, and each ends with the ID, in the same
+ * direction, so outlines that tie keep one order from page to page.
+ */
+const sortOrders: Record<OutlineSort, SQL[]> = {
+  "updated-desc": [desc(sermonOutlines.updatedAt), desc(sermonOutlines.id)],
+  "updated-asc": [asc(sermonOutlines.updatedAt), asc(sermonOutlines.id)],
+  "title-asc": [asc(sql`lower(${ideas.title})`), asc(sermonOutlines.id)],
+  "title-desc": [desc(sql`lower(${ideas.title})`), desc(sermonOutlines.id)],
+  "created-desc": [desc(sermonOutlines.createdAt), desc(sermonOutlines.id)],
+};
+
+/**
+ * One page of the owner's outlines, most recently worked on first unless
+ * another order is asked for, each with its sermon and how many entries it
+ * has. An empty outline is listed like any other. `q` finds outlines by their
+ * sermon's title: every word must be in it, as in the library's search.
+ *
+ * Only the outlines on the page are read, and no entry of any: the count of
+ * entries is worked out by the database.
  *
  * It is a list of sermons' outlines, so it follows the rule for lists of
  * ideas: an outline whose sermon is archived is left out unless `archive`
@@ -199,9 +265,15 @@ export async function getOutlineForSermon(
 export async function listOutlines(
   db: Database,
   ownerId: string,
-  options: { archive?: ArchiveView; page?: number; pageSize?: number } = {},
+  options: {
+    archive?: ArchiveView;
+    q?: string;
+    sort?: OutlineSort;
+    page?: number;
+    pageSize?: number;
+  } = {},
 ): Promise<OutlinePage> {
-  const { archive = "active" } = options;
+  const { archive = "active", q = "", sort = "updated-desc" } = options;
   const size = Math.min(
     Math.max(Math.trunc(options.pageSize ?? outlinePageSize) || outlinePageSize, 1),
     maxPageSize,
@@ -211,6 +283,7 @@ export async function listOutlines(
     eq(ideas.kind, "sermon"),
     archive === "active" ? isNull(ideas.archivedAt) : undefined,
     archive === "archived" ? isNotNull(ideas.archivedAt) : undefined,
+    ...searchTerms(q).map((term) => ilike(ideas.title, containing(term))),
   );
   const joined = and(
     eq(ideas.id, sermonOutlines.sermonId),
@@ -229,7 +302,7 @@ export async function listOutlines(
   const rows = await db
     .select({
       outline: sermonOutlines,
-      sermon,
+      sermon: { ...sermon, status: ideas.status },
       entryCount: sql<number>`(
         select count(*)::int from ${outlineEntries}
         where ${outlineEntries.outlineId} = ${sermonOutlines.id}
@@ -239,13 +312,13 @@ export async function listOutlines(
     .from(sermonOutlines)
     .innerJoin(ideas, joined)
     .where(where)
-    .orderBy(desc(sermonOutlines.updatedAt), desc(sermonOutlines.id))
+    .orderBy(...(sortOrders[sort] ?? sortOrders["updated-desc"]))
     .limit(size)
     .offset((page - 1) * size);
   return {
     items: rows.map((row) => ({
       ...asOutline(row.outline),
-      sermon: row.sermon,
+      sermon: { ...row.sermon, status: statusAsRead(row.sermon.status) },
       entryCount: row.entryCount,
     })),
     total,

@@ -94,8 +94,11 @@ export const ideas = {
     captured: "Captured",
     lastChanged: "last changed",
     deleteTitle: "Delete this idea?",
-    deleteDescription: (title: string) =>
-      `“${title}” and its Scripture references will be deleted. This cannot be undone.`,
+    /** `outline` is true when the idea has an outline, which goes with it. */
+    deleteDescription: (title: string, outline: boolean) =>
+      outline
+        ? `“${title}”, its Scripture references, and its outline, with every point in it, will be deleted. This cannot be undone.`
+        : `“${title}” and its Scripture references will be deleted. This cannot be undone.`,
     deleteConfirm: (kind: IdeaKind) => `Delete ${kinds[kind].toLowerCase()}`,
     delete: "Delete idea",
     archive: "Archive idea",

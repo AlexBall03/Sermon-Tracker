@@ -66,6 +66,7 @@ export const scripture: Untranslated<typeof english> = {
     tryAgain: "Reintentar",
     chapter: (chapter) => `Capítulo ${chapter}`,
     more: (count) => `Y ${counted(count, "versículo más", "versículos más")}.`,
+    readMore: (count) => `Leer ${counted(count, "versículo más", "versículos más")}`,
   },
   reader: {
     bible: "Biblia",
@@ -78,6 +79,7 @@ export const scripture: Untranslated<typeof english> = {
     previousChapter: "Capítulo anterior",
     nextChapter: "Capítulo siguiente",
     backTo: "Volver a",
+    backToOutline: "Volver al bosquejo de",
     goToVerse: "Ir al versículo",
     verses: "Versículos",
     verse: (number) => `Versículo ${number}`,

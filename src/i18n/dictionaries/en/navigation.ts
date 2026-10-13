@@ -2,6 +2,7 @@
 export const navigation = {
   dashboard: "Dashboard",
   library: "Library",
+  outlines: "Outlines",
   bible: "Bible",
   home: "Sermon Tracker dashboard",
   application: "Application",

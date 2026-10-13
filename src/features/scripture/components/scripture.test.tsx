@@ -384,9 +384,11 @@ describe("ReferenceChip", () => {
     expect(await within(preview).findByText("Text of 1.1.1")).toBeVisible();
     // A preview is short; the rest is one step away.
     expect(within(preview).queryByText("Text of 1.1.7")).not.toBeInTheDocument();
-    expect(within(preview).getByText("And 25 more verses.")).toBeVisible();
+    // What was left out is said, and saying it is the way to it: no scrolling inside a preview.
+    expect(within(preview).getByRole("button", { name: "Read 25 more verses" })).toBeVisible();
+    expect(within(preview).getAllByText(/^Text of 1\.1\./)).toHaveLength(6);
 
-    fireEvent.click(within(preview).getByRole("button", { name: "Read all" }));
+    fireEvent.click(within(preview).getByRole("button", { name: "Read 25 more verses" }));
     const panel = await screen.findByRole("dialog", { name: "Scripture" });
     expect(await within(panel).findByText("Text of 1.1.31")).toBeVisible();
     // Reading only: nothing to attach, and the chapter was fetched once.

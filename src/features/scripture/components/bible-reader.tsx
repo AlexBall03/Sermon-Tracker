@@ -116,8 +116,17 @@ export type InitialChapter = {
   marks?: ChapterMarks;
 };
 
-/** The idea the reader was opened from, as the server found it among the account's own. */
-export type ReaderOrigin = { id: string; title: string };
+/**
+ * What the reader was opened from, as the server found it among the account's
+ * own: an idea, or an outline (`outline`), whose title is then its sermon's.
+ */
+export type ReaderOrigin = { id: string; title: string; outline?: boolean };
+
+/** True while the reading still goes on from where the reader was opened. */
+function cameFrom(location: ReaderLocation, origin: ReaderOrigin | undefined) {
+  if (!origin) return false;
+  return (origin.outline ? location.outline : location.idea) === origin.id;
+}
 
 /**
  * The two panes of a comparison. `primary` is the reader as it always was, and
@@ -341,6 +350,7 @@ export function BibleReader({
       next = {
         ...to,
         idea: to.idea ?? location.idea ?? null,
+        outline: to.outline ?? location.outline ?? null,
         translation: to.translation ?? chosen.primary ?? location.translation ?? null,
         beside: location.beside ?? null,
       };
@@ -434,6 +444,7 @@ export function BibleReader({
             verse: null,
             translation: beside.translation,
             idea: location.idea ?? null,
+            outline: location.outline ?? null,
           };
     window.history.pushState(null, "", readerHref(kept));
     setTouched("primary");
@@ -578,7 +589,7 @@ export function BibleReader({
             key={`${first.translation}.${first.location.book}.${first.location.chapter}`}
             {...first}
             active
-            origin={origin && first.location.idea === origin.id ? origin : undefined}
+            origin={cameFrom(first.location, origin) ? origin : undefined}
             // Offered only where two panes fit, and not while one is waiting for room.
             onCompare={roomForTwo && !location?.beside ? compare : undefined}
           />
@@ -600,7 +611,7 @@ export function BibleReader({
                   onActivate={() => setTouched(props.pane)}
                   onClose={() => closePane(props.pane)}
                   origin={
-                    props.pane === "primary" && origin && props.location.idea === origin.id
+                    props.pane === "primary" && cameFrom(props.location, origin)
                       ? origin
                       : undefined
                   }
@@ -1183,9 +1194,9 @@ function ChapterView({
       )}
     >
       {origin && (
-        // Opened from an idea: the way back to it, for as long as the reading goes on from there.
+        // Opened from an idea or an outline: the way back to it, for as long as the reading goes on from there.
         <Link
-          href={`${routes.library}/${origin.id}`}
+          href={`${origin.outline ? routes.outlines : routes.library}/${origin.id}`}
           className="group/back mb-3 flex max-w-full items-center gap-1.5 self-start rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-11"
         >
           <ArrowLeft
@@ -1193,7 +1204,8 @@ function ChapterView({
             aria-hidden
           />
           <span className="min-w-0 truncate">
-            {t.backTo} <span className="font-serif text-foreground italic">{origin.title}</span>
+            {origin.outline ? t.backToOutline : t.backTo}{" "}
+            <span className="font-serif text-foreground italic">{origin.title}</span>
           </span>
         </Link>
       )}

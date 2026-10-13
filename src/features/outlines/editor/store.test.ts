@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ScriptureReference } from "@/features/scripture/reference";
 import type { OutlineActionResult } from "../actions";
 import { createOutlineStore, type OutlineSnapshot, type SnapshotEntry } from "./store";
 
@@ -10,7 +11,35 @@ const point = (
   position: number,
   parentId: string | null = null,
   notes: string | null = null,
-): SnapshotEntry => ({ id, parentId, type: "point", position, title, notes, revision: 1 });
+): SnapshotEntry => ({
+  id,
+  parentId,
+  type: "point",
+  position,
+  title,
+  notes,
+  revision: 1,
+  references: [],
+  sourcePointId: null,
+});
+
+const john316: ScriptureReference = {
+  book: 43,
+  chapterStart: 3,
+  verseStart: 16,
+  chapterEnd: null,
+  verseEnd: null,
+};
+const psalm23: ScriptureReference = {
+  book: 19,
+  chapterStart: 23,
+  verseStart: null,
+  chapterEnd: null,
+  verseEnd: null,
+};
+
+/** A saved point idea as the stand-in server holds it. */
+const savedPoint = { title: "Pray without ceasing", notes: "Its own notes", references: [john316] };
 
 /** One, with Sub under it, then Two. The outline's shape is at revision 3. */
 const outline = (): OutlineSnapshot => ({
@@ -33,8 +62,6 @@ function server(initial: OutlineSnapshot) {
   const entryOf = (id: string) => ({
     ...entries.get(id)!,
     outlineId: initial.id,
-    sourcePointId: null,
-    references: [],
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
@@ -50,14 +77,19 @@ function server(initial: OutlineSnapshot) {
       const key = id as string;
       if (!entries.has(key)) {
         if (entry.expectedRevision !== held.revision) return stale();
+        // Made from a saved point, it takes the point's words and passages where none are sent.
+        const source = entry.sourcePointId ? savedPoint : null;
         entries.set(key, {
           id: key,
           parentId: (entry.parentId as string | null) ?? null,
           type: entry.type as SnapshotEntry["type"],
           position: (entry.position as number) ?? 0,
-          title: (entry.title as string) ?? "",
-          notes: (entry.notes as string | null) ?? null,
+          title: (entry.title as string | undefined) ?? source?.title ?? "",
+          notes:
+            entry.notes === undefined ? (source?.notes ?? null) : (entry.notes as string | null),
           revision: 0,
+          references: source?.references ?? [],
+          sourcePointId: (entry.sourcePointId as string | undefined) ?? null,
         });
         held.revision += 1;
       }
@@ -91,6 +123,27 @@ function server(initial: OutlineSnapshot) {
       held.revision += 1;
       return { ok: true, message: "", revision: held.revision };
     }),
+    setEntryReferences: vi.fn(
+      async (
+        id: unknown,
+        references: unknown,
+        expected?: unknown,
+      ): Promise<OutlineActionResult> => {
+        const entry = entries.get(id as string);
+        if (!entry) return { ok: false, code: "missing", message: "Gone." };
+        if (expected !== entry.revision) {
+          return {
+            ok: false,
+            code: "stale_entry",
+            message: "Changed elsewhere.",
+            entry: entryOf(entry.id),
+          };
+        }
+        entry.references = [...(references as ScriptureReference[])];
+        entry.revision += 1;
+        return { ok: true, message: "", entry: entryOf(entry.id) };
+      },
+    ),
     setOutlineNumbering: vi.fn(async (): Promise<OutlineActionResult> => ({
       ok: true,
       message: "",
@@ -239,7 +292,7 @@ describe("a save that fails", () => {
     api.updateEntry.mockResolvedValue({
       ok: true,
       message: "",
-      entry: { id: "a", title: "Kept", notes: null, revision: 2 } as never,
+      entry: { id: "a", title: "Kept", notes: null, revision: 2, references: [] } as never,
     });
     store.retry();
     await pause(0);
@@ -452,7 +505,7 @@ describe("an outline changed somewhere else", () => {
     store.adopt(elsewhere());
     expect(row("b")).toBeUndefined();
     expect(store.getState().lost).toEqual([
-      { id: "b", title: "Two, rewritten", notes: "Its notes" },
+      { id: "b", title: "Two, rewritten", notes: "Its notes", references: [] },
     ]);
     expect(status()).toBe("conflict");
 
@@ -489,7 +542,9 @@ describe("an outline changed somewhere else", () => {
     await pause();
     expect(reload).toHaveBeenCalledTimes(1);
     store.adopt(elsewhere());
-    expect(store.getState().lost).toEqual([{ id: "b", title: "Too late", notes: "Its notes" }]);
+    expect(store.getState().lost).toEqual([
+      { id: "b", title: "Too late", notes: "Its notes", references: [] },
+    ]);
   });
 
   it("ignores a copy of the outline that is older, or that arrives while a change is on its way", async () => {
@@ -586,6 +641,299 @@ describe("an entry changed somewhere else", () => {
     expect(row("b")).toMatchObject({ title: "Two, elsewhere", notes: "", revision: 2 });
     // Its own revision is kept too, so the save that follows is checked against what it read.
     expect(row("a")?.revision).toBe(1);
+  });
+});
+
+describe("passages on an entry", () => {
+  it("are sent at once, the whole list, with the entry's revision, and are not saved until answered", async () => {
+    const { store, api, entries, row, status } = editor();
+    const answer = held<OutlineActionResult>();
+    api.setEntryReferences.mockImplementationOnce(() => answer.promise);
+
+    store.setReferences("a", (current) => [...current, john316]);
+    expect(row("a")?.references).toEqual([john316]);
+    expect(status()).toBe("saving");
+    expect(api.setEntryReferences).toHaveBeenCalledWith("a", [john316], 1);
+
+    answer.release({
+      ok: true,
+      message: "",
+      entry: { ...entries.get("a")!, references: [john316], revision: 2 } as never,
+    });
+    await pause(0);
+    expect(status()).toBe("saved");
+    expect(row("a")?.revision).toBe(2);
+    expect(api.updateEntry).not.toHaveBeenCalled();
+  });
+
+  it("send nothing when the list is given back as it was", async () => {
+    const { store, api, status } = editor();
+    store.setReferences("a", (current) => [...current]);
+    await pause();
+    expect(api.setEntryReferences).not.toHaveBeenCalled();
+    expect(status()).toBe("saved");
+  });
+
+  it("wait their turn behind words, each naming the revision the last one left", async () => {
+    const { store, api, entries, status } = editor();
+    store.setTitle("a", "Reworded");
+    store.blur("a");
+    store.setReferences("a", () => [john316, psalm23]);
+    await pause(0);
+    expect(api.updateEntry).toHaveBeenCalledWith("a", { title: "Reworded", expectedRevision: 1 });
+    expect(api.setEntryReferences).toHaveBeenCalledWith("a", [john316, psalm23], 2);
+    expect(entries.get("a")).toMatchObject({
+      title: "Reworded",
+      references: [john316, psalm23],
+      revision: 3,
+    });
+    expect(status()).toBe("saved");
+  });
+
+  it("send only the list as it last stood when changed twice while a request is away", async () => {
+    const { store, api, entries, status } = editor();
+    const answer = held<OutlineActionResult>();
+    api.setEntryReferences.mockImplementationOnce(() => answer.promise);
+    store.setReferences("a", () => [john316]);
+    store.setReferences("a", () => [john316, psalm23]);
+    store.setReferences("a", () => [psalm23]);
+    expect(status()).toBe("saving");
+
+    entries.get("a")!.references = [john316];
+    entries.get("a")!.revision = 2;
+    answer.release({ ok: true, message: "", entry: { ...entries.get("a")! } as never });
+    await pause(0);
+    // An answer never writes over what was chosen since.
+    expect(store.getState().rows.find((row) => row.id === "a")?.references).toEqual([psalm23]);
+    expect(api.setEntryReferences).toHaveBeenCalledTimes(2);
+    expect(api.setEntryReferences).toHaveBeenLastCalledWith("a", [psalm23], 2);
+    expect(entries.get("a")?.references).toEqual([psalm23]);
+    expect(status()).toBe("saved");
+  });
+
+  it("are kept and tried again when the save fails", async () => {
+    const { store, api, entries, row, status } = editor();
+    api.setEntryReferences.mockRejectedValueOnce(new Error("offline"));
+    store.setReferences("a", () => [john316]);
+    await pause(0);
+    expect(status()).toBe("failed");
+    expect(row("a")?.references).toEqual([john316]);
+    await pause(2000);
+    expect(entries.get("a")?.references).toEqual([john316]);
+    expect(status()).toBe("saved");
+  });
+
+  it("take the other list when only it changed, and keep this one when only this changed", async () => {
+    const { store, entries, row, status } = editor();
+    // Elsewhere: the heading was changed, and the passages were not.
+    entries.get("a")!.title = "From elsewhere";
+    entries.get("a")!.revision = 2;
+    store.setReferences("a", () => [john316]);
+    // Told it was stale, it takes the heading and sends its own passages again after the usual pause.
+    await pause();
+    expect(row("a")).toMatchObject({ title: "From elsewhere", references: [john316] });
+    expect(entries.get("a")).toMatchObject({ title: "From elsewhere", references: [john316] });
+    expect(status()).toBe("saved");
+
+    // Elsewhere: the passages were changed, while only the heading is changed here.
+    entries.get("a")!.references = [psalm23];
+    entries.get("a")!.revision += 1;
+    store.setTitle("a", "Mine");
+    store.blur("a");
+    await pause();
+    expect(row("a")).toMatchObject({ title: "Mine", references: [psalm23] });
+    expect(entries.get("a")).toMatchObject({ title: "Mine", references: [psalm23] });
+    expect(status()).toBe("saved");
+  });
+
+  it("ask which to keep when both changed them differently, and write nothing until told", async () => {
+    const { store, api, entries, row, status } = editor();
+    entries.get("a")!.references = [psalm23];
+    entries.get("a")!.revision = 2;
+    store.setReferences("a", () => [john316]);
+    await pause(0);
+    expect(status()).toBe("conflict");
+    expect(store.getState().conflicts.a).toEqual({ references: [psalm23] });
+    expect(row("a")?.references).toEqual([john316]);
+    await pause(5000);
+    expect(api.setEntryReferences).toHaveBeenCalledTimes(1);
+
+    store.resolveConflict("a", "mine");
+    await pause(0);
+    expect(entries.get("a")?.references).toEqual([john316]);
+    expect(status()).toBe("saved");
+  });
+
+  it("take the other list when asked, and have nothing left to save", async () => {
+    const { store, api, entries, row, status } = editor();
+    entries.get("a")!.references = [psalm23];
+    entries.get("a")!.revision = 2;
+    store.setReferences("a", () => [john316]);
+    await pause(0);
+    store.resolveConflict("a", "theirs");
+    await pause(0);
+    expect(row("a")?.references).toEqual([psalm23]);
+    expect(api.setEntryReferences).toHaveBeenCalledTimes(1);
+    expect(status()).toBe("saved");
+  });
+
+  it("are no conflict when both chose the same", async () => {
+    const { store, entries, status } = editor();
+    entries.get("a")!.references = [john316];
+    entries.get("a")!.revision = 2;
+    store.setReferences("a", () => [john316]);
+    await pause(0);
+    expect(store.getState().conflicts).toEqual({});
+    expect(status()).toBe("saved");
+  });
+
+  it("stand against a copy of the outline from the page while they are unsaved", async () => {
+    const { store, api, row } = editor();
+    const answer = held<OutlineActionResult>();
+    api.setEntryReferences.mockImplementationOnce(() => answer.promise);
+    store.setReferences("a", () => [john316]);
+    store.adopt(outline());
+    expect(row("a")?.references).toEqual([john316]);
+  });
+
+  it("are kept in the draft of an entry that is no longer there, and put back with it", async () => {
+    const { store, api, entries, reload, row } = editor();
+    api.setEntryReferences.mockResolvedValueOnce({ ok: false, code: "missing", message: "Gone." });
+    store.setReferences("b", () => [john316]);
+    await pause(0);
+    expect(reload).toHaveBeenCalled();
+    entries.delete("b");
+    store.adopt({ ...outline(), entries: outline().entries.filter((entry) => entry.id !== "b") });
+    expect(store.getState().lost).toEqual([
+      { id: "b", title: "Two", notes: "Its notes", references: [john316] },
+    ]);
+
+    const again = store.restoreLost("b")!;
+    await pause();
+    expect(row(again)).toMatchObject({ title: "Two", references: [john316] });
+    expect(entries.get(again)).toMatchObject({ title: "Two", references: [john316] });
+    expect(store.getState().status).toBe("saved");
+  });
+});
+
+describe("a point made from a saved point", () => {
+  it("is shown at once by its title, sent without words, and filled from the server's copy", async () => {
+    const { store, api, row, status } = editor();
+    const answer = held<OutlineActionResult>();
+    api.addEntry.mockImplementationOnce(() => answer.promise);
+
+    const id = store.addPoint(null, undefined, {
+      title: "Pray without ceasing",
+      sourcePointId: "p1",
+    })!;
+    expect(row(id)).toMatchObject({
+      title: "Pray without ceasing",
+      notes: "",
+      references: [],
+      sourcePointId: "p1",
+    });
+    const [input, sentId] = api.addEntry.mock.calls[0];
+    expect(sentId).toBe(id);
+    expect(input).toEqual({
+      outlineId: "outline",
+      type: "point",
+      parentId: null,
+      position: 2,
+      sourcePointId: "p1",
+      expectedRevision: 3,
+    });
+
+    answer.release({
+      ok: true,
+      message: "",
+      revision: 4,
+      entry: {
+        id,
+        title: savedPoint.title,
+        notes: savedPoint.notes,
+        references: savedPoint.references,
+        sourcePointId: "p1",
+        revision: 0,
+      } as never,
+    });
+    await pause(0);
+    expect(row(id)).toMatchObject({
+      title: "Pray without ceasing",
+      notes: "Its own notes",
+      references: [john316],
+      sourcePointId: "p1",
+    });
+    // The copy is the server's: there is nothing to save, and nothing more is sent.
+    await pause();
+    expect(status()).toBe("saved");
+    expect(api.updateEntry).not.toHaveBeenCalled();
+    expect(api.setEntryReferences).not.toHaveBeenCalled();
+  });
+
+  it("keeps what was typed while the copy was being made, and saves it after", async () => {
+    const { store, api, entries, row, status } = editor();
+    const answer = held<OutlineActionResult>();
+    api.addEntry.mockImplementationOnce(async (input: unknown, id?: unknown) => {
+      await answer.promise;
+      // The real stand-in, once released.
+      return server(outline()).api.addEntry(input, id);
+    });
+
+    const id = store.addPoint(null, undefined, {
+      title: "Pray without ceasing",
+      sourcePointId: "p1",
+    })!;
+    store.setTitle(id, "My own wording");
+    answer.release({ ok: true, message: "" });
+    await pause(0);
+    // The heading typed here stands; the notes and passages, untouched, are the point's.
+    expect(row(id)).toMatchObject({
+      title: "My own wording",
+      notes: "Its own notes",
+      references: [john316],
+    });
+    expect(status()).not.toBe("saved");
+
+    entries.set(id, {
+      ...row(id)!,
+      title: savedPoint.title,
+      notes: savedPoint.notes,
+      references: savedPoint.references,
+      revision: 0,
+    });
+    await pause();
+    expect(api.updateEntry).toHaveBeenCalledWith(id, {
+      title: "My own wording",
+      expectedRevision: 0,
+    });
+    expect(entries.get(id)).toMatchObject({ title: "My own wording", notes: "Its own notes" });
+    expect(status()).toBe("saved");
+  });
+
+  it("can be placed under a point, or again, and each is its own entry", async () => {
+    const { store, entries, row } = editor();
+    const under = store.addPoint("a", undefined, { title: "Pray", sourcePointId: "p1" })!;
+    const again = store.addPoint("a", 0, { title: "Pray", sourcePointId: "p1" })!;
+    await pause(0);
+    expect(under).not.toBe(again);
+    expect(row(again)).toMatchObject({ parentId: "a", position: 0, sourcePointId: "p1" });
+    expect(row(under)).toMatchObject({ parentId: "a", position: 2, sourcePointId: "p1" });
+    expect(entries.get(under)?.references).toEqual([john316]);
+  });
+
+  it("leaves its title as a draft when the point is gone before the copy is made", async () => {
+    const { store, api, reload } = editor();
+    api.addEntry.mockResolvedValueOnce({
+      ok: false,
+      code: "unknown_source",
+      message: "That point idea no longer exists.",
+    });
+    const id = store.addPoint(null, undefined, { title: "Pray", sourcePointId: "gone" })!;
+    await pause(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+    store.adopt(outline());
+    expect(store.getState().lost).toEqual([{ id, title: "Pray", notes: "", references: [] }]);
+    expect(api.addEntry).toHaveBeenCalledTimes(1);
   });
 });
 

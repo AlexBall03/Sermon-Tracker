@@ -36,6 +36,20 @@ export const outlineLimits = {
 /** Outlines on one page of a list. */
 export const outlinePageSize = 24;
 
+/**
+ * The orders the overview of outlines offers. The first is the default.
+ * "Updated" is when the outline was last worked on, in any way; the title is
+ * its sermon's.
+ */
+export const outlineSorts = [
+  "updated-desc",
+  "updated-asc",
+  "title-asc",
+  "title-desc",
+  "created-desc",
+] as const;
+export type OutlineSort = (typeof outlineSorts)[number];
+
 /** What a level counts with. `bullet` and `none` do not count at all. */
 export const counterStyles = ["decimal", "alpha", "roman", "bullet", "none"] as const;
 export type CounterStyle = (typeof counterStyles)[number];

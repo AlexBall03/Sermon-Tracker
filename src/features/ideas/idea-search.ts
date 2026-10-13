@@ -12,13 +12,18 @@ import type { IdeaReference } from "./schemas";
  *   /api/ideas/search?q=grace&kind=point   the point ideas among them
  *
  *   /api/ideas/search?kind=sermon&archived=all   the sermon ideas, archived ones too
+ *   /api/ideas/search?kind=sermon&outline=1      the sermon ideas, each with its outline's ID
  *
  * `q`, `kind`, and `archived` mean what they mean in the library's address and
  * are read by the same parser. Nothing else in the address is used, so without
  * `archived` the answer is the library's default: archived ideas are not
- * offered. Only the related-ideas picker asks for them.
+ * offered. Only the related-ideas picker asks for them. `outline=1` is asked
+ * by the picker that gives a sermon its outline, and by nothing else.
  */
 export const ideaSearchPath = "/api/ideas/search";
+
+/** The parameter that asks for each sermon's outline. */
+export const ideaSearchOutlineParam = "outline";
 
 /** How many ideas one answer holds. The picker narrows by typing, not by paging. */
 export const ideaSearchSize = 8;
@@ -35,6 +40,11 @@ export type IdeaMatch = {
   references: IdeaReference[];
   /** True for an archived idea, which is only ever among the matches when they were asked for. */
   archived: boolean;
+  /**
+   * The sermon's outline, or null when it has none. Only present when the
+   * search asked for it.
+   */
+  outlineId?: string | null;
 };
 
 export type IdeaMatches = {
@@ -47,11 +57,18 @@ export type IdeaMatches = {
  * The address of one search. `archive` is given only by the related-ideas
  * picker, which offers archived ideas too; left out, they are never offered.
  */
-export function ideaSearchHref(q: string, kind: IdeaKind | null, archive?: ArchiveView): string {
+export function ideaSearchHref(
+  q: string,
+  kind: IdeaKind | null,
+  archive?: ArchiveView,
+  /** Also say which of the ideas has an outline. */
+  outlines = false,
+): string {
   const params = new URLSearchParams();
   if (q.trim()) params.set(libraryParams.q, q.trim());
   if (kind) params.set(libraryParams.kinds, kind);
   if (archive) params.set(libraryParams.archive, archive);
+  if (outlines) params.set(ideaSearchOutlineParam, "1");
   const query = params.toString();
   return query ? `${ideaSearchPath}?${query}` : ideaSearchPath;
 }

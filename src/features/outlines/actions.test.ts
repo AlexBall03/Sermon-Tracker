@@ -381,21 +381,23 @@ describe("outline actions", () => {
     expect(logged).not.toContain("secret");
   });
 
-  it("revalidate the editor's page for a change of shape or numbering, and never for words", async () => {
+  it("revalidate the editor's page and the overview for a change of shape or numbering, and never for words", async () => {
     const { outlineId, one, two } = await outlined();
     const page = `/outlines/${outlineId}`;
+    const once = [[page], ["/outlines"]];
+    const thrice = [...once, ...once, ...once];
     // Making the outline and its two points: once each.
-    expect(state.revalidatePath.mock.calls).toEqual([[page], [page], [page]]);
+    expect(state.revalidatePath.mock.calls).toEqual(thrice);
 
     state.revalidatePath.mockClear();
     await updateEntry(one, { title: "Reworded", notes: "And noted." });
-    await setEntryReferences(one, []);
+    await setEntryReferences(one, [{ book: 43, chapterStart: 3, verseStart: 16 }]);
     expect(state.revalidatePath).not.toHaveBeenCalled();
 
     await moveEntry(two, { parentId: one });
     await setOutlineNumbering(outlineId, { version: 1, preset: "decimal" });
     await removeEntry(two);
-    expect(state.revalidatePath.mock.calls).toEqual([[page], [page], [page]]);
+    expect(state.revalidatePath.mock.calls).toEqual(thrice);
 
     // Nothing changed, so nothing is rendered again: refused, stale, or someone else's.
     state.revalidatePath.mockClear();
@@ -409,6 +411,6 @@ describe("outline actions", () => {
 
     signInAs(me);
     await deleteOutline(outlineId);
-    expect(state.revalidatePath.mock.calls).toEqual([[page]]);
+    expect(state.revalidatePath.mock.calls).toEqual(once);
   });
 });

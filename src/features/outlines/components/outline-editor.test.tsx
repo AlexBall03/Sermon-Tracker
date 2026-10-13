@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "@/components/ui/toast";
@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   moveEntry: vi.fn(),
   removeEntry: vi.fn(),
   setOutlineNumbering: vi.fn(),
+  setEntryReferences: vi.fn(),
   deleteOutline: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("../actions", () => ({
   moveEntry: state.moveEntry,
   removeEntry: state.removeEntry,
   setOutlineNumbering: state.setOutlineNumbering,
+  setEntryReferences: state.setEntryReferences,
   deleteOutline: state.deleteOutline,
 }));
 vi.mock("next/navigation", () => ({
@@ -40,7 +42,17 @@ const entry = (
   position = 0,
   parentId: string | null = null,
   notes: string | null = null,
-): SnapshotEntry => ({ id, parentId, type, position, title, notes, revision: 1 });
+): SnapshotEntry => ({
+  id,
+  parentId,
+  type,
+  position,
+  title,
+  notes,
+  revision: 1,
+  references: [],
+  sourcePointId: null,
+});
 
 /**
  * I. Grace
@@ -63,6 +75,30 @@ const outline = (entries?: SnapshotEntry[]): OutlineSnapshot => ({
 });
 
 const sermon = { id: "sermon-1", title: "It is Well" };
+
+const john316 = { book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: null };
+const psalm23 = { book: 19, chapterStart: 23, verseStart: null, chapterEnd: null, verseEnd: null };
+
+/** The account's one saved point idea, as the picker's search answers and as the server copies it. */
+const savedPoint = {
+  id: "point-1",
+  title: "Pray without ceasing",
+  kind: "point",
+  status: "idea",
+  subject: null,
+  references: [{ ...john316, isPrimary: false }],
+  archived: false,
+};
+/** An entry's words as they are on the page, for a stand-in server that was sent only its passages. */
+function wordsOf(id: string) {
+  const row = document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`);
+  const title = row?.querySelector<HTMLInputElement>('[data-field="title"]')?.value ?? "";
+  const notes = row?.querySelector<HTMLTextAreaElement>('[data-field="notes"]')?.value;
+  return { title, notes: notes || null };
+}
+
+/** The idea searches the editor made. */
+let searches: string[];
 
 function open(snapshot = outline(), locale: Locale = "en") {
   return render(
@@ -100,10 +136,35 @@ beforeEach(() => {
   window.localStorage.clear();
   revision = 7;
   const shape = async () => ({ ok: true, message: "", revision: (revision += 1) });
-  state.addEntry.mockImplementation(async (input: { title: string }, id: string) => ({
-    ...(await shape()),
-    entry: { id, title: input.title, notes: null, revision: 0 },
-  }));
+  searches = [];
+  vi.stubGlobal("fetch", async (address: string) => {
+    searches.push(address);
+    return { ok: true, status: 200, json: async () => ({ items: [savedPoint], total: 1 }) };
+  });
+  state.addEntry.mockImplementation(
+    async (input: { title?: string; sourcePointId?: string }, id: string) => ({
+      ...(await shape()),
+      // Made from the saved point, the server copies its words and passages.
+      entry: input.sourcePointId
+        ? {
+            id,
+            title: savedPoint.title,
+            notes: "Its own notes",
+            revision: 0,
+            references: [john316],
+            sourcePointId: input.sourcePointId,
+          }
+        : { id, title: input.title ?? "", notes: null, revision: 0, references: [] },
+    }),
+  );
+  state.setEntryReferences.mockImplementation(
+    async (id: string, references: unknown[], expectedRevision: number) => ({
+      ok: true,
+      message: "",
+      // The entry as the server holds it: the words it had, and the passages just sent.
+      entry: { ...wordsOf(id), id, revision: expectedRevision + 1, references },
+    }),
+  );
   state.moveEntry.mockImplementation(shape);
   state.removeEntry.mockImplementation(shape);
   state.setOutlineNumbering.mockImplementation(async () => ({ ok: true, message: "", revision }));
@@ -116,6 +177,7 @@ beforeEach(() => {
         title: input.title ?? "",
         notes: input.notes ?? null,
         revision: input.expectedRevision + 1,
+        references: [],
       },
     }),
   );
@@ -471,7 +533,13 @@ describe("the outline editor", () => {
       ok: false,
       code: "stale_entry",
       message: "Changed elsewhere.",
-      entry: { id: "peace", title: "Peace, from elsewhere", notes: null, revision: 4 },
+      entry: {
+        id: "peace",
+        title: "Peace, from elsewhere",
+        notes: null,
+        revision: 4,
+        references: [],
+      },
     });
     fireEvent.change(heading("II."), { target: { value: "Peace, mine" } });
     await pause();
@@ -528,6 +596,204 @@ describe("the outline editor", () => {
     await pause(0);
     expect(state.deleteOutline).toHaveBeenCalledWith("outline-1");
     expect(state.replace).toHaveBeenCalledWith("/library/sermon-1");
+  });
+
+  it("shows an entry's passages beneath it, and offers to add the first to one that has none", async () => {
+    open(
+      outline([
+        { ...entry("grace", "point", "Grace", 0), references: [john316] },
+        entry("peace", "point", "Peace", 1),
+      ]),
+    );
+    const grace = document.querySelector<HTMLElement>('[data-entry-id="grace"]')!;
+    expect(within(grace).getByRole("list", { name: "References" })).toHaveTextContent("John 3:16");
+    // It leads to the Bible with the way back to this outline, not to an idea.
+    expect(
+      within(grace).getByRole("link", { name: "Open John 3:16 in the Bible" }),
+    ).toHaveAttribute("href", "/bible?book=43&chapter=3&verse=16&outline=outline-1");
+
+    const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
+    expect(within(peace).queryByRole("list", { name: "References" })).not.toBeInTheDocument();
+    await menu("II. Peace", "Add passage");
+    expect(within(peace).getByRole("textbox", { name: "Passages" })).toBeInTheDocument();
+    // Showing the field has changed nothing.
+    expect(state.setEntryReferences).not.toHaveBeenCalled();
+    expect(saved()).toBeInTheDocument();
+  });
+
+  it("adds a typed passage through the store, saved at once with the entry's revision", async () => {
+    open();
+    await menu("II. Peace", "Add passage");
+    const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
+    const box = within(peace).getByRole("textbox", { name: "Passages" });
+    fireEvent.change(box, { target: { value: "John 3:16" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(within(peace).getByRole("list", { name: "References" })).toHaveTextContent("John 3:16");
+    await pause(0);
+    expect(state.setEntryReferences).toHaveBeenCalledWith("peace", [john316], 1);
+    expect(saved()).toBeInTheDocument();
+    // Neither a new point nor a change of words.
+    expect(state.addEntry).not.toHaveBeenCalled();
+    expect(state.updateEntry).not.toHaveBeenCalled();
+
+    // The same passage twice is one, and nothing more is sent.
+    fireEvent.change(box, { target: { value: "John 3:16" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await pause(0);
+    expect(state.setEntryReferences).toHaveBeenCalledTimes(1);
+    expect(within(peace).getByText("John 3:16 is already here.")).toBeInTheDocument();
+  });
+
+  it("removes a passage, and says a save of passages failed without losing them", async () => {
+    open(outline([{ ...entry("grace", "point", "Grace", 0), references: [john316, psalm23] }]));
+    state.setEntryReferences.mockRejectedValueOnce(new Error("network"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove John 3:16" }));
+    await pause(0);
+    expect(screen.getByText("Save failed")).toBeInTheDocument();
+    const grace = document.querySelector<HTMLElement>('[data-entry-id="grace"]')!;
+    expect(within(grace).getByRole("list", { name: "References" })).toHaveTextContent("Psalm 23");
+    expect(within(grace).getByRole("list", { name: "References" })).not.toHaveTextContent("John");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await pause(0);
+    expect(state.setEntryReferences).toHaveBeenLastCalledWith("grace", [psalm23], 1);
+    expect(saved()).toBeInTheDocument();
+  });
+
+  it("refuses more passages than an entry holds, in the outline's own words", async () => {
+    const many = Array.from({ length: 10 }, (_, index) => ({
+      ...psalm23,
+      chapterStart: index + 1,
+    }));
+    open(outline([{ ...entry("grace", "point", "Grace", 0), references: many }]));
+    const box = screen.getByRole("textbox", { name: "Passages" });
+    fireEvent.change(box, { target: { value: "John 3:16" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(screen.getByText("A point can have up to 10 passages.")).toBeInTheDocument();
+    await pause(0);
+    expect(state.setEntryReferences).not.toHaveBeenCalled();
+  });
+
+  it("asks which passages to keep when they were changed here and elsewhere", async () => {
+    open(outline([{ ...entry("grace", "point", "Grace", 0), references: [john316] }]));
+    state.setEntryReferences.mockResolvedValueOnce({
+      ok: false,
+      code: "stale_entry",
+      message: "Changed elsewhere.",
+      entry: { id: "grace", title: "Grace", notes: null, revision: 2, references: [psalm23] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove John 3:16" }));
+    await pause(0);
+    expect(screen.getByText("Needs your attention")).toBeInTheDocument();
+    expect(screen.getByText("The passages saved elsewhere:").parentElement).toHaveTextContent(
+      "Psalm 23",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Use the other" }));
+    await pause(0);
+    expect(screen.getByRole("list", { name: "References" })).toHaveTextContent("Psalm 23");
+    expect(saved()).toBeInTheDocument();
+  });
+
+  it("lets the introduction hold passages too", async () => {
+    open(outline([entry("intro", "introduction", "Opening")]));
+    fireEvent.click(screen.getByRole("button", { name: "Add passage" }));
+    const box = screen.getByRole("textbox", { name: "Passages" });
+    fireEvent.change(box, { target: { value: "Psalm 23" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await pause(0);
+    expect(state.setEntryReferences).toHaveBeenCalledWith("intro", [psalm23], 1);
+  });
+
+  it("places a copy of a saved point at the end, sent with its source and without words", async () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Add from Saved Point" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add from a saved point" });
+    // Point ideas only, and never an archived one.
+    await waitFor(() => expect(searches).toEqual(["/api/ideas/search?kind=point"]));
+    expect(dialog).toHaveTextContent("It is added after the last main point.");
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "Add Pray without ceasing" }),
+    );
+    await pause(0);
+
+    const [input, id] = state.addEntry.mock.calls[0];
+    expect(input).toEqual({
+      outlineId: "outline-1",
+      type: "point",
+      parentId: null,
+      position: 2,
+      sourcePointId: "point-1",
+      expectedRevision: 7,
+    });
+    expect(typeof id).toBe("string");
+    // The dialog stays for another, and says what was done.
+    expect(within(dialog).getByText("Added “Pray without ceasing”.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // The server's copy: the point's own words and passages.
+    expect(drawn().at(-1)).toBe("III. Pray without ceasing");
+    const made = document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`)!;
+    expect(within(made).getByRole("textbox", { name: /^Notes for/ })).toHaveValue("Its own notes");
+    expect(within(made).getByRole("list", { name: "References" })).toHaveTextContent("John 3:16");
+    // It says where it came from, and leads there. Nothing was sent to change the point.
+    expect(
+      within(made).getByRole("link", {
+        name: "III. Pray without ceasing: open the saved point it was made from",
+      }),
+    ).toHaveAttribute("href", "/library/point-1");
+    expect(state.updateEntry).not.toHaveBeenCalled();
+    expect(state.setEntryReferences).not.toHaveBeenCalled();
+    expect(saved()).toBeInTheDocument();
+  });
+
+  it("places a saved point below a point or under it, as chosen", async () => {
+    open();
+    await menu("I. Grace", "Add from saved point");
+    const dialog = await screen.findByRole("dialog", { name: "Add from a saved point" });
+    expect(within(dialog).getByRole("radio", { name: "Below it" })).toBeChecked();
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "Add Pray without ceasing" }),
+    );
+    await pause(0);
+    expect(state.addEntry.mock.calls[0][0]).toMatchObject({ parentId: null, position: 1 });
+
+    fireEvent.click(within(dialog).getByRole("radio", { name: "As a subpoint" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add Pray without ceasing" }));
+    await pause(0);
+    // The same point again, a second entry of its own, last under Grace.
+    expect(state.addEntry.mock.calls[1][0]).toMatchObject({
+      parentId: "grace",
+      position: 2,
+      sourcePointId: "point-1",
+    });
+    expect(state.addEntry.mock.calls[1][1]).not.toBe(state.addEntry.mock.calls[0][1]);
+    expect(drawn()).toEqual([
+      "I. Grace",
+      "  A. Unearned",
+      "    1. By faith",
+      "  B. Unending",
+      "  C. Pray without ceasing",
+      "II. Pray without ceasing",
+      "III. Peace",
+    ]);
+  });
+
+  it("editing a copied point changes the entry and sends nothing about the point", async () => {
+    open(
+      outline([{ ...entry("copy", "point", "Pray without ceasing", 0), sourcePointId: "point-1" }]),
+    );
+    fireEvent.change(heading("I."), { target: { value: "Keep praying" } });
+    await pause();
+    expect(state.updateEntry).toHaveBeenCalledWith("copy", {
+      title: "Keep praying",
+      expectedRevision: 1,
+    });
+    // The link to where it came from is kept, and is all that names the point.
+    expect(screen.getByRole("link", { name: /open the saved point/ })).toHaveAttribute(
+      "href",
+      "/library/point-1",
+    );
+    expect(state.addEntry).not.toHaveBeenCalled();
   });
 
   it("reads in Spanish", async () => {

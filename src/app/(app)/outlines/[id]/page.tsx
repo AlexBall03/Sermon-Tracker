@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Archive } from "lucide-react";
 
@@ -44,7 +45,12 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
         description={
           <>
             {t.sermon}{" "}
-            <span className="font-serif font-medium text-foreground">{sermon.title}</span>
+            <Link
+              href={`${routes.library}/${sermon.id}`}
+              className="rounded-sm font-serif font-medium text-foreground underline-offset-4 transition-colors duration-150 hover:text-primary hover:underline"
+            >
+              {sermon.title}
+            </Link>
           </>
         }
       />
@@ -61,9 +67,9 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
           id: outline.id,
           revision: outline.revision,
           numbering: outline.numbering,
-          // What the editor edits, and no more: passages on an entry come with Phase 3C.
+          // What the editor edits, and no more: no dates, no depth, no path.
           entries: outline.entries.map(
-            ({ id, parentId, type, position, title, notes, revision }) => ({
+            ({
               id,
               parentId,
               type,
@@ -71,6 +77,18 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
               title,
               notes,
               revision,
+              references,
+              sourcePointId,
+            }) => ({
+              id,
+              parentId,
+              type,
+              position,
+              title,
+              notes,
+              revision,
+              references,
+              sourcePointId,
             }),
           ),
         }}

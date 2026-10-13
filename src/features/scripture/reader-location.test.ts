@@ -241,6 +241,34 @@ describe("a passage and where it was opened from", () => {
     expect(parseReaderLocation({ idea })).toBeNull();
   });
 
+  it("reads the outline it was opened from only when that is an ID, and one way back at most", () => {
+    const outline = "22222222-2222-4222-8222-222222222222";
+    expect(parseReaderLocation({ book: "43", chapter: "3", outline })).toEqual({
+      ...at(43, 3),
+      outline,
+    });
+    for (const value of ["1", "../admin", "https://example.com", `${outline}'--`, ""]) {
+      expect(parseReaderLocation({ book: "43", chapter: "3", outline: value })).toEqual(at(43, 3));
+    }
+    // Given both, the outline is the way back, and the idea is dropped.
+    expect(parseReaderLocation({ book: "43", chapter: "3", outline, idea })).toEqual({
+      ...at(43, 3),
+      outline,
+    });
+    expect(parseReaderLocation({ outline })).toBeNull();
+
+    const href = readerHref({ book: 43, chapter: 3, verse: 16, through: 18, outline });
+    expect(href).toBe(`/bible?book=43&chapter=3&verse=16&through=18&outline=${outline}`);
+    expect(readerHref(parseReaderLocation(new URLSearchParams(href.split("?")[1]))!)).toBe(href);
+    expect(readerHref({ book: 43, chapter: 3, verse: null, outline, idea })).toBe(
+      `/bible?book=43&chapter=3&outline=${outline}`,
+    );
+    // A reference on an outline's entry opens with the way back to the outline.
+    expect(readerHref(referenceLocation(read("Ephesians 2:8-9"), { outline }))).toBe(
+      `/bible?book=49&chapter=2&verse=8&through=9&outline=${outline}`,
+    );
+  });
+
   it("writes one address for each, in a fixed order", () => {
     expect(readerHref({ book: 43, chapter: 3, verse: 16, through: 18, idea })).toBe(
       `/bible?book=43&chapter=3&verse=16&through=18&idea=${idea}`,

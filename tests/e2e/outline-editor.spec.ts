@@ -88,7 +88,7 @@ test.describe("outline editor, signed in", () => {
       await capture.getByRole("button", { name: "Save idea" }).click();
       await expect(capture).toBeHidden();
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(sermon)}`);
-      await page.getByRole("link", { name: sermon }).click();
+      await page.getByRole("link", { name: sermon, exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(sermon);
       const sermonId = page.url().split("?")[0].split("/").pop() ?? "";
 
@@ -134,7 +134,7 @@ test.describe("outline editor, signed in", () => {
       await expect(heading("A.")).toBeFocused();
       await page.keyboard.type("Unearned");
       await saved();
-      expect(await drawn()).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
 
       // Notes on a point, and the optional sections.
       await heading("II.").focus();
@@ -150,7 +150,7 @@ test.describe("outline editor, signed in", () => {
 
       // All of it was saved, in order.
       await page.reload();
-      expect(await drawn()).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
       await expect(page.getByRole("textbox", { name: "Notes for II. Peace" })).toHaveValue(
         "Romans 5:1.",
       );
@@ -164,14 +164,14 @@ test.describe("outline editor, signed in", () => {
 
       // Moved with the menu: a point with what is under it, renumbered.
       await menu("I. Grace", "Move down");
-      expect(await drawn()).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "III. Hope"]);
       // And from the keyboard: Hope goes in under Grace, then back out.
       await heading("III.").focus();
       await page.keyboard.press("Alt+Shift+ArrowRight");
-      expect(await drawn()).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "  B. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "  B. Hope"]);
       await expect(heading("B.")).toBeFocused();
       await page.keyboard.press("Alt+Shift+ArrowLeft");
-      expect(await drawn()).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "III. Hope"]);
       await saved();
 
       // Dragged by its grip: Grace, with Unearned under it, to the top.
@@ -186,10 +186,10 @@ test.describe("outline editor, signed in", () => {
       await page.mouse.move(from.x + from.width / 2, from.y - 10, { steps: 4 });
       await page.mouse.move(from.x + from.width / 2, to.y + 2, { steps: 8 });
       await page.mouse.up();
-      expect(await drawn()).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
       await saved();
       await page.reload();
-      expect(await drawn()).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
+      await expect.poll(drawn).toEqual(["I. Grace", "  A. Unearned", "II. Peace", "III. Hope"]);
 
       // Numbering: previewed, applied, and kept.
       await page.getByRole("button", { name: "Numbering" }).click();
@@ -199,7 +199,7 @@ test.describe("outline editor, signed in", () => {
       await noOverflow();
       await numbering.getByRole("button", { name: "Apply" }).click();
       await expect(numbering).toBeHidden();
-      expect(await drawn()).toEqual(["1. Grace", "  1.1. Unearned", "2. Peace", "3. Hope"]);
+      await expect.poll(drawn).toEqual(["1. Grace", "  1.1. Unearned", "2. Peace", "3. Hope"]);
       await saved();
 
       // A custom style, written level by level.
@@ -209,24 +209,21 @@ test.describe("outline editor, signed in", () => {
       await expect(numbering.getByRole("region", { name: "Preview" })).toContainText("Point 2.");
       await numbering.getByRole("button", { name: "Apply" }).click();
       await expect(numbering).toBeHidden();
-      expect((await drawn())[0]).toBe("Point 1. Grace");
+      await expect.poll(async () => (await drawn())[0]).toBe("Point 1. Grace");
       await saved();
       await page.reload();
-      expect(await drawn()).toEqual([
-        "Point 1. Grace",
-        "  Point 1.1. Unearned",
-        "Point 2. Peace",
-        "Point 3. Hope",
-      ]);
+      await expect
+        .poll(drawn)
+        .toEqual(["Point 1. Grace", "  Point 1.1. Unearned", "Point 2. Peace", "Point 3. Hope"]);
 
       // Folded, and still folded after a reload: a preference of this browser.
       await page.getByRole("button", { name: "Collapse Point 1. Grace" }).click();
-      expect(await drawn()).toHaveLength(3);
+      await expect.poll(drawn).toHaveLength(3);
       await expect(page.getByText("1 point folded")).toBeVisible();
       await page.reload();
       await expect(page.getByText("1 point folded")).toBeVisible();
       await page.getByRole("button", { name: "Expand Point 1. Grace" }).click();
-      expect(await drawn()).toHaveLength(4);
+      await expect.poll(drawn).toHaveLength(4);
 
       // Light and dark, with nothing wider than the screen.
       await page.screenshot({ path: testInfo.outputPath("outline-light.png"), fullPage: true });
@@ -255,8 +252,15 @@ test.describe("outline editor, signed in", () => {
 
       // Left a moment after typing, with no question: the save finishes all the same.
       await heading("Point 2.").fill("Peace with God");
+      // The save goes on after the page is left. It is waited for here only so that the
+      // reload below, which would cut a request off, does not race it.
+      const saving = page.waitForResponse(
+        (response) => response.request().method() === "POST" && response.ok(),
+        { timeout: 20_000 },
+      );
       await page.getByRole("link", { name: "Back to sermon" }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(sermon);
+      await saving;
       await page.goto(outlineAddress);
       await expect(heading("Point 2.")).toHaveValue("Peace with God");
       await expect(heading("Point 3.")).toHaveValue("Hope, unsaved");
@@ -267,13 +271,15 @@ test.describe("outline editor, signed in", () => {
       const confirm = page.getByRole("alertdialog");
       await expect(confirm).toContainText("and the 1 point under it");
       await confirm.getByRole("button", { name: "Delete" }).click();
-      expect(await drawn()).toEqual(["Point 1. Peace with God", "Point 2. Hope, unsaved"]);
+      await expect.poll(drawn).toEqual(["Point 1. Peace with God", "Point 2. Hope, unsaved"]);
       await saved();
     } finally {
       // The sermon goes, and its outline with it.
       await page.unroute("**/outlines/**").catch(() => {});
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(sermon)}&archived=all`);
-      const link = page.getByRole("link", { name: sermon });
+      const link = page.getByRole("link", { name: sermon, exact: true });
+      // The results are streamed after the page: wait for them, or for none, before counting.
+      await link.or(page.locator("#empty-heading")).first().waitFor();
       if ((await link.count()) > 0) {
         await link.click();
         await page.getByRole("button", { name: "Delete idea" }).click();

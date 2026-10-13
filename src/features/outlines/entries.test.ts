@@ -8,9 +8,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import {
   ideas,
+  ideaScriptureReferences,
   outlineEntries,
   outlineEntryScriptureReferences,
   sermonOutlines,
+  sermonPoints,
   users,
 } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
@@ -712,6 +714,49 @@ describe("an entry made from a saved point", () => {
     expect((await getEntry(db, me, made.entry.id))?.title).toBe("Keep praying");
   });
 
+  it("copies the point's passages, in the point's order, once each and as many as an entry holds", async () => {
+    const point = await stored("With passages", { kind: "point" });
+    const verse = (chapter: number, position: number) => ({
+      ideaId: point,
+      position,
+      book: 19,
+      chapterStart: chapter,
+      verseStart: null,
+      chapterEnd: null,
+      verseEnd: null,
+    });
+    await db.insert(ideaScriptureReferences).values([
+      { ...john316, ideaId: point, position: 0, isPrimary: true },
+      // More than an entry holds.
+      ...Array.from({ length: 12 }, (_, index) => verse(index + 1, index + 1)),
+    ]);
+    const before = await db.select().from(ideaScriptureReferences);
+
+    const made = await create({ sourcePointId: point });
+    if (made.status !== "created") throw new Error(made.status);
+    expect(made.entry.references).toHaveLength(outlineLimits.references);
+    expect(made.entry.references[0]).toEqual(john316);
+    expect(made.entry.references[1]).toMatchObject({ book: 19, chapterStart: 1 });
+    expect((await getEntry(db, me, made.entry.id))?.references).toEqual(made.entry.references);
+    // A new entry's words have not been changed yet.
+    expect(made.entry.revision).toBe(0);
+
+    // The point keeps every one of its own, and changing the entry's changes none of them.
+    await setEntryReferences(db, me, made.entry.id, []);
+    expect(await db.select().from(ideaScriptureReferences)).toEqual(before);
+    // No relation was made between the point and the sermon.
+    expect(await db.select().from(sermonPoints)).toEqual([]);
+  });
+
+  it("copies no passages from another account's point", async () => {
+    const theirs = await stored("Theirs", { kind: "point", ownerId: other });
+    await db
+      .insert(ideaScriptureReferences)
+      .values({ ...john316, ideaId: theirs, position: 0, isPrimary: false });
+    expect(await create({ sourcePointId: theirs })).toEqual({ status: "unknown_source" });
+    expect(await db.select().from(outlineEntryScriptureReferences)).toEqual([]);
+  });
+
   it("uses the words the request gives in place of the point's", async () => {
     const point = await stored("Pray without ceasing", { kind: "point", notes: "1 Thess 5" });
     expect(await create({ sourcePointId: point, title: "My wording", notes: null })).toMatchObject({
@@ -796,19 +841,145 @@ describe("another account", () => {
 });
 
 describe("the sermon", () => {
-  it("is not written to by anything done to its outline's entries", async () => {
-    const before = (await db.select().from(ideas).where(eq(ideas.id, sermonId)))[0];
+  const sermon = async (id = sermonId) =>
+    (await db.select().from(ideas).where(eq(ideas.id, id)))[0];
+  /** Puts the sermon's dates back, and says what its row is then. */
+  async function rested() {
+    await db
+      .update(ideas)
+      .set({ updatedAt: old, lastDevelopedAt: null })
+      .where(eq(ideas.id, sermonId));
+    return sermon();
+  }
+  /** True when the operation moved the sermon's two dates, and nothing else of it. */
+  async function develops(run: () => Promise<unknown>) {
+    const before = await rested();
+    await run();
+    const after = await sermon();
+    const moved = after.lastDevelopedAt !== null;
+    // The two dates move together or not at all.
+    expect(after.updatedAt > old).toBe(moved);
+    expect({ ...after, updatedAt: old, lastDevelopedAt: null }).toEqual(before);
+    return moved;
+  }
+  const words = (fields: object) => schemas.entryUpdate.parse(fields);
+  const passages = (list: object[]) => schemas.entryReferences.parse(list);
+
+  it("counts as developed when an entry's words really change, and not when the same are sent again", async () => {
+    const id = await add("One");
+    expect(await develops(() => updateEntry(db, me, id, words({ title: "Reworded" })))).toBe(true);
+    expect(await develops(() => updateEntry(db, me, id, words({ title: "Reworded" })))).toBe(false);
+    expect(await develops(() => updateEntry(db, me, id, words({ notes: "A note" })))).toBe(true);
+    expect(await develops(() => updateEntry(db, me, id, words({ notes: "A note" })))).toBe(false);
+    expect(await develops(() => updateEntry(db, me, id, words({ notes: null })))).toBe(true);
+    expect(await develops(() => updateEntry(db, me, id, words({ notes: null })))).toBe(false);
+  });
+
+  it("counts as developed when an entry's passages change: added, reordered, or removed", async () => {
+    const id = await add("One");
+    const set = (list: object[]) => () => setEntryReferences(db, me, id, passages(list));
+    expect(await develops(set([john316, psalm23]))).toBe(true);
+    expect(await develops(set([john316, psalm23]))).toBe(false);
+    expect(await develops(set([psalm23, john316]))).toBe(true);
+    expect(await develops(set([psalm23]))).toBe(true);
+    expect(await develops(set([]))).toBe(true);
+    expect(await develops(set([]))).toBe(false);
+  });
+
+  it("counts an entry that says something as developed when it is added, and an empty one not", async () => {
+    expect(await develops(() => create({ title: "" }))).toBe(false);
+    expect(await develops(() => create({ type: "introduction" }))).toBe(false);
+    expect(await develops(() => create({ title: "A heading" }))).toBe(true);
+    expect(await develops(() => create({ title: "", notes: "Only notes" }))).toBe(true);
+    const point = await stored("A saved point", { kind: "point" });
+    expect(await develops(() => create({ sourcePointId: point }))).toBe(true);
+  });
+
+  it("does not count a retry of an addition", async () => {
+    const id = "5d0c2e9e-1a8e-4b0e-9f5f-0d2f6a1b7c33";
+    expect(await develops(() => create({ title: "Once" }, id))).toBe(true);
+    expect(await develops(() => create({ title: "Once" }, id))).toBe(false);
+  });
+
+  it("counts a move or a removal of something said, and not of an empty point", async () => {
+    const said = await add("Said");
+    const empty = await add("");
+    const other = await add("Other");
+    const to = (position: number) => schemas.entryMove.parse({ parentId: null, position });
+    expect(await develops(() => moveEntry(db, me, empty, to(0)))).toBe(false);
+    expect(await develops(() => moveEntry(db, me, said, to(2)))).toBe(true);
+    // To where it already is: nothing was written.
+    expect(await develops(() => moveEntry(db, me, said, to(2)))).toBe(false);
+    // An empty point with something said under it carries that with it.
+    await moveEntry(db, me, other, schemas.entryMove.parse({ parentId: empty }));
+    expect(await develops(() => moveEntry(db, me, empty, to(1)))).toBe(true);
+
+    expect(await develops(() => deleteEntry(db, me, said))).toBe(true);
+    expect(await develops(() => deleteEntry(db, me, empty))).toBe(true);
+    const bare = await add("");
+    expect(await develops(() => deleteEntry(db, me, bare))).toBe(false);
+  });
+
+  it("counts a passage as something said", async () => {
+    const id = await add("");
+    await setEntryReferences(db, me, id, passages([john316]));
+    expect(await develops(() => deleteEntry(db, me, id))).toBe(true);
+  });
+
+  it("is left alone by anything stale, refused, or someone else's", async () => {
     const { one, two } = await tree();
-    await updateEntry(db, me, one, schemas.entryUpdate.parse({ title: "Edited", notes: "n" }));
-    await setEntryReferences(db, me, one, schemas.entryReferences.parse([john316]));
-    await moveEntry(db, me, two, schemas.entryMove.parse({ parentId: one }));
-    await deleteEntry(db, me, one);
-    expect((await db.select().from(ideas).where(eq(ideas.id, sermonId)))[0]).toEqual(before);
+    await updateEntry(db, me, one, words({ title: "Newer" }));
+    const stale = { expectedRevision: 0 };
+    expect(await develops(() => updateEntry(db, me, one, words({ title: "x", ...stale })))).toBe(
+      false,
+    );
+    expect(await develops(() => setEntryReferences(db, me, one, passages([john316]), 0))).toBe(
+      false,
+    );
+    expect(await develops(() => create({ title: "Late", ...stale }))).toBe(false);
+    expect(
+      await develops(() => moveEntry(db, me, two, schemas.entryMove.parse({ ...stale }))),
+    ).toBe(false);
+    expect(await develops(() => deleteEntry(db, me, two, 0))).toBe(false);
+    // Under itself, and from an idea that is not a point.
+    expect(
+      await develops(() => moveEntry(db, me, one, schemas.entryMove.parse({ parentId: one }))),
+    ).toBe(false);
+    expect(await develops(() => create({ sourcePointId: nowhere }))).toBe(false);
+    // Another account's request finds nothing and moves nothing.
+    expect(await develops(() => updateEntry(db, other, one, words({ title: "Theirs" })))).toBe(
+      false,
+    );
+    expect(await develops(() => deleteEntry(db, other, one))).toBe(false);
+  });
+
+  it("keeps its status, its classifications, and its archive date through all of it", async () => {
+    const archived = await outlined("Shelved");
+    await db
+      .update(ideas)
+      .set({ status: "on_hold", intendedFormat: "mini", sermonType: "textual", archivedAt: old })
+      .where(eq(ideas.id, archived.sermonId));
+    await create({ outlineId: archived.id, title: "A point" });
+    expect(await sermon(archived.sermonId)).toMatchObject({
+      status: "on_hold",
+      intendedFormat: "mini",
+      sermonType: "textual",
+      archivedAt: old,
+    });
+    expect((await sermon(archived.sermonId)).lastDevelopedAt).toBeInstanceOf(Date);
+  });
+
+  it("is the only idea that moves: no other sermon, and not the saved point", async () => {
+    const elsewhere = await outlined("Another sermon");
+    const point = await stored("A saved point", { kind: "point" });
+    const before = [await sermon(elsewhere.sermonId), await sermon(point)];
+    await create({ sourcePointId: point });
+    expect([await sermon(elsewhere.sermonId), await sermon(point)]).toEqual(before);
   });
 });
 
 describe("locking", () => {
-  it("every write locks the outline's row before it touches an entry", async () => {
+  it("every write locks the sermon's row, then the outline's, before it touches an entry", async () => {
     const statements: string[] = [];
     const logged = drizzle({
       client: new PGlite(),
@@ -824,16 +995,26 @@ describe("locking", () => {
 
     const isLock = (query: string) =>
       /from "sermon_outlines"/.test(query) && /for update/i.test(query);
+    const isSermonLock = (query: string) =>
+      /from "ideas"/.test(query) && /for no key update/i.test(query);
     const isWrite = (query: string) =>
       /^\s*(insert into|update|delete from) "outline_entr/i.test(query);
-    /** Runs one operation and checks the lock came before its first write to an entry. */
+    const isStamp = (query: string) => /^\s*update "ideas"/i.test(query);
+    /**
+     * Runs one operation and checks its locks: the sermon's row, then the
+     * outline's, then the first write to an entry, and the sermon's dates
+     * moved only under its own lock.
+     */
     async function locksFirst<T>(run: () => Promise<T>) {
       statements.length = 0;
       const result = await run();
+      const sermonLock = statements.findIndex(isSermonLock);
       const lock = statements.findIndex(isLock);
       const write = statements.findIndex(isWrite);
-      expect(lock).toBeGreaterThanOrEqual(0);
+      expect(sermonLock).toBeGreaterThanOrEqual(0);
+      expect(lock).toBeGreaterThan(sermonLock);
       expect(write).toBeGreaterThan(lock);
+      expect(statements.findIndex(isStamp)).toBeGreaterThan(lock);
       return result;
     }
 
@@ -862,6 +1043,25 @@ describe("locking", () => {
     );
     await locksFirst(() => setEntryReferences(logged, owner.id, first.entry.id, [john316]));
     await locksFirst(() => deleteEntry(logged, owner.id, first.entry.id));
+
+    // An entry made from a saved point holds two ideas: the lower ID first, as
+    // relating two ideas does, whichever of them is the sermon.
+    const isPointLock = (query: string) =>
+      /from "ideas"/.test(query) && /for key share/i.test(query);
+    for (const pointId of [
+      "00000000-0000-4000-8000-000000000001",
+      "ffffffff-ffff-4fff-bfff-fffffffffffe",
+    ]) {
+      await logged
+        .insert(ideas)
+        .values({ id: pointId, ownerId: owner.id, kind: "point", title: "Saved" });
+      await locksFirst(() => createEntry(logged, owner.id, parse({ sourcePointId: pointId })));
+      const pointLock = statements.findIndex(isPointLock);
+      const sermonLock = statements.findIndex(isSermonLock);
+      expect(pointLock).toBeGreaterThanOrEqual(0);
+      expect(pointLock < sermonLock).toBe(pointId < sermon.id);
+      expect(statements.findIndex(isLock)).toBeGreaterThan(Math.max(pointLock, sermonLock));
+    }
   });
 });
 

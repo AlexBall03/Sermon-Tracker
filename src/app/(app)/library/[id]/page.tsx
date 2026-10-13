@@ -12,6 +12,8 @@ import { libraryReturnHref } from "@/features/ideas/library-query";
 import { relatedIdeas } from "@/features/ideas/relations";
 import { ideaIdSchema } from "@/features/ideas/schemas";
 import { listTags } from "@/features/ideas/tags";
+import { OutlineLink } from "@/features/outlines/components/outline-link";
+import { outlineIdsForSermons } from "@/features/outlines/outlines";
 import {
   RecordPreachingButton,
   RecordPreachingProvider,
@@ -20,7 +22,7 @@ import { SermonHistory } from "@/features/preaching/components/sermon-history";
 import { listContexts } from "@/features/preaching/contexts";
 import { listForSermon } from "@/features/preaching/occurrences";
 import { listVenues } from "@/features/preaching/venues";
-import { getT } from "@/i18n/server";
+import { getLocale, getT } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT("ideas")).page.metaTitle };
@@ -49,7 +51,7 @@ export default async function IdeaPage({
   if (!id.success) notFound();
 
   const db = getDb();
-  const [idea, tags, related, history, venues, contexts] = await Promise.all([
+  const [idea, tags, related, history, venues, contexts, outlines] = await Promise.all([
     getIdea(db, user.id, id.data),
     listTags(db, user.id),
     // Archived ones too, which the section marks; nothing for an undecided idea.
@@ -58,8 +60,12 @@ export default async function IdeaPage({
     listForSermon(db, user.id, id.data, 1, recentOccasions),
     listVenues(db, user.id),
     listContexts(db, user.id),
+    // Which outline is this idea's, if it has one: its ID and nothing of what is in it.
+    outlineIdsForSermons(db, user.id, [id.data]),
   ]);
   if (!idea) notFound();
+  const outlineId = outlines.get(idea.id) ?? null;
+  const locale = await getLocale();
   const from = (await searchParams)?.from;
   const back = libraryReturnHref(from);
   const t = await getT("ideas");
@@ -74,11 +80,17 @@ export default async function IdeaPage({
         title={t.kinds[idea.kind]}
         description={t.page.description}
         action={
-          // Only a sermon can be recorded as preached. An archived one still can.
-          idea.kind === "sermon" ? (
-            <RecordPreachingProvider venues={venueOptions} contexts={contextOptions}>
-              <RecordPreachingButton sermon={sermon} />
-            </RecordPreachingProvider>
+          // Only a sermon can be outlined or recorded as preached. An archived one still can.
+          // An idea filed as something else keeps the outline it had, and the way to it.
+          idea.kind === "sermon" || outlineId ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <OutlineLink sermon={sermon} outlineId={outlineId} locale={locale} />
+              {idea.kind === "sermon" && (
+                <RecordPreachingProvider venues={venueOptions} contexts={contextOptions}>
+                  <RecordPreachingButton sermon={sermon} />
+                </RecordPreachingProvider>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -90,6 +102,7 @@ export default async function IdeaPage({
         createdAt={idea.createdAt}
         updatedAt={idea.updatedAt}
         archivedAt={idea.archivedAt}
+        hasOutline={outlineId !== null}
         initial={{
           kind: idea.kind,
           title: idea.title,

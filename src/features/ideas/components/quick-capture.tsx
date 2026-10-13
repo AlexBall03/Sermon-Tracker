@@ -50,8 +50,22 @@ import {
   type UpdateDraft,
 } from "./idea-fields";
 
-/** What a capture can begin with: a kind already chosen, and passages already on it. */
-export type CaptureSeed = { kind?: IdeaKind; references?: readonly ScriptureReference[] };
+/** An idea a capture has just saved. */
+export type CapturedIdea = { id: string; title: string; kind: IdeaKind };
+
+/**
+ * What a capture can begin with: a kind already chosen, and passages already
+ * on it. `onSaved` is what the capture was begun for (an outline of the sermon
+ * about to be captured): it is called once, after the idea is saved, with the
+ * idea as it was saved, and never when the capture is closed or abandoned. It
+ * answers true when it has said what happened, and the usual toast is then
+ * left out.
+ */
+export type CaptureSeed = {
+  kind?: IdeaKind;
+  references?: readonly ScriptureReference[];
+  onSaved?: (idea: CapturedIdea) => boolean | void;
+};
 
 type QuickCapture = {
   open: () => void;
@@ -124,6 +138,8 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
   const [panelOpening, setPanelOpening] = useState(0);
   const [discarding, setDiscarding] = useState(false);
   const ideaId = useRef<string | null>(null);
+  // What this capture was begun for, if anything. It goes when the capture does.
+  const afterSave = useRef<CaptureSeed["onSaved"]>(undefined);
   const titleRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const wide = useMediaQuery(wideEnough);
@@ -139,6 +155,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
         setResult(null);
         setPanel(null);
         ideaId.current = null;
+        afterSave.current = given.onSaved;
         setOpen(true);
       },
     }),
@@ -162,6 +179,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     setCaptures((count) => count + 1);
     setPanel(null);
     ideaId.current = null;
+    afterSave.current = undefined;
   }
 
   async function save() {
@@ -191,8 +209,15 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
       setResult(outcome);
       return;
     }
+    const then = afterSave.current;
     clear();
     setOpen(false);
+    if (
+      outcome.id &&
+      then?.({ id: outcome.id, title: parsed.data.title, kind: parsed.data.kind }) === true
+    ) {
+      return;
+    }
     toast({
       message: outcome.message,
       action: outcome.id ? { label: t.open, href: `${routes.library}/${outcome.id}` } : undefined,

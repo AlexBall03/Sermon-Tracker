@@ -7,6 +7,7 @@ import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import { archiveIdea, deleteIdea, setIdeaKind } from "@/features/ideas/ideas";
 import { createEntry } from "./entries";
+import type { OutlineSort } from "./model";
 import { defaultNumbering, numberingConfigSchema } from "./numbering";
 import {
   createOutline,
@@ -14,6 +15,7 @@ import {
   getOutline,
   getOutlineForSermon,
   listOutlines,
+  outlineIdsForSermons,
   setNumbering,
 } from "./outlines";
 import { outlineSchemas } from "./schemas";
@@ -143,12 +145,13 @@ describe("making an outline", () => {
     expect((await ideaRow(sermonId)).archivedAt).toEqual(old);
   });
 
-  it("writes nothing to the sermon", async () => {
+  it("writes nothing to the sermon: making, numbering, and deleting an outline are not work on it", async () => {
     const sermonId = await stored("Grace", { status: "developing" });
     const before = await ideaRow(sermonId);
     const created = await createOutline(db, me, sermonId);
     if (created.status !== "created") throw new Error(created.status);
-    await point(created.outline.id, "First");
+    // An empty point is a place to write, and says nothing yet.
+    await point(created.outline.id, "");
     await setNumbering(db, me, created.outline.id, { version: 1, preset: "decimal" });
     await deleteOutline(db, me, created.outline.id);
     expect(await ideaRow(sermonId)).toEqual(before);
@@ -214,6 +217,62 @@ describe("listing outlines", () => {
     expect(await titles()).toEqual(["Active", "Refiled"]);
     // Nothing was deleted in between.
     expect(await outlineRows()).toHaveLength(3);
+  });
+
+  it("finds outlines by their sermon's title, every word, and takes % and _ as themselves", async () => {
+    for (const title of ["Amazing Grace", "Grace and Truth", "Faith", "100% sure"]) {
+      await outlined(title);
+    }
+    await outlined("Grace elsewhere", other);
+    const found = async (q: string) =>
+      (await listOutlines(db, me, { q, sort: "title-asc" })).items.map((item) => item.sermon.title);
+    expect(await found("grace")).toEqual(["Amazing Grace", "Grace and Truth"]);
+    expect(await found("truth GRACE")).toEqual(["Grace and Truth"]);
+    expect(await found("%")).toEqual(["100% sure"]);
+    expect(await found("nothing like it")).toEqual([]);
+    expect(await listOutlines(db, me, { q: "grace" })).toMatchObject({ total: 2, totalPages: 1 });
+  });
+
+  it("orders by when the outline was worked on, by title, and by when it was made", async () => {
+    const b = await outlined("beta");
+    const a = await outlined("Alpha");
+    const c = await outlined("Gamma");
+    const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+    const set = (id: string, updated: number, created: number) =>
+      db
+        .update(sermonOutlines)
+        .set({ updatedAt: at(updated), createdAt: at(created) })
+        .where(eq(sermonOutlines.id, id));
+    await set(a.id, 1, 3);
+    await set(b.id, 2, 1);
+    await set(c.id, 3, 2);
+
+    const order = async (sort?: OutlineSort) =>
+      (await listOutlines(db, me, { sort })).items.map((item) => item.sermon.title);
+    expect(await order()).toEqual(["Gamma", "beta", "Alpha"]);
+    expect(await order("updated-asc")).toEqual(["Alpha", "beta", "Gamma"]);
+    // Without regard to case.
+    expect(await order("title-asc")).toEqual(["Alpha", "beta", "Gamma"]);
+    expect(await order("title-desc")).toEqual(["Gamma", "beta", "Alpha"]);
+    expect(await order("created-desc")).toEqual(["Alpha", "Gamma", "beta"]);
+  });
+
+  it("says each sermon's status, and reads no entry to do it", async () => {
+    const { id, sermonId } = await outlined("Grace");
+    await db.update(ideas).set({ status: "ready" }).where(eq(ideas.id, sermonId));
+    await point(id, "One");
+    const [item] = (await listOutlines(db, me)).items;
+    expect(item.sermon).toMatchObject({ id: sermonId, title: "Grace", status: "ready" });
+    expect(item).not.toHaveProperty("entries");
+  });
+
+  it("says which of some sermons have an outline, for the owner only", async () => {
+    const one = await outlined("One");
+    const bare = await stored("Bare");
+    const theirs = await outlined("Theirs", other);
+    const found = await outlineIdsForSermons(db, me, [one.sermonId, bare, theirs.sermonId]);
+    expect([...found]).toEqual([[one.sermonId, one.id]]);
+    expect(await outlineIdsForSermons(db, me, [])).toEqual(new Map());
   });
 
   it("pages, and gives the last page for one past the end", async () => {

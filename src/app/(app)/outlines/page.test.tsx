@@ -138,7 +138,11 @@ describe("the outline editor's page", () => {
     await openEditor(outlineId.toUpperCase());
     expect(state.getOutline).toHaveBeenCalledWith("database", "owner-1", outlineId);
     expect(screen.getByRole("heading", { level: 1, name: "Outline" })).toBeInTheDocument();
-    expect(screen.getByText("It is Well")).toBeInTheDocument();
+    // The sermon is named, and its name leads to it as "back" does.
+    expect(screen.getByRole("link", { name: "It is Well" })).toHaveAttribute(
+      "href",
+      `/library/${sermonId}`,
+    );
     expect(screen.getByRole("link", { name: "Back to sermon" })).toHaveAttribute(
       "href",
       `/library/${sermonId}`,
@@ -158,6 +162,9 @@ describe("the outline editor's page", () => {
             title: "Grace",
             notes: null,
             revision: 2,
+            // Its passages, and the saved point it was made from: both are the editor's to show.
+            references: [],
+            sourcePointId: null,
           },
         ],
       },

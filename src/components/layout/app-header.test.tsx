@@ -55,7 +55,7 @@ describe("AppHeader", () => {
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Dashboard", "Library", "Bible"]);
+    ).toEqual(["Dashboard", "Library", "Outlines", "Bible"]);
     // It is reached from the account menu instead (see the account tests below).
     expect(
       within(screen.getByRole("navigation", { name: "Sections" })).queryByRole("link", {
@@ -78,7 +78,12 @@ describe("AppHeader", () => {
     const nav = screen.getByRole("navigation", { name: "Application" });
     expect(within(nav).getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
     expect(within(nav).getByRole("link", { name: "Bible" })).toHaveAttribute("href", "/bible");
-    for (const name of [/history/i, /analytics/i, /outline/i]) {
+    // The overview of outlines, never one outline.
+    expect(within(nav).getByRole("link", { name: "Outlines" })).toHaveAttribute(
+      "href",
+      "/outlines",
+    );
+    for (const name of [/history/i, /analytics/i]) {
       expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
     }
   });
@@ -102,12 +107,12 @@ describe("AppHeader", () => {
           const control = item.querySelector("a, button")!;
           return control.getAttribute("aria-label") ?? control.textContent;
         });
-    expect(items()).toEqual(["Dashboard", "Library", "Capture an idea", "Bible"]);
+    expect(items()).toEqual(["Dashboard", "Library", "Capture an idea", "Outlines", "Bible"]);
     unmount();
 
     state.pathname = "/library";
     render(<AppHeader isAdmin />);
-    expect(items()).toEqual(["Dashboard", "Library", "Capture an idea", "Bible"]);
+    expect(items()).toEqual(["Dashboard", "Library", "Capture an idea", "Outlines", "Bible"]);
     const tabs = screen.getByRole("navigation", { name: "Sections" });
     expect(within(tabs).getByRole("link", { name: "Library" })).toHaveAttribute(
       "aria-current",

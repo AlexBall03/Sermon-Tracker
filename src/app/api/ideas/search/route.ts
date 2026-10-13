@@ -1,13 +1,18 @@
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
-import { ideaSearchSize, type IdeaMatches } from "@/features/ideas/idea-search";
+import {
+  ideaSearchOutlineParam,
+  ideaSearchSize,
+  type IdeaMatches,
+} from "@/features/ideas/idea-search";
 import { searchIdeas } from "@/features/ideas/ideas";
 import {
   defaultLibraryQuery,
   libraryParams,
   parseLibraryQuery,
 } from "@/features/ideas/library-query";
+import { outlineIdsForSermons } from "@/features/outlines/outlines";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -18,7 +23,8 @@ const noStore = { "Cache-Control": "no-store" };
  * text, the kind, and the archive view are taken from the address, through the
  * library's parser; the order is always most recently changed first. Archived
  * ideas are left out unless the address asks for them, which only the
- * related-ideas picker does.
+ * related-ideas picker does. Asked with `outline=1`, each sermon also says
+ * which outline is its own, from a query limited to the same owner.
  */
 export async function GET(request: Request) {
   const actor = await authorize("active");
@@ -32,12 +38,21 @@ export async function GET(request: Request) {
   const { q, kinds, archive } = parseLibraryQuery(params);
 
   try {
+    const db = getDb();
     const page = await searchIdeas(
-      getDb(),
+      db,
       actor.user.id,
       { ...defaultLibraryQuery, q, kinds, archive },
       ideaSearchSize,
     );
+    const outlines =
+      asked.get(ideaSearchOutlineParam) === "1"
+        ? await outlineIdsForSermons(
+            db,
+            actor.user.id,
+            page.items.filter((idea) => idea.kind === "sermon").map((idea) => idea.id),
+          )
+        : null;
     const matches: IdeaMatches = {
       total: page.total,
       items: page.items.map((idea) => ({
@@ -49,6 +64,7 @@ export async function GET(request: Request) {
         subject: idea.kind === "sermon" ? idea.subject : null,
         references: idea.references,
         archived: idea.archivedAt !== null,
+        ...(outlines ? { outlineId: outlines.get(idea.id) ?? null } : {}),
       })),
     };
     return Response.json(matches, { headers: noStore });

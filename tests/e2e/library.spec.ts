@@ -68,7 +68,7 @@ test.describe("library, signed in", () => {
   }
 
   async function tagIdea(page: Page, title: string, tags: string[]) {
-    await page.getByRole("link", { name: title }).click();
+    await page.getByRole("link", { name: title, exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(title);
     await page.getByRole("button", { name: /^Add/ }).click();
     for (const tag of tags) {
@@ -203,7 +203,7 @@ test.describe("library, signed in", () => {
       // Remove what this run made, whatever happened above.
       for (const title of [alpha, beta]) {
         await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
-        const link = page.getByRole("link", { name: title });
+        const link = page.getByRole("link", { name: title, exact: true });
         if ((await link.count()) === 0) continue;
         await link.click();
         await page.getByRole("button", { name: "Delete idea" }).click();
@@ -248,7 +248,7 @@ test.describe("library, signed in", () => {
       await page.goto(
         `/library/sermon-ideas?q=${encodeURIComponent(title)}${archived ? "&archived=all" : ""}`,
       );
-      await page.getByRole("link", { name: title }).click();
+      await page.getByRole("link", { name: title, exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(title);
     };
 
@@ -333,7 +333,7 @@ test.describe("library, signed in", () => {
       // Remove what this run made, archived or not.
       for (const title of [sermon, point]) {
         await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}&archived=all`);
-        const link = page.getByRole("link", { name: title });
+        const link = page.getByRole("link", { name: title, exact: true });
         if ((await link.count()) === 0) continue;
         await link.click();
         await page.getByRole("button", { name: "Delete idea" }).click();

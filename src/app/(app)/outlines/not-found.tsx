@@ -15,7 +15,7 @@ export default async function OutlineNotFound() {
   const shell = (await getT("navigation")).notFound;
   return (
     <StatusPage icon={FileQuestion} title={t.title} body={t.body}>
-      <Link href={routes.sermonIdeas} className={buttonVariants()}>
+      <Link href={routes.outlines} className={buttonVariants()}>
         {t.back}
       </Link>
       <Link href={routes.dashboard} className={buttonVariants({ variant: "outline" })}>

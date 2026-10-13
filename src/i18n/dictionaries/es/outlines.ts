@@ -50,7 +50,7 @@ export const outlines: Untranslated<typeof english> = {
     notFound: {
       title: "No se encontró el bosquejo",
       body: "Puede que se haya eliminado o que el enlace no sea correcto.",
-      back: "Ir a Ideas de sermones",
+      back: "Ir a Bosquejos",
     },
   },
   create: {
@@ -62,6 +62,80 @@ export const outlines: Untranslated<typeof english> = {
     notSermonTitle: "Solo un sermón puede tener un bosquejo",
     notSermonBody: "Primero clasifica esta idea como sermón y luego vuelve para darle un bosquejo.",
     backToIdea: "Volver a la idea",
+  },
+  overview: {
+    metaTitle: "Bosquejos",
+    title: "Bosquejos",
+    description:
+      "Los bosquejos de tus sermones. Abre uno para continuar o empieza uno para un sermón.",
+    create: "Crear bosquejo",
+    search: {
+      label: "Buscar bosquejos",
+      landmark: "Buscar bosquejos",
+      placeholder: "Buscar por título del sermón...",
+    },
+    sort: "Ordenar bosquejos",
+    sorts: {
+      "updated-desc": "Trabajados recientemente",
+      "updated-asc": "Trabajados hace más tiempo",
+      "title-asc": "Título del sermón A–Z",
+      "title-desc": "Título del sermón Z–A",
+      "created-desc": "Creados recientemente",
+    },
+    label: "Bosquejos",
+    pages: "Páginas de bosquejos",
+    count: (total: number, written: string, filtered: boolean) =>
+      total === 1
+        ? `${written} bosquejo${filtered ? " coincidente" : ""}`
+        : `${written} bosquejos${filtered ? " coincidentes" : ""}`,
+    showing: (first: string, last: string, total: number, written: string, filtered: boolean) =>
+      `Mostrando ${first}–${last} de ${written} ${
+        total === 1
+          ? `bosquejo${filtered ? " coincidente" : ""}`
+          : `bosquejos${filtered ? " coincidentes" : ""}`
+      }`,
+    entries: (count: number) =>
+      count === 0 ? "Todavía vacío" : count === 1 ? "1 entrada" : `${count} entradas`,
+    updated: "Trabajado el",
+    status: "Estado del sermón:",
+    open: (sermon: string) => `Abrir el bosquejo de ${sermon}`,
+    sermon: "Sermón",
+    openSermon: (sermon: string) => `Abrir el sermón ${sermon}`,
+    empty: {
+      nothing: "Todavía no hay bosquejos",
+      nothingBody:
+        "Un bosquejo guarda la forma de un sermón: encabezados cortos, notas breves, pasajes y puntos bajo otros puntos. Empieza uno para un sermón en el que estés trabajando.",
+      noMatch: "Ningún bosquejo coincide con tu búsqueda",
+      noMatchBody: (search: string) =>
+        `Ningún sermón con bosquejo tiene «${search}» en su título. Un sermón que todavía no tiene bosquejo no aparece aquí.`,
+      clearSearch: "Borrar búsqueda",
+    },
+  },
+  picker: {
+    title: "Crear un bosquejo",
+    description:
+      "Elige el sermón al que pertenece. Un sermón tiene un solo bosquejo, así que al elegir uno que ya lo tiene se abre.",
+    find: "Buscar un sermón",
+    placeholder: "Busca en tus ideas de sermones...",
+    recent: "Sermones cambiados recientemente",
+    matching: "Sermones coincidentes",
+    none: "Todavía no tienes ideas de sermones. Captura una abajo y su bosquejo se abrirá enseguida.",
+    noMatch: (search: string) => `Ninguna idea de sermón coincide con «${search}».`,
+    hasOutline: "Tiene bosquejo",
+    open: (sermon: string) => `${sermon}: abrir su bosquejo`,
+    create: (sermon: string) => `${sermon}: crear su bosquejo`,
+    loading: "Cargando tus sermones",
+    orNew: "O haz el bosquejo de un sermón que aún no has capturado",
+    newSermon: "Nueva idea de sermón",
+    notSermon: "Guardado. Solo un sermón puede tener un bosquejo, así que no se creó ninguno.",
+    offline: "Eso no llegó al servidor. Revisa tu conexión e inténtalo de nuevo.",
+  },
+  link: {
+    open: "Abrir bosquejo",
+    create: "Crear bosquejo",
+    openNamed: (sermon: string) => `Abrir el bosquejo de ${sermon}`,
+    createNamed: (sermon: string) => `Crear un bosquejo para ${sermon}`,
+    short: "Bosquejo",
   },
   editor: {
     status: {
@@ -94,6 +168,12 @@ export const outlines: Untranslated<typeof english> = {
     addIntroduction: "Añadir introducción",
     addConclusion: "Añadir conclusión",
     addPoint: "Añadir punto",
+    addSavedPoint: "Añadir desde un punto guardado",
+    addPassage: "Añadir pasaje",
+    passages: "Pasajes",
+    addToPoint: "Añadir al bosquejo",
+    fromSavedPoint: "De un punto guardado",
+    openSource: (name: string) => `${name}: abrir el punto guardado del que se hizo`,
     empty:
       "Todavía no hay puntos. Añade el primero y luego pulsa Intro en un encabezado para añadir el siguiente.",
     full: (limit: number) => `Un bosquejo puede tener hasta ${limit} entradas.`,
@@ -125,7 +205,28 @@ export const outlines: Untranslated<typeof english> = {
       outdent: "Reducir sangría",
       toTop: "Mover al primer nivel",
       addNotes: "Añadir notas",
+      addPassage: "Añadir pasaje",
+      addSavedPoint: "Añadir desde un punto guardado",
       delete: "Eliminar",
+    },
+    savedPoint: {
+      title: "Añadir desde un punto guardado",
+      description:
+        "Se añade a este bosquejo una copia del encabezado, las notas y los pasajes del punto. El punto guardado no cambia.",
+      find: "Buscar un punto",
+      placeholder: "Busca en tus ideas de puntos...",
+      recent: "Puntos cambiados recientemente",
+      matching: "Puntos coincidentes",
+      none: "Todavía no tienes ideas de puntos. Captura una y podrás colocarla en cualquier bosquejo.",
+      noMatch: (search: string) => `Ninguna idea de punto coincide con «${search}».`,
+      loading: "Cargando tus puntos",
+      place: (name: string) => `Dónde va, junto a ${name}`,
+      below: "Debajo",
+      under: "Como subpunto",
+      atEnd: "Se añade después del último punto principal.",
+      add: (title: string) => `Añadir ${title}`,
+      added: (title: string) => `Se añadió «${title}».`,
+      done: "Listo",
     },
     shortcuts: {
       addBelow: "Intro",
@@ -146,7 +247,7 @@ export const outlines: Untranslated<typeof english> = {
             ? `«${name}» y el punto que tiene debajo se eliminarán del bosquejo.`
             : `«${name}» y los ${nested} puntos que tiene debajo se eliminarán del bosquejo.`,
       sectionTitle: (section: string) => `¿Eliminar la ${section.toLowerCase()}?`,
-      sectionDescription: "Su encabezado y sus notas se eliminarán del bosquejo.",
+      sectionDescription: "Su encabezado, sus notas y sus pasajes se eliminarán del bosquejo.",
       confirm: "Eliminar",
     },
     reloaded:
@@ -156,6 +257,7 @@ export const outlines: Untranslated<typeof english> = {
       title: "Esta parte también se cambió en otro lugar",
       theirTitle: "El encabezado guardado en otro lugar:",
       theirNotes: "Las notas guardadas en otro lugar:",
+      theirPassages: "Los pasajes guardados en otro lugar:",
       empty: "(nada)",
       keepMine: "Conservar el mío",
       useTheirs: "Usar el otro",

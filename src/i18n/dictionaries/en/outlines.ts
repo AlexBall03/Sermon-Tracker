@@ -51,7 +51,7 @@ export const outlines = {
     notFound: {
       title: "Outline not found",
       body: "It may have been deleted, or the link may be wrong.",
-      back: "Go to Sermon Ideas",
+      back: "Go to Outlines",
     },
   },
   create: {
@@ -63,6 +63,78 @@ export const outlines = {
     notSermonTitle: "Only a sermon can have an outline",
     notSermonBody: "File this idea as a sermon first, then come back to give it an outline.",
     backToIdea: "Back to the idea",
+  },
+  /** The overview at /outlines. */
+  overview: {
+    metaTitle: "Outlines",
+    title: "Outlines",
+    description: "The outlines of your sermons. Open one to carry on, or start one for a sermon.",
+    create: "Create Outline",
+    search: {
+      label: "Search outlines",
+      landmark: "Search outlines",
+      placeholder: "Search by sermon title...",
+    },
+    sort: "Sort outlines",
+    sorts: {
+      "updated-desc": "Recently worked on",
+      "updated-asc": "Least recently worked on",
+      "title-asc": "Sermon title A–Z",
+      "title-desc": "Sermon title Z–A",
+      "created-desc": "Recently created",
+    },
+    label: "Outlines",
+    pages: "Outline pages",
+    count: (total: number, written: string, filtered: boolean) =>
+      `${written} ${filtered ? "matching " : ""}${total === 1 ? "outline" : "outlines"}`,
+    showing: (first: string, last: string, total: number, written: string, filtered: boolean) =>
+      `Showing ${first}–${last} of ${written} ${filtered ? "matching " : ""}${total === 1 ? "outline" : "outlines"}`,
+    /** How much an outline holds, sections included. */
+    entries: (count: number) =>
+      count === 0 ? "Nothing in it yet" : count === 1 ? "1 entry" : `${count} entries`,
+    updated: "Worked on",
+    status: "Sermon status:",
+    open: (sermon: string) => `Open the outline of ${sermon}`,
+    sermon: "Sermon",
+    openSermon: (sermon: string) => `Open the sermon ${sermon}`,
+    empty: {
+      nothing: "No outlines yet",
+      nothingBody:
+        "An outline holds the shape of a sermon: short headings, brief notes, passages, and points under points. Start one for a sermon you are working on.",
+      noMatch: "No outlines match your search",
+      noMatchBody: (search: string) =>
+        `No sermon with an outline has “${search}” in its title. A sermon that has no outline yet is not listed here.`,
+      clearSearch: "Clear search",
+    },
+  },
+  /** Choosing the sermon a new outline is for. */
+  picker: {
+    title: "Create an outline",
+    description:
+      "Choose the sermon it is for. A sermon has one outline, so choosing one that has an outline opens it.",
+    find: "Find a sermon",
+    placeholder: "Search your sermon ideas...",
+    recent: "Recently changed sermons",
+    matching: "Matching sermons",
+    none: "You have no sermon ideas yet. Capture one below and its outline opens next.",
+    noMatch: (search: string) => `No sermon ideas match “${search}”.`,
+    hasOutline: "Has an outline",
+    open: (sermon: string) => `${sermon}: open its outline`,
+    create: (sermon: string) => `${sermon}: create its outline`,
+    loading: "Loading your sermons",
+    orNew: "Or outline a sermon you have not captured yet",
+    newSermon: "New sermon idea",
+    /** After a capture begun here was saved as something other than a sermon. */
+    notSermon: "Saved. Only a sermon can have an outline, so none was made.",
+    offline: "That did not reach the server. Check your connection and try again.",
+  },
+  /** The way to an outline from where its sermon is shown. */
+  link: {
+    open: "Open Outline",
+    create: "Create Outline",
+    openNamed: (sermon: string) => `Open the outline of ${sermon}`,
+    createNamed: (sermon: string) => `Create an outline for ${sermon}`,
+    short: "Outline",
   },
   editor: {
     status: {
@@ -94,6 +166,13 @@ export const outlines = {
     addIntroduction: "Add introduction",
     addConclusion: "Add conclusion",
     addPoint: "Add point",
+    addSavedPoint: "Add from Saved Point",
+    addPassage: "Add passage",
+    passages: "Passages",
+    /** The button in the Scripture panel that puts a passage on an entry. */
+    addToPoint: "Add to outline",
+    fromSavedPoint: "From a saved point",
+    openSource: (name: string) => `${name}: open the saved point it was made from`,
     empty: "No points yet. Add the first, then press Enter in a heading to add the next.",
     full: (limit: number) => `An outline can hold up to ${limit} entries.`,
     heading: "Heading",
@@ -126,7 +205,30 @@ export const outlines = {
       outdent: "Outdent",
       toTop: "Move to top level",
       addNotes: "Add notes",
+      addPassage: "Add passage",
+      addSavedPoint: "Add from saved point",
       delete: "Delete",
+    },
+    /** Placing a saved point idea in the outline. */
+    savedPoint: {
+      title: "Add from a saved point",
+      description:
+        "A copy of the point's heading, notes, and passages is added to this outline. The saved point itself is not changed.",
+      find: "Find a point",
+      placeholder: "Search your point ideas...",
+      recent: "Recently changed points",
+      matching: "Matching points",
+      none: "You have no point ideas yet. Capture one, and it can be placed in any outline.",
+      noMatch: (search: string) => `No point ideas match “${search}”.`,
+      loading: "Loading your points",
+      /** Where the point goes, when the picker was opened from a point of the outline. */
+      place: (name: string) => `Where it goes, beside ${name}`,
+      below: "Below it",
+      under: "As a subpoint",
+      atEnd: "It is added after the last main point.",
+      add: (title: string) => `Add ${title}`,
+      added: (title: string) => `Added “${title}”.`,
+      done: "Done",
     },
     shortcuts: {
       addBelow: "Enter",
@@ -148,7 +250,7 @@ export const outlines = {
             ? `“${name}” and the 1 point under it will be deleted from the outline.`
             : `“${name}” and the ${nested} points under it will be deleted from the outline.`,
       sectionTitle: (section: string) => `Delete the ${section.toLowerCase()}?`,
-      sectionDescription: "Its heading and notes will be deleted from the outline.",
+      sectionDescription: "Its heading, notes, and passages will be deleted from the outline.",
       confirm: "Delete",
     },
     reloaded:
@@ -158,6 +260,7 @@ export const outlines = {
       title: "This part was also changed somewhere else",
       theirTitle: "The heading saved elsewhere:",
       theirNotes: "The notes saved elsewhere:",
+      theirPassages: "The passages saved elsewhere:",
       empty: "(nothing)",
       keepMine: "Keep mine",
       useTheirs: "Use the other",

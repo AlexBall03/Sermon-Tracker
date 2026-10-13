@@ -28,6 +28,7 @@ import {
   type LibrarySearchParams,
 } from "@/features/ideas/library-query";
 import { listTags } from "@/features/ideas/tags";
+import { outlineIdsForSermons } from "@/features/outlines/outlines";
 import { RecordPreachingProvider } from "@/features/preaching/components/record-preaching";
 import { listContexts } from "@/features/preaching/contexts";
 import { listVenues } from "@/features/preaching/venues";
@@ -87,6 +88,12 @@ export default async function SermonIdeasPage({
     listVenues(db, user.id),
     listContexts(db, user.id),
   ]);
+  // Which of the sermons on this page have an outline: one query for the page.
+  const outlines = await outlineIdsForSermons(
+    db,
+    user.id,
+    items.filter((idea) => idea.kind === "sermon").map((idea) => idea.id),
+  );
   const filtered = isFiltered(query);
   const searching = searchTerms(query.q).length > 0;
   const filtering = activeFilterCount(query) > 0;
@@ -204,6 +211,7 @@ export default async function SermonIdeasPage({
                     ideas={items}
                     label={t.results.label}
                     query={{ ...query, page }}
+                    outlines={outlines}
                     locale={locale}
                   />
                 </RecordPreachingProvider>

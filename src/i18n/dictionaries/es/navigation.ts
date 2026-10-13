@@ -4,6 +4,7 @@ import type { navigation as english } from "../en/navigation";
 export const navigation: Untranslated<typeof english> = {
   dashboard: "Inicio",
   library: "Biblioteca",
+  outlines: "Bosquejos",
   bible: "Biblia",
   home: "Inicio de Sermon Tracker",
   application: "Aplicación",

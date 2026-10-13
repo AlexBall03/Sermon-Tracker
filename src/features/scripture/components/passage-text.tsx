@@ -1,6 +1,6 @@
 "use client";
 
-import { Star } from "lucide-react";
+import { BookOpen, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useReading } from "@/features/preferences/client";
@@ -266,19 +266,33 @@ function SpanText({
 }
 
 /**
+ * How much of a passage is read in place before the rest is left to the
+ * Scripture Panel or the Bible: in a preview that floats over the page, and in
+ * a row that opens within it. Every surface that shows a passage in place uses
+ * one of these two, so a long passage is bounded the same way wherever it is
+ * met, and never becomes a page within a page.
+ */
+export const passageLimits = { preview: 6, row: 12 } as const;
+
+/**
  * The text of a reference, fetched a chapter at a time, in the account's own
  * translation unless another is named. `limit` caps how many verses are
- * shown, for a preview; the caller is told how many were left out.
+ * shown, for a preview, and what was left out is said beneath. With `onMore`
+ * that line is the way to the rest: a button, for the surface to open the
+ * whole passage where there is room to read it.
  */
 export function Passage({
   reference,
   limit = Infinity,
   translation,
+  onMore,
   className,
 }: {
   reference: ScriptureReference;
   limit?: number;
   translation?: TranslationId;
+  /** Opens the whole passage. Given, the count of verses left out becomes a button. */
+  onMore?: () => void;
   className?: string;
 }) {
   const t = useT("scripture").passage;
@@ -307,7 +321,19 @@ export function Passage({
           limit={take}
         />
       ))}
-      {hidden > 0 && <p className="px-2 text-sm text-muted-foreground">{t.more(hidden)}</p>}
+      {hidden > 0 &&
+        (onMore ? (
+          <button
+            type="button"
+            onClick={onMore}
+            className="mx-2 inline-flex min-h-8 items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground underline-offset-4 transition-colors duration-150 hover:text-primary hover:underline active:text-primary pointer-coarse:min-h-11"
+          >
+            <BookOpen className="size-3.5" aria-hidden />
+            {t.readMore(hidden)}
+          </button>
+        ) : (
+          <p className="px-2 text-sm text-muted-foreground">{t.more(hidden)}</p>
+        ))}
     </div>
   );
 }

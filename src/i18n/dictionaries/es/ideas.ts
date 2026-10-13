@@ -90,8 +90,10 @@ export const ideas: Untranslated<typeof english> = {
     captured: "Capturada el",
     lastChanged: "último cambio el",
     deleteTitle: "¿Eliminar esta idea?",
-    deleteDescription: (title) =>
-      `Se eliminarán “${title}” y sus referencias bíblicas. Esto no se puede deshacer.`,
+    deleteDescription: (title, outline) =>
+      outline
+        ? `Se eliminarán “${title}”, sus referencias bíblicas y su bosquejo, con todos sus puntos. Esto no se puede deshacer.`
+        : `Se eliminarán “${title}” y sus referencias bíblicas. Esto no se puede deshacer.`,
     deleteConfirm: (kind) => `Eliminar ${kinds[kind].toLowerCase()}`,
     delete: "Eliminar idea",
     archive: "Archivar idea",

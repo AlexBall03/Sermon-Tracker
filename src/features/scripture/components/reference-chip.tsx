@@ -17,10 +17,10 @@ import { useReading } from "@/features/preferences/client";
 import { useLocale, useT } from "@/i18n/client";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-import { readerHref, referenceLocation } from "../reader-location";
+import { readerHref, referenceLocation, type ReferenceOrigin } from "../reader-location";
 import { countReferenceVerses, formatReference, type ScriptureReference } from "../reference";
 import { translations } from "../translations";
-import { Passage } from "./passage-text";
+import { Passage, passageLimits } from "./passage-text";
 import { useScripture } from "./scripture-provider";
 
 type ReferenceChipProps = {
@@ -31,13 +31,13 @@ type ReferenceChipProps = {
    */
   onChange?: (references: ScriptureReference[]) => void;
   onRemove?: () => void;
-  /** The idea the reference is on, so the Bible can offer the way back to it. */
-  origin?: string;
+  /** The idea or outline the reference is on, so the Bible can offer the way back to it. */
+  origin?: ReferenceOrigin;
   className?: string;
 };
 
 /** A preview shows this many verses; "Read" opens the rest in the panel. */
-const previewVerses = 6;
+const previewVerses = passageLimits.preview;
 
 export const chipClass =
   "inline-flex h-8 max-w-full items-center rounded-md border bg-surface px-2.5 font-serif text-[0.875rem] leading-none font-medium whitespace-nowrap text-foreground italic shadow-card transition-[border-color,background-color] duration-150 hover:border-primary/70 active:bg-foreground/5 aria-expanded:border-ring pointer-coarse:h-10";
@@ -72,7 +72,7 @@ export function ReferenceChip({
 
   const body = (
     <>
-      <Passage reference={reference} limit={previewVerses} className="-mx-2 mt-3" />
+      <Passage reference={reference} limit={previewVerses} onMore={read} className="-mx-2 mt-3" />
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={read}>
           <BookOpen aria-hidden />

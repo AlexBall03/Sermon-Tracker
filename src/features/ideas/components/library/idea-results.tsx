@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { OutlineLink } from "@/features/outlines/components/outline-link";
 import { RecordPreachingButton } from "@/features/preaching/components/record-preaching";
 import { ReferenceChip } from "@/features/scripture/components/reference-chip";
 import { referenceKey } from "@/features/scripture/reference";
@@ -65,6 +66,10 @@ export function DevelopedLine({
  * has a `RecordPreachingProvider`; nothing about preaching is read for the
  * list, so a page of ideas costs no more queries than it did.
  *
+ * A sermon leads to its outline from where it is listed, or to where it is
+ * given one, when the page says which sermons have one (`outlines`): one
+ * query for the page, however many sermons are on it.
+ *
  * An archived idea is only here because it was asked for. It is marked as
  * archived, apart from its status, which it keeps, and can be restored where
  * it stands.
@@ -73,10 +78,16 @@ export function IdeaResults({
   ideas,
   label,
   query,
+  outlines,
   locale = defaultLocale,
 }: {
   ideas: IdeaWithReferences[];
   label: string;
+  /**
+   * The outline of each sermon here that has one, by the sermon's ID. Left
+   * out, no way to an outline is shown.
+   */
+  outlines?: ReadonlyMap<string, string>;
   /** The library the ideas were found in, so each one can lead back to it. */
   query: LibraryQuery;
   /** The interface language. English when omitted. */
@@ -193,9 +204,23 @@ export function IdeaResults({
                   </time>
                 </p>
               )}
-              {/* Only a sermon can be preached; an archived one still can. */}
+              {/* Only a sermon can be outlined or preached; an archived one still can. */}
               {sermon && (
-                <RecordPreachingButton sermon={{ id: idea.id, title: idea.title }} onCard />
+                <span className="-mr-2 flex items-center">
+                  {outlines && (
+                    <OutlineLink
+                      sermon={{ id: idea.id, title: idea.title }}
+                      outlineId={outlines.get(idea.id) ?? null}
+                      onCard
+                      locale={locale}
+                    />
+                  )}
+                  <RecordPreachingButton
+                    sermon={{ id: idea.id, title: idea.title }}
+                    onCard
+                    className="mr-0"
+                  />
+                </span>
               )}
               {idea.archivedAt && <RestoreButton id={idea.id} title={idea.title} />}
             </div>

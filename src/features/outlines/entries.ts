@@ -1,14 +1,16 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 
 import {
   ideas,
+  ideaScriptureReferences,
   outlineEntries,
   outlineEntryScriptureReferences,
   sermonOutlines,
   type OutlineEntry,
 } from "@/db/schema";
 import { isForeignKeyViolation, type Database } from "@/db/types";
-import type { ScriptureReference } from "@/features/scripture/reference";
+import { markDeveloped } from "@/features/ideas/ideas";
+import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { outlineLimits, type EntryType } from "./model";
 import type { EntryCreate, EntryMove, EntryUpdate } from "./schemas";
 import {
@@ -31,11 +33,12 @@ import {
  * indistinguishable from one that does not exist. The database repeats the
  * rule: an entry's foreign keys carry the owner.
  *
- * Every write begins by locking the outline's row, and holds it until its
- * transaction ends. Two writes to one outline therefore run one after the
- * other, each seeing what the one before it left, and always take their locks
- * in the same order (the outline, then its entries), so they cannot wait on
- * each other.
+ * Every write begins with `lockForWrite`: the sermon's row, then the outline's,
+ * both held until the transaction ends. Two writes to one outline therefore
+ * run one after the other, each seeing what the one before it left, and always
+ * take their locks in the same order (ideas, the outline, then its entries),
+ * so they cannot wait on each other. Deleting a sermon takes the same order:
+ * the idea, then the outline that goes with it.
  *
  * Two kinds of change are counted apart, so that one is never mistaken for
  * the other:
@@ -47,9 +50,19 @@ import {
  *   that entry's own `revision`. A move does not make an edit stale, and an
  *   edit does not make a move stale.
  *
- * Nothing here writes to `ideas`: working on an outline moves no status, no
- * `updated_at`, and no `last_developed_at`, and an entry made from a saved
- * point changes nothing about the point.
+ * Working on an outline is developing its sermon (Phase 3C). A write that
+ * really changed what the outline says ends with `markDeveloped`, which moves
+ * the sermon's `updated_at` and `last_developed_at` and nothing else: no
+ * status, no classification, no archive date. What counts is decided here and
+ * nowhere else:
+ *
+ * - words or passages that differ from what was stored;
+ * - an entry added, removed, or moved that bears content: it, or something
+ *   under it, has a heading, notes, or a passage.
+ *
+ * An empty point added, moved, or removed, a move to where the point already
+ * is, a retry, and anything stale or refused are not development. An entry
+ * made from a saved point changes nothing about the point.
  */
 
 /** One entry as it is read: its own words, and the passages on it. */
@@ -175,8 +188,8 @@ export async function listEntries(
 
 /**
  * Holds the outline's row until the transaction ends, and says what revision
- * its shape is at. Every change of shape begins here, so they run one after
- * another on an outline and each sees what the one before it left.
+ * its shape is at. Only `lockForWrite` calls it: the sermon's row is always
+ * taken first.
  */
 async function lockOutline(tx: Transaction, ownerId: string, outlineId: string) {
   const [outline] = await tx
@@ -185,6 +198,129 @@ async function lockOutline(tx: Transaction, ownerId: string, outlineId: string) 
     .where(and(eq(sermonOutlines.id, outlineId), eq(sermonOutlines.ownerId, ownerId)))
     .for("update");
   return outline ?? null;
+}
+
+/** What a saved point gives an entry made from it. */
+type Source = { id: string; title: string; notes: string | null };
+
+/**
+ * Where every write to an outline begins: its locks, in the one order they
+ * are ever taken. The rows of `ideas` first (the sermon the outline is of,
+ * and the saved point an entry is to be made from, lower ID first as
+ * `linkIdeas` takes two ideas), then the outline's row.
+ *
+ * The sermon comes before the outline because deleting a sermon holds the
+ * idea and then reaches for its outline, and a write that held the outline
+ * and then reached for the sermon, to say it was developed, would wait on it
+ * for ever. It is held `FOR NO KEY UPDATE`, which is all a change of its
+ * dates needs and does not keep out the key locks other rows take on it. The
+ * point is held `FOR KEY SHARE`, against deletion only.
+ *
+ * Null when the outline is not the owner's. `source` is null when no point
+ * was named, or the one named is not a point idea of the owner's.
+ */
+async function lockForWrite(
+  tx: Transaction,
+  ownerId: string,
+  outlineId: string,
+  sourcePointId: string | null = null,
+) {
+  // Read without a lock: an outline's sermon never changes.
+  const [found] = await tx
+    .select({ sermonId: sermonOutlines.sermonId })
+    .from(sermonOutlines)
+    .where(and(eq(sermonOutlines.id, outlineId), eq(sermonOutlines.ownerId, ownerId)))
+    .limit(1);
+  if (!found) return null;
+
+  const holdSermon = () =>
+    tx
+      .select({ id: ideas.id })
+      .from(ideas)
+      .where(and(eq(ideas.id, found.sermonId), eq(ideas.ownerId, ownerId)))
+      .for("no key update");
+  const holdSource = async (id: string): Promise<Source | null> => {
+    const [point] = await tx
+      .select({ id: ideas.id, title: ideas.title, notes: ideas.notes })
+      .from(ideas)
+      .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId), eq(ideas.kind, "point")))
+      .for("key share");
+    return point ?? null;
+  };
+  let source: Source | null = null;
+  if (sourcePointId && sourcePointId < found.sermonId) {
+    source = await holdSource(sourcePointId);
+    await holdSermon();
+  } else {
+    await holdSermon();
+    if (sourcePointId) source = await holdSource(sourcePointId);
+  }
+
+  const outline = await lockOutline(tx, ownerId, outlineId);
+  return outline ? { ...outline, sermonId: found.sermonId, source } : null;
+}
+
+/**
+ * True when any of these entries says something: a heading, notes, or a
+ * passage. An empty point is a place to write, and adding, moving, or
+ * removing one changes nothing a sermon says.
+ */
+async function bearsContent(tx: Transaction, ownerId: string, ids: string[]) {
+  if (ids.length === 0) return false;
+  const [found] = await tx
+    .select({ id: outlineEntries.id })
+    .from(outlineEntries)
+    .where(
+      and(
+        eq(outlineEntries.ownerId, ownerId),
+        inArray(outlineEntries.id, ids),
+        or(
+          ne(outlineEntries.title, ""),
+          isNotNull(outlineEntries.notes),
+          exists(
+            tx
+              .select({ one: sql`1` })
+              .from(outlineEntryScriptureReferences)
+              .where(eq(outlineEntryScriptureReferences.entryId, outlineEntries.id)),
+          ),
+        ),
+      ),
+    )
+    .limit(1);
+  return found !== undefined;
+}
+
+/** The passages of a saved point, in its own order, as many as an entry holds and none twice. */
+async function sourcePassages(tx: Transaction, ownerId: string, pointId: string) {
+  const rows = await tx
+    .select({
+      book: ideaScriptureReferences.book,
+      chapterStart: ideaScriptureReferences.chapterStart,
+      verseStart: ideaScriptureReferences.verseStart,
+      chapterEnd: ideaScriptureReferences.chapterEnd,
+      verseEnd: ideaScriptureReferences.verseEnd,
+    })
+    .from(ideaScriptureReferences)
+    // Joined to the idea so ownership is checked again in this statement.
+    .innerJoin(ideas, eq(ideas.id, ideaScriptureReferences.ideaId))
+    .where(and(eq(ideas.ownerId, ownerId), eq(ideaScriptureReferences.ideaId, pointId)))
+    .orderBy(asc(ideaScriptureReferences.position));
+  const seen = new Set<string>();
+  const passages: ScriptureReference[] = [];
+  for (const row of rows) {
+    const key = referenceKey(row);
+    if (seen.has(key) || passages.length >= outlineLimits.references) continue;
+    seen.add(key);
+    passages.push(row);
+  }
+  return passages;
+}
+
+async function writeReferences(tx: Transaction, entryId: string, references: ScriptureReference[]) {
+  if (references.length === 0) return;
+  await tx
+    .insert(outlineEntryScriptureReferences)
+    .values(references.map((reference, position) => ({ ...reference, entryId, position })));
 }
 
 /** What the shape of the outline is made of: every entry, as little of it as the tree needs. */
@@ -282,10 +418,11 @@ export type CreateEntryOutcome =
  * it goes last.
  *
  * Made from a saved point idea (`sourcePointId`), the entry begins with the
- * point's title and notes, where the request gives none of its own, and
- * remembers the point. That is a copy: the two are edited apart from then on,
- * and nothing is written to the point. Notes longer than an entry holds are
- * cut to what it holds.
+ * point's title and notes, where the request gives none of its own, and with
+ * the point's passages, and remembers the point. That is a copy: the two are
+ * edited apart from then on, and nothing is written to the point. Notes longer
+ * than an entry holds are cut to what it holds, and passages beyond what it
+ * holds are left out.
  *
  * The ID may come from the browser, which makes a repeated submission
  * harmless: the second attempt finds the first one's row and returns it
@@ -314,26 +451,13 @@ async function insertEntry(
   id?: string,
 ): Promise<CreateEntryOutcome> {
   return db.transaction(async (tx): Promise<CreateEntryOutcome> => {
-    // The point it is made from is read first and held against deletion, before
-    // the outline is locked. Deleting a point holds the point and then reaches
-    // for the entries made from it; taking the point here only after the
-    // outline would let the two wait on each other.
-    const [source] = input.sourcePointId
-      ? await tx
-          .select({ title: ideas.title, notes: ideas.notes })
-          .from(ideas)
-          .where(
-            and(
-              eq(ideas.id, input.sourcePointId),
-              eq(ideas.ownerId, ownerId),
-              eq(ideas.kind, "point"),
-            ),
-          )
-          .for("key share")
-      : [];
-
-    const outline = await lockOutline(tx, ownerId, input.outlineId);
+    // The point it is made from is held against deletion before the outline is
+    // locked. Deleting a point holds the point and then reaches for the entries
+    // made from it; taking the point only after the outline would let the two
+    // wait on each other.
+    const outline = await lockForWrite(tx, ownerId, input.outlineId, input.sourcePointId);
     if (!outline) return { status: "missing" };
+    const { source } = outline;
 
     // A retry is answered before anything is checked again: it changes nothing.
     if (id) {
@@ -375,10 +499,12 @@ async function insertEntry(
     }
 
     let { title, notes } = input;
+    let passages: ScriptureReference[] = [];
     if (input.sourcePointId) {
       if (input.type !== "point" || !source) return { status: "unknown_source" };
       title ??= cut(source.title, outlineLimits.title);
       if (notes === undefined) notes = source.notes ? cut(source.notes, outlineLimits.notes) : null;
+      passages = await sourcePassages(tx, ownerId, source.id);
     }
 
     await place(tx, ownerId, outline.id, placements);
@@ -396,8 +522,13 @@ async function insertEntry(
         sourcePointId: input.sourcePointId,
       })
       .returning();
+    await writeReferences(tx, created.id, passages);
     const revision = await countChange(tx, ownerId, outline.id);
-    return { status: "created", entry: asEntry(created), revision };
+    // An empty point is a place to write; one that says something is work on the sermon.
+    if (created.title !== "" || created.notes !== null || passages.length > 0) {
+      await markDeveloped(tx, ownerId, outline.sermonId);
+    }
+    return { status: "created", entry: asEntry(created, passages), revision };
   });
 }
 
@@ -424,7 +555,14 @@ export async function updateEntry(
 ): Promise<UpdateEntryOutcome> {
   return db.transaction(async (tx): Promise<UpdateEntryOutcome> => {
     const entry = await own(tx, ownerId, id);
-    if (!entry || !(await lockOutline(tx, ownerId, entry.outlineId))) return { status: "missing" };
+    const outline = entry && (await lockForWrite(tx, ownerId, entry.outlineId));
+    if (!outline) return { status: "missing" };
+    // Read again under the lock, to tell a change from the same words sent again.
+    const before = await own(tx, ownerId, id);
+    if (!before) return { status: "missing" };
+    const developed =
+      (change.title !== undefined && change.title !== before.title) ||
+      (change.notes !== undefined && change.notes !== before.notes);
     // An undefined column is not written, so it stays as it was.
     const [updated] = await tx
       .update(outlineEntries)
@@ -449,6 +587,7 @@ export async function updateEntry(
       return { status: "stale", entry: await withReferences(tx, ownerId, current) };
     }
     await touchOutline(tx, ownerId, updated.outlineId);
+    if (developed) await markDeveloped(tx, ownerId, outline.sermonId);
     return { status: "updated", entry: await withReferences(tx, ownerId, updated) };
   });
 }
@@ -503,14 +642,15 @@ export async function moveEntry(
   return db.transaction(async (tx): Promise<MoveEntryOutcome> => {
     const entry = await own(tx, ownerId, id);
     if (!entry) return { status: "missing" };
-    const outline = await lockOutline(tx, ownerId, entry.outlineId);
+    const outline = await lockForWrite(tx, ownerId, entry.outlineId);
     if (!outline) return { status: "missing" };
     if (move.expectedRevision !== undefined && move.expectedRevision !== outline.revision) {
       return { status: "stale", revision: outline.revision };
     }
 
     // Read again under the lock: the entry may have been moved or removed meanwhile.
-    const plan = planMove(await shapeOf(tx, ownerId, outline.id), id, move.parentId, move.position);
+    const shape = await shapeOf(tx, ownerId, outline.id);
+    const plan = planMove(shape, id, move.parentId, move.position);
     if (!plan.ok) return { status: plan.problem };
 
     const moved = { id, outlineId: outline.id, parentId: move.parentId, position: plan.position };
@@ -518,6 +658,10 @@ export async function moveEntry(
       return { status: "moved", entry: moved, revision: outline.revision };
     }
     await place(tx, ownerId, outline.id, plan.placements);
+    // Reordering what the sermon says is work on it; walking an empty point about is not.
+    if (await bearsContent(tx, ownerId, subtreeIds(shape, id))) {
+      await markDeveloped(tx, ownerId, outline.sermonId);
+    }
     return {
       status: "moved",
       entry: moved,
@@ -532,8 +676,7 @@ export type DeleteEntryOutcome =
 
 /**
  * Removes an entry and everything under it, and closes the gap it leaves.
- * Nothing else is touched: not the outline, not the sermon, and not the saved
- * points any of the entries were made from.
+ * The saved points any of the entries were made from are not touched.
  */
 export async function deleteEntry(
   db: Database,
@@ -544,7 +687,7 @@ export async function deleteEntry(
   return db.transaction(async (tx): Promise<DeleteEntryOutcome> => {
     const entry = await own(tx, ownerId, id);
     if (!entry) return { status: "missing" };
-    const outline = await lockOutline(tx, ownerId, entry.outlineId);
+    const outline = await lockForWrite(tx, ownerId, entry.outlineId);
     if (!outline) return { status: "missing" };
     if (expectedRevision !== undefined && expectedRevision !== outline.revision) {
       return { status: "stale", revision: outline.revision };
@@ -552,14 +695,17 @@ export async function deleteEntry(
 
     const shape = await shapeOf(tx, ownerId, outline.id);
     if (!shape.some((row) => row.id === id)) return { status: "missing" };
-    const removed = subtreeIds(shape, id).length;
+    const going = subtreeIds(shape, id);
+    const removed = going.length;
     const placements = planRemove(shape, id);
+    const developed = await bearsContent(tx, ownerId, going);
 
     // What is under it goes with it: the parent key is ON DELETE CASCADE.
     await tx
       .delete(outlineEntries)
       .where(and(eq(outlineEntries.id, id), eq(outlineEntries.ownerId, ownerId)));
     await place(tx, ownerId, outline.id, placements);
+    if (developed) await markDeveloped(tx, ownerId, outline.sermonId);
     return {
       status: "deleted",
       outlineId: outline.id,
@@ -583,7 +729,10 @@ export async function setEntryReferences(
 ): Promise<UpdateEntryOutcome> {
   return db.transaction(async (tx): Promise<UpdateEntryOutcome> => {
     const entry = await own(tx, ownerId, id);
-    if (!entry || !(await lockOutline(tx, ownerId, entry.outlineId))) return { status: "missing" };
+    const outline = entry && (await lockForWrite(tx, ownerId, entry.outlineId));
+    if (!outline) return { status: "missing" };
+    const held = (await referencesFor(tx, ownerId, [id])).get(id) ?? [];
+    const developed = references.map(referenceKey).join("|") !== held.map(referenceKey).join("|");
     const [updated] = await tx
       .update(outlineEntries)
       .set({ revision: sql`${outlineEntries.revision} + 1` })
@@ -607,16 +756,9 @@ export async function setEntryReferences(
     await tx
       .delete(outlineEntryScriptureReferences)
       .where(eq(outlineEntryScriptureReferences.entryId, updated.id));
-    if (references.length > 0) {
-      await tx.insert(outlineEntryScriptureReferences).values(
-        references.map((reference, position) => ({
-          ...reference,
-          entryId: updated.id,
-          position,
-        })),
-      );
-    }
+    await writeReferences(tx, updated.id, references);
     await touchOutline(tx, ownerId, updated.outlineId);
+    if (developed) await markDeveloped(tx, ownerId, outline.sermonId);
     return { status: "updated", entry: asEntry(updated, references) };
   });
 }

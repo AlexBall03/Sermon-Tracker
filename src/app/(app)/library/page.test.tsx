@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
   // The ideas related to the one on the page.
   related: { sermons: [] as unknown[], points: [] as unknown[] },
   relatedIdeas: vi.fn(),
+  // The outlines of the account's sermons, by sermon.
+  outlines: new Map<string, string>(),
+  outlineIdsForSermons: vi.fn(),
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -92,6 +95,13 @@ vi.mock("@/features/ideas/relations", () => ({
   relatedIdeas: async (...args: unknown[]) => {
     state.relatedIdeas(...args);
     return state.related;
+  },
+}));
+vi.mock("@/features/outlines/outlines", () => ({
+  outlineIdsForSermons: async (...args: unknown[]) => {
+    state.outlineIdsForSermons(...args);
+    const asked = args[2] as string[];
+    return new Map([...state.outlines].filter(([sermonId]) => asked.includes(sermonId)));
   },
 }));
 vi.mock("@/features/ideas/relation-actions", () => ({
@@ -168,6 +178,7 @@ beforeEach(() => {
     occasions: [],
     preached: undefined,
     related: { sermons: [], points: [] },
+    outlines: new Map(),
   });
 });
 
@@ -527,6 +538,27 @@ describe("recording from the library", () => {
     expect(state.listForSermon).not.toHaveBeenCalled();
   });
 
+  it("leads from a sermon to its outline, or to where it is given one, and from no other idea", async () => {
+    const outlineId = "44444444-4444-4444-8444-444444444444";
+    state.ideas = [sermon, point, kept];
+    state.outlines = new Map([[kept.id, outlineId]]);
+    render(await library({ archived: "all" }));
+    // One query for the page, for its sermons only, and the owner's.
+    expect(state.outlineIdsForSermons).toHaveBeenCalledTimes(1);
+    expect(state.outlineIdsForSermons).toHaveBeenCalledWith("database", "owner-1", [
+      sermon.id,
+      kept.id,
+    ]);
+    // Opening the way to a new outline makes nothing: it is a link to the page that asks.
+    expect(
+      screen.getByRole("link", { name: `Create an outline for ${sermon.title}` }),
+    ).toHaveAttribute("href", `/outlines/new?sermon=${sermon.id}`);
+    expect(
+      screen.getByRole("link", { name: "Open the outline of An old favorite" }),
+    ).toHaveAttribute("href", `/outlines/${outlineId}`);
+    expect(screen.queryByRole("link", { name: /outline.*A point/i })).not.toBeInTheDocument();
+  });
+
   it("opens the form for that sermon without leaving the library", async () => {
     state.ideas = [sermon, kept];
     render(await library({ archived: "all" }));
@@ -674,6 +706,58 @@ describe("IdeaPage", () => {
     state.idea = { ...sermon, kind: "undecided" };
     render(await open(id));
     expect(screen.queryByRole("button", { name: "Record preaching" })).not.toBeInTheDocument();
+  });
+
+  it("offers a sermon its outline: to create one, or to open the one it has", async () => {
+    const outlineId = "44444444-4444-4444-8444-444444444444";
+    state.idea = sermon;
+    const first = render(await open(id));
+    expect(state.outlineIdsForSermons).toHaveBeenCalledWith("database", "owner-1", [id]);
+    expect(
+      within(screen.getByRole("banner")).getByRole("link", { name: "Create Outline" }),
+    ).toHaveAttribute("href", `/outlines/new?sermon=${id}`);
+    first.unmount();
+
+    state.outlines = new Map([[id, outlineId]]);
+    render(await open(id));
+    const header = within(screen.getByRole("banner"));
+    expect(header.getByRole("link", { name: "Open Outline" })).toHaveAttribute(
+      "href",
+      `/outlines/${outlineId}`,
+    );
+    expect(header.queryByRole("link", { name: "Create Outline" })).not.toBeInTheDocument();
+    // Everything else the page had is still there.
+    expect(header.getByRole("button", { name: "Record preaching" })).toBeVisible();
+  });
+
+  it("offers no outline to a point or an undecided idea, and keeps the way to one it already had", async () => {
+    state.idea = { ...sermon, kind: "point" };
+    const first = render(await open(id));
+    expect(screen.queryByRole("link", { name: /Outline/ })).not.toBeInTheDocument();
+    first.unmount();
+
+    // Filed as something else since: the outline is kept, and still opens.
+    state.outlines = new Map([[id, "44444444-4444-4444-8444-444444444444"]]);
+    render(await open(id));
+    expect(screen.getByRole("link", { name: "Open Outline" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Record preaching" })).not.toBeInTheDocument();
+  });
+
+  it("says that deleting a sermon deletes its outline, when it has one", async () => {
+    state.idea = sermon;
+    const first = render(await open(id));
+    fireEvent.click(screen.getByRole("button", { name: "Delete idea" }));
+    const plain = await screen.findByRole("alertdialog");
+    expect(plain).toHaveTextContent("and its Scripture references will be deleted");
+    expect(plain).not.toHaveTextContent(/outline/i);
+    first.unmount();
+
+    state.outlines = new Map([[id, "44444444-4444-4444-8444-444444444444"]]);
+    render(await open(id));
+    fireEvent.click(screen.getByRole("button", { name: "Delete idea" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "its Scripture references, and its outline, with every point in it, will be deleted",
+    );
   });
 
   it("shows no preaching history on an idea that is not a sermon and never was preached", async () => {

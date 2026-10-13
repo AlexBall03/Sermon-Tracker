@@ -15,11 +15,13 @@ import { isTranslationId, type TranslationId } from "./translations";
  *   …&t=rvg                             read in that translation, not the reader's usual one
  *   …&beside=kjv.45.8                   with Romans 8 in the King James open beside it
  *   …&idea=<id>                         opened from that idea, which is the way back
+ *   …&outline=<id>                      opened from that outline, which is the way back
  *
  * `book` is the canonical number, 1 to 66. `verse` says where to look, and
  * `through` how far the passage runs in that chapter; neither ever selects
- * anything. `idea` is an idea's ID and nothing more: whose it is, and what it
- * is called, is for the server to find out.
+ * anything. `idea` is an idea's ID and `outline` an outline's, and nothing
+ * more: whose it is, and what it is called, is for the server to find out. An
+ * address names one way back at most; given both, the outline is the one.
  *
  * A place is the same place in every translation, so `t` is apart from it: it
  * says which text to read the place in, and an address without it is read in
@@ -35,6 +37,8 @@ export type ReaderLocation = {
   through?: number | null;
   /** The idea the reader was opened from. */
   idea?: string | null;
+  /** The outline the reader was opened from, in place of an idea. */
+  outline?: string | null;
   /** The translation to read it in. Absent, it is the reader's own. */
   translation?: TranslationId | null;
   /** The pane open beside this one, when two are being compared. */
@@ -117,12 +121,14 @@ export function parseReaderLocation(
   if (!place) return null;
   const translation = translationOf(read(translationParam));
   const beside = besideOf(read("beside"));
-  const idea = ideaOf(read("idea"));
+  const outline = ideaOf(read("outline"));
+  const idea = outline ? null : ideaOf(read("idea"));
   return {
     ...place,
     ...(translation ? { translation } : {}),
     ...(beside ? { beside } : {}),
     ...(idea ? { idea } : {}),
+    ...(outline ? { outline } : {}),
   };
 }
 
@@ -150,6 +156,7 @@ export function readerHref({
   verse,
   through,
   idea,
+  outline,
   translation,
   beside,
 }: ReaderLocation): string {
@@ -158,7 +165,8 @@ export function readerHref({
   if (verse && through && through > verse) href += `&through=${through}`;
   if (translation) href += `&${translationParam}=${translation}`;
   if (beside) href += `&beside=${beside.translation}.${beside.book}.${beside.chapter}`;
-  if (idea) href += `&idea=${idea}`;
+  if (outline) href += `&outline=${outline}`;
+  else if (idea) href += `&idea=${idea}`;
   return href;
 }
 
@@ -173,6 +181,12 @@ export function stepChapter(location: ReaderLocation, direction: 1 | -1): Reader
   return { book: neighbour, chapter: direction === 1 ? 1 : chaptersIn(neighbour), verse: null };
 }
 
+/**
+ * What a reference shown somewhere was opened from, and so the way back the
+ * reader offers: an idea's ID, as a plain string, or an outline's.
+ */
+export type ReferenceOrigin = string | { outline: string };
+
 /** Where a reference begins. */
 export function locationOfReference(reference: ScriptureReference): ReaderLocation {
   return settle(reference.book, reference.chapterStart, reference.verseStart ?? 0) ?? firstLocation;
@@ -182,17 +196,19 @@ export function locationOfReference(reference: ScriptureReference): ReaderLocati
  * Where a reference is read: its first chapter, at its first verse, with the
  * rest of what it covers in that chapter pointed out beside it. A passage
  * that runs on into later chapters is pointed out to the end of its first. A
- * whole chapter needs no pointing out. `idea` is the idea it was opened from.
+ * whole chapter needs no pointing out. `origin` is where it was opened from:
+ * an idea's ID, or an outline's.
  */
 export function referenceLocation(
   reference: ScriptureReference,
-  idea?: string | null,
+  origin?: ReferenceOrigin | null,
 ): ReaderLocation {
   const start = locationOfReference(reference);
   const [span] = referenceSpans(reference);
   const through = start.verse !== null && span && span.to > start.verse ? span.to : 0;
   const place = settle(start.book, start.chapter, start.verse ?? 0, through) ?? firstLocation;
-  return idea ? { ...place, idea } : place;
+  if (!origin) return place;
+  return typeof origin === "string" ? { ...place, idea: origin } : { ...place, ...origin };
 }
 
 /** Two locations in the same chapter. */

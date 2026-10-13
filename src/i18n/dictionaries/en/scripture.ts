@@ -65,6 +65,8 @@ export const scripture = {
     tryAgain: "Try again",
     chapter: (chapter: number) => `Chapter ${chapter}`,
     more: (count: number) => `And ${counted(count, "more verse", "more verses")}.`,
+    /** The same, as the way to read them. */
+    readMore: (count: number) => `Read ${counted(count, "more verse", "more verses")}`,
   },
   reader: {
     bible: "Bible",
@@ -77,6 +79,8 @@ export const scripture = {
     previousChapter: "Previous chapter",
     nextChapter: "Next chapter",
     backTo: "Back to",
+    /** Before a sermon's title, when the reader was opened from that sermon's outline. */
+    backToOutline: "Back to the outline of",
     goToVerse: "Go to verse",
     verses: "Verses",
     verse: (number: number) => `Verse ${number}`,

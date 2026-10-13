@@ -9,6 +9,7 @@ import type { IdeaMatches } from "@/features/ideas/idea-search";
 import { ideaSearchHref } from "@/features/ideas/idea-search";
 import { archiveIdea, createIdea } from "@/features/ideas/ideas";
 import { ideaInputSchema } from "@/features/ideas/schemas";
+import { createOutline } from "@/features/outlines/outlines";
 
 // The access helper is mocked; the database is a real in-memory PostgreSQL.
 const state = vi.hoisted(() => ({
@@ -169,6 +170,31 @@ describe("GET /api/ideas/search", () => {
     expect(all.items.find((idea) => idea.id === kept!.id)?.archived).toBe(false);
     // Anything else in its place is the default.
     expect(await titles("/api/ideas/search?kind=sermon&archived=everything")).toEqual(["Kept"]);
+  });
+
+  it("says which sermon has an outline only when asked, and only of the caller's own", async () => {
+    const outlined = await save(me, { title: "Outlined", kind: "sermon" });
+    await save(me, { title: "Bare", kind: "sermon" });
+    await save(me, { title: "A point", kind: "point" });
+    const theirs = await save(other, { title: "Theirs", kind: "sermon" });
+    const mine = await createOutline(db, me, outlined!.id);
+    await createOutline(db, other, theirs!.id);
+    if (mine.status !== "created") throw new Error(mine.status);
+    signInAs(me);
+
+    const asked = await found(ideaSearchHref("", null, undefined, true));
+    expect(Object.fromEntries(asked.items.map((idea) => [idea.title, idea.outlineId]))).toEqual({
+      Outlined: mine.outline.id,
+      Bare: null,
+      "A point": null,
+    });
+    // Every other picker is answered as it always was.
+    for (const idea of (await found(ideaSearchHref("", null))).items) {
+      expect(idea).not.toHaveProperty("outlineId");
+    }
+    expect(ideaSearchHref("grace", "sermon", undefined, true)).toBe(
+      "/api/ideas/search?q=grace&kind=sermon&outline=1",
+    );
   });
 
   it("takes nothing from the address but the words, the kind, and the archive view", async () => {

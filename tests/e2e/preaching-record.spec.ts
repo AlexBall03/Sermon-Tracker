@@ -112,10 +112,12 @@ test.describe("library and preaching record, signed in", () => {
     const choose = async (label: string, option: string) => {
       await page.getByRole("combobox", { name: label }).click();
       await page.getByRole("option", { name: option }).click();
+      // The list closes with a fade. Wait it out, so the next choice is not made in this one.
+      await expect(page.getByRole("listbox")).toHaveCount(0);
     };
     const openSermon = async () => {
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(sermon)}&archived=all`);
-      await page.getByRole("link", { name: sermon }).click();
+      await page.getByRole("link", { name: sermon, exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(sermon);
     };
     const findRecords = async () => {
@@ -145,8 +147,7 @@ test.describe("library and preaching record, signed in", () => {
       await expect(record()).toHaveCount(0);
       await page.getByRole("radio", { name: "Sermon" }).check({ force: true });
       await expect(page.getByText("Now filed as: Sermon idea.")).toBeVisible();
-      await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(said("Changes saved.")).toBeVisible();
+      // Refiling takes effect at once: there is nothing left to save, and Save stays disabled.
 
       // From the Preaching Record: the sermon is chosen in the form, which opens on its search.
       await page.goto("/library/preaching-record");
@@ -317,8 +318,6 @@ test.describe("library and preaching record, signed in", () => {
       // Filed as something else, its record is kept and nothing new can be recorded.
       await page.getByRole("radio", { name: "Point" }).check({ force: true });
       await expect(page.getByText("Now filed as: Point idea.")).toBeVisible();
-      await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(said("Changes saved.")).toBeVisible();
       await page.reload();
       await expect(own).toContainText("Preached 2 times");
       await expect(own).toContainText("This idea is not filed as a sermon now");
@@ -327,7 +326,7 @@ test.describe("library and preaching record, signed in", () => {
       await expect(rows()).toHaveCount(2);
       await expect(rows().first()).toContainText("Now filed as: Point idea");
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(sermon)}`);
-      await expect(page.getByRole("link", { name: sermon })).toBeVisible();
+      await expect(page.getByRole("link", { name: sermon, exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: `Record preaching of ${sermon}` })).toHaveCount(
         0,
       );
@@ -336,8 +335,6 @@ test.describe("library and preaching record, signed in", () => {
       await page.goto(sermonAddress);
       await page.getByRole("radio", { name: "Sermon" }).check({ force: true });
       await expect(page.getByText("Now filed as: Sermon idea.")).toBeVisible();
-      await page.getByRole("button", { name: "Save changes" }).click();
-      await expect(said("Changes saved.")).toBeVisible();
       await page.getByRole("button", { name: "Archive idea" }).click();
       await page
         .getByRole("alertdialog", { name: "Archive this idea?" })
@@ -363,6 +360,8 @@ test.describe("library and preaching record, signed in", () => {
         await expect(details).toBeHidden();
         await expect(rows()).toHaveCount(left - 1);
       };
+      // The records are streamed after the page: wait for them, or for none, before counting.
+      await rows().first().or(page.locator("#empty-heading")).first().waitFor();
       let left = await rows().count();
       for (; left > 1; left -= 1) await removeFirst(left);
       if (left === 1) {
@@ -387,14 +386,16 @@ test.describe("library and preaching record, signed in", () => {
             await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
             await expect(remove).toHaveCount(0);
           }
-          await page.keyboard.press("Escape");
+          // By its own button: Escape pressed while the confirmation is still closing goes to that.
+          await dialog.getByRole("button", { name: "Close", exact: true }).click();
           await expect(dialog).toBeHidden();
         }
         await removeFirst(1);
       }
       // With no record left, the idea can go.
       await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(sermon)}&archived=all`);
-      const link = page.getByRole("link", { name: sermon });
+      const link = page.getByRole("link", { name: sermon, exact: true });
+      await link.or(page.locator("#empty-heading")).first().waitFor();
       if ((await link.count()) > 0) {
         await link.click();
         await page.getByRole("button", { name: "Delete idea" }).click();

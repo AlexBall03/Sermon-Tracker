@@ -1,9 +1,12 @@
 "use client";
 
 import { memo } from "react";
+import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
+  BookOpen,
+  BookmarkPlus,
   ChevronRight,
   ChevronsLeft,
   CornerDownRight,
@@ -25,11 +28,14 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useT } from "@/i18n/client";
+import { formatReferences, type ScriptureReference } from "@/features/scripture/reference";
+import { useLocale, useT } from "@/i18n/client";
+import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import type { MoveDirection } from "../editor/moves";
 import type { Conflict } from "../editor/store";
 import { outlineLimits } from "../model";
+import { EntryPassages, type SetReferences } from "./entry-passages";
 
 /** What a row asks of the editor. One object for every row, so a row is drawn again only when it changes. */
 export type RowActions = {
@@ -42,6 +48,11 @@ export type RowActions = {
   /** Asks first, unless the point is empty and has nothing under it. */
   remove: (id: string) => void;
   openNotes: (id: string) => void;
+  /** Shows the entry's passages, empty, with the way to add the first. */
+  openPassages: (id: string) => void;
+  setReferences: SetReferences;
+  /** Opens the picker that places a saved point beside this one. */
+  addSavedPoint: (id: string) => void;
   toggle: (id: string) => void;
   resolve: (id: string, keep: "mine" | "theirs") => void;
   startDrag: (id: string, event: React.PointerEvent<HTMLElement>) => void;
@@ -59,6 +70,13 @@ type OutlineRowProps = {
   nested: number;
   collapsed: boolean;
   notesOpen: boolean;
+  /** The passages on it. The same array until they change, so the row is not drawn again for nothing. */
+  references: ScriptureReference[];
+  passagesOpen: boolean;
+  /** The saved point idea it was made from, if that idea still exists. */
+  sourcePointId: string | null;
+  /** The outline it is in, for the way back from the Bible. */
+  outlineId: string;
   /** The ways it can move, joined by commas: "up,down,indent". */
   moves: string;
   dragging: boolean;
@@ -77,9 +95,9 @@ const countFrom = 200;
 
 /**
  * One point of the outline: its grip, its fold, its number, its heading, its
- * notes, and its menu. The heading and notes are edited in place. It holds no
- * state of its own; everything it shows is given, and everything it does is
- * asked of the editor.
+ * notes, its passages, and its menu. The heading and notes are edited in
+ * place. It holds no state of its own; everything it shows is given, and
+ * everything it does is asked of the editor.
  */
 export const OutlineRow = memo(function OutlineRow({
   id,
@@ -90,6 +108,10 @@ export const OutlineRow = memo(function OutlineRow({
   nested,
   collapsed,
   notesOpen,
+  references,
+  passagesOpen,
+  sourcePointId,
+  outlineId,
   moves,
   dragging,
   conflict,
@@ -99,6 +121,7 @@ export const OutlineRow = memo(function OutlineRow({
   const can = new Set(moves ? moves.split(",") : []);
   const name = [label, title.trim() || t.untitled].filter(Boolean).join(" ");
   const showNotes = notesOpen || notes !== "";
+  const showPassages = passagesOpen || references.length > 0;
   const left = outlineLimits.notes - [...notes].length;
 
   function onTitleKey(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -120,7 +143,13 @@ export const OutlineRow = memo(function OutlineRow({
       return;
     }
     // An empty point with nothing under it goes without a question.
-    if (event.key === "Backspace" && title === "" && notes === "" && nested === 0) {
+    if (
+      event.key === "Backspace" &&
+      title === "" &&
+      notes === "" &&
+      references.length === 0 &&
+      nested === 0
+    ) {
       event.preventDefault();
       actions.remove(id);
     }
@@ -238,16 +267,34 @@ export const OutlineRow = memo(function OutlineRow({
                 </p>
               )}
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => actions.openNotes(id)}
-              className="mb-1 ml-2 hidden min-h-7 items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-muted-foreground transition-colors duration-150 group-focus-within/row:inline-flex hover:text-foreground pointer-coarse:min-h-9"
-            >
-              <Plus className="size-3.5" aria-hidden />
-              {t.addNotes}
-            </button>
+          ) : null}
+          {(!showNotes || !showPassages) && (
+            // Offered while the row is being worked in, so a finished outline stays quiet.
+            <div className="mb-1 ml-2 hidden flex-wrap gap-x-4 group-focus-within/row:flex">
+              {!showNotes && (
+                <button type="button" onClick={() => actions.openNotes(id)} className={quietAdd}>
+                  <Plus className="size-3.5" aria-hidden />
+                  {t.addNotes}
+                </button>
+              )}
+              {!showPassages && (
+                <button type="button" onClick={() => actions.openPassages(id)} className={quietAdd}>
+                  <Plus className="size-3.5" aria-hidden />
+                  {t.addPassage}
+                </button>
+              )}
+            </div>
           )}
+          {showPassages && (
+            <EntryPassages
+              entryId={id}
+              outlineId={outlineId}
+              references={references}
+              setReferences={actions.setReferences}
+              className="mt-1 mb-2 ml-2 animate-menu"
+            />
+          )}
+          {sourcePointId && <SourceLink pointId={sourcePointId} name={name} />}
           {conflict && <ConflictPanel id={id} conflict={conflict} resolve={actions.resolve} />}
         </div>
 
@@ -281,6 +328,16 @@ export const OutlineRow = memo(function OutlineRow({
                 {t.row.addNotes}
               </DropdownMenuItem>
             )}
+            {!showPassages && (
+              <DropdownMenuItem onClick={() => actions.openPassages(id)}>
+                <BookOpen aria-hidden />
+                {t.row.addPassage}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => actions.addSavedPoint(id)}>
+              <BookmarkPlus aria-hidden />
+              {t.row.addSavedPoint}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {/* These stay open, so a point can be walked several places with one finger. */}
             <DropdownMenuItem
@@ -337,6 +394,27 @@ export const OutlineRow = memo(function OutlineRow({
   );
 });
 
+const quietAdd =
+  "inline-flex min-h-7 items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-9";
+
+/**
+ * Says an entry was made from a saved point idea, and leads to that idea. The
+ * two are edited apart: this is only where the entry came from.
+ */
+export function SourceLink({ pointId, name }: { pointId: string; name: string }) {
+  const t = useT("outlines").editor;
+  return (
+    <Link
+      href={`${routes.library}/${pointId}`}
+      aria-label={t.openSource(name)}
+      className="mb-1 ml-2 inline-flex min-h-7 items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-primary active:text-primary pointer-coarse:min-h-9"
+    >
+      <BookmarkPlus className="size-3.5" aria-hidden />
+      {t.fromSavedPoint}
+    </Link>
+  );
+}
+
 /**
  * Shown under an entry whose words were changed here and somewhere else at
  * once: what the server holds, and the two ways to settle it. Nothing of
@@ -352,6 +430,7 @@ export function ConflictPanel({
   resolve: (id: string, keep: "mine" | "theirs") => void;
 }) {
   const t = useT("outlines").editor.conflict;
+  const locale = useLocale();
   return (
     <div
       role="alert"
@@ -367,6 +446,16 @@ export function ConflictPanel({
       {conflict.notes !== undefined && (
         <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">
           {t.theirNotes} <span className="text-foreground">{conflict.notes || t.empty}</span>
+        </p>
+      )}
+      {conflict.references !== undefined && (
+        <p className="mt-1.5 text-muted-foreground">
+          {t.theirPassages}{" "}
+          <span className="font-serif text-foreground italic">
+            {conflict.references.length > 0
+              ? formatReferences(conflict.references, locale)
+              : t.empty}
+          </span>
         </p>
       )}
       <div className="mt-2.5 flex flex-wrap gap-2">

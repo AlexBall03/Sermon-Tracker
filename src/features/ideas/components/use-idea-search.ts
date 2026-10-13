@@ -11,6 +11,8 @@ type Answer = { key: string } & ({ matches: IdeaMatches } | { problem: string })
 type IdeaSearchOptions = {
   /** Which ideas to look among. Left out, archived ideas are never offered. */
   archive?: ArchiveView;
+  /** Also ask which of the ideas has an outline. Only the outline picker does. */
+  outlines?: boolean;
   /** What to say when the search fails and the server gave no reason. */
   failure: string;
 };
@@ -24,7 +26,7 @@ type IdeaSearchOptions = {
  * and a change of kind do not.
  */
 export function useIdeaSearch(q: string, kind: IdeaKind | null, options: IdeaSearchOptions) {
-  const { archive, failure } = options;
+  const { archive, outlines = false, failure } = options;
   const [answer, setAnswer] = useState<Answer | null>(null);
   /** Counts the times the same search was asked for again after it failed. */
   const [attempt, setAttempt] = useState(0);
@@ -36,7 +38,7 @@ export function useIdeaSearch(q: string, kind: IdeaKind | null, options: IdeaSea
     const timer = window.setTimeout(
       async () => {
         try {
-          const response = await fetch(ideaSearchHref(q, kind, archive), {
+          const response = await fetch(ideaSearchHref(q, kind, archive, outlines), {
             signal: control.signal,
           });
           const body: unknown = await response.json();
@@ -58,7 +60,7 @@ export function useIdeaSearch(q: string, kind: IdeaKind | null, options: IdeaSea
       window.clearTimeout(timer);
       control.abort();
     };
-  }, [key, q, kind, archive, failure]);
+  }, [key, q, kind, archive, outlines, failure]);
 
   const loading = answer?.key !== key;
   return {

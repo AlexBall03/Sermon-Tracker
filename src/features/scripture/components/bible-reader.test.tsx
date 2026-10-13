@@ -1935,6 +1935,35 @@ describe("arriving from an idea", () => {
     expect(copied[0]).toMatch(/\/bible\?book=43&chapter=4&verse=10$/);
   });
 
+  it("offers the way back to the outline it was opened from, and keeps it while the reading goes on", async () => {
+    const outline = "22222222-2222-4222-8222-222222222222";
+    show(`/bible?book=43&chapter=3&verse=16&outline=${outline}`, undefined, {
+      id: outline,
+      title: "So loved",
+      outline: true,
+    });
+    await verse(16);
+    expect(back()).toHaveAttribute("href", `/outlines/${outline}`);
+    expect(back()).toHaveTextContent("Back to the outline of So loved");
+    fireEvent.click(screen.getByRole("button", { name: "Next chapter" }));
+    await waitFor(() => expect(here()).toBe(`/bible?book=43&chapter=4&outline=${outline}`));
+    expect(back()).toHaveAttribute("href", `/outlines/${outline}`);
+  });
+
+  it("offers no way back to an outline the server did not find, or from an address that names an idea", async () => {
+    const outline = "22222222-2222-4222-8222-222222222222";
+    show(`/bible?book=43&chapter=3&outline=${outline}`);
+    await verse(1);
+    expect(back()).not.toBeInTheDocument();
+    // The same ID as an idea's is not the outline's.
+    show(`/bible?book=43&chapter=3&idea=${outline}`, undefined, {
+      id: outline,
+      title: "So loved",
+      outline: true,
+    });
+    expect(back()).not.toBeInTheDocument();
+  });
+
   it("offers no way back to an idea the server did not find", async () => {
     // Someone else's, or none at all: the address alone names nothing.
     show(`/bible?book=43&chapter=3&idea=${idea}`);

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useReading } from "@/features/preferences/client";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
-import { readerHref, referenceLocation } from "../reader-location";
+import { readerHref, referenceLocation, type ReferenceOrigin } from "../reader-location";
 import {
   countReferenceVerses,
   formatReference,
@@ -20,7 +20,7 @@ import {
   type ScriptureReference,
 } from "../reference";
 import { translations } from "../translations";
-import { Passage } from "./passage-text";
+import { Passage, passageLimits } from "./passage-text";
 import { ReferenceChip } from "./reference-chip";
 import { useScripture } from "./scripture-provider";
 
@@ -41,9 +41,13 @@ type ScriptureFieldProps = {
    * in place, for the page where an idea is read as well as written.
    */
   layout?: "chips" | "rows";
-  /** The idea being edited, so a reference opened in the Bible can lead back to it. */
-  origin?: string;
+  /** The idea or outline being edited, so a reference opened in the Bible can lead back to it. */
+  origin?: ReferenceOrigin;
   label?: string;
+  /** What the panel's button says when a passage is being added. "Add to idea" when omitted. */
+  attachLabel?: string;
+  /** What to say when it holds as many as it may, where that is not an idea's limit. */
+  fullMessage?: (max: number) => string;
   className?: string;
 };
 
@@ -51,7 +55,7 @@ const iconButton =
   "grid h-8 w-7 shrink-0 place-items-center text-muted-foreground transition-colors duration-150 hover:text-foreground active:bg-foreground/10 pointer-coarse:h-10 pointer-coarse:w-9";
 
 /** A row shows this many verses in place; the panel has the rest. */
-const rowVerses = 12;
+const rowVerses = passageLimits.row;
 
 const rowButton =
   "grid h-11 w-9 shrink-0 place-items-center text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:w-11";
@@ -72,7 +76,7 @@ function ReferenceRow({
 }: {
   reference: FieldReference;
   allowPrimary: boolean;
-  origin?: string;
+  origin?: ReferenceOrigin;
   onChange: (references: ScriptureReference[]) => void;
   onRemove: () => void;
   onTogglePrimary: () => void;
@@ -87,6 +91,8 @@ function ReferenceRow({
   const [opened, setOpened] = useState(false);
   const name = formatReference(reference, locale);
   const more = countReferenceVerses(reference) > rowVerses;
+  const read = () =>
+    scripture.openPanel({ reference, attach: { label: t.updateReference, onAttach: onChange } });
 
   return (
     <li className="min-w-0 overflow-hidden rounded-lg border bg-surface shadow-card transition-[border-color] duration-150 focus-within:border-primary/70 hover:border-primary/70">
@@ -158,19 +164,9 @@ function ReferenceRow({
         <div className="min-h-0 overflow-hidden">
           {opened && (
             <div className="border-t px-2 pt-3 pb-3">
-              <Passage reference={reference} limit={rowVerses} />
+              <Passage reference={reference} limit={rowVerses} onMore={read} />
               <div className="mt-3 flex flex-wrap items-center gap-2 px-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    scripture.openPanel({
-                      reference,
-                      attach: { label: t.updateReference, onAttach: onChange },
-                    })
-                  }
-                >
+                <Button type="button" variant="outline" size="sm" onClick={read}>
                   <BookOpen aria-hidden />
                   {more ? t.readAllOrChange : t.readOrChange}
                 </Button>
@@ -200,6 +196,8 @@ export function ScriptureField({
   layout = "chips",
   origin,
   label,
+  attachLabel,
+  fullMessage,
   className,
 }: ScriptureFieldProps) {
   const id = useId();
@@ -223,7 +221,7 @@ export function ScriptureField({
     }
     const room = max - value.length;
     if (room <= 0) {
-      return setMessage({ text: t.full(max), error: true });
+      return setMessage({ text: (fullMessage ?? t.full)(max), error: true });
     }
     onChange((current) => {
       const next = [...current];
@@ -237,7 +235,7 @@ export function ScriptureField({
     });
     setMessage(
       fresh.length > room
-        ? { text: t.onlyRoom(room, max), error: true }
+        ? { text: fullMessage ? fullMessage(max) : t.onlyRoom(room, max), error: true }
         : { text: t.added(named(fresh)), error: false },
     );
   }
@@ -391,7 +389,7 @@ export function ScriptureField({
             onClick={() =>
               scripture.openPanel({
                 attach: {
-                  label: t.addToIdea,
+                  label: attachLabel ?? t.addToIdea,
                   repeatable: true,
                   onAttach: (references) => latestAdd.current(references),
                 },

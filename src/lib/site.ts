@@ -18,9 +18,9 @@ export const siteConfig = {
  * sections are each at an address of their own beneath it, and the addresses
  * two of them used to have redirect (next.config.ts). An idea is at `/library/<id>`; a place in the Bible is
  * `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts). An
- * outline's editor is at `/outlines/<id>`, and `/outlines/new?sermon=<id>` is
- * where a sermon is given one; `/outlines` itself has no page until the
- * overview is built.
+ * outline's editor is at `/outlines/<id>`, `/outlines/new?sermon=<id>` is
+ * where a sermon is given one, and `/outlines` is the overview of them all
+ * (features/outlines/outlines-query.ts).
  */
 export const routes = {
   home: "/",
