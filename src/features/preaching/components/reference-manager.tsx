@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useAttendsPreachingClass } from "@/features/preferences/client";
 import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import {
@@ -129,11 +130,14 @@ function ManagerBody({
   const [deleting, setDeleting] = useState<ManagedReference | null>(null);
   /** The one that could not be deleted because history names it, and why. */
   const [held, setHeld] = useState<{ id: string; message: string } | null>(null);
+  const attendsPreachingClass = useAttendsPreachingClass();
 
   const taken = new Set(items.map((item) => item.name.toLowerCase()));
   const suggestions = venue
     ? []
-    : suggestedContextOptions(locale).filter((item) => !taken.has(item.name.toLowerCase()));
+    : suggestedContextOptions(locale, { attendsPreachingClass }).filter(
+        (item) => !taken.has(item.name.toLowerCase()),
+      );
 
   function run(kindOfWork: "create" | "rename" | "delete" | null) {
     setWorking(kindOfWork);

@@ -60,6 +60,19 @@ describe("resolvePreferences", () => {
   });
 });
 
+describe("attending preaching class", () => {
+  it("is as it was saved, whatever the language and whether Spanish is on", () => {
+    const stored = { locale: "es" as const, bibleTranslation: null };
+    for (const spanishEnabled of [true, false]) {
+      expect(resolvePreferences(stored, spanishEnabled).attendsPreachingClass).toBe(false);
+      expect(
+        resolvePreferences({ ...stored, attendsPreachingClass: true }, spanishEnabled)
+          .attendsPreachingClass,
+      ).toBe(true);
+    }
+  });
+});
+
 describe("requestedTranslation", () => {
   const both = resolvePreferences({ locale: "es", bibleTranslation: null }, true);
   const englishOnly = resolvePreferences({ locale: "es", bibleTranslation: "rvg" }, false);

@@ -8,7 +8,7 @@ import { PageLoading } from "@/components/layout/page-loading";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireActiveUser } from "@/features/auth/access";
 import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture";
-import { ReadingProvider } from "@/features/preferences/client";
+import { PreachingClassProvider, ReadingProvider } from "@/features/preferences/client";
 import { getPreferences } from "@/features/preferences/current";
 import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
 import { I18nProvider } from "@/i18n/client";
@@ -42,25 +42,27 @@ async function Shell({ children }: { children: React.ReactNode }) {
         translation={preferences.translation}
         translations={preferences.translations}
       >
-        {/*
-         * One of each for the whole shell: confirmations, the Scripture Panel, and
-         * quick capture, which uses both. They hold no account data.
-         */}
-        <ToastProvider aboveTabBar>
-          <ScriptureProvider>
-            <QuickCaptureProvider>
-              <AppHeader isAdmin={user.role === "admin"} />
-              {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
-              <main
-                id="main"
-                className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
-              >
-                {children}
-              </main>
-              <BackToTop aboveTabBar />
-            </QuickCaptureProvider>
-          </ScriptureProvider>
-        </ToastProvider>
+        <PreachingClassProvider attends={preferences.attendsPreachingClass}>
+          {/*
+           * One of each for the whole shell: confirmations, the Scripture Panel, and
+           * quick capture, which uses both. They hold no account data.
+           */}
+          <ToastProvider aboveTabBar>
+            <ScriptureProvider>
+              <QuickCaptureProvider>
+                <AppHeader isAdmin={user.role === "admin"} />
+                {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+                <main
+                  id="main"
+                  className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
+                >
+                  {children}
+                </main>
+                <BackToTop aboveTabBar />
+              </QuickCaptureProvider>
+            </ScriptureProvider>
+          </ToastProvider>
+        </PreachingClassProvider>
       </ReadingProvider>
     </I18nProvider>
   );

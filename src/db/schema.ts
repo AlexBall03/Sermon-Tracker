@@ -49,6 +49,18 @@ export const users = pgTable(
      * Spanish). Changing the language sets it back to null.
      */
     bibleTranslation: text("bible_translation", { enum: translationIds }),
+    /** The person's church, as they wrote it. Null when they have not said. */
+    churchName: text("church_name"),
+    /**
+     * What the person does in ministry, in their own words. It describes them
+     * and grants nothing: `role` above is what decides access.
+     */
+    ministryRole: text("ministry_role"),
+    /**
+     * Whether the person said they attend preaching class. It is only ever
+     * what they chose: nothing works it out from their history or contexts.
+     */
+    attendsPreachingClass: boolean("attends_preaching_class").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -62,6 +74,14 @@ export const users = pgTable(
     check(
       "users_bible_translation_check",
       sql`${table.bibleTranslation} is null or ${table.bibleTranslation} in ('kjv', 'rvg')`,
+    ),
+    check(
+      "users_church_name_check",
+      sql`${table.churchName} is null or char_length(btrim(${table.churchName})) between 1 and 120`,
+    ),
+    check(
+      "users_ministry_role_check",
+      sql`${table.ministryRole} is null or char_length(btrim(${table.ministryRole})) between 1 and 80`,
     ),
   ],
 );

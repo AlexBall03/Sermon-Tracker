@@ -4,37 +4,41 @@ import type { settings as english } from "../en/settings";
 export const settings: Untranslated<typeof english> = {
   page: {
     title: "Configuración",
-    description: "Tu perfil, cómo inicias sesión, tu idioma y el aspecto de Sermon Tracker.",
+    description:
+      "Tu perfil, tu iglesia y ministerio, tu idioma y tu Biblia, el aspecto de Sermon Tracker y cómo inicias sesión.",
   },
   sections: {
-    profile: {
-      title: "Perfil",
+    personal: {
+      title: "Información personal",
       description: "Cómo apareces en Sermon Tracker y las direcciones de tu cuenta.",
     },
-    security: {
-      title: "Seguridad",
+    ministry: {
+      title: "Iglesia y ministerio",
       description:
-        "Tu contraseña, las cuentas conectadas y los dispositivos donde tienes la sesión abierta. Algunos cambios te piden confirmar primero que eres tú.",
+        "Dónde sirves y qué haces allí. Todo es opcional, solo lo ves tú y no cambia en nada tu acceso.",
     },
-    language: {
-      title: "Idioma",
+    bibleLanguage: {
+      title: "Biblia e idioma",
       description:
-        "El idioma en que está escrito Sermon Tracker y la Biblia que lees. Ambos se guardan en tu cuenta.",
+        "El idioma en que está escrito Sermon Tracker, la Biblia que lees y cómo se comporta el lector de la Biblia.",
     },
     appearance: {
-      title: "Apariencia",
+      title: "Apariencia y experiencia",
       description: "Claro u oscuro. Es el mismo control que el de la barra.",
-    },
-    bible: {
-      title: "Biblia",
-      description: "Cómo se comporta el lector de la Biblia en este dispositivo.",
     },
     account: {
       title: "Cuenta",
-      description: "Tu lugar en este espacio de trabajo. Estos datos son de referencia.",
+      description:
+        "Tu lugar en este espacio de trabajo, tu contraseña, las cuentas conectadas y los dispositivos donde tienes la sesión abierta. Algunos cambios te piden confirmar primero que eres tú.",
     },
   },
   blocks: {
+    language: "Idioma y traducción",
+    languageDescription: "Se guardan en tu cuenta, así que te acompañan en todos tus dispositivos.",
+    reader: "Lector de la Biblia",
+    readerDescription: "Se guarda en este dispositivo.",
+    theme: "Tema",
+    access: "Tu acceso",
     picture: "Foto",
     name: "Nombre",
     emails: "Correos electrónicos",
@@ -58,6 +62,28 @@ export const settings: Untranslated<typeof english> = {
     signOutOthersConfirm: "Cerrar las demás sesiones",
     signedOutOthers: "Se cerró la sesión en todos los demás dispositivos.",
     signOutOthersFailed: "No se pudo cerrar la sesión en algunos dispositivos. Inténtalo de nuevo.",
+  },
+  ministry: {
+    churchName: "Nombre de la iglesia",
+    churchNamePlaceholder: "Iglesia Bautista Gracia",
+    ministryRole: "Función en el ministerio",
+    ministryRolePlaceholder: "Pastor, evangelista, estudiante de predicación…",
+    ministryRoleHint:
+      "Con tus propias palabras. Te describe y no cambia lo que puedes hacer en Sermon Tracker.",
+    optional: "(opcional)",
+    save: "Guardar",
+    saving: "Guardando…",
+    saved: "Se guardaron los datos de tu iglesia y ministerio.",
+    preachingClass: "Asisto a la clase de predicación",
+    preachingClassHelp:
+      "Ofrece lo que está pensado para la clase de predicación, como sugerir Clase de predicación como contexto al registrar un sermón. Desactivarlo no borra nada de lo que has registrado.",
+    preachingClassOn: "Guardado. La clase de predicación está activada.",
+    preachingClassOff: "Guardado. La clase de predicación está desactivada.",
+    churchTooLong: (limit) => `Usa ${limit} caracteres o menos para el nombre de la iglesia.`,
+    roleTooLong: (limit) => `Usa ${limit} caracteres o menos para la función en el ministerio.`,
+    invalid: "Esos datos no eran válidos.",
+    notSaved: "No se pudieron guardar tus datos. Inténtalo de nuevo.",
+    offline: "Eso no llegó al servidor. Revisa tu conexión e inténtalo de nuevo.",
   },
   language: {
     interface: "Idioma de la interfaz",

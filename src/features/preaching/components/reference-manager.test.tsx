@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PreachingClassProvider } from "@/features/preferences/client";
 import { I18nProvider } from "@/i18n/client";
 import type { Locale } from "@/i18n/locales";
 
@@ -51,15 +52,17 @@ const youth = {
   occurrenceCount: 0,
 };
 
-const manager = (kind: ReferenceKind | null, locale: Locale = "en") => (
+const manager = (kind: ReferenceKind | null, locale: Locale = "en", attends = false) => (
   <I18nProvider locale={locale}>
-    <ReferenceManager
-      kind={kind}
-      venues={[camp, grace]}
-      contexts={[regular, youth]}
-      onClose={state.onClose}
-      onDeleted={state.onDeleted}
-    />
+    <PreachingClassProvider attends={attends}>
+      <ReferenceManager
+        kind={kind}
+        venues={[camp, grace]}
+        contexts={[regular, youth]}
+        onClose={state.onClose}
+        onDeleted={state.onDeleted}
+      />
+    </PreachingClassProvider>
   </I18nProvider>
 );
 const rows = (name: string) => within(screen.getByRole("list", { name })).getAllByRole("listitem");
@@ -199,7 +202,7 @@ describe("managing venues", () => {
 describe("managing contexts", () => {
   it("offers the suggestions the account has not made, and makes one only when picked", async () => {
     state.createContext.mockResolvedValue({ ok: true, message: "Context saved." });
-    render(manager("context"));
+    render(manager("context", "en", true));
     expect(screen.getByRole("dialog", { name: "Contexts" })).toBeVisible();
     expect(state.createContext).not.toHaveBeenCalled();
 
@@ -219,6 +222,16 @@ describe("managing contexts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Preaching Class" }));
     await waitFor(() => expect(state.createContext).toHaveBeenCalledWith("Preaching Class"));
     expect(await screen.findByText("Context saved.")).toBeVisible();
+  });
+
+  it("suggests Preaching Class only to an account that attends one", () => {
+    render(manager("context"));
+    expect(screen.queryByRole("button", { name: "Add Preaching Class" })).toBeNull();
+    for (const name of ["Conference / Preaching Bootcamp", "Special Service", "Other"]) {
+      expect(screen.getByRole("button", { name: `Add ${name}` })).toBeVisible();
+    }
+    // What the account already has is listed whatever the preference says.
+    expect(rows("Your contexts")).toHaveLength(2);
   });
 
   it("takes whatever the account calls its own context", async () => {
@@ -262,7 +275,7 @@ describe("managing contexts", () => {
   });
 
   it("is in Spanish for an account that reads Spanish", () => {
-    render(manager("context", "es"));
+    render(manager("context", "es", true));
     expect(screen.getByRole("dialog", { name: "Contextos" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Añadir Clase de predicación" })).toBeVisible();
     expect(rows("Tus contextos")[0]).toHaveTextContent("En 1 registro");

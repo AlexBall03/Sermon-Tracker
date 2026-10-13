@@ -2,37 +2,41 @@
 export const settings = {
   page: {
     title: "Settings",
-    description: "Your profile, how you sign in, your language, and how Sermon Tracker looks.",
+    description:
+      "Your profile, your church and ministry, your language and Bible, how Sermon Tracker looks, and how you sign in.",
   },
   sections: {
-    profile: {
-      title: "Profile",
+    personal: {
+      title: "Personal Information",
       description: "How you appear in Sermon Tracker, and the addresses on your account.",
     },
-    security: {
-      title: "Security",
+    ministry: {
+      title: "Church & Ministry",
       description:
-        "Your password, connected accounts, and the devices you are signed in on. Some changes ask you to confirm it is you first.",
+        "Where you serve and what you do there. All of it is optional, private to your account, and changes nothing about your access.",
     },
-    language: {
-      title: "Language",
+    bibleLanguage: {
+      title: "Bible & Language",
       description:
-        "The language Sermon Tracker is written in, and the Bible you read. Both are saved to your account.",
+        "The language Sermon Tracker is written in, the Bible you read, and how the Bible reader behaves.",
     },
     appearance: {
-      title: "Appearance",
+      title: "Appearance & Experience",
       description: "Light or dark. This is the same control as the one in the bar.",
-    },
-    bible: {
-      title: "Bible",
-      description: "How the Bible reader behaves on this device.",
     },
     account: {
       title: "Account",
-      description: "Your place in this workspace. These details are for reference.",
+      description:
+        "Your place in this workspace, your password, connected accounts, and the devices you are signed in on. Some changes ask you to confirm it is you first.",
     },
   },
   blocks: {
+    language: "Language and translation",
+    languageDescription: "Saved to your account, so they follow you to every device.",
+    reader: "Bible reader",
+    readerDescription: "Kept on this device.",
+    theme: "Theme",
+    access: "Your access",
     picture: "Picture",
     name: "Name",
     emails: "Email addresses",
@@ -56,6 +60,28 @@ export const settings = {
     signOutOthersConfirm: "Sign out the others",
     signedOutOthers: "Every other device was signed out.",
     signOutOthersFailed: "Some devices could not be signed out. Try again.",
+  },
+  ministry: {
+    churchName: "Church name",
+    churchNamePlaceholder: "Grace Baptist Church",
+    ministryRole: "Ministry role",
+    ministryRolePlaceholder: "Pastor, evangelist, preaching student…",
+    ministryRoleHint:
+      "In your own words. It describes you and does not change what you can do in Sermon Tracker.",
+    optional: "(optional)",
+    save: "Save",
+    saving: "Saving…",
+    saved: "Your church and ministry details have been saved.",
+    preachingClass: "I attend preaching class",
+    preachingClassHelp:
+      "Offers what is meant for preaching class, such as suggesting Preaching Class as a context when you record a sermon. Turning it off removes nothing you have recorded.",
+    preachingClassOn: "Saved. Preaching class is on.",
+    preachingClassOff: "Saved. Preaching class is off.",
+    churchTooLong: (limit: number) => `Use ${limit} characters or fewer for the church name.`,
+    roleTooLong: (limit: number) => `Use ${limit} characters or fewer for the ministry role.`,
+    invalid: "Those details were not valid.",
+    notSaved: "Your details could not be saved. Try again.",
+    offline: "That did not reach the server. Check your connection and try again.",
   },
   language: {
     interface: "Interface language",

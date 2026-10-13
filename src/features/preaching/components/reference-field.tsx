@@ -6,6 +6,7 @@ import { LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { useAttendsPreachingClass } from "@/features/preferences/client";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { createContext, createVenue } from "../actions";
@@ -63,11 +64,14 @@ export function ReferenceField({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const attendsPreachingClass = useAttendsPreachingClass();
 
   const taken = new Set(options.map((option) => option.name.toLowerCase()));
   const suggestions = venue
     ? []
-    : suggestedContextOptions(locale).filter((item) => !taken.has(item.name.toLowerCase()));
+    : suggestedContextOptions(locale, { attendsPreachingClass }).filter(
+        (item) => !taken.has(item.name.toLowerCase()),
+      );
 
   function close() {
     setAdding(false);

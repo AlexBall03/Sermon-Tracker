@@ -263,7 +263,7 @@ Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three ta
 
 - **Independent of classification.** Recording, changing, or removing an occasion writes nothing to `ideas`: not the status, the intended format, the sermon type, `archived_at`, or `updated_at`. `actualFormat` uses the intended format's words (`actualFormats` is `intendedFormats`) but is never copied from it, and is never worked out from the duration.
 - **Nothing is inferred.** The part of the day is not worked out from the venue, the context, or the date; the format is not worked out from anything.
-- **A context is a kind of occasion**, never a weekday or a part of the day: the date already says the day, and `timeOfDay` the part of it. The five suggested contexts (`suggestedContexts` in `model.ts`, named in the `preaching` dictionary in both languages, read with `suggestedContextOptions`) are Regular Church Service, Preaching Class, Conference / Preaching Bootcamp, Special Service, and Other. They are suggestions and not rows: **no account is given any context until it picks or writes one** (`createContext` with the name). A context an account writes may be named anything.
+- **A context is a kind of occasion**, never a weekday or a part of the day: the date already says the day, and `timeOfDay` the part of it. The five suggested contexts (`suggestedContexts` in `model.ts`, named in the `preaching` dictionary in both languages, read with `suggestedContextOptions`) are Regular Church Service, Preaching Class, Conference / Preaching Bootcamp, Special Service, and Other. They are suggestions and not rows: **no account is given any context until it picks or writes one** (`createContext` with the name). A context an account writes may be named anything. Preaching Class is suggested only to an account that said it attends one (`attendsPreachingClass`, see "Account management"); that is decided in `suggestedContextOptions` and nowhere else, and it is the only thing the preference changes. A context of that name an account already has is offered, filtered by, and managed like any other, and anyone may still write the name.
 
 **Files.** `model.ts` (values and limits, no server code), `schemas.ts` (Zod, no server code), `occurrences.ts`, `venues.ts`, `contexts.ts` (services), `suggestions.ts`, `actions.ts` (server actions).
 
@@ -599,7 +599,26 @@ Phase 2C.1C. A reference on an idea is a row of `idea_scripture_references`, as 
 
 ### Account management
 
-`/settings` is the application's own interface over Clerk. Clerk remains the identity provider: it stores and checks credentials, verifies email addresses, runs OAuth, and owns sessions. The application stores none of it and adds no table.
+`/settings` is the person's profile and preferences: the application's own interface over Clerk, and over what the account says about itself. Clerk remains the identity provider: it stores and checks credentials, verifies email addresses, runs OAuth, and owns sessions. The application stores none of it and adds no table.
+
+The page has five sections (Phase 2F.3, [handoff](docs/HANDOFF-2F.3.md)): **Personal Information** (picture, name, email addresses, all Clerk's), **Church & Ministry** (the application's own, below), **Bible & Language** (the language and translation saved on the account, and the reader's copy shortcut kept in the browser), **Appearance & Experience** (the theme, kept in the browser), and **Account** (role, status, and joining date, read-only, then password, connected accounts, and devices, all Clerk's).
+
+**Where each thing is kept.** There is one place for each, and nothing is in two.
+
+| What                                                               | Where                                                               |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Name, picture, email addresses, password, connections, sessions    | Clerk                                                               |
+| Church name, ministry role, attending preaching class              | `users` (`church_name`, `ministry_role`, `attends_preaching_class`) |
+| Interface language, Bible translation                              | `users` (`locale`, `bible_translation`)                             |
+| Theme, the reader's copy shortcut, the library's card or list view | The browser                                                         |
+
+**Church & Ministry** (`features/preferences`, `ChurchMinistrySettings`). Three optional things an account says about itself:
+
+- **Church name** and **ministry role** are a line of the person's own words each (`profileLimits` in `model.ts`: 120 and 80 characters, the same in CHECK constraints). There is no directory, no list of roles, and nothing is looked up. **The ministry role describes and never authorizes**: `users.role` decides access, and no access helper reads `ministry_role`.
+- **Attending preaching class** (`attendsPreachingClass`) is a yes or no the person chooses, false until they say otherwise. It is never worked out from a role, a context, or the preaching record, and it is independent of the ministry role. It decides what is _suggested_ for the class (today, the Preaching Class context; see "Preaching history") and nothing else: switching it on creates no context, occasion, or idea, switching it off removes none, and nothing is withheld from an account that has it off.
+- **One way in.** `profileSchemas(locale).profileUpdate` (`schemas.ts`, no server code) is the validation, `saveProfile` (`preferences.ts`) the write, and `updateProfile` (`actions.ts`) the one server action: `authorize("active")`, the account from the session, unknown fields dropped. A field left out is left alone, and null or a blank clears a line, so any form may send only what it shows. The settings page is one caller; first-time setup (Phase 4) is meant to be another, with the same schema and action.
+- **Reading.** The two lines are read from the caller's own row with `storedProfile(user)`. Whether the account attends preaching class is on `getPreferences()` with the language and the translation, and the `(app)` shell hands it to the browser through `PreachingClassProvider` (`useAttendsPreachingClass()`, false without one). The server never relies on what the browser was told.
+- The administrator's directory (`withIdentities`) leaves all three out: they are the person's own.
 
 | Operation                                                        | Where it runs                                         | Why                                                                                                                         |
 | ---------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -614,6 +633,8 @@ Phase 2C.1C. A reference on an idea is a row of `idea_scripture_references`, as 
 - Appearance reuses `ThemeToggle` on the same `next-themes` store as the bar, plus "Use device setting" to clear a manual choice. Nothing about the theme is saved to the account.
 - Bible (`BibleSettings`) is one choice, what the reader's copy shortcut copies. It too is kept in the browser and not on the account.
 - Language (`LanguageSettings`) is the interface language and the Bible translation. Unlike the two above they are saved to the account (see "Languages and translations"). While Spanish is switched off it says so instead of offering a choice.
+- The library's card or list view is not repeated here: its control is in the library, where its effect is seen.
+- There is no onboarding, and no flag for having done one. An account that has said nothing has nulls and false, which every surface reads as "not said".
 - Account deletion is not implemented.
 
 ### Caching
@@ -921,3 +942,6 @@ The rules that go with it:
 | No preached flag or count on an idea                   | Preaching history will be the one record of it; a second copy would drift               |
 | `last_developed_at` beside `updated_at`, no backfill   | `updated_at` moves for a status change; old ideas are measured from their creation      |
 | Classification words in the dictionaries, one builder  | Labels, meanings, and examples exist once per language and reach any control as a list  |
+| Profile fields are columns on `users`, not Clerk data  | One place for each setting, beside the language and behind the same access check        |
+| Ministry role is free text and grants nothing          | People describe themselves in their own words; access is `users.role` and nothing else  |
+| Preaching class gates a suggestion, never data         | An account's contexts and record are its own whether or not it attends a class today    |

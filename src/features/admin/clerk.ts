@@ -9,7 +9,14 @@ import { routes } from "@/lib/site";
 
 /** Clerk is the source of truth for identities and invitations; nothing here is stored locally. */
 
-export type DirectoryEntry = AppUser & {
+/**
+ * A person in the directory. What they wrote about themselves (their church,
+ * their ministry role, attending preaching class) is theirs and is left out.
+ */
+export type DirectoryEntry = Omit<
+  AppUser,
+  "churchName" | "ministryRole" | "attendsPreachingClass"
+> & {
   name: string | null;
   email: string | null;
   /** The Clerk identity no longer exists. The application record is kept. */
@@ -37,7 +44,14 @@ export async function withIdentities(rows: AppUser[]): Promise<DirectoryEntry[]>
   return rows.map((row) => {
     const identity = identities.get(row.clerkUserId);
     return {
-      ...row,
+      id: row.id,
+      clerkUserId: row.clerkUserId,
+      role: row.role,
+      status: row.status,
+      locale: row.locale,
+      bibleTranslation: row.bibleTranslation,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       name: identity?.name ?? null,
       email: identity?.email ?? null,
       identityMissing: !identity,

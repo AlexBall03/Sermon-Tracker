@@ -212,8 +212,22 @@ describe("venues and contexts", () => {
 });
 
 describe("the suggested contexts", () => {
+  it("leave Preaching Class out for an account that does not attend one", () => {
+    for (const options of [
+      suggestedContextOptions("en"),
+      suggestedContextOptions("es", { attendsPreachingClass: false }),
+    ]) {
+      expect(options.map((option) => option.key)).toEqual([
+        "regular_service",
+        "conference",
+        "special_service",
+        "other",
+      ]);
+    }
+  });
+
   it("are kinds of occasion, in both languages, and never a weekday or a part of the day", () => {
-    const english = suggestedContextOptions("en");
+    const english = suggestedContextOptions("en", { attendsPreachingClass: true });
     expect(english.map((option) => option.key)).toEqual([...suggestedContexts]);
     expect(english.map((option) => option.name)).toEqual([
       "Regular Church Service",
@@ -222,7 +236,7 @@ describe("the suggested contexts", () => {
       "Special Service",
       "Other",
     ]);
-    const spanish = suggestedContextOptions("es");
+    const spanish = suggestedContextOptions("es", { attendsPreachingClass: true });
     expect(spanish).toHaveLength(english.length);
     expect(spanish[1].name).toBe("Clase de predicación");
 

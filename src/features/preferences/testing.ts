@@ -15,6 +15,7 @@ const defaults = {
   locale: "en" as Locale,
   bibleTranslation: null as TranslationId | null,
   spanishEnabled: true,
+  attendsPreachingClass: false,
 };
 
 export const testPreferences = {
@@ -23,7 +24,7 @@ export const testPreferences = {
     Object.assign(testPreferences, defaults);
   },
   current(): Preferences {
-    const { locale, bibleTranslation, spanishEnabled } = testPreferences;
-    return resolvePreferences({ locale, bibleTranslation }, spanishEnabled);
+    const { locale, bibleTranslation, spanishEnabled, attendsPreachingClass } = testPreferences;
+    return resolvePreferences({ locale, bibleTranslation, attendsPreachingClass }, spanishEnabled);
   },
 };

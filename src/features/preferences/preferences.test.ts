@@ -79,7 +79,11 @@ beforeEach(async () => {
 
 describe("a new account", () => {
   it("is in English, with no translation chosen, and Spanish available", async () => {
-    expect(storedPreferences(reader)).toEqual({ locale: "en", bibleTranslation: null });
+    expect(storedPreferences(reader)).toEqual({
+      locale: "en",
+      bibleTranslation: null,
+      attendsPreachingClass: false,
+    });
     expect(await readAppSettings(db)).toEqual({ spanishEnabled: true });
     expect(await inForce(reader)).toMatchObject({ locale: "en", translation: "kjv" });
   });

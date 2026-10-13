@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "@/components/ui/toast";
+import { PreachingClassProvider } from "@/features/preferences/client";
 import { I18nProvider } from "@/i18n/client";
 import type { Locale } from "@/i18n/locales";
 import { localDate } from "../dates";
@@ -54,19 +55,22 @@ const item: HistoryItem = {
   context,
 };
 
-const dialog = (open: OccurrenceDialogState, locale: Locale = "en") => (
+const dialog = (open: OccurrenceDialogState, locale: Locale = "en", attends = false) => (
   <I18nProvider locale={locale}>
-    <ToastProvider>
-      <OccurrenceDialog
-        state={open}
-        onClose={state.onClose}
-        venues={[venue]}
-        contexts={[context]}
-      />
-    </ToastProvider>
+    <PreachingClassProvider attends={attends}>
+      <ToastProvider>
+        <OccurrenceDialog
+          state={open}
+          onClose={state.onClose}
+          venues={[venue]}
+          contexts={[context]}
+        />
+      </ToastProvider>
+    </PreachingClassProvider>
   </I18nProvider>
 );
-const record = (locale?: Locale) => render(dialog({ mode: "record", sermon }, locale));
+const record = (locale?: Locale, attends?: boolean) =>
+  render(dialog({ mode: "record", sermon }, locale, attends));
 const submit = (name = "Record") => fireEvent.click(screen.getByRole("button", { name }));
 const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -333,7 +337,7 @@ describe("recording that a sermon was preached", () => {
   it("offers the suggested contexts the account has not made, and makes one only when picked", async () => {
     const made = { id: "77777777-7777-4777-8777-777777777777", name: "Preaching Class" };
     state.createContext.mockResolvedValue({ ok: true, message: "Context saved.", context: made });
-    record();
+    record("en", true);
     expect(state.createContext).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "New context" }));
@@ -348,6 +352,24 @@ describe("recording that a sermon was preached", () => {
     submit();
     await waitFor(() => expect(state.recordOccurrence).toHaveBeenCalled());
     expect(sent()[0].contextId).toBe(made.id);
+  });
+
+  it("suggests Preaching Class only to an account that attends one, and still takes the name", async () => {
+    const made = { id: "77777777-7777-4777-8777-777777777777", name: "Preaching Class" };
+    state.createContext.mockResolvedValue({ ok: true, message: "Context saved.", context: made });
+    record();
+    fireEvent.click(screen.getByRole("button", { name: "New context" }));
+    const adder = within(screen.getByRole("group", { name: "New context" }));
+    expect(adder.queryByRole("button", { name: "Preaching Class" })).toBeNull();
+    // The other suggestions are there as before.
+    expect(adder.getByRole("button", { name: "Special Service" })).toBeVisible();
+
+    // Nothing stops the account writing it.
+    fireEvent.change(adder.getByLabelText("Context name"), {
+      target: { value: "Preaching Class" },
+    });
+    fireEvent.click(adder.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(state.createContext).toHaveBeenCalledWith("Preaching Class"));
   });
 
   it("is in Spanish for an account that reads Spanish", () => {

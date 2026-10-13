@@ -85,6 +85,13 @@
       "when": 1791860543445,
       "tag": "0011_related_ideas",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791862963996,
+      "tag": "0012_profile_and_preaching_class",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ export type StoredPreferences = {
   locale: Locale;
   /** Null until a translation is chosen; until then it follows the interface language. */
   bibleTranslation: TranslationId | null;
+  /** Whether the person said they attend preaching class. Left out, they have not. */
+  attendsPreachingClass?: boolean;
 };
 
 /** What is in force for a request, which is what every surface uses. */
@@ -26,6 +28,11 @@ export type Preferences = {
   translations: TranslationId[];
   /** False when an administrator has switched Spanish off. */
   spanishEnabled: boolean;
+  /**
+   * Whether the account attends preaching class, as it said. It decides what is
+   * suggested, never what the account may do or keep.
+   */
+  attendsPreachingClass: boolean;
   /** What is saved, untouched by the switch, for the settings page to show. */
   stored: StoredPreferences;
 };
@@ -33,6 +40,7 @@ export type Preferences = {
 export const defaultStoredPreferences: StoredPreferences = {
   locale: defaultLocale,
   bibleTranslation: null,
+  attendsPreachingClass: false,
 };
 
 /**
@@ -47,6 +55,8 @@ export const defaultStoredPreferences: StoredPreferences = {
  *   so nothing here has to move it.
  * - Someone who has chosen none reads the translation in their interface's
  *   language.
+ * - Attending preaching class is passed on as it was saved. The switch has
+ *   nothing to say about it.
  */
 export function resolvePreferences(
   stored: StoredPreferences,
@@ -60,6 +70,7 @@ export function resolvePreferences(
     translation: translations.includes(chosen) ? chosen : fallbackTranslation,
     translations,
     spanishEnabled,
+    attendsPreachingClass: stored.attendsPreachingClass ?? false,
     stored,
   };
 }

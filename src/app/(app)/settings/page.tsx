@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/layout/page-header";
 import { requireActiveUser } from "@/features/auth/access";
 import { getPreferences } from "@/features/preferences/current";
+import { storedProfile } from "@/features/preferences/preferences";
 import { AccountInformation } from "@/features/settings/components/account-information";
 import { ProfileSettings, SecuritySettings } from "@/features/settings/components/account-sections";
 import { AppearanceSettings } from "@/features/settings/components/appearance-settings";
 import { BibleSettings } from "@/features/settings/components/bible-settings";
+import { ChurchMinistrySettings } from "@/features/settings/components/church-ministry-settings";
 import { LanguageSettings } from "@/features/settings/components/language-settings";
-import { SettingsSection } from "@/features/settings/components/settings-section";
+import { SettingsBlock, SettingsSection } from "@/features/settings/components/settings-section";
 import { I18nProvider } from "@/i18n/client";
 import { getT } from "@/i18n/server";
 
@@ -17,11 +19,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Account management in the application's own interface. The sign-in provider
- * still owns identity, credentials, verification, and sessions: the profile
- * and security controls call it, and nothing here stores any of that. The
- * language and the Bible translation are the application's own, and are saved
- * on the account.
+ * The person's profile and preferences, in the application's own interface.
+ * The sign-in provider still owns identity, credentials, verification, and
+ * sessions: the personal and account controls call it, and nothing here stores
+ * any of that. The church, the ministry role, attending preaching class, the
+ * language, and the Bible translation are the application's own, saved on the
+ * account. The theme and the reader's copy shortcut are kept in the browser.
  */
 export default async function SettingsPage() {
   const user = await requireActiveUser();
@@ -33,32 +36,39 @@ export default async function SettingsPage() {
       <div className="container-page py-10 lg:py-12">
         <PageHeader title={t.page.title} description={t.page.description} />
 
-        <SettingsSection id="profile" {...t.sections.profile}>
+        <SettingsSection id="personal" {...t.sections.personal}>
           <ProfileSettings />
         </SettingsSection>
 
-        <SettingsSection id="security" {...t.sections.security}>
-          <SecuritySettings />
+        <SettingsSection id="ministry" {...t.sections.ministry}>
+          {/* Keyed by person so a different sign-in never inherits half-typed values. */}
+          <ChurchMinistrySettings key={user.id} profile={storedProfile(user)} />
         </SettingsSection>
 
-        <SettingsSection id="language" {...t.sections.language}>
-          <LanguageSettings
-            // Its own controls start again from what was saved whenever that changes.
-            key={`${preferences.stored.locale}.${preferences.stored.bibleTranslation}.${preferences.spanishEnabled}`}
-            preferences={preferences}
-          />
+        <SettingsSection id="bible-language" {...t.sections.bibleLanguage}>
+          <SettingsBlock title={t.blocks.language} description={t.blocks.languageDescription}>
+            <LanguageSettings
+              // Its own controls start again from what was saved whenever that changes.
+              key={`${preferences.stored.locale}.${preferences.stored.bibleTranslation}.${preferences.spanishEnabled}`}
+              preferences={preferences}
+            />
+          </SettingsBlock>
+          <SettingsBlock title={t.blocks.reader} description={t.blocks.readerDescription}>
+            <BibleSettings />
+          </SettingsBlock>
         </SettingsSection>
 
         <SettingsSection id="appearance" {...t.sections.appearance}>
-          <AppearanceSettings />
-        </SettingsSection>
-
-        <SettingsSection id="bible" {...t.sections.bible}>
-          <BibleSettings />
+          <SettingsBlock title={t.blocks.theme}>
+            <AppearanceSettings />
+          </SettingsBlock>
         </SettingsSection>
 
         <SettingsSection id="account" {...t.sections.account}>
-          <AccountInformation user={user} labels={t.account} locale={preferences.locale} />
+          <SettingsBlock title={t.blocks.access}>
+            <AccountInformation user={user} labels={t.account} locale={preferences.locale} />
+          </SettingsBlock>
+          <SecuritySettings />
         </SettingsSection>
       </div>
     </I18nProvider>

@@ -11,8 +11,9 @@ import { translationIds, translations } from "@/features/scripture/translations"
 import { dictionary } from "@/i18n";
 import { localeCookie, locales, type Locale } from "@/i18n/locales";
 import type { ActionResult } from "@/lib/action-result";
-import { saveBibleTranslation, saveLocale, storedPreferences } from "./preferences";
+import { saveBibleTranslation, saveLocale, saveProfile, storedPreferences } from "./preferences";
 import { resolvePreferences } from "./resolve";
+import { profileSchemas } from "./schemas";
 import { getAppSettings } from "./settings";
 
 const localeSchema = z.enum(locales);
@@ -103,6 +104,45 @@ export async function setBibleTranslation(translation: unknown): Promise<ActionR
     ok: true,
     message: parsed.data ? t.translationSaved(translations[parsed.data].short) : t.followSaved,
   };
+}
+
+/**
+ * Saves what the account says about itself: its church, its ministry role,
+ * and whether it attends preaching class. A field left out is left alone, so
+ * any form may send only what it shows.
+ *
+ * The account is the session's; an account or a role sent with the input is
+ * dropped by the schema. Attending preaching class is saved as said and does
+ * nothing else: no context, occasion, or idea is created, changed, or removed.
+ */
+export async function updateProfile(input: unknown): Promise<ActionResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+  const { spanishEnabled } = await getAppSettings();
+  const { locale } = resolvePreferences(storedPreferences(actor.user), spanishEnabled);
+  const t = dictionary(locale, "settings").ministry;
+
+  const parsed = profileSchemas(locale).profileUpdate.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? t.invalid };
+  }
+
+  try {
+    if (!(await saveProfile(getDb(), actor.user.id, parsed.data))) {
+      return { ok: false, message: t.notSaved };
+    }
+  } catch (error) {
+    console.error("Profile save failed:", describeDatabaseError(error));
+    return { ok: false, message: t.notSaved };
+  }
+  // The shell tells every page whether the account attends preaching class.
+  revalidatePath("/", "layout");
+
+  const { churchName, ministryRole, attendsPreachingClass } = parsed.data;
+  if (churchName === undefined && ministryRole === undefined) {
+    return { ok: true, message: attendsPreachingClass ? t.preachingClassOn : t.preachingClassOff };
+  }
+  return { ok: true, message: t.saved };
 }
 
 /**

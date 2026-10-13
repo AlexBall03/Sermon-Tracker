@@ -37,3 +37,25 @@ export function ReadingProvider({
 export function useReading(): ReadingPreferences {
   return useContext(ReadingContext);
 }
+
+const PreachingClassContext = createContext(false);
+
+/**
+ * Tells the interface whether the account said it attends preaching class, so
+ * what is meant for the class can be offered. It only decides what is
+ * suggested: nothing is withheld by it, and the server never relies on it.
+ * Without a provider the answer is no.
+ */
+export function PreachingClassProvider({
+  attends,
+  children,
+}: {
+  attends: boolean;
+  children: React.ReactNode;
+}) {
+  return <PreachingClassContext value={attends}>{children}</PreachingClassContext>;
+}
+
+export function useAttendsPreachingClass(): boolean {
+  return useContext(PreachingClassContext);
+}

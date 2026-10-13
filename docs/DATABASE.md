@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below. Phase 2F.1 added `0010_idea_last_developed`, one nullable column on `ideas`. Phase 2F.2 added `0011_related_ideas`: two tables, `sermon_relations` and `sermon_points`. It only adds tables; see "Related ideas" below.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below. Phase 2F.1 added `0010_idea_last_developed`, one nullable column on `ideas`. Phase 2F.2 added `0011_related_ideas`: two tables, `sermon_relations` and `sermon_points`. It only adds tables; see "Related ideas" below. Phase 2F.3 added `0012_profile_and_preaching_class`: three columns on `users`; see "Preferences on `users`" and "Phase 2F.3 migration" below.
 
 ## Layout
 
@@ -352,12 +352,17 @@ Settings of the whole application, as one row (`singleton boolean PRIMARY KEY`, 
 
 ### Preferences on `users`
 
-| Column              | Type   | Notes                                                                                                   |
-| ------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
-| `locale`            | `text` | Not null, default `en`; `en` or `es` (CHECK). The interface language                                    |
-| `bible_translation` | `text` | Nullable; `kjv` or `rvg` (CHECK). Null means "the one in the interface's language", until one is chosen |
+| Column                    | Type      | Notes                                                                                                   |
+| ------------------------- | --------- | ------------------------------------------------------------------------------------------------------- |
+| `locale`                  | `text`    | Not null, default `en`; `en` or `es` (CHECK). The interface language                                    |
+| `bible_translation`       | `text`    | Nullable; `kjv` or `rvg` (CHECK). Null means "the one in the interface's language", until one is chosen |
+| `church_name`             | `text`    | Nullable; 1 to 120 characters once trimmed (CHECK). The person's church, as they wrote it               |
+| `ministry_role`           | `text`    | Nullable; 1 to 80 characters once trimmed (CHECK). Their own words. Never read to decide access         |
+| `attends_preaching_class` | `boolean` | Not null, default `false`. What the person chose; never worked out from anything else                   |
 
-The two are independent and neither action writes the other. What is in force for a request is computed from them and from `app_settings` (`resolvePreferences`): with Spanish off, English and `kjv`, whatever is stored. The stored values are never rewritten by the switch.
+The last three (Phase 2F.3) are written only by `saveProfile`, behind the `updateProfile` action, on the caller's own row. A blank line is stored as null, never as an empty string. `attends_preaching_class` passes through `resolvePreferences` unchanged, and no preaching table refers to it: changing it writes this one column.
+
+The language and the translation are independent and neither action writes the other. What is in force for a request is computed from them and from `app_settings` (`resolvePreferences`): with Spanish off, English and `kjv`, whatever is stored. The stored values are never rewritten by the switch.
 
 ### Phase 2C.2 migration
 
@@ -419,6 +424,17 @@ Statements 3 to 5 were generated by `npm run db:generate` from `schema.ts`. The 
 - **Previews.** They share the development database, which has `0009`.
 
 **Tested** in `src/db/preaching-migration.test.ts`: migrations 0000 to 0008 are applied to an empty in-memory PostgreSQL; accounts, ideas (a sermon, a point, an archived sermon, another account's), a tag, and references are saved; 0009 is applied; every row of every existing table is compared with what was there before; the old constraints are shown still to refuse; the new foreign keys and indexes are read back from the catalog; and the old code's insert, update, and delete are run against the new schema. The file itself is checked to contain nothing but `CREATE TABLE`, `CREATE INDEX`, and `ALTER TABLE "preaching_…"`.
+
+### Phase 2F.3 migration
+
+`0012_profile_and_preaching_class`, generated by `npm run db:generate`. Its SQL is as generated; only the file's name was chosen, before it was applied anywhere. Three `ADD COLUMN`s on `users` and two `ADD CONSTRAINT … CHECK`s.
+
+- **It only adds.** Two nullable columns and one `NOT NULL DEFAULT false`. No row, column, or constraint that existed is changed. Every existing account reads as: no church, no ministry role, not attending preaching class.
+- **Safe under the code already live.** That code inserts into `users` naming its own columns and reads the row whole; the new columns take their defaults and are ignored.
+- **Order with a deployment.** None is needed: the columns are there before the code that reads them goes live.
+- **Previews.** They share the development database, which has `0012`.
+
+**Tested** in `src/features/preferences/profile.test.ts` against an in-memory PostgreSQL running the committed migrations: a new account's defaults, and the two CHECKs refusing a blank and an over-long line.
 
 ## Bible text
 
