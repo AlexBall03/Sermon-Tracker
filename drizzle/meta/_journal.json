@@ -99,6 +99,13 @@
       "when": 1791903362943,
       "tag": "0013_outline_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791925904022,
+      "tag": "0014_onboarding_lifecycle",
+      "breakpoints": true
     }
   ]
 }

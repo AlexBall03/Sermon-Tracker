@@ -35,7 +35,8 @@ async function rememberLocale(locale: Locale) {
 
 /*
  * As with every action: each authorises itself when it runs and takes the
- * account from the session. Choosing another language returns the Bible
+ * account from the session. These three ask for `"account"`, not `"active"`:
+ * first-time setup saves through them, before the account has finished it. Choosing another language returns the Bible
  * translation to following it; choosing a translation never writes the
  * language. Spanish is refused here, on the server, while an administrator has
  * it switched off; what was saved before is left as it was.
@@ -46,7 +47,7 @@ async function rememberLocale(locale: Locale) {
  * one saved takes the Bible translation with it; the same one changes nothing.
  */
 export async function setLocale(locale: unknown): Promise<ActionResult> {
-  const actor = await authorize("active");
+  const actor = await authorize("account");
   if (!actor.ok) return actor;
   const { spanishEnabled } = await getAppSettings();
   const current = resolvePreferences(storedPreferences(actor.user), spanishEnabled);
@@ -79,7 +80,7 @@ export async function setLocale(locale: unknown): Promise<ActionResult> {
  * the interface language. The interface language is not touched.
  */
 export async function setBibleTranslation(translation: unknown): Promise<ActionResult> {
-  const actor = await authorize("active");
+  const actor = await authorize("account");
   if (!actor.ok) return actor;
   const { spanishEnabled } = await getAppSettings();
   const current = resolvePreferences(storedPreferences(actor.user), spanishEnabled);
@@ -116,7 +117,7 @@ export async function setBibleTranslation(translation: unknown): Promise<ActionR
  * nothing else: no context, occasion, or idea is created, changed, or removed.
  */
 export async function updateProfile(input: unknown): Promise<ActionResult> {
-  const actor = await authorize("active");
+  const actor = await authorize("account");
   if (!actor.ok) return actor;
   const { spanishEnabled } = await getAppSettings();
   const { locale } = resolvePreferences(storedPreferences(actor.user), spanishEnabled);

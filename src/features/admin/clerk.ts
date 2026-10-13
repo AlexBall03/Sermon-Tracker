@@ -11,11 +11,19 @@ import { routes } from "@/lib/site";
 
 /**
  * A person in the directory. What they wrote about themselves (their church,
- * their ministry role, attending preaching class) is theirs and is left out.
+ * their ministry role, attending preaching class) is theirs and is left out,
+ * and so is where their setup and their tour stand, which the directory does
+ * not show.
  */
 export type DirectoryEntry = Omit<
   AppUser,
-  "churchName" | "ministryRole" | "attendsPreachingClass"
+  | "churchName"
+  | "ministryRole"
+  | "attendsPreachingClass"
+  | "onboardingStatus"
+  | "onboardingStep"
+  | "onboardingCompletedAt"
+  | "tourState"
 > & {
   name: string | null;
   email: string | null;

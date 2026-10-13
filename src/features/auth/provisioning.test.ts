@@ -38,6 +38,30 @@ describe("provisionUser", () => {
     expect(result).toMatchObject({ ok: true, user: { role: "user", status: "active" } });
   });
 
+  it("starts a new account owing first-time setup, at its first step, with no tour offered", async () => {
+    expect(await provisionUser(db, "user_a", invited)).toMatchObject({
+      ok: true,
+      user: {
+        onboardingStatus: "pending",
+        onboardingStep: "welcome",
+        onboardingCompletedAt: null,
+        tourState: "not_offered",
+      },
+    });
+  });
+
+  it("returns an account that finished setup as it is, never back at the start", async () => {
+    await provisionUser(db, "user_a", invited);
+    await db
+      .update(users)
+      .set({ onboardingStatus: "completed", onboardingCompletedAt: new Date() })
+      .where(eq(users.clerkUserId, "user_a"));
+    expect(await provisionUser(db, "user_a", invited)).toMatchObject({
+      ok: true,
+      user: { onboardingStatus: "completed" },
+    });
+  });
+
   it("starts a new account in the browser's language, and never changes it afterwards", async () => {
     const spanish = { ...invited, locale: async () => "es" as const };
     expect(await provisionUser(db, "user_a", spanish)).toMatchObject({ user: { locale: "es" } });

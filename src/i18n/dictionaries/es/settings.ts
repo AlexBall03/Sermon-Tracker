@@ -24,7 +24,8 @@ export const settings: Untranslated<typeof english> = {
     },
     appearance: {
       title: "Apariencia y experiencia",
-      description: "Claro u oscuro. Es el mismo control que el de la barra.",
+      description:
+        "Claro u oscuro, con el mismo control que el de la barra, y una forma de volver a la configuración de la cuenta.",
     },
     account: {
       title: "Cuenta",
@@ -38,6 +39,10 @@ export const settings: Untranslated<typeof english> = {
     reader: "Lector de la Biblia",
     readerDescription: "Se guarda en este dispositivo.",
     theme: "Tema",
+    setup: "Configuración de la cuenta",
+    setupDescription:
+      "Repite los pasos de configuración cuando quieras: tu iglesia y ministerio, tu idioma y tu Biblia, y el tema. Nada cambia a menos que tú lo cambies.",
+    runSetup: "Configurar la cuenta",
     access: "Tu acceso",
     picture: "Foto",
     name: "Nombre",

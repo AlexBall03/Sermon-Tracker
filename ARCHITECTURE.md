@@ -29,6 +29,7 @@ src/
       page.tsx              Landing page  /
     (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
     (app)/                  Authenticated shell: dashboard, library, bible, settings, admin
+    (setup)/                The bar and nothing else: first-time account setup  /onboarding
     api/bible/              Route handlers: one chapter, and word search
     api/ideas/              Route handler: the account's ideas by name, for the picker
     icon.svg                Favicon (small-size mark)
@@ -40,6 +41,8 @@ src/
   db/                       Drizzle schema, connection, test database
   features/
     auth/                   Provisioning and the access helpers
+    onboarding/             First-time account setup: its lifecycle on the account, the two actions
+                            that record progress and finish it, and the four-step wizard
     admin/                  User and invitation services, server actions, components
     dashboard/              Dashboard view, greeting, and the summary figures to come
     ideas/                  The idea model, queries, tags, the library query contract, server actions,
@@ -93,33 +96,35 @@ Conventions:
 
 ## Routing
 
-| Path                        | Purpose                                    | Phase | Indexed |
-| --------------------------- | ------------------------------------------ | ----- | ------- |
-| `/`                         | Public landing page                        | 1A    | Yes     |
-| `/sign-in`                  | Clerk sign-in                              | 1B    | No      |
-| `/accept-invitation`        | Account creation from an invitation link   | 1B    | No      |
-| `/access-denied`            | Shown to disabled or unauthorised accounts | 1B    | No      |
-| `/dashboard`                | Authenticated home                         | 1C.1  | No      |
-| `/settings`                 | Account management and appearance          | 1C.1  | No      |
-| `/admin`                    | Restricted administration                  | 1B    | No      |
-| `/library`                  | Library overview: the way to its sections  | 2E.2  | No      |
-| `/library/sermon-ideas`     | The owner's ideas: search, filter, browse  | 2B.2  | No      |
-| `/library/saved-scripture`  | Saved Scripture                            | 2C.1B | No      |
-| `/library/preaching-record` | Preaching Record                           | 2E.2  | No      |
-| `/library/<id>`             | One idea: edit, reclassify, delete         | 2A    | No      |
-| `/bible`                    | The Bible reader                           | 2C.1A | No      |
-| `/outlines`                 | The owner's outlines: search, order, open  | 3C    | No      |
-| `/outlines/<id>`            | One outline, in its editor                 | 3B    | No      |
-| `/outlines/new?sermon=<id>` | Gives a sermon its outline, or opens it    | 3B    | No      |
-| `/api/bible/…`              | A chapter, its marks, or a word search     | 2A    | No      |
-| `/api/ideas/search`         | The account's own ideas, found by name     | 2C.1C | No      |
-| `/analytics`                | Statistics (not in the route map yet)      | Later | No      |
+| Path                        | Purpose                                     | Phase | Indexed |
+| --------------------------- | ------------------------------------------- | ----- | ------- |
+| `/`                         | Public landing page                         | 1A    | Yes     |
+| `/sign-in`                  | Clerk sign-in                               | 1B    | No      |
+| `/accept-invitation`        | Account creation from an invitation link    | 1B    | No      |
+| `/access-denied`            | Shown to disabled or unauthorised accounts  | 1B    | No      |
+| `/onboarding`               | Account setup: first time, or from Settings | 4A    | No      |
+| `/dashboard`                | Authenticated home                          | 1C.1  | No      |
+| `/settings`                 | Account management and appearance           | 1C.1  | No      |
+| `/admin`                    | Restricted administration                   | 1B    | No      |
+| `/library`                  | Library overview: the way to its sections   | 2E.2  | No      |
+| `/library/sermon-ideas`     | The owner's ideas: search, filter, browse   | 2B.2  | No      |
+| `/library/saved-scripture`  | Saved Scripture                             | 2C.1B | No      |
+| `/library/preaching-record` | Preaching Record                            | 2E.2  | No      |
+| `/library/<id>`             | One idea: edit, reclassify, delete          | 2A    | No      |
+| `/bible`                    | The Bible reader                            | 2C.1A | No      |
+| `/outlines`                 | The owner's outlines: search, order, open   | 3C    | No      |
+| `/outlines/<id>`            | One outline, in its editor                  | 3B    | No      |
+| `/outlines/new?sermon=<id>` | Gives a sermon its outline, or opens it     | 3B    | No      |
+| `/api/bible/…`              | A chapter, its marks, or a word search      | 2A    | No      |
+| `/api/ideas/search`         | The account's own ideas, found by name      | 2C.1C | No      |
+| `/analytics`                | Statistics (not in the route map yet)       | Later | No      |
 
 Route groups separate the three shells without affecting URLs:
 
 - `(marketing)` exists. Public header and footer.
 - `(auth)` exists. Minimal centred layout.
 - `(app)` exists. Authenticated shell with the application bar; `robots: noindex` in its layout. Its layout mounts one `ToastProvider`, one `ScriptureProvider`, and one `QuickCaptureProvider` for every page.
+- `(setup)` exists (Phase 4A). The bar with the logo and no navigation, for `/onboarding` alone; `noindex`. It is beside `(app)`, not inside it, because the `(app)` layout is closed to an account that has not finished setup.
 
 The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`, `appRoutes`), which also drives `robots.txt` and the proxy.
 
@@ -132,6 +137,7 @@ The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`
 1. `src/proxy.ts` runs Clerk and handles routing only: a guest on an application path goes to sign-in (Clerk builds the return URL and only honours same-origin targets), and a signed-in visitor on `/`, `/sign-in`, or `/accept-invitation` goes to `/dashboard`.
 2. `getAccess()` in `src/features/auth/access.ts` resolves the caller once per request: Clerk user ID, then `provisionUser`, then the status check. It calls `connection()` first so the decision is never prerendered or cached.
 3. Pages and layouts call `requireActiveUser()` or `requireAdmin()`, which redirect to `/sign-in` or `/access-denied`. Server actions and route handlers call `authorize("active" | "admin")`, which returns a failure value instead.
+4. The same helpers then ask whether the account has finished first-time setup (see "First-time setup"): `requireActiveUser()` sends one that has not to `/onboarding`, and `authorize("active" | "admin")` refuses it. `requireAccount()` and `authorize("account")` leave that question out, and are used only by setup itself.
 
 The proxy is never the only check. Every page under `(app)` and every server action authorises itself, because a layout does not re-run on navigation and a server action can be called directly.
 
@@ -143,6 +149,9 @@ The proxy is never the only check. Every page under `(app)` and every server act
 | Standard user visits `/admin`               | Redirect to `/access-denied` |
 | Disabled or uninvited account, any app path | Redirect to `/access-denied` |
 | Administrator visits `/admin`               | Administration               |
+| New account, setup unfinished, any app path | Redirect to `/onboarding`    |
+| New account, setup unfinished, an action    | Refused, nothing written     |
+| Guest visits `/onboarding`                  | Redirect to `/sign-in`       |
 
 ### Provisioning
 
@@ -155,6 +164,53 @@ The proxy is never the only check. Every page under `(app)` and every server act
 Registration itself is closed by Clerk's Restricted sign-up mode (a dashboard setting; see docs/ENVIRONMENTS.md). The metadata check is a second barrier in case that setting is ever changed. A consequence: a user created by hand in the Clerk dashboard is not admitted unless `appAccess: true` is added to their public metadata there, or they are the initial administrator.
 
 There is no webhook. If a Clerk identity is deleted in the Clerk dashboard, the application row remains: nobody can sign in as it, the admin directory shows it as "Sign-in identity removed", and it can be disabled. Rows are not deleted in this phase.
+
+### First-time setup
+
+Phase 4A ([handoff](docs/HANDOFF-4A.md)). A new account goes through four steps before it reaches the application; an account that existed before there was a setup never has to, and may run the same steps from Settings.
+
+**Three separate questions.** Clerk says who someone is. `users.status` says whether they may be here at all. `users.onboarding_status` says whether an account that may be here has to finish setup first. The third is not a role, grants nothing, and is never read by anything but the access helpers and the setup page.
+
+**The lifecycle** (`features/onboarding/model.ts`, four columns on `users`; see docs/DATABASE.md):
+
+| Column                    | Values                                             | Meaning                                             |
+| ------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| `onboarding_status`       | `pending`, `completed`, `grandfathered`            | Whether setup is owed. A new row is `pending`       |
+| `onboarding_step`         | `welcome`, `ministry`, `preferences`, `finish`     | The furthest step reached. It only moves forward    |
+| `onboarding_completed_at` | A time, or null                                    | When the account finished the wizard itself         |
+| `tour_state`              | `not_offered`, `offered`, `dismissed`, `completed` | Kept for Phase 4B. Nothing reads or writes it in 4A |
+
+- Setup is owed exactly when the status is `pending` (`needsOnboarding`). Nothing is inferred from the profile, the date the account was made, or what it has saved.
+- **`grandfathered`** is every account that existed when migration `0014` ran, set by the migration and by nothing since. It is kept apart from `completed` so the two can always be told apart: one never owed setup, the other finished it.
+- A new account needs no code to start `pending`: `provisionUser` names none of these columns and the defaults do it, which is also what makes the migration safe under the release before it.
+
+**Enforcement is in `features/auth/access.ts` and nowhere else.** Every `(app)` page already called `requireActiveUser()` or `requireAdmin()`, and every server action and route handler `authorize("active" | "admin")`, so the rule is written once and no page, action, or route had to change:
+
+- `requireActiveUser()` redirects a `pending` account to `/onboarding`. `requireAdmin()` goes through it, so a new administrator is held to setup too.
+- `authorize("active" | "admin")` answers a `pending` account with a refusal, so an action or an API route called directly writes and returns nothing.
+- `requireAccount()` and `authorize("account")` admit an active account whatever its setup. They are used by the setup page, by setup's two actions, and by the three actions it saves through (`setLocale`, `setBibleTranslation`, `updateProfile`). Nothing else may use them.
+- A disabled or uninvited account is denied before setup is considered, exactly as before.
+- The proxy is still routing only. `/onboarding` is in `appRoutes`, so a guest there is sent to sign-in; a new account signing in is sent by the proxy to `/dashboard` and by the dashboard's own check to `/onboarding`. The setup page asks for an account and not for a finished one, so there is no loop. A layout is not the check: the `(app)` layout does call `requireActiveUser()`, but so does every page beneath it.
+
+**Progress** (`onboarding.ts`, behind `advanceOnboarding` and `finishOnboarding` in `actions.ts`). Each write is one statement on the caller's own row with its conditions in the WHERE clause, so two tabs, two devices, or one request sent twice cannot disagree:
+
+- `advanceStep` sets the step only where the status is `pending` and the stored step is an earlier one. A stale or repeated request matches no row and is answered with what is stored.
+- `completeOnboarding` changes only a `pending` account whose stored step is `finish`. Asked early it is refused; asked again, or by an account that owes no setup, it answers done and writes nothing. What was filled in has no say: every detail is optional.
+- Neither action accepts an account. Neither writes the profile, a preference, or `tour_state`.
+
+**The wizard** (`OnboardingWizard`, one component for both uses):
+
+| Step        | What it holds                                                                                     | Leaving it with Continue                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Welcome     | What the application is for; that the outline is structure and not a manuscript editor. No fields | Records `ministry`                                                       |
+| Church      | Church name, ministry role, attending preaching class, in the same words as Settings              | `updateProfile` if anything changed, then records `preferences`          |
+| Preferences | `LanguageSettings` as it is in Settings, and System, Light, or Dark over the `next-themes` store  | Records `finish`. The language and translation saved as they were chosen |
+| All set     | That everything can be changed in Settings                                                        | `finishOnboarding`, then the dashboard                                   |
+
+- What is typed stays in the browser until Continue. The save comes first and the step is recorded only when it has succeeded; a refusal or a lost connection leaves the step and the fields as they were. Back never saves and never moves what is recorded, so on a reload the wizard opens at the furthest step reached.
+- No second profile model: the fields are validated by `profileSchemas`, saved by `updateProfile`, and labeled from the `settings` dictionary. The language behaves as it does in Settings, the Spanish switch included, because it is the same component and the same actions.
+- `required` (a `pending` account): opens at the stored step, offers Sign out and no other way round. `review` (any other account, from "Run Account Setup" in Settings or the address): opens at Welcome with what is saved, offers "Exit setup" throughout, and calls neither setup action, so opening or finishing the steps can never reset, complete, or advance anything.
+- Finishing does not start or offer the tour. That is Phase 4B, which begins from `tour_state`.
 
 ### Initial administrator
 
@@ -685,7 +741,7 @@ The page has five sections (Phase 2F.3, [handoff](docs/HANDOFF-2F.3.md)): **Pers
 
 - **Church name** and **ministry role** are a line of the person's own words each (`profileLimits` in `model.ts`: 120 and 80 characters, the same in CHECK constraints). There is no directory, no list of roles, and nothing is looked up. **The ministry role describes and never authorizes**: `users.role` decides access, and no access helper reads `ministry_role`.
 - **Attending preaching class** (`attendsPreachingClass`) is a yes or no the person chooses, false until they say otherwise. It is never worked out from a role, a context, or the preaching record, and it is independent of the ministry role. It decides what is _suggested_ for the class (today, the Preaching Class context; see "Preaching history") and nothing else: switching it on creates no context, occasion, or idea, switching it off removes none, and nothing is withheld from an account that has it off.
-- **One way in.** `profileSchemas(locale).profileUpdate` (`schemas.ts`, no server code) is the validation, `saveProfile` (`preferences.ts`) the write, and `updateProfile` (`actions.ts`) the one server action: `authorize("active")`, the account from the session, unknown fields dropped. A field left out is left alone, and null or a blank clears a line, so any form may send only what it shows. The settings page is one caller; first-time setup (Phase 4) is meant to be another, with the same schema and action.
+- **One way in.** `profileSchemas(locale).profileUpdate` (`schemas.ts`, no server code) is the validation, `saveProfile` (`preferences.ts`) the write, and `updateProfile` (`actions.ts`) the one server action: `authorize("active")`, the account from the session, unknown fields dropped. A field left out is left alone, and null or a blank clears a line, so any form may send only what it shows. The settings page is one caller; first-time setup (Phase 4A) is the other, with the same schema and action.
 - **Reading.** The two lines are read from the caller's own row with `storedProfile(user)`. Whether the account attends preaching class is on `getPreferences()` with the language and the translation, and the `(app)` shell hands it to the browser through `PreachingClassProvider` (`useAttendsPreachingClass()`, false without one). The server never relies on what the browser was told.
 - The administrator's directory (`withIdentities`) leaves all three out: they are the person's own.
 
@@ -703,7 +759,8 @@ The page has five sections (Phase 2F.3, [handoff](docs/HANDOFF-2F.3.md)): **Pers
 - Bible (`BibleSettings`) is one choice, what the reader's copy shortcut copies. It too is kept in the browser and not on the account.
 - Language (`LanguageSettings`) is the interface language and the Bible translation. Unlike the two above they are saved to the account (see "Languages and translations"). While Spanish is switched off it says so instead of offering a choice.
 - The library's card or list view is not repeated here: its control is in the library, where its effect is seen.
-- There is no onboarding, and no flag for having done one. An account that has said nothing has nulls and false, which every surface reads as "not said".
+- Appearance & Experience also holds "Run Account Setup", a link to `/onboarding` (see "First-time setup"). Opening it changes nothing.
+- Having been through setup is `users.onboarding_status` and nothing else. An account that has said nothing about itself still has nulls and false, which every surface reads as "not said", and which never decides whether setup is owed.
 - Account deletion is not implemented.
 
 ### Caching
@@ -890,7 +947,8 @@ These are settled and constrain later phases. The first and fourth are implement
 
 - **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, Scripture, saved Scripture, preaching history, and outline code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
-- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`, `scripture-ideas.spec.ts`, `preaching-record.spec.ts`, `outline-editor.spec.ts`, `outlines-integration.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
+- **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`, `scripture-ideas.spec.ts`, `preaching-record.spec.ts`, `outline-editor.spec.ts`, `outlines-integration.spec.ts`, `onboarding.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
+- **`onboarding.spec.ts` is run by itself** (`npx playwright test onboarding --workers=1`). The test account owes no setup, so the spec makes it one that does for as long as it runs and puts it back exactly as it was (`tests/e2e/onboarding-account.ts`, the one place a spec writes to the database, and only to one stamped development). Any other signed-in spec running beside it would be sent to setup.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
@@ -1018,3 +1076,9 @@ The rules that go with it:
 | Outline words are saved without revalidating the page  | A revalidating action returns the whole page: too much for each pause in typing         |
 | Dragging a point is Pointer Events, with no package    | The menu and the keyboard already move points; a library would add only the gesture     |
 | Leaving is held only for a failed save or a conflict   | A save on its way finishes after leaving; asking at every click would be noise          |
+| Setup owed is a status of its own, not a date          | A date alone cannot tell an account that finished from one that never owed it           |
+| Existing accounts marked in the migration itself       | A default would have sent every one of them through setup on the next request           |
+| Setup enforced in the access helpers                   | Every page, action, and route already asks them; one rule, and nothing to forget        |
+| `/onboarding` in a shell beside `(app)`                | The `(app)` layout is closed to an unfinished account, and its navigation leads nowhere |
+| The stored step only moves forward                     | A stale tab or a repeated request cannot undo progress; Back is the browser's own       |
+| Running setup again writes nothing about setup         | An account that owes none cannot be reset or completed by looking at the steps          |

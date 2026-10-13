@@ -36,6 +36,22 @@ export function ChurchMinistrySettings({ profile }: { profile: StoredProfile }) 
   const [switched, setSwitched] = useState<ActionResult | null>(null);
   const [switching, startSwitching] = useTransition();
 
+  // The page is kept while another is open, and account setup saves the same three things.
+  // A value that was saved from elsewhere replaces what this form holds of it, and only that.
+  const [seen, setSeen] = useState(profile);
+  if (
+    profile.churchName !== seen.churchName ||
+    profile.ministryRole !== seen.ministryRole ||
+    profile.attendsPreachingClass !== seen.attendsPreachingClass
+  ) {
+    setSeen(profile);
+    if (profile.churchName !== seen.churchName) setChurchName(profile.churchName ?? "");
+    if (profile.ministryRole !== seen.ministryRole) setMinistryRole(profile.ministryRole ?? "");
+    if (profile.attendsPreachingClass !== seen.attendsPreachingClass) {
+      setAttends(profile.attendsPreachingClass);
+    }
+  }
+
   const offline: ActionResult = { ok: false, message: t.offline };
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {

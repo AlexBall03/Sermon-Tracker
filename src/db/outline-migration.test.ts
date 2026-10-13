@@ -78,8 +78,8 @@ beforeAll(async () => {
 
 describe("migration 0013", () => {
   it("is the next one after 0012", () => {
-    expect(tags.at(-1)).toBe(tag);
-    expect(tags.at(-2)).toBe("0012_profile_and_preaching_class");
+    // Later migrations follow it; what matters here is what it was written on top of.
+    expect(tags[tags.indexOf(tag) - 1]).toBe("0012_profile_and_preaching_class");
   });
 
   it("only adds: it creates three tables and alters, drops, and rewrites nothing", () => {

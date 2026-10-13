@@ -22,7 +22,8 @@ export const settings = {
     },
     appearance: {
       title: "Appearance & Experience",
-      description: "Light or dark. This is the same control as the one in the bar.",
+      description:
+        "Light or dark, with the same control as the one in the bar, and a way back through account setup.",
     },
     account: {
       title: "Account",
@@ -36,6 +37,10 @@ export const settings = {
     reader: "Bible reader",
     readerDescription: "Kept on this device.",
     theme: "Theme",
+    setup: "Account setup",
+    setupDescription:
+      "Go through the setup steps again at any time: your church and ministry, your language and Bible, and the theme. Nothing changes unless you change it.",
+    runSetup: "Run Account Setup",
     access: "Your access",
     picture: "Picture",
     name: "Name",

@@ -27,6 +27,8 @@ export const routes = {
   signIn: "/sign-in",
   acceptInvitation: "/accept-invitation",
   accessDenied: "/access-denied",
+  /** First-time setup, and the same steps again from Settings. Outside the application shell. */
+  onboarding: "/onboarding",
   dashboard: "/dashboard",
   library: "/library",
   /** The library's sections. Reached from the overview and from each other: the navigation names only the library. */
@@ -44,6 +46,7 @@ export const privateRoutes = [
   routes.signIn,
   routes.acceptInvitation,
   routes.accessDenied,
+  routes.onboarding,
   routes.dashboard,
   routes.library,
   routes.sermonIdeas,
@@ -55,8 +58,12 @@ export const privateRoutes = [
   routes.admin,
 ] as const;
 
-/** Paths inside the authenticated shell. The proxy sends guests to sign-in. */
+/**
+ * Paths for signed-in accounts: the authenticated shell, and first-time
+ * setup beside it. The proxy sends guests to sign-in.
+ */
 export const appRoutes = [
+  routes.onboarding,
   routes.dashboard,
   routes.library,
   routes.sermonIdeas,

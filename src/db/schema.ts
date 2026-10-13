@@ -18,6 +18,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
+import { onboardingStatuses, onboardingSteps, tourStates } from "../features/onboarding/model";
 import { entryTypes } from "../features/outlines/model";
 import type { NumberingConfig } from "../features/outlines/numbering";
 import { actualFormats, timesOfDay } from "../features/preaching/model";
@@ -64,6 +65,21 @@ export const users = pgTable(
      * what they chose: nothing works it out from their history or contexts.
      */
     attendsPreachingClass: boolean("attends_preaching_class").notNull().default(false),
+    /**
+     * First-time setup (features/onboarding/model.ts). A new row is `pending`
+     * and must finish it; an account from before there was one is
+     * `grandfathered`, set by the migration that added the column and by
+     * nothing since. It is the only thing that says whether setup is owed.
+     */
+    onboardingStatus: text("onboarding_status", { enum: onboardingStatuses })
+      .notNull()
+      .default("pending"),
+    /** The furthest step of setup the account has reached. It only moves forward. */
+    onboardingStep: text("onboarding_step", { enum: onboardingSteps }).notNull().default("welcome"),
+    /** When the account finished setup itself. Null for one that never owed it. */
+    onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+    /** Where the product tour stands. Kept for Phase 4B; nothing writes it yet. */
+    tourState: text("tour_state", { enum: tourStates }).notNull().default("not_offered"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -85,6 +101,23 @@ export const users = pgTable(
     check(
       "users_ministry_role_check",
       sql`${table.ministryRole} is null or char_length(btrim(${table.ministryRole})) between 1 and 80`,
+    ),
+    check(
+      "users_onboarding_status_check",
+      sql`${table.onboardingStatus} in ('pending', 'completed', 'grandfathered')`,
+    ),
+    check(
+      "users_onboarding_step_check",
+      sql`${table.onboardingStep} in ('welcome', 'ministry', 'preferences', 'finish')`,
+    ),
+    // Finished is said twice, and the two must agree.
+    check(
+      "users_onboarding_completed_check",
+      sql`(${table.onboardingStatus} = 'completed') = (${table.onboardingCompletedAt} is not null)`,
+    ),
+    check(
+      "users_tour_state_check",
+      sql`${table.tourState} in ('not_offered', 'offered', 'dismissed', 'completed')`,
     ),
   ],
 );

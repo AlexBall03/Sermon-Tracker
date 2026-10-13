@@ -124,6 +124,23 @@ describe("ChurchMinistrySettings", () => {
     expect(attendance()).not.toBeChecked();
   });
 
+  it("shows what was saved from elsewhere, and leaves what is being typed alone", () => {
+    const { rerender } = show({ churchName: "Grace", ministryRole: "Pastor" });
+    fireEvent.change(church(), { target: { value: "Grace Baptist" } });
+    // Account setup saved a new role and the switch while this page was kept.
+    rerender(
+      <I18nProvider locale="en">
+        <ChurchMinistrySettings
+          profile={{ churchName: "Grace", ministryRole: "Evangelist", attendsPreachingClass: true }}
+        />
+      </I18nProvider>,
+    );
+    expect(role()).toHaveValue("Evangelist");
+    expect(attendance()).toBeChecked();
+    expect(church()).toHaveValue("Grace Baptist");
+    expect(state.updateProfile).not.toHaveBeenCalled();
+  });
+
   it("is in Spanish for an account that reads Spanish", () => {
     show({}, "es");
     expect(screen.getByLabelText("Nombre de la iglesia (opcional)")).toBeVisible();

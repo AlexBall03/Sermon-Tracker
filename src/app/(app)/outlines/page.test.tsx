@@ -149,6 +149,8 @@ describe("the outline editor's page", () => {
     );
     expect(state.editor).toHaveBeenCalledWith({
       sermon: { id: sermonId, title: "It is Well" },
+      // The sermon's own passages, for the editor to offer on each entry. This sermon has none.
+      sermonReferences: [],
       snapshot: {
         id: outlineId,
         revision: 4,

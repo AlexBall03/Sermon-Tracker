@@ -45,7 +45,14 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { authorize, getAccess, requireActiveUser, requireAdmin } from "./access";
+import { authorize, getAccess, requireAccount, requireActiveUser, requireAdmin } from "./access";
+
+/** Every account there is has finished first-time setup, or never owed it. */
+const settle = (status: "completed" | "grandfathered" = "grandfathered") =>
+  db.update(users).set({
+    onboardingStatus: status,
+    onboardingCompletedAt: status === "completed" ? new Date() : null,
+  });
 
 let db: Database;
 beforeEach(async () => {
@@ -75,6 +82,7 @@ describe("getAccess", () => {
   it("admits an invited identity as a standard user", async () => {
     Object.assign(state, { userId: "user_a", metadata: { appAccess: true } });
     expect(await getAccess()).toMatchObject({ state: "active", user: { role: "user" } });
+    await settle();
     await expect(requireAdmin()).rejects.toThrow("redirect:/access-denied");
     expect(await authorize("active")).toMatchObject({ ok: true });
     expect(await authorize("admin")).toMatchObject({ ok: false });
@@ -108,7 +116,72 @@ describe("getAccess", () => {
 
   it("admits the configured initial administrator", async () => {
     state.userId = "user_owner";
+    await getAccess();
+    await settle();
     expect((await requireAdmin()).role).toBe("admin");
     expect(await authorize("admin")).toMatchObject({ ok: true });
+  });
+});
+
+describe("first-time setup", () => {
+  beforeEach(() => {
+    Object.assign(state, { userId: "user_a", metadata: { appAccess: true } });
+  });
+
+  it("sends a new account to setup from every page, and refuses its actions", async () => {
+    expect(await getAccess()).toMatchObject({
+      state: "active",
+      user: { onboardingStatus: "pending", onboardingStep: "welcome" },
+    });
+    await expect(requireActiveUser()).rejects.toThrow("redirect:/onboarding");
+    await expect(requireAdmin()).rejects.toThrow("redirect:/onboarding");
+    expect(await authorize("active")).toEqual({
+      ok: false,
+      message: "Finish setting up your account first.",
+    });
+    expect(await authorize("admin")).toMatchObject({ ok: false });
+  });
+
+  it("holds a new administrator to it as well", async () => {
+    state.userId = "user_owner";
+    expect(await getAccess()).toMatchObject({ user: { role: "admin" } });
+    await expect(requireAdmin()).rejects.toThrow("redirect:/onboarding");
+    expect(await authorize("admin")).toMatchObject({ ok: false });
+  });
+
+  it("lets a new account reach setup itself, and what setup saves through", async () => {
+    expect((await requireAccount()).onboardingStatus).toBe("pending");
+    expect(await authorize("account")).toMatchObject({ ok: true });
+  });
+
+  it.each(["completed", "grandfathered"] as const)(
+    "lets an account that is %s through everywhere",
+    async (status) => {
+      await getAccess();
+      await settle(status);
+      expect((await requireActiveUser()).onboardingStatus).toBe(status);
+      expect((await requireAccount()).onboardingStatus).toBe(status);
+      expect(await authorize("active")).toMatchObject({ ok: true });
+      expect(await authorize("account")).toMatchObject({ ok: true });
+    },
+  );
+
+  it("denies a disabled account before setup is considered", async () => {
+    await getAccess();
+    await db.update(users).set({ status: "disabled" });
+    await expect(requireAccount()).rejects.toThrow("redirect:/access-denied");
+    await expect(requireActiveUser()).rejects.toThrow("redirect:/access-denied");
+    expect(await authorize("account")).toEqual({
+      ok: false,
+      message: "Your account does not have access.",
+    });
+  });
+
+  it("keeps a guest and a stranger out of setup", async () => {
+    state.userId = null;
+    await expect(requireAccount()).rejects.toThrow("redirect:/sign-in");
+    expect(await authorize("account")).toMatchObject({ ok: false });
+    Object.assign(state, { userId: "user_stranger", metadata: {} });
+    await expect(requireAccount()).rejects.toThrow("redirect:/access-denied");
   });
 });

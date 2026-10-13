@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { buttonVariants } from "@/components/ui/button";
 import { requireActiveUser } from "@/features/auth/access";
 import { getPreferences } from "@/features/preferences/current";
 import { storedProfile } from "@/features/preferences/preferences";
@@ -13,6 +15,7 @@ import { LanguageSettings } from "@/features/settings/components/language-settin
 import { SettingsBlock, SettingsSection } from "@/features/settings/components/settings-section";
 import { I18nProvider } from "@/i18n/client";
 import { getT } from "@/i18n/server";
+import { routes } from "@/lib/site";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT("settings")).page.title };
@@ -61,6 +64,12 @@ export default async function SettingsPage() {
         <SettingsSection id="appearance" {...t.sections.appearance}>
           <SettingsBlock title={t.blocks.theme}>
             <AppearanceSettings />
+          </SettingsBlock>
+          {/* The same steps a new account goes through. Opening them changes nothing. */}
+          <SettingsBlock title={t.blocks.setup} description={t.blocks.setupDescription}>
+            <Link href={routes.onboarding} className={buttonVariants({ variant: "outline" })}>
+              {t.blocks.runSetup}
+            </Link>
           </SettingsBlock>
         </SettingsSection>
 

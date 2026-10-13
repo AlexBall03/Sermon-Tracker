@@ -88,6 +88,18 @@ describe("SettingsPage", () => {
     }
   });
 
+  it("offers account setup again, beside the theme, as a link that changes nothing", async () => {
+    render(await SettingsPage());
+    const appearance = within(screen.getByRole("region", { name: "Appearance & Experience" }));
+    expect(appearance.getByText("appearance controls")).toBeInTheDocument();
+    expect(appearance.getByRole("link", { name: "Run Account Setup" })).toHaveAttribute(
+      "href",
+      "/onboarding",
+    );
+    // Nothing about the tour yet: that is Phase 4B.
+    expect(screen.queryByText(/tour/i)).not.toBeInTheDocument();
+  });
+
   it("shows the church, the ministry role, and preaching class as the account saved them", async () => {
     state.profile = {
       churchName: "Grace Baptist Church",
