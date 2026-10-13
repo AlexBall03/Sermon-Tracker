@@ -1,10 +1,16 @@
-import { BookOpen, LayoutDashboard, LibraryBig, ListTree, type LucideIcon } from "lucide-react";
+import { BookOpen, LayoutDashboard, LibraryBig, List, type LucideIcon } from "lucide-react";
 
 import { dictionary, type Dictionaries } from "@/i18n";
 import { defaultLocale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 
-export type AppLink = { href: string; label: string; icon: LucideIcon };
+export type AppLink = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** A name that does not change with the language, for pointing a destination out (`data-tour`). */
+  id: "dashboard" | "library" | "outlines" | "bible";
+};
 
 /**
  * The application's main destinations, in order. One list feeds the desktop
@@ -26,9 +32,9 @@ export function appLinks(
   > = dictionary(defaultLocale, "navigation"),
 ): AppLink[] {
   return [
-    { href: routes.dashboard, label: labels.dashboard, icon: LayoutDashboard },
-    { href: routes.library, label: labels.library, icon: LibraryBig },
-    { href: routes.outlines, label: labels.outlines, icon: ListTree },
-    { href: routes.bible, label: labels.bible, icon: BookOpen },
+    { id: "dashboard", href: routes.dashboard, label: labels.dashboard, icon: LayoutDashboard },
+    { id: "library", href: routes.library, label: labels.library, icon: LibraryBig },
+    { id: "outlines", href: routes.outlines, label: labels.outlines, icon: List },
+    { id: "bible", href: routes.bible, label: labels.bible, icon: BookOpen },
   ];
 }

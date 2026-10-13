@@ -381,10 +381,10 @@ describe("outline actions", () => {
     expect(logged).not.toContain("secret");
   });
 
-  it("revalidate the editor's page and the overview for a change of shape or numbering, and never for words", async () => {
+  it("revalidate the editor's page, the overview, and the dashboard for a change of shape or numbering, and never for words", async () => {
     const { outlineId, one, two } = await outlined();
     const page = `/outlines/${outlineId}`;
-    const once = [[page], ["/outlines"]];
+    const once = [[page], ["/outlines"], ["/dashboard"]];
     const thrice = [...once, ...once, ...once];
     // Making the outline and its two points: once each.
     expect(state.revalidatePath.mock.calls).toEqual(thrice);

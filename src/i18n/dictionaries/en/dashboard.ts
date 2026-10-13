@@ -1,15 +1,38 @@
-/** The dashboard: the greeting, the latest ideas, the ones to revisit, and how the workspace works. */
+/**
+ * The dashboard: the greeting and its actions, the sermons being worked on, the
+ * ones to revisit, the latest ideas and occasions, and four figures. Statuses,
+ * kinds, dates, and an outline's size are read from the dictionaries that own them.
+ */
 export const dashboard = {
   metaTitle: "Dashboard",
   welcome: "Welcome back",
   welcomeNamed: (name: string) => `Welcome back, ${name}`,
-  description: "Your workspace for sermon ideas, and for the points that build them.",
+  description: "Pick up what you are developing, or capture what just came to mind.",
+  /** An account with no active idea and nothing preached. */
   empty: {
-    title: "No ideas yet",
-    body: "Capture the first thought worth keeping. A line is enough, and you can decide later whether it is a sermon or a point.",
+    title: "Start with an idea",
+    body: "Capture the thought first. You can develop it, outline it, and record it when you preach it.",
   },
-  recent: "Recent ideas",
-  openLibrary: "Open the library",
+  /** The header's action that opens the sermon picker: an outline is opened, or made for a sermon chosen there. */
+  outline: {
+    title: "Start or open outline",
+  },
+  record: {
+    title: "Record preaching",
+  },
+  /** Sermons at Idea or Developing whose content has been worked on, most recently first. */
+  continue: {
+    title: "Continue Working",
+    description: "The sermons you have developed most recently.",
+    resume: "Resume Outline",
+    resumeNamed: (sermon: string) => `Resume the outline of ${sermon}`,
+    openSermon: "Open Sermon",
+    openSermonNamed: (sermon: string) => `Open the sermon ${sermon}`,
+    outline: "Outline",
+    noOutline: "No outline yet",
+    none: "Nothing in development yet. Add notes, Scripture, or an outline to a sermon idea, and it will be here to pick up.",
+    openLibrary: "Open Sermon Ideas",
+  },
   /** Unfinished sermon ideas left alone for a while. The dates on each come from the library's results. */
   revisit: {
     title: "Revisit an Idea",
@@ -19,54 +42,25 @@ export const dashboard = {
       `Nothing is waiting on you. Every unfinished sermon idea has had your attention in the last ${days} days.`,
     openLibrary: "Open Sermon Ideas",
   },
-  record: {
-    title: "Record preaching",
+  /** The latest ideas of every kind. */
+  recent: {
+    title: "Recent Ideas",
+    all: "Open Sermon Ideas",
+    updated: "Updated",
   },
-  workflow: {
-    title: "How your workspace works",
-    description:
-      "The path an idea takes. Capture, the library, and the preaching record are all open.",
-    stages: [
-      {
-        stage: "Capture",
-        title: "Save the thought first",
-        body: "A line is enough. You will not have to decide whether it is a sermon or a point before it is saved.",
-      },
-      {
-        stage: "Develop",
-        title: "Build it over time",
-        body: "Add Scripture and notes as they come, and attach a point to every sermon it serves.",
-      },
-      {
-        stage: "Preach",
-        title: "Keep the record",
-        body: "Note when and where a sermon was preached, beside the ideas that produced it.",
-      },
-    ],
-    kinds: [
-      {
-        name: "Sermon idea",
-        body: "A message in the making: a title, a text, and the direction it is heading.",
-      },
-      {
-        name: "Point idea",
-        body: "One thought that stands on its own, and can be used in more than one sermon.",
-      },
-      {
-        name: "Undecided",
-        body: "Something worth keeping that is not yet either. It can become a sermon or a point later.",
-      },
-    ],
+  /** The latest occasions on the Preaching Record, each one its own row. */
+  preaching: {
+    title: "Recent Preaching",
+    all: "Open Preaching Record",
+    none: "Nothing recorded yet. When you preach a sermon, record it here.",
+    view: (sermon: string, date: string) => `${sermon}, preached ${date}: view its record`,
   },
   summary: {
-    title: "At a glance",
-    description:
-      "A short summary of your work will sit here. Its figures arrive with the preaching record, so none are shown yet.",
-    stats: [
-      { label: "Sermon ideas", pending: "Every sermon you are working towards." },
-      { label: "Point ideas", pending: "Reusable points, counted once each." },
-      { label: "In development", pending: "Ideas you have started building out." },
-      { label: "Times preached", pending: "Each occasion a sermon was preached." },
-    ],
+    title: "At a Glance",
+    sermons: "Sermon Ideas",
+    points: "Point Ideas",
+    developing: "In Development",
+    preached: "Times Preached",
+    unavailable: "Unavailable",
   },
 };

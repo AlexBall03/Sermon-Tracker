@@ -10,7 +10,16 @@ export type Stat = {
  * Summary figures as one divided strip rather than separate cards: two
  * columns, four from `lg`. A stat without data says so in words.
  */
-export function StatStrip({ stats, className }: { stats: Stat[]; className?: string }) {
+export function StatStrip({
+  stats,
+  unavailable = "Unavailable",
+  className,
+}: {
+  stats: Stat[];
+  /** What a figure that could not be loaded says, in the page's language. */
+  unavailable?: string;
+  className?: string;
+}) {
   return (
     <dl
       className={`grid grid-cols-2 rounded-xl border bg-surface shadow-card lg:grid-cols-4 ${className ?? ""}`}
@@ -27,7 +36,7 @@ export function StatStrip({ stats, className }: { stats: Stat[]; className?: str
             <dd className="mt-1.5 text-[1.75rem] leading-none font-semibold tracking-[-0.02em] tabular-nums">
               {stat.value ?? (
                 <span className="text-sm font-medium tracking-normal text-muted-foreground">
-                  Unavailable
+                  {unavailable}
                 </span>
               )}
             </dd>

@@ -164,6 +164,17 @@ describe("createOccurrence", () => {
 
     expect((await listForSermon(db, me, sermon)).total).toBe(4);
     expect(await db.select().from(ideas)).toHaveLength(1);
+
+    // As the dashboard asks: the latest three, each its own row, and how many there are in all.
+    const latest = await history(me, {}, 3);
+    expect(latest.total).toBe(4);
+    expect(latest.items.map((item) => [item.preachedOn, item.timeOfDay])).toEqual([
+      ["2026-10-11", "pm"],
+      ["2026-10-11", "pm"],
+      ["2026-10-11", "am"],
+    ]);
+    expect(new Set(latest.items.map((item) => item.id)).size).toBe(3);
+    expect(latest.items.every((item) => item.sermon.id === sermon)).toBe(true);
   });
 
   it("changes nothing about the sermon", async () => {

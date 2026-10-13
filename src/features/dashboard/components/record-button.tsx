@@ -16,7 +16,13 @@ export function DashboardRecordButton() {
   const t = useT("dashboard").record;
   if (!record) return null;
   return (
-    <Button type="button" variant="outline" aria-haspopup="dialog" onClick={() => record()}>
+    <Button
+      type="button"
+      variant="outline"
+      aria-haspopup="dialog"
+      data-tour="record-preaching"
+      onClick={() => record()}
+    >
       <CalendarPlus aria-hidden />
       {t.title}
     </Button>

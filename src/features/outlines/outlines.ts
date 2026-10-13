@@ -234,6 +234,42 @@ export async function outlineIdsForSermons(
   return new Map(rows.map((row) => [row.sermonId, row.id]));
 }
 
+/** What a list of sermons says of each one's outline: that it is there, how much it holds, and when it was worked on. */
+export type SermonOutlineSummary = { id: string; entryCount: number; updatedAt: Date };
+
+/**
+ * The outlines of these sermons, by sermon, each with how many entries it
+ * has: one query, and no entry of any is read. For the dashboard, which says
+ * of each sermon being worked on whether it has an outline and what is in it.
+ * A sermon that has none, or is not the owner's, is simply not in the answer.
+ */
+export async function outlinesForSermons(
+  db: Reader,
+  ownerId: string,
+  sermonIds: string[],
+): Promise<Map<string, SermonOutlineSummary>> {
+  if (sermonIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: sermonOutlines.id,
+      sermonId: sermonOutlines.sermonId,
+      updatedAt: sermonOutlines.updatedAt,
+      // Counted over the join: an outline with no entry has one row here, with no entry in it.
+      entryCount: sql<number>`count(${outlineEntries.id})::int`,
+    })
+    .from(sermonOutlines)
+    .leftJoin(
+      outlineEntries,
+      and(
+        eq(outlineEntries.outlineId, sermonOutlines.id),
+        eq(outlineEntries.ownerId, sermonOutlines.ownerId),
+      ),
+    )
+    .where(and(eq(sermonOutlines.ownerId, ownerId), inArray(sermonOutlines.sermonId, sermonIds)))
+    .groupBy(sermonOutlines.id);
+  return new Map(rows.map(({ sermonId, ...outline }) => [sermonId, outline]));
+}
+
 /**
  * The orders a list of outlines may be in. A sort arrives as one of these
  * keys and never as a column name, and each ends with the ID, in the same

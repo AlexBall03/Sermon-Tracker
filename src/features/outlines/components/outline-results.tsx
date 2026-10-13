@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ListTree } from "lucide-react";
+import { List } from "lucide-react";
 
 import { dictionary } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
@@ -37,7 +37,7 @@ export function OutlineResults({
         >
           <div className="mb-2.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="flex min-w-0 items-center gap-1.5">
-              <ListTree className="size-3.5 shrink-0" aria-hidden />
+              <List className="size-3.5 shrink-0" aria-hidden />
               <span className="truncate">{t.entries(outline.entryCount)}</span>
             </span>
             <span className="font-medium whitespace-nowrap">

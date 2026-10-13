@@ -57,6 +57,13 @@ export const unfinishedStatuses = [
 ] as const satisfies readonly IdeaStatus[];
 
 /**
+ * The statuses of a sermon that is being worked towards now: the dashboard's
+ * "Continue Working". One that is ready is finished, and one on hold was put
+ * aside on purpose.
+ */
+export const activeStatuses = ["idea", "developing"] as const satisfies readonly IdeaStatus[];
+
+/**
  * How many days an unfinished sermon may go without being worked on before it
  * is offered again. The dashboard and the library both read it from here.
  */

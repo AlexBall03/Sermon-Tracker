@@ -27,6 +27,7 @@ import { isForeignKeyViolation, type Database } from "@/db/types";
 import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { searchTerms, startOfDay, startOfNextDay, type LibraryQuery } from "./library-query";
 import {
+  activeStatuses,
   classificationDefaults,
   ideaLimits,
   legacyIdeaStatus,
@@ -179,21 +180,82 @@ export async function getIdea(
 }
 
 /**
- * The owner's few most recently changed ideas, for the dashboard. An archived
- * idea has been put away and is not among them. The library uses `searchIdeas`.
+ * The owner's few most recently changed ideas, of every kind, for the
+ * dashboard. An archived idea has been put away and is not among them. Only
+ * the rows are read: the dashboard names an idea and does not show its
+ * passages or tags. The library uses `searchIdeas`.
  */
 export async function recentIdeas(
-  db: Database,
+  db: Reader,
   ownerId: string,
   limit: number,
-): Promise<IdeaWithReferences[]> {
+): Promise<IdeaRecord[]> {
   const rows = await db
     .select()
     .from(ideas)
     .where(and(eq(ideas.ownerId, ownerId), isNull(ideas.archivedAt)))
     .orderBy(desc(ideas.updatedAt), desc(ideas.id))
     .limit(limit);
-  return withReferences(db, ownerId, rows);
+  return rows.map(asRead);
+}
+
+/**
+ * The sermons the owner is developing now, for the dashboard's "Continue
+ * Working": not archived, at `idea` or `developing`, and worked on at least
+ * once since they were captured. The most recently developed comes first and
+ * the ID settles a tie. A sermon only captured is not here until its content
+ * is worked on; a change of status, tag, or preaching record never brings one
+ * in or moves it up, because none of those moves `last_developed_at`.
+ *
+ * The database filters, orders, and limits; only the rows returned are read.
+ */
+export async function continueWorking(
+  db: Reader,
+  ownerId: string,
+  limit: number = 4,
+): Promise<IdeaRecord[]> {
+  const rows = await db
+    .select()
+    .from(ideas)
+    .where(
+      and(
+        eq(ideas.ownerId, ownerId),
+        isNull(ideas.archivedAt),
+        eq(ideas.kind, "sermon"),
+        inArray(ideas.status, [...activeStatuses]),
+        isNotNull(ideas.lastDevelopedAt),
+      ),
+    )
+    .orderBy(desc(ideas.lastDevelopedAt), desc(ideas.id))
+    .limit(limit);
+  return rows.map(asRead);
+}
+
+/** The dashboard's three figures about the ideas an account is keeping. */
+export type WorkspaceCounts = {
+  /** Sermon ideas that are not archived. */
+  sermons: number;
+  /** Point ideas that are not archived. */
+  points: number;
+  /** Sermons at `developing` that are not archived. */
+  developing: number;
+};
+
+/**
+ * How many sermon ideas, point ideas, and sermons in development the owner
+ * has, archived ones left out: one statement, counted by the database. An
+ * account with none gets three zeros.
+ */
+export async function workspaceCounts(db: Reader, ownerId: string): Promise<WorkspaceCounts> {
+  const [row] = await db
+    .select({
+      sermons: sql<number>`count(*) filter (where ${ideas.kind} = 'sermon')::int`,
+      points: sql<number>`count(*) filter (where ${ideas.kind} = 'point')::int`,
+      developing: sql<number>`count(*) filter (where ${ideas.kind} = 'sermon' and ${ideas.status} = 'developing')::int`,
+    })
+    .from(ideas)
+    .where(and(eq(ideas.ownerId, ownerId), isNull(ideas.archivedAt)));
+  return row;
 }
 
 /**

@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useContext, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import {
   type ApplyQuery,
 } from "@/features/ideas/components/library/query-navigation";
 import { useT } from "@/i18n/client";
+import { useFreshOnReturn } from "@/lib/use-fresh-on-return";
 import { cn } from "@/lib/utils";
 import { outlineSorts, type OutlineSort } from "../model";
 import { outlinesHref, type OutlinesQuery } from "../outlines-query";
@@ -54,6 +54,7 @@ export function OutlinesProvider({
 }) {
   const { query: shown, pending, apply } = useQueryNavigation(query, outlinesHref);
   const [creating, setCreating] = useState(false);
+  // An outline worked on since would otherwise be listed with the date and the count it had before.
   useFreshOnReturn();
   const value = useMemo<OutlinesState>(
     () => ({ query: shown, pending, apply, create: () => setCreating(true) }),
@@ -65,28 +66,6 @@ export function OutlinesProvider({
       <CreateOutlineDialog open={creating} onClose={() => setCreating(false)} />
     </OutlinesContext.Provider>
   );
-}
-
-/**
- * Reads the overview again when it is come back to. Next keeps a page it has
- * left, hidden, and shows that copy again on Back; an outline worked on in
- * the meantime would be listed with the date and the count it had before. A
- * link to the overview already asks the server afresh, so this only matters
- * for the kept copy. An effect runs again when a kept page is shown, which is
- * the moment to ask.
- */
-function useFreshOnReturn() {
-  const router = useRouter();
-  const latest = useRef(router);
-  const shown = useRef(false);
-  useEffect(() => {
-    latest.current = router;
-  });
-  // No dependencies: it is to run when the page is shown, and for no other reason.
-  useEffect(() => {
-    if (shown.current) latest.current.refresh();
-    shown.current = true;
-  }, []);
 }
 
 /** The page's main action: an outline for a sermon, chosen or new. */

@@ -16,6 +16,7 @@ import {
   getOutlineForSermon,
   listOutlines,
   outlineIdsForSermons,
+  outlinesForSermons,
   setNumbering,
 } from "./outlines";
 import { outlineSchemas } from "./schemas";
@@ -273,6 +274,31 @@ describe("listing outlines", () => {
     const found = await outlineIdsForSermons(db, me, [one.sermonId, bare, theirs.sermonId]);
     expect([...found]).toEqual([[one.sermonId, one.id]]);
     expect(await outlineIdsForSermons(db, me, [])).toEqual(new Map());
+  });
+
+  it("says of several sermons which has an outline and how much is in it, the owner's only", async () => {
+    const full = await outlined("Full");
+    const hollow = await outlined("Hollow");
+    const bare = await stored("Bare");
+    const theirs = await outlined("Theirs", other);
+    await point(full.id, "First");
+    await point(full.id, "Second");
+    await point(theirs.id, "Theirs", other);
+
+    const found = await outlinesForSermons(db, me, [
+      full.sermonId,
+      hollow.sermonId,
+      bare,
+      theirs.sermonId,
+    ]);
+    expect([...found.keys()].sort()).toEqual([full.sermonId, hollow.sermonId].sort());
+    expect(found.get(full.sermonId)).toMatchObject({ id: full.id, entryCount: 2 });
+    expect(found.get(full.sermonId)!.updatedAt).toBeInstanceOf(Date);
+    // An outline with nothing in it is still an outline.
+    expect(found.get(hollow.sermonId)).toMatchObject({ id: hollow.id, entryCount: 0 });
+    expect(await outlinesForSermons(db, me, [])).toEqual(new Map());
+    // Nothing is learned of another account's sermon by naming it.
+    expect(await outlinesForSermons(db, me, [theirs.sermonId])).toEqual(new Map());
   });
 
   it("pages, and gives the last page for one past the end", async () => {

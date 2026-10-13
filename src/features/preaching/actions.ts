@@ -41,6 +41,8 @@ function firstIssue(error: { issues: { message: string }[] }, fallback: string):
 function refresh(sermonId?: string) {
   revalidatePath(routes.sermonIdeas);
   revalidatePath(routes.preachingRecord);
+  // The dashboard lists the latest occasions and counts them all.
+  revalidatePath(routes.dashboard);
   if (sermonId) revalidatePath(`${routes.library}/${sermonId}`);
 }
 

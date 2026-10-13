@@ -11,7 +11,7 @@ import { routes } from "@/lib/site";
 
 /**
  * A few unfinished sermon ideas that have gone a while without work, as one
- * panel beside the recent ideas: each row a link to the idea's own page. Which
+ * panel beside the sermons being worked on: each row a link to the idea's own page. Which
  * ones, and in what order, is `revisitIdeas`; this only draws them. With none
  * to offer it says so and leads to the library: nothing is shown merely to
  * fill the panel.
@@ -32,7 +32,8 @@ export function RevisitIdeas({
   return (
     <section
       aria-labelledby="revisit-heading"
-      className="self-start rounded-xl border bg-surface shadow-card"
+      data-tour="revisit-ideas"
+      className="min-w-0 self-start rounded-xl border bg-surface shadow-card"
     >
       <div className="px-5 pt-5 pb-4">
         <h2 id="revisit-heading" className="text-lg font-semibold tracking-[-0.015em]">

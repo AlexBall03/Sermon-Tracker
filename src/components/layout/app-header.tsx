@@ -55,6 +55,7 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
                   <Link
                     href={link.href}
                     aria-current={isCurrent(link.href) ? "page" : undefined}
+                    data-tour={`nav-${link.id}`}
                     // The current page carries a short emerald rule just beneath its label.
                     className="relative rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors duration-150 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary after:opacity-0 after:transition-opacity after:duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 aria-[current=page]:text-foreground aria-[current=page]:after:opacity-100"
                   >
@@ -72,6 +73,7 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
               <button
                 type="button"
                 onClick={capture.open}
+                data-tour="quick-capture"
                 className="group/capture breathe-ring inline-flex h-9 items-center gap-1.5 rounded-full border border-input bg-surface pr-4 pl-3 text-sm font-semibold shadow-card transition-[border-color,background-color,box-shadow,scale] duration-300 ease-out hover:border-primary hover:shadow-focus active:scale-[0.98] active:bg-foreground/5"
               >
                 <Plus
@@ -110,11 +112,12 @@ function TabBar({
 }) {
   const t = useT("navigation");
   const middle = Math.ceil(links.length / 2);
-  const tab = ({ href, label, icon: Icon }: AppLink) => (
+  const tab = ({ id, href, label, icon: Icon }: AppLink) => (
     <li key={href} className="flex-1">
       <Link
         href={href}
         aria-current={isCurrent(href) ? "page" : undefined}
+        data-tour={`tab-${id}`}
         className="flex h-full flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground aria-[current=page]:text-primary"
       >
         <Icon className="size-5" aria-hidden />
@@ -134,6 +137,7 @@ function TabBar({
             type="button"
             aria-label={t.captureIdea}
             onClick={onCapture}
+            data-tour="tab-quick-capture"
             // The bar's Capture control as a disc: outlined, the plus in emerald, the same breathing edge.
             className="group/capture breathe-ring grid size-11 place-items-center rounded-full border border-input bg-surface shadow-card transition-[border-color,background-color,box-shadow,scale] duration-300 ease-out hover:border-primary hover:shadow-focus active:scale-[0.96] active:bg-foreground/5"
           >

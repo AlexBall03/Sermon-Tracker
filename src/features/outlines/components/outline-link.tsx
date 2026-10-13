@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ListTree } from "lucide-react";
+import { List } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { dictionary } from "@/i18n";
@@ -51,7 +51,7 @@ export function OutlineLink({
         className,
       )}
     >
-      <ListTree aria-hidden />
+      <List aria-hidden />
       <span className={onCard ? "list-view:sr-only" : undefined}>{onCard ? t.short : label}</span>
     </Link>
   );

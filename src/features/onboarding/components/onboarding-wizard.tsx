@@ -10,7 +10,7 @@ import {
   CalendarCheck,
   Layers,
   Lightbulb,
-  ListTree,
+  List,
   LoaderCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -59,7 +59,7 @@ type OnboardingWizardProps = {
 };
 
 /** One icon to each line of the welcome step, in the dictionary's order. */
-const featureIcons: LucideIcon[] = [Lightbulb, Layers, BookOpen, ListTree, CalendarCheck];
+const featureIcons: LucideIcon[] = [Lightbulb, Layers, BookOpen, List, CalendarCheck];
 
 const themes = ["system", "light", "dark"] as const;
 type Theme = (typeof themes)[number];
