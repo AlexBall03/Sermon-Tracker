@@ -38,7 +38,7 @@ export const library = {
   },
   sorts: {
     "updated-desc": "Recently updated",
-    "updated-asc": "Oldest updated",
+    "updated-asc": "Least recently updated",
     "created-desc": "Recently created",
     "created-asc": "Oldest created",
     "title-asc": "Title A–Z",
@@ -46,7 +46,16 @@ export const library = {
   },
   tagModes: { any: "Any", all: "All" },
   archiveViews: { active: "Active", archived: "Archived", all: "All" },
+  /** The two revisiting filters. They are about work on an idea's content, not about any change to it. */
+  revisitFilters: { never: "Never revisited", attention: "Needs attention" },
   filters: {
+    revisit: "Revisit",
+    revisitHints: {
+      none: "Finds sermon ideas only, by when their title, subject, notes, or passages were last worked on.",
+      never: "Sermon ideas not worked on since they were captured.",
+      attention: (days: number) =>
+        `Unfinished sermon ideas not worked on for ${days} days or more.`,
+    },
     panel: "Filters",
     kind: "Kind of idea",
     status: "Status",
@@ -82,6 +91,7 @@ export const library = {
     format: "Format",
     archive: "Showing",
     archiveViews: { archived: "Archived only", all: "Active and archived" },
+    revisit: "Revisit",
     tag: "Tag",
     unknownTag: "Unknown tag",
     created: "Created",
@@ -105,6 +115,10 @@ export const library = {
     offline: "That could not be done. Check your connection and try again.",
     more: (count: number) => `and ${count} more`,
     updated: "Updated",
+    /** Why an idea is among those to revisit: "Never developed · created Sep 1, 2026", "Last developed Aug 3, 2026". */
+    neverDeveloped: "Never developed",
+    created: "created",
+    lastDeveloped: "Last developed",
   },
   pagination: {
     label: "Library pages",

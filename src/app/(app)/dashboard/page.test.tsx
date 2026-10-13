@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The access helper, Clerk, and the idea query are mocked: this covers what the page does with their answers.
 const state = vi.hoisted(() => ({
   ideas: [] as unknown[],
+  revisit: [] as unknown[],
   recentIdeas: vi.fn(),
+  revisitIdeas: vi.fn(),
   listVenues: vi.fn(),
   role: "user" as "user" | "admin",
   firstName: "Ada" as string | null,
@@ -37,6 +39,10 @@ vi.mock("@/features/ideas/ideas", () => ({
   recentIdeas: async (...args: unknown[]) => {
     state.recentIdeas(...args);
     return state.ideas;
+  },
+  revisitIdeas: async (...args: unknown[]) => {
+    state.revisitIdeas(...args);
+    return state.revisit;
   },
 }));
 vi.mock("@/features/preaching/venues", () => ({
@@ -88,8 +94,10 @@ beforeEach(() => {
     clerkDown: false,
     signedIn: true,
     ideas: [],
+    revisit: [],
   });
   state.recentIdeas.mockClear();
+  state.revisitIdeas.mockClear();
 });
 
 describe("DashboardPage", () => {
@@ -114,18 +122,11 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
   });
 
-  it("links to settings for everyone and to administration only for administrators", async () => {
-    const { unmount } = render(await DashboardPage());
-    expect(screen.getByRole("link", { name: /Account settings/ })).toHaveAttribute(
-      "href",
-      "/settings",
-    );
-    expect(screen.queryByRole("link", { name: /Administration/ })).not.toBeInTheDocument();
-    unmount();
-
+  it("leaves settings and administration to the account menu, for an administrator too", async () => {
     state.role = "admin";
     render(await DashboardPage());
-    expect(screen.getByRole("link", { name: /Administration/ })).toHaveAttribute("href", "/admin");
+    expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Administration/ })).not.toBeInTheDocument();
   });
 
   it("offers to record preaching from here, with the sermon chosen in the form", async () => {
@@ -136,8 +137,9 @@ describe("DashboardPage", () => {
     render(await DashboardPage());
     // The form's lists are the signed-in account's own.
     expect(state.listVenues).toHaveBeenCalledWith("database", "1");
-    const shortcuts = within(screen.getByRole("navigation", { name: "Shortcuts" }));
-    fireEvent.click(shortcuts.getByRole("button", { name: /Record preaching/ }));
+    // One of the page's actions, beside its title.
+    const header = within(screen.getByRole("banner"));
+    fireEvent.click(header.getByRole("button", { name: "Record preaching" }));
     // The same form as the preaching record's, with no sermon chosen yet.
     const dialog = await screen.findByRole("dialog", { name: "Record preaching" });
     expect(within(dialog).getByRole("search")).toBeVisible();
@@ -178,6 +180,60 @@ describe("DashboardPage", () => {
       "href",
       "/library/sermon-ideas",
     );
+  });
+
+  it("offers the sermon ideas the server chose to revisit, each with its status and why", async () => {
+    state.ideas = [idea("a1", "His Grace is Sufficient", "sermon")];
+    state.revisit = [
+      idea("a1", "His Grace is Sufficient", "sermon"),
+      {
+        ...idea("c3", "The Still Small Voice", "sermon"),
+        status: "on_hold",
+        lastDevelopedAt: new Date("2026-08-03T10:00:00Z"),
+      },
+    ];
+    render(await DashboardPage());
+
+    // The owner comes from the session; which ideas and how many is the query's business.
+    expect(state.revisitIdeas).toHaveBeenCalledWith("database", "1");
+    const section = within(screen.getByRole("region", { name: "Revisit an Idea" }));
+    const [never, held] = within(
+      section.getByRole("list", { name: "Revisit an Idea" }),
+    ).getAllByRole("listitem");
+    expect(within(never).getByRole("link", { name: "His Grace is Sufficient" })).toHaveAttribute(
+      "href",
+      "/library/a1",
+    );
+    expect(never).toHaveTextContent("Status: Idea");
+    expect(never).toHaveTextContent(/Never developed.*created Oct 1, 2026/);
+    expect(within(held).getByRole("link", { name: "The Still Small Voice" })).toHaveAttribute(
+      "href",
+      "/library/c3",
+    );
+    expect(held).toHaveTextContent("Status: On Hold");
+    expect(held).toHaveTextContent("Last developed Aug 3, 2026");
+    expect(section.getByRole("link", { name: "See all that need attention" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas?revisit=attention",
+    );
+  });
+
+  it("says so, and leads to the library, when no idea needs revisiting", async () => {
+    state.ideas = [idea("b2", "Faith speaks", "point")];
+    render(await DashboardPage());
+    const section = within(screen.getByRole("region", { name: "Revisit an Idea" }));
+    expect(section.getByText(/Nothing is waiting on you.*last 30 days/)).toBeVisible();
+    expect(section.queryByRole("list")).not.toBeInTheDocument();
+    expect(section.getByRole("link", { name: "Open Sermon Ideas" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas",
+    );
+  });
+
+  it("leaves the section out when there is no active idea at all", async () => {
+    render(await DashboardPage());
+    expect(screen.queryByRole("region", { name: "Revisit an Idea" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No ideas yet" })).toBeVisible();
   });
 
   it("names the future figures without showing any number", async () => {

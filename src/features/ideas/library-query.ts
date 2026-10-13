@@ -8,6 +8,7 @@ import {
   intendedFormats,
   legacyIdeaStatus,
   librarySorts,
+  revisitFilters,
   searchLimits,
   sermonTypes,
   tagFilterLimit,
@@ -17,6 +18,7 @@ import {
   type IdeaStatus,
   type IntendedFormat,
   type LibrarySort,
+  type RevisitFilter,
   type SermonType,
   type TagMode,
 } from "./model";
@@ -44,6 +46,12 @@ export type LibraryQuery = {
   formats: IntendedFormat[];
   /** Active ideas, archived ones, or both. Not a status: an archived idea keeps its own. */
   archive: ArchiveView;
+  /**
+   * Sermon ideas worth returning to, whatever `kinds` says: never worked on
+   * since they were captured, or unfinished and left alone for a while. Null
+   * asks nothing. It is about development, not `updated_at`.
+   */
+  revisit: RevisitFilter | null;
   tagIds: string[];
   /** `any`: an idea with one of the tags matches. `all`: it must have every one. */
   tagMode: TagMode;
@@ -66,6 +74,7 @@ export const defaultLibraryQuery: LibraryQuery = {
   sermonTypes: [],
   formats: [],
   archive: defaultArchiveView,
+  revisit: null,
   tagIds: [],
   tagMode: defaultTagMode,
   createdFrom: null,
@@ -84,6 +93,7 @@ export const libraryParams = {
   sermonTypes: "type",
   formats: "format",
   archive: "archived",
+  revisit: "revisit",
   tagIds: "tag",
   tagMode: "tag_mode",
   createdFrom: "created_from",
@@ -201,6 +211,7 @@ export function parseLibraryQuery(params: LibrarySearchParams): LibraryQuery {
     sermonTypes: manyOf(sermonTypes, allValues(params, libraryParams.sermonTypes)),
     formats: manyOf(intendedFormats, allValues(params, libraryParams.formats)),
     archive: oneOf(archiveViews, first(libraryParams.archive)) ?? defaultArchiveView,
+    revisit: oneOf(revisitFilters, first(libraryParams.revisit)),
     tagIds: tagList(allValues(params, libraryParams.tagIds)),
     tagMode: oneOf(tagModes, first(libraryParams.tagMode)) ?? defaultTagMode,
     createdFrom: day(first(libraryParams.createdFrom)),
@@ -233,6 +244,7 @@ export function serializeLibraryQuery(query: LibraryQuery): URLSearchParams {
   each(libraryParams.sermonTypes, manyOf(sermonTypes, query.sermonTypes));
   each(libraryParams.formats, manyOf(intendedFormats, query.formats));
   if (query.archive !== defaultArchiveView) params.set(libraryParams.archive, query.archive);
+  set(libraryParams.revisit, oneOf(revisitFilters, query.revisit ?? undefined));
   each(libraryParams.tagIds, tagIds);
   // The mode means nothing without a tag to apply it to.
   if (query.tagMode !== defaultTagMode && tagIds.length > 0) {
@@ -265,6 +277,7 @@ export function activeFilterCount(query: LibraryQuery) {
     query.sermonTypes.length +
     query.formats.length +
     Number(query.archive !== defaultArchiveView) +
+    Number(query.revisit !== null) +
     query.tagIds.length +
     Number(Boolean(query.createdFrom || query.createdThrough)) +
     Number(Boolean(query.updatedFrom || query.updatedThrough))

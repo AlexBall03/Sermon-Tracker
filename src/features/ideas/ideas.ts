@@ -31,6 +31,8 @@ import {
   ideaLimits,
   legacyIdeaStatus,
   libraryPageSize,
+  revisitAfterDays,
+  unfinishedStatuses,
   type IdeaKind,
   type LibrarySort,
 } from "./model";
@@ -189,6 +191,66 @@ export async function recentIdeas(
   return withReferences(db, ownerId, rows);
 }
 
+/**
+ * When an idea was last worked on: its last development, or its capture when
+ * there has been none. An idea from before `last_developed_at` existed is
+ * therefore as old as its creation, and never looks newly active.
+ */
+const workedOn = sql`coalesce(${ideas.lastDevelopedAt}, ${ideas.createdAt})`;
+
+/** The instant at or before which an idea not worked on since has waited long enough to be offered again. */
+export function revisitCutoff(now: Date = new Date()) {
+  return new Date(now.getTime() - revisitAfterDays * 24 * 60 * 60 * 1000);
+}
+
+/** A sermon idea that has not been worked on since it was captured, whatever its status or age. */
+function neverDeveloped() {
+  return and(eq(ideas.kind, "sermon"), isNull(ideas.lastDevelopedAt));
+}
+
+/**
+ * An unfinished sermon idea that has gone without work since before the
+ * cutoff. The dashboard's suggestions and the library's filter are this one
+ * rule. It says nothing of the archive, which each caller decides.
+ */
+function needsAttention(now: Date) {
+  return and(
+    eq(ideas.kind, "sermon"),
+    inArray(ideas.status, [...unfinishedStatuses]),
+    sql`${workedOn} <= ${revisitCutoff(now).toISOString()}::timestamptz`,
+  );
+}
+
+/**
+ * The few sermon ideas most worth returning to, for the dashboard: unfinished,
+ * not archived, and not worked on for `revisitAfterDays`. Fewer than `limit`,
+ * or none, when no more qualify; nothing is added to fill the list.
+ *
+ * The order is fixed. First the ideas never worked on since they were
+ * captured, then those worked on before, then those on hold, which were put
+ * aside on purpose. Within each, the longest neglected first, and the ID
+ * settles a tie. The database filters, orders, and limits; only the rows
+ * returned are read.
+ */
+export async function revisitIdeas(
+  db: Reader,
+  ownerId: string,
+  limit: number = 3,
+  now: Date = new Date(),
+): Promise<IdeaRecord[]> {
+  const rows = await db
+    .select()
+    .from(ideas)
+    .where(and(eq(ideas.ownerId, ownerId), isNull(ideas.archivedAt), needsAttention(now)))
+    .orderBy(
+      sql`case when ${ideas.status} = 'on_hold' then 2 when ${ideas.lastDevelopedAt} is null then 0 else 1 end`,
+      asc(workedOn),
+      asc(ideas.id),
+    )
+    .limit(limit);
+  return rows.map(asRead);
+}
+
 /** How many of the owner's ideas are archived: what a library with nothing active in it may still hold. */
 export async function archivedCount(db: Reader, ownerId: string): Promise<number> {
   const [{ total }] = await db
@@ -218,7 +280,7 @@ export function containing(term: string) {
 }
 
 /** Everything a library query asks of an idea, as conditions that must all hold. */
-function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
+function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery, now: Date) {
   const conditions: (SQL | undefined)[] = [eq(ideas.ownerId, ownerId)];
 
   // Every word must be found, each in any of the fields. A subject is only
@@ -246,6 +308,10 @@ function libraryConditions(db: Reader, ownerId: string, query: LibraryQuery) {
   if (query.formats.length > 0) {
     conditions.push(eq(ideas.kind, "sermon"), inArray(ideas.intendedFormat, query.formats));
   }
+
+  // The revisiting filters find sermon ideas only, by the rule the dashboard uses.
+  if (query.revisit === "never") conditions.push(neverDeveloped());
+  else if (query.revisit === "attention") conditions.push(needsAttention(now));
 
   // Archived ideas are left out here, in the query, unless they were asked for;
   // the count and every page therefore agree.
@@ -307,9 +373,11 @@ export async function searchIdeas(
   ownerId: string,
   query: LibraryQuery,
   pageSize: number = libraryPageSize,
+  /** What "now" is for the revisiting filter. Only a test passes one. */
+  now: Date = new Date(),
 ): Promise<LibraryPage> {
   const size = Math.min(Math.max(Math.trunc(pageSize) || libraryPageSize, 1), maxPageSize);
-  const where = libraryConditions(db, ownerId, query);
+  const where = libraryConditions(db, ownerId, query, now);
 
   const [{ total }] = await db.select({ total: count() }).from(ideas).where(where);
   const totalPages = Math.ceil(total / size);
@@ -361,9 +429,18 @@ export async function createIdea(
   });
 }
 
+/** A reference as it is compared to tell whether an idea's passages changed. */
+const referenceMark = (reference: IdeaReference) =>
+  `${referenceKey(reference)}:${reference.isPrimary}`;
+
 /**
  * Saves an idea's content. A classification the input leaves out is not
  * touched; one it names is set.
+ *
+ * The idea counts as developed only when its title, subject, notes, or
+ * passages are different from what was stored. The editor sends the whole
+ * draft, so a save that changed only a status or a tag sends the same content
+ * back and is not development. The row is locked while the two are compared.
  */
 export async function updateIdea(
   db: Database,
@@ -372,9 +449,22 @@ export async function updateIdea(
   input: IdeaInput | IdeaUpdate,
 ): Promise<IdeaWithReferences | null> {
   return db.transaction(async (tx) => {
+    const [stored] = await tx
+      .select({ title: ideas.title, subject: ideas.subject, notes: ideas.notes })
+      .from(ideas)
+      .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+      .for("update");
+    if (!stored) return null;
+    const held = (await referencesFor(tx, ownerId, [id])).get(id) ?? [];
+    const developed =
+      input.title !== stored.title ||
+      (input.subject ?? null) !== stored.subject ||
+      (input.notes ?? null) !== stored.notes ||
+      input.references.map(referenceMark).join("|") !== held.map(referenceMark).join("|");
+
     const [updated] = await tx
       .update(ideas)
-      .set(columns(input))
+      .set({ ...columns(input), ...(developed ? { lastDevelopedAt: new Date() } : {}) })
       .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
       .returning();
     // References are touched only once the owner-scoped update has matched.
@@ -412,7 +502,8 @@ export type AttachOutcome =
  *
  * The idea's row is locked for the length of the transaction, so two requests
  * at once add one after the other and neither can repeat a passage or take
- * the other's position. Something was added, so the idea counts as changed.
+ * the other's position. Something was added, so the idea counts as changed,
+ * and as developed; a request that added nothing leaves both dates alone.
  */
 export async function attachReferences(
   db: Database,
@@ -467,7 +558,11 @@ export async function attachReferences(
         isPrimary: false,
       })),
     );
-    await tx.update(ideas).set({ updatedAt: new Date() }).where(eq(ideas.id, idea.id));
+    const now = new Date();
+    await tx
+      .update(ideas)
+      .set({ updatedAt: now, lastDevelopedAt: now })
+      .where(eq(ideas.id, idea.id));
     return { status: "attached", idea, added, already } as const;
   });
 }

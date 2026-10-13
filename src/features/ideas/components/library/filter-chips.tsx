@@ -22,6 +22,7 @@ export function FilterChips() {
   const { query, tags, apply } = useLibrary();
   const t = useT("library").chips;
   const words = useT("ideas");
+  const revisits = useT("library").revisitFilters;
   const locale = useLocale();
   if (activeFilterCount(query) === 0) return null;
 
@@ -75,6 +76,14 @@ export function FilterChips() {
       group: t.archive,
       label: t.archiveViews[query.archive],
       remove: { archive: "active" },
+    });
+  }
+  if (query.revisit) {
+    chips.push({
+      key: "revisit",
+      group: t.revisit,
+      label: revisits[query.revisit],
+      remove: { revisit: null },
     });
   }
   if (query.createdFrom || query.createdThrough) {

@@ -21,6 +21,8 @@ import {
   ideaKinds,
   ideaStatuses,
   intendedFormats,
+  revisitAfterDays,
+  revisitFilters,
   sermonTypes,
   tagFilterLimit,
   tagModes,
@@ -167,6 +169,7 @@ export function LibraryFilters() {
   const t = useT("library").filters;
   const modes = useT("library").tagModes;
   const views = useT("library").archiveViews;
+  const revisits = useT("library").revisitFilters;
   const words = useT("ideas");
   const active = activeFilterCount(query);
 
@@ -240,6 +243,30 @@ export function LibraryFilters() {
                 onToggle={() => apply((current) => ({ formats: toggled(current.formats, format) }))}
               >
                 {words.formats[format]}
+              </Toggle>
+            ))}
+          </div>
+        </Group>
+
+        {/* One of the two or neither: pressing the chosen one again lifts it. */}
+        <Group
+          label={t.revisit}
+          hint={
+            query.revisit === "attention"
+              ? t.revisitHints.attention(revisitAfterDays)
+              : t.revisitHints[query.revisit ?? "none"]
+          }
+        >
+          <div className="flex flex-wrap gap-2">
+            {revisitFilters.map((revisit) => (
+              <Toggle
+                key={revisit}
+                pressed={query.revisit === revisit}
+                onToggle={() =>
+                  apply((current) => ({ revisit: current.revisit === revisit ? null : revisit }))
+                }
+              >
+                {revisits[revisit]}
               </Toggle>
             ))}
           </div>

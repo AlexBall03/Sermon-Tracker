@@ -271,6 +271,41 @@ describe("filters", () => {
     expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?format=mini");
   });
 
+  it("offers the two revisiting filters, one at a time, and says what the chosen one finds", () => {
+    const { unmount } = render(<Library at={query({ statuses: ["developing"], page: 3 })} />);
+    openFilters();
+    const revisit = () => within(screen.getByRole("group", { name: "Revisit" }));
+    expect(screen.getByRole("group", { name: "Revisit" })).toHaveTextContent(
+      "Finds sermon ideas only",
+    );
+    fireEvent.click(revisit().getByRole("button", { name: "Needs attention" }));
+    expect(went(state.push).at(-1)).toBe(
+      "/library/sermon-ideas?status=developing&revisit=attention",
+    );
+    unmount();
+
+    render(<Library at={query({ revisit: "attention" })} />);
+    openFilters();
+    expect(revisit().getByRole("button", { name: "Needs attention" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("group", { name: "Revisit" })).toHaveTextContent(
+      "not worked on for 30 days or more",
+    );
+    // The other one takes its place; the same one again lifts it.
+    fireEvent.click(revisit().getByRole("button", { name: "Never revisited" }));
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?revisit=never");
+    fireEvent.click(revisit().getByRole("button", { name: "Never revisited" }));
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas");
+  });
+
+  it("shows a revisiting filter as a chip that can be removed", () => {
+    render(<Library at={query({ revisit: "never", kinds: ["sermon"] })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter: Revisit Never revisited" }));
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?kind=sermon"]);
+  });
+
   it("sets either end of a date range", () => {
     render(<Library />);
     openFilters();
@@ -378,7 +413,7 @@ describe("sorting", () => {
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       "Recently updated",
-      "Oldest updated",
+      "Least recently updated",
       "Recently created",
       "Oldest created",
       "Title A–Z",

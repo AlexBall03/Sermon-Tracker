@@ -126,6 +126,14 @@ export const ideas = pgTable(
      * is given them back as they were.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * When the idea's content was last worked on: its title, subject, notes,
+     * or passages. Null until that first happens after it was captured, so an
+     * idea from before this column is measured from `createdAt`. A change of
+     * status, format, type, kind, or tags, archiving, and preaching never set
+     * it; `updatedAt` is the one that moves for any write.
+     */
+    lastDevelopedAt: timestamp("last_developed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

@@ -71,6 +71,13 @@
       "when": 1791848722562,
       "tag": "0009_preaching_history",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791858567727,
+      "tag": "0010_idea_last_developed",
+      "breakpoints": true
     }
   ]
 }

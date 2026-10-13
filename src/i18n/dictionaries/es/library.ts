@@ -54,7 +54,15 @@ export const library: Untranslated<typeof english> = {
   },
   tagModes: { any: "Alguna", all: "Todas" },
   archiveViews: { active: "Activas", archived: "Archivadas", all: "Todas" },
+  revisitFilters: { never: "Nunca retomadas", attention: "Necesitan atención" },
   filters: {
+    revisit: "Retomar",
+    revisitHints: {
+      none: "Solo encuentra ideas de sermón, según la última vez que se trabajó en su título, tema, notas o pasajes.",
+      never: "Ideas de sermón en las que no se ha trabajado desde que se capturaron.",
+      attention: (days) =>
+        `Ideas de sermón sin terminar en las que no se ha trabajado en ${days} días o más.`,
+    },
     panel: "Filtros",
     kind: "Tipo de idea",
     status: "Estado",
@@ -91,6 +99,7 @@ export const library: Untranslated<typeof english> = {
     format: "Formato",
     archive: "Mostrando",
     archiveViews: { archived: "Solo archivadas", all: "Activas y archivadas" },
+    revisit: "Retomar",
     tag: "Etiqueta",
     unknownTag: "Etiqueta desconocida",
     created: "Creada",
@@ -114,6 +123,9 @@ export const library: Untranslated<typeof english> = {
     offline: "No se pudo hacer. Revisa tu conexión e inténtalo de nuevo.",
     more: (count) => `y ${count} más`,
     updated: "Actualizada el",
+    neverDeveloped: "Nunca desarrollada",
+    created: "creada el",
+    lastDeveloped: "Último desarrollo el",
   },
   pagination: {
     label: "Páginas de la biblioteca",

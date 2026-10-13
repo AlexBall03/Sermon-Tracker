@@ -26,6 +26,7 @@ const idea = (fields: Partial<IdeaWithReferences> = {}): IdeaWithReferences => (
   intendedFormat: "unspecified",
   sermonType: "expository",
   archivedAt: null,
+  lastDevelopedAt: null,
   subject: "Grace",
   createdAt: new Date("2026-10-01T10:00:00Z"),
   updatedAt: new Date("2026-10-02T10:00:00Z"),
@@ -48,6 +49,39 @@ const idea = (fields: Partial<IdeaWithReferences> = {}): IdeaWithReferences => (
 });
 
 describe("IdeaResults", () => {
+  it("says when an idea was last worked on while a revisiting filter is in force", () => {
+    const ideas = [
+      idea(),
+      idea({
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "Developed once",
+        lastDevelopedAt: new Date("2026-08-03T10:00:00Z"),
+      }),
+    ];
+    const { unmount } = render(
+      <IdeaResults ideas={ideas} label="Your ideas" query={query({ revisit: "attention" })} />,
+    );
+    const [never, developed] = screen
+      .getAllByRole("listitem")
+      .filter((item) => item.querySelector("h3"));
+    expect(never).toHaveTextContent(/Never developed.*created Oct 1, 2026/);
+    expect(never).not.toHaveTextContent("Updated");
+    expect(developed).toHaveTextContent("Last developed Aug 3, 2026");
+    unmount();
+
+    // In Spanish, and with no such filter the date is the last change, as before.
+    render(
+      <IdeaResults
+        ideas={ideas}
+        label="Tus ideas"
+        query={query({ revisit: "never" })}
+        locale="es"
+      />,
+    );
+    expect(screen.getByText(/Nunca desarrollada/)).toBeVisible();
+    expect(screen.getByText(/Último desarrollo el/)).toBeVisible();
+  });
+
   it("shows what a sermon has: kind, type, status, subject, notes, references, tags, date", () => {
     render(<IdeaResults ideas={[idea()]} label="Your ideas" query={query()} />);
     const [card] = within(screen.getByRole("list", { name: "Your ideas" })).getAllByRole(

@@ -46,6 +46,30 @@ export const classificationDefaults = {
 export const archiveViews = ["active", "archived", "all"] as const;
 export type ArchiveView = (typeof archiveViews)[number];
 
+/**
+ * The statuses of an idea that is not finished. `ready` is the one that is;
+ * an idea on hold is still unfinished. Preaching a sermon finishes nothing.
+ */
+export const unfinishedStatuses = [
+  "idea",
+  "developing",
+  "on_hold",
+] as const satisfies readonly IdeaStatus[];
+
+/**
+ * How many days an unfinished sermon may go without being worked on before it
+ * is offered again. The dashboard and the library both read it from here.
+ */
+export const revisitAfterDays = 30;
+
+/**
+ * The library's two revisiting filters, both about sermon ideas only. `never`:
+ * not worked on since it was captured. `attention`: unfinished, and not worked
+ * on for `revisitAfterDays`.
+ */
+export const revisitFilters = ["never", "attention"] as const;
+export type RevisitFilter = (typeof revisitFilters)[number];
+
 /** The database enforces the same limits with CHECK constraints. */
 export const ideaLimits = { title: 200, subject: 200, notes: 20000, references: 25 } as const;
 
@@ -86,7 +110,7 @@ export type LibrarySort = (typeof librarySorts)[number];
 
 export const librarySortLabels: Record<LibrarySort, string> = {
   "updated-desc": "Recently updated",
-  "updated-asc": "Oldest updated",
+  "updated-asc": "Least recently updated",
   "created-desc": "Recently created",
   "created-asc": "Oldest created",
   "title-asc": "Title A–Z",

@@ -31,6 +31,7 @@ const full: LibraryQuery = {
   sermonTypes: ["topical"],
   formats: ["mini"],
   archive: "all",
+  revisit: "attention",
   tagIds: [tagA, tagB],
   tagMode: "all",
   createdFrom: "2026-01-01",
@@ -57,6 +58,7 @@ describe("parseLibraryQuery", () => {
       type: "topical",
       format: "mini",
       archived: "all",
+      revisit: "attention",
       tag: [tagA, tagB],
       tag_mode: "all",
       created_from: "2026-01-01",
@@ -103,6 +105,24 @@ describe("parseLibraryQuery", () => {
         tag: ["not-a-uuid", `${tagA}' or 1=1`],
       }),
     ).toEqual(defaultLibraryQuery);
+  });
+
+  it("reads a revisiting filter, one at a time, and drops one it does not know", () => {
+    expect(parseLibraryQuery({ revisit: "never" }).revisit).toBe("never");
+    expect(parseLibraryQuery({ revisit: ["attention", "never"] }).revisit).toBe("attention");
+    expect(parseLibraryQuery({ revisit: "stale" }).revisit).toBeNull();
+    expect(parseLibraryQuery({}).revisit).toBeNull();
+
+    const never = { ...defaultLibraryQuery, revisit: "never" as const, sort: "title-asc" as const };
+    expect(libraryHref(never)).toBe("/library/sermon-ideas?revisit=never&sort=title-asc");
+    expect(libraryHref(defaultLibraryQuery)).toBe("/library/sermon-ideas");
+    // It is one filter, and Clear filters lifts it with the rest.
+    expect(activeFilterCount(never)).toBe(1);
+    expect(isFiltered(never)).toBe(true);
+    expect(clearFilters({ ...never, page: 3 })).toEqual({
+      ...defaultLibraryQuery,
+      sort: "title-asc",
+    });
   });
 
   it("bounds the page number", () => {
@@ -282,6 +302,7 @@ describe("serializeLibraryQuery", () => {
       "type",
       "format",
       "archived",
+      "revisit",
       "tag",
       "tag",
       "tag_mode",
@@ -360,8 +381,8 @@ describe("filter helpers", () => {
   it("counts each chosen value, and each date range once", () => {
     expect(activeFilterCount(defaultLibraryQuery)).toBe(0);
     expect(activeFilterCount({ ...defaultLibraryQuery, q: "faith", sort: "title-asc" })).toBe(0);
-    // Two kinds, a status, a type, a format, the archive view, two tags, two ranges.
-    expect(activeFilterCount(full)).toBe(10);
+    // Two kinds, a status, a type, a format, the archive view, revisiting, two tags, two ranges.
+    expect(activeFilterCount(full)).toBe(11);
     expect(activeFilterCount({ ...defaultLibraryQuery, archive: "archived" })).toBe(1);
     expect(activeFilterCount({ ...defaultLibraryQuery, createdFrom: "2026-01-01" })).toBe(1);
   });

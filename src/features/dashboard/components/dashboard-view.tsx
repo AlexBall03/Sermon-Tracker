@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, Settings, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { StatStrip } from "@/components/ui/stat-strip";
 import { IdeaList } from "@/features/ideas/components/idea-list";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
-import type { IdeaWithReferences } from "@/features/ideas/ideas";
+import type { IdeaRecord, IdeaWithReferences } from "@/features/ideas/ideas";
 import { RecordPreachingProvider } from "@/features/preaching/components/record-preaching";
 import type { ReferenceOption } from "@/features/preaching/components/reference-field";
 import { dictionary } from "@/i18n";
@@ -13,16 +13,16 @@ import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 import { welcomeTitle } from "../greeting";
 import { summaryStats } from "../summary";
-import { RecordShortcut } from "./record-shortcut";
-import { ShortcutLink } from "./shortcut-link";
+import { DashboardRecordButton } from "./record-button";
+import { RevisitIdeas } from "./revisit-ideas";
 import { WorkflowOverview } from "./workflow-overview";
 
 type DashboardViewProps = {
   firstName?: string | null;
-  /** Decided on the server from the database; it only chooses what to show. */
-  isAdmin: boolean;
   /** The person's latest ideas, newest first. The full list is the library. */
   recentIdeas: IdeaWithReferences[];
+  /** Unfinished sermon ideas left alone for a while, chosen and ordered by the server. */
+  revisitIdeas?: IdeaRecord[];
   /** The account's venues and contexts, for recording a sermon as preached from here. */
   venues?: readonly ReferenceOption[];
   contexts?: readonly ReferenceOption[];
@@ -31,13 +31,14 @@ type DashboardViewProps = {
 };
 
 /**
- * The dashboard's content: the latest ideas, the way in to capture, and
- * shortcuts. The summary figures still wait for the phases that produce them.
+ * The dashboard's content: the page's two actions, the latest ideas, and the
+ * ones worth returning to. Settings and administration are in the account
+ * menu, not here. The summary figures still wait for the phases that produce them.
  */
 export function DashboardView({
   firstName,
-  isAdmin,
   recentIdeas,
+  revisitIdeas = [],
   venues = [],
   contexts = [],
   locale = defaultLocale,
@@ -45,13 +46,26 @@ export function DashboardView({
   const t = dictionary(locale, "dashboard");
   return (
     <div className="container-page py-10 lg:py-12">
-      <PageHeader title={welcomeTitle(firstName, locale)} description={t.description} />
+      <PageHeader
+        title={welcomeTitle(firstName, locale)}
+        description={t.description}
+        action={
+          <div className="flex flex-wrap items-center gap-3">
+            {/* The same form as the preaching record's, opened here; the sermon is chosen in it. */}
+            <RecordPreachingProvider venues={venues} contexts={contexts}>
+              <DashboardRecordButton />
+            </RecordPreachingProvider>
+            {/* With no ideas the invitation below has the capture button; never two. */}
+            {recentIdeas.length > 0 && <CaptureButton className="max-md:hidden" />}
+          </div>
+        }
+      />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      <div className="mt-8 grid gap-x-6 gap-y-10 lg:grid-cols-3">
         {recentIdeas.length === 0 ? (
           <section
             aria-labelledby="recent-heading"
-            className="flex flex-col justify-center rounded-xl border border-dashed border-input px-6 py-10 sm:px-8 lg:col-span-2"
+            className="flex flex-col justify-center rounded-xl border border-dashed border-input px-6 py-10 sm:px-8 lg:col-span-3"
           >
             <h2 id="recent-heading" className="font-display text-2xl leading-snug font-medium">
               {t.empty.title}
@@ -69,44 +83,25 @@ export function DashboardView({
               <h2 id="recent-heading" className="text-lg font-semibold tracking-[-0.015em]">
                 {t.recent}
               </h2>
-              <CaptureButton size="sm" className="max-md:hidden" />
+              <Link
+                href={routes.sermonIdeas}
+                className="group/all inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary link-underline"
+              >
+                {t.openLibrary}
+                <ArrowRight
+                  className="size-4 transition-transform duration-150 group-hover/all:translate-x-0.5"
+                  aria-hidden
+                />
+              </Link>
             </div>
             <div className="mt-4">
               <IdeaList ideas={recentIdeas} label={t.recent} locale={locale} />
             </div>
-            <Link
-              href={routes.sermonIdeas}
-              className="group/all mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary link-underline"
-            >
-              {t.openLibrary}
-              <ArrowRight
-                className="size-4 transition-transform duration-150 group-hover/all:translate-x-0.5"
-                aria-hidden
-              />
-            </Link>
           </section>
         )}
 
-        <nav aria-label={t.shortcuts} className="grid content-start gap-4">
-          {/* The same form as the preaching record's, opened here; the sermon is chosen in it. */}
-          <RecordPreachingProvider venues={venues} contexts={contexts}>
-            <RecordShortcut />
-          </RecordPreachingProvider>
-          <ShortcutLink
-            href={routes.settings}
-            icon={Settings}
-            title={t.settings.title}
-            description={t.settings.description}
-          />
-          {isAdmin && (
-            <ShortcutLink
-              href={routes.admin}
-              icon={ShieldCheck}
-              title={t.administration.title}
-              description={t.administration.description}
-            />
-          )}
-        </nav>
+        {/* With nothing active there is nothing to return to: the invitation to capture stands alone. */}
+        {recentIdeas.length > 0 && <RevisitIdeas ideas={revisitIdeas} locale={locale} />}
       </div>
 
       <div className="mt-12 lg:mt-14">

@@ -7,13 +7,44 @@ import { referenceKey } from "@/features/scripture/reference";
 import { dictionary } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { formatDate } from "@/lib/format";
-import type { IdeaWithReferences } from "../../ideas";
+import type { IdeaRecord, IdeaWithReferences } from "../../ideas";
 import { ideaHref, type LibraryQuery } from "../../library-query";
 import { TagList } from "../tag-chip";
 import { RestoreButton } from "./restore-button";
 
 /** A result shows this many references; the rest are on the idea's own page. */
 const shownReferences = 3;
+
+/**
+ * When an idea was last worked on, in words: "Last developed Aug 3, 2026", or
+ * "Never developed · created Sep 1, 2026" for one untouched since its capture.
+ * Shown wherever an idea is offered for revisiting, so the reason is in view.
+ */
+export function DevelopedLine({
+  idea,
+  locale = defaultLocale,
+}: {
+  idea: Pick<IdeaRecord, "lastDevelopedAt" | "createdAt">;
+  locale?: Locale;
+}) {
+  const t = dictionary(locale, "library").results;
+  const date = idea.lastDevelopedAt ?? idea.createdAt;
+  return (
+    <>
+      {idea.lastDevelopedAt ? (
+        `${t.lastDeveloped} `
+      ) : (
+        <>
+          {t.neverDeveloped}
+          <span aria-hidden> · </span>
+          <span className="sr-only">, </span>
+          {t.created}{" "}
+        </>
+      )}
+      <time dateTime={date.toISOString()}>{formatDate(date, locale)}</time>
+    </>
+  );
+}
 
 /**
  * One page of the library, drawn as cards or as rows. It is one piece of
@@ -149,12 +180,19 @@ export function IdeaResults({
             </div>
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 list-view:order-3 list-view:ml-auto card-view:mt-4 card-view:justify-between">
-              <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums list-view:md:w-24 list-view:md:text-right">
-                <span className="list-view:md:sr-only">{t.updated} </span>
-                <time dateTime={idea.updatedAt.toISOString()}>
-                  {formatDate(idea.updatedAt, locale)}
-                </time>
-              </p>
+              {query.revisit ? (
+                // Why the idea was found: when it was last worked on, not when it last changed.
+                <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                  <DevelopedLine idea={idea} locale={locale} />
+                </p>
+              ) : (
+                <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums list-view:md:w-24 list-view:md:text-right">
+                  <span className="list-view:md:sr-only">{t.updated} </span>
+                  <time dateTime={idea.updatedAt.toISOString()}>
+                    {formatDate(idea.updatedAt, locale)}
+                  </time>
+                </p>
+              )}
               {/* Only a sermon can be preached; an archived one still can. */}
               {sermon && (
                 <RecordPreachingButton sermon={{ id: idea.id, title: idea.title }} onCard />

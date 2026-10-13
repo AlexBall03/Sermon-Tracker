@@ -12,18 +12,16 @@ export const dashboard: Untranslated<typeof english> = {
   },
   recent: "Ideas recientes",
   openLibrary: "Abrir la biblioteca",
-  shortcuts: "Accesos directos",
+  revisit: {
+    title: "Retoma una idea",
+    description: "Ideas de sermón sin terminar en las que no trabajas desde hace tiempo.",
+    all: "Ver todas las que necesitan atención",
+    none: (days) =>
+      `Nada te espera. Trabajaste en todas tus ideas de sermón sin terminar en los últimos ${days} días.`,
+    openLibrary: "Abrir Ideas de sermón",
+  },
   record: {
     title: "Registrar predicación",
-    description: "Anota cuándo y dónde predicaste un sermón.",
-  },
-  settings: {
-    title: "Configuración de la cuenta",
-    description: "Tu nombre, correo, contraseña, idioma y el aspecto de la aplicación.",
-  },
-  administration: {
-    title: "Administración",
-    description: "Invita a personas y administra roles y acceso.",
   },
   workflow: {
     title: "Cómo funciona tu espacio",

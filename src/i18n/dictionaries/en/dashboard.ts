@@ -1,4 +1,4 @@
-/** The dashboard: the greeting, the latest ideas, the shortcuts, and how the workspace works. */
+/** The dashboard: the greeting, the latest ideas, the ones to revisit, and how the workspace works. */
 export const dashboard = {
   metaTitle: "Dashboard",
   welcome: "Welcome back",
@@ -10,18 +10,17 @@ export const dashboard = {
   },
   recent: "Recent ideas",
   openLibrary: "Open the library",
-  shortcuts: "Shortcuts",
+  /** Unfinished sermon ideas left alone for a while. The dates on each come from the library's results. */
+  revisit: {
+    title: "Revisit an Idea",
+    description: "Unfinished sermon ideas you have not worked on in a while.",
+    all: "See all that need attention",
+    none: (days: number) =>
+      `Nothing is waiting on you. Every unfinished sermon idea has had your attention in the last ${days} days.`,
+    openLibrary: "Open Sermon Ideas",
+  },
   record: {
     title: "Record preaching",
-    description: "Note when and where you preached a sermon.",
-  },
-  settings: {
-    title: "Account settings",
-    description: "Your name, email, password, language, and how the app looks.",
-  },
-  administration: {
-    title: "Administration",
-    description: "Invite people, and manage roles and access.",
   },
   workflow: {
     title: "How your workspace works",
