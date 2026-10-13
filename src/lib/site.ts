@@ -17,7 +17,10 @@ export const siteConfig = {
  * library's overview and the main navigation's destination; its three
  * sections are each at an address of their own beneath it, and the addresses
  * two of them used to have redirect (next.config.ts). An idea is at `/library/<id>`; a place in the Bible is
- * `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts).
+ * `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts). An
+ * outline's editor is at `/outlines/<id>`, and `/outlines/new?sermon=<id>` is
+ * where a sermon is given one; `/outlines` itself has no page until the
+ * overview is built.
  */
 export const routes = {
   home: "/",
@@ -31,6 +34,7 @@ export const routes = {
   savedScripture: "/library/saved-scripture",
   preachingRecord: "/library/preaching-record",
   bible: "/bible",
+  outlines: "/outlines",
   settings: "/settings",
   admin: "/admin",
 } as const;
@@ -46,6 +50,7 @@ export const privateRoutes = [
   routes.savedScripture,
   routes.preachingRecord,
   routes.bible,
+  routes.outlines,
   routes.settings,
   routes.admin,
 ] as const;
@@ -58,6 +63,7 @@ export const appRoutes = [
   routes.savedScripture,
   routes.preachingRecord,
   routes.bible,
+  routes.outlines,
   routes.settings,
   routes.admin,
 ] as const;

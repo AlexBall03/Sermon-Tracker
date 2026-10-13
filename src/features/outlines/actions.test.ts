@@ -11,8 +11,10 @@ const state = vi.hoisted(() => ({
   access: { ok: false, message: "Your session has ended. Sign in again." } as unknown,
   db: undefined as unknown,
   locale: "en",
+  revalidatePath: vi.fn(),
 }));
 
+vi.mock("next/cache", () => ({ revalidatePath: state.revalidatePath }));
 vi.mock("@/db", () => ({ getDb: () => state.db }));
 vi.mock("@/i18n/server", () => ({ getLocale: async () => state.locale }));
 vi.mock("@/features/auth/access", () => ({
@@ -85,6 +87,7 @@ beforeEach(async () => {
     .returning();
   [me, other] = created.map((row) => row.id);
   state.access = { ok: false, message: signedOut };
+  state.revalidatePath.mockClear();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -376,5 +379,36 @@ describe("outline actions", () => {
     }
     const logged = vi.mocked(console.error).mock.calls.flat().join(" ");
     expect(logged).not.toContain("secret");
+  });
+
+  it("revalidate the editor's page for a change of shape or numbering, and never for words", async () => {
+    const { outlineId, one, two } = await outlined();
+    const page = `/outlines/${outlineId}`;
+    // Making the outline and its two points: once each.
+    expect(state.revalidatePath.mock.calls).toEqual([[page], [page], [page]]);
+
+    state.revalidatePath.mockClear();
+    await updateEntry(one, { title: "Reworded", notes: "And noted." });
+    await setEntryReferences(one, []);
+    expect(state.revalidatePath).not.toHaveBeenCalled();
+
+    await moveEntry(two, { parentId: one });
+    await setOutlineNumbering(outlineId, { version: 1, preset: "decimal" });
+    await removeEntry(two);
+    expect(state.revalidatePath.mock.calls).toEqual([[page], [page], [page]]);
+
+    // Nothing changed, so nothing is rendered again: refused, stale, or someone else's.
+    state.revalidatePath.mockClear();
+    await moveEntry(one, { parentId: one });
+    await addEntry({ outlineId, title: "Late", expectedRevision: 0 });
+    await removeEntry(nowhere);
+    signInAs(other);
+    await setOutlineNumbering(outlineId, { version: 1, preset: "roman" });
+    await deleteOutline(outlineId);
+    expect(state.revalidatePath).not.toHaveBeenCalled();
+
+    signInAs(me);
+    await deleteOutline(outlineId);
+    expect(state.revalidatePath.mock.calls).toEqual([[page]]);
   });
 });

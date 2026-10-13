@@ -1,6 +1,6 @@
 /**
- * Outlines. Phase 3A has no screen of its own, so these are only what the
- * validation and the server actions say; the editor's words come with it.
+ * Outlines: what the validation and the server actions say, the editor's own
+ * words, and the numbering settings.
  */
 export const outlines = {
   validation: {
@@ -37,5 +37,193 @@ export const outlines = {
     entryMoved: "Moved.",
     entryRemoved: "Removed from the outline.",
     referencesSaved: "Passages saved.",
+  },
+  page: {
+    metaTitle: "Outline",
+    title: "Outline",
+    /** Before the sermon's title. */
+    sermon: "Sermon:",
+    back: "Back to sermon",
+    loading: "Loading the outline",
+    archived: "This sermon is archived. Its outline is kept and can still be changed.",
+    refiled:
+      "This idea is no longer filed as a sermon. Its outline is kept and can still be changed.",
+    notFound: {
+      title: "Outline not found",
+      body: "It may have been deleted, or the link may be wrong.",
+      back: "Go to Sermon Ideas",
+    },
+  },
+  create: {
+    metaTitle: "New outline",
+    title: "New outline",
+    body: "An outline holds the shape of a sermon: short headings, brief notes, and points under points. The sermon itself is written wherever you write.",
+    action: "Create outline",
+    creating: "Creating…",
+    notSermonTitle: "Only a sermon can have an outline",
+    notSermonBody: "File this idea as a sermon first, then come back to give it an outline.",
+    backToIdea: "Back to the idea",
+  },
+  editor: {
+    status: {
+      saved: "Saved",
+      saving: "Saving…",
+      unsaved: "Unsaved changes",
+      failed: "Save failed",
+      conflict: "Needs your attention",
+    },
+    retry: "Try again",
+    offline:
+      "That did not reach the server. Your changes are kept on this page and will be tried again.",
+    reloadFailed: "The outline could not be loaded again. Check your connection and try again.",
+    leave: "Some changes to this outline have not been saved. If you leave now, they may be lost.",
+    numbering: "Numbering",
+    expandAll: "Expand all",
+    collapseAll: "Collapse all",
+    more: "More outline actions",
+    deleteOutline: "Delete outline",
+    deleteOutlineTitle: "Delete this outline?",
+    deleteOutlineDescription: (sermon: string) =>
+      `Every part of the outline of “${sermon}” will be deleted. The sermon itself is kept. This cannot be undone.`,
+    deleteOutlineConfirm: "Delete outline",
+    sections: {
+      introduction: "Introduction",
+      points: "Points",
+      conclusion: "Conclusion",
+    },
+    addIntroduction: "Add introduction",
+    addConclusion: "Add conclusion",
+    addPoint: "Add point",
+    empty: "No points yet. Add the first, then press Enter in a heading to add the next.",
+    full: (limit: number) => `An outline can hold up to ${limit} entries.`,
+    heading: "Heading",
+    notes: "Notes",
+    addNotes: "Add notes",
+    /** Read out for a heading: "Heading, I.A." */
+    headingOf: (label: string) => `Heading, ${label}`,
+    notesOf: (name: string) => `Notes for ${name}`,
+    placeholders: {
+      point: "Heading",
+      introduction: "How it opens",
+      conclusion: "How it closes",
+      notes: "Brief notes",
+    },
+    untitled: "Untitled point",
+    /** How many characters of the notes are left, near the limit. */
+    remaining: (count: number) => `${count} left`,
+    row: {
+      actions: (name: string) => `Actions for ${name}`,
+      drag: "Drag to move",
+      expand: (name: string) => `Expand ${name}`,
+      collapse: (name: string) => `Collapse ${name}`,
+      hidden: (count: number) => (count === 1 ? "1 point folded" : `${count} points folded`),
+      level: (level: number) => `Level ${level}`,
+      addSubpoint: "Add subpoint",
+      addBelow: "Add point below",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      indent: "Indent",
+      outdent: "Outdent",
+      toTop: "Move to top level",
+      addNotes: "Add notes",
+      delete: "Delete",
+    },
+    shortcuts: {
+      addBelow: "Enter",
+      addSubpoint: "Ctrl Enter",
+      moveUp: "Alt Shift ↑",
+      moveDown: "Alt Shift ↓",
+      indent: "Alt Shift →",
+      outdent: "Alt Shift ←",
+    },
+    /** Read out after a move: where the point now is. */
+    moved: (name: string, label: string) =>
+      label ? `${name} moved. Now ${label}` : `${name} moved.`,
+    remove: {
+      title: "Delete this point?",
+      description: (name: string, nested: number) =>
+        nested === 0
+          ? `“${name}” will be deleted from the outline.`
+          : nested === 1
+            ? `“${name}” and the 1 point under it will be deleted from the outline.`
+            : `“${name}” and the ${nested} points under it will be deleted from the outline.`,
+      sectionTitle: (section: string) => `Delete the ${section.toLowerCase()}?`,
+      sectionDescription: "Its heading and notes will be deleted from the outline.",
+      confirm: "Delete",
+    },
+    reloaded:
+      "This outline was changed somewhere else, so it was loaded again. A change you had just made to its structure may not have been kept. What you typed is still here.",
+    dismiss: "Dismiss",
+    conflict: {
+      title: "This part was also changed somewhere else",
+      theirTitle: "The heading saved elsewhere:",
+      theirNotes: "The notes saved elsewhere:",
+      empty: "(nothing)",
+      keepMine: "Keep mine",
+      useTheirs: "Use the other",
+    },
+    lost: {
+      title: "Not saved: these points are no longer in the outline",
+      body: "They were removed somewhere else before what you typed could be saved.",
+      restore: "Add again as a point",
+      discard: "Discard",
+    },
+  },
+  numbering: {
+    title: "Numbering",
+    description:
+      "How the points are labelled. Numbers are worked out from where a point is, so moving one renumbers the outline.",
+    style: "Style",
+    presets: {
+      traditional: "Traditional",
+      decimal: "Decimal",
+      numeric: "Numeric",
+      alphabetic: "Alphabetic",
+      roman: "Roman",
+      bullets: "Bullets",
+      none: "None",
+      custom: "Custom",
+    },
+    noNumbers: "No numbers",
+    customHint: "Your own style, level by level",
+    preview: "Preview",
+    /** The headings of the preview's sample outline, by level. */
+    sample: ["Main point", "Subpoint", "Detail", "Further detail"],
+    apply: "Apply",
+    close: "Close",
+    custom: {
+      levels: "Levels",
+      level: (level: number) => `Level ${level}`,
+      counter: "Counts with",
+      counterOf: (level: number) => `Level ${level} counts with`,
+      counters: {
+        decimal: "1, 2, 3",
+        alpha: "A, B, C",
+        roman: "I, II, III",
+        bullet: "A bullet",
+        none: "Nothing",
+      },
+      letterCase: "Letters",
+      cases: { upper: "Capitals", lower: "Small" },
+      bullet: "Bullet",
+      bulletOf: (level: number) => `Level ${level} bullet`,
+      prefix: "Before",
+      suffix: "After",
+      composite: "Include the levels above",
+      compositeHint: "Writes 1.2.3 instead of 3.",
+      separator: "Between levels",
+      addLevel: "Add a level",
+      removeLevel: (level: number) => `Remove level ${level}`,
+      overflow: "Deeper levels",
+      overflowHint: "What a point uses when it is deeper than the last level above.",
+      overflows: {
+        repeat: "Repeat the levels",
+        last: "Keep the last level",
+        none: "No number",
+      },
+      repeatFrom: "Repeat from",
+      invalid: "This style cannot be used as it is.",
+      invalidText: "Text around a number must be one short line, without the characters < and >.",
+    },
   },
 };
