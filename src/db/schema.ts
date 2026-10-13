@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -17,6 +18,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
+import { entryTypes } from "../features/outlines/model";
+import type { NumberingConfig } from "../features/outlines/numbering";
 import { actualFormats, timesOfDay } from "../features/preaching/model";
 import { highlightColors } from "../features/scripture/saved/model";
 import { accentFold } from "../features/scripture/search-fold";
@@ -753,3 +756,214 @@ export const preachingOccurrences = pgTable(
 );
 
 export type PreachingOccurrence = typeof preachingOccurrences.$inferSelect;
+
+/**
+ * A sermon's outline: one to a sermon, and never without one. It holds only
+ * how the outline is numbered and how often its shape has changed; the
+ * outline itself is its entries, and one with no entries is still an outline.
+ *
+ * The owner is repeated and is part of the foreign key, as in `idea_tags`.
+ * Deleting the sermon removes its outline, as it does its references and
+ * tags; deleting the outline leaves the sermon alone. Whether the idea is a
+ * sermon is not something a foreign key can say; `createOutline` checks it
+ * with the idea's row locked. Nothing about an outline is stored on the idea.
+ */
+export const sermonOutlines = pgTable(
+  "sermon_outlines",
+  {
+    /** May be generated in the browser, so a repeated submission makes one outline. */
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id").notNull(),
+    sermonId: uuid("sermon_id").notNull(),
+    /**
+     * How the points are numbered: the name of a built-in style, or a custom
+     * one in full (features/outlines/numbering.ts). Numbers are worked out
+     * from it when the outline is shown and are never stored on an entry.
+     */
+    numberingConfig: jsonb("numbering_config")
+      .$type<NumberingConfig>()
+      .notNull()
+      .default({ version: 1, preset: "traditional" }),
+    /**
+     * How many times the outline's shape has changed: an entry added, moved,
+     * or removed. A change that names the revision it was made against is
+     * refused when another got there first. Editing an entry's words does not
+     * move it.
+     */
+    revision: integer("revision").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    foreignKey({
+      name: "sermon_outlines_sermon_fk",
+      columns: [table.sermonId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    // One outline to a sermon, whatever asks for a second and however the requests arrive.
+    unique("sermon_outlines_sermon_key").on(table.sermonId),
+    // What outline_entries points at, so an entry can only belong to its outline's owner.
+    unique("sermon_outlines_id_owner_key").on(table.id, table.ownerId),
+    check(
+      "sermon_outlines_numbering_config_check",
+      sql`jsonb_typeof(${table.numberingConfig}) = 'object' and char_length(${table.numberingConfig}::text) <= 4000`,
+    ),
+    index("sermon_outlines_owner_updated_idx").on(table.ownerId, table.updatedAt.desc()),
+  ],
+);
+
+export type SermonOutline = typeof sermonOutlines.$inferSelect;
+
+/**
+ * The entries of an outline: its points, at any depth, and its optional
+ * introduction and conclusion. A point under another is a subpoint; there is
+ * no type for that, and no limit on how deep they go.
+ *
+ * An entry holds its own words. One made from a saved point idea copies the
+ * point's title and notes and remembers where they came from
+ * (`source_point_id`); after that the two are edited apart, and deleting the
+ * point clears the link and keeps the entry. The number an entry is shown
+ * with is never part of its title.
+ *
+ * What the table itself refuses: a parent in another outline (the parent key
+ * carries the outline), an entry of another account's outline or made from
+ * another account's point (both keys carry the owner), an entry that is its
+ * own parent, an introduction or conclusion under anything, a second of
+ * either, and two points at one place under one parent. What it cannot say is
+ * that a parent is a point and not a section, or that no entry is under one
+ * of its own descendants; the service checks both with the outline's row
+ * locked.
+ */
+export const outlineEntries = pgTable(
+  "outline_entries",
+  {
+    /** May be generated in the browser, so a repeated submission adds one entry. */
+    id: uuid("id").primaryKey().defaultRandom(),
+    outlineId: uuid("outline_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    /** The point this one is under. Null for a main point and for a section. */
+    parentId: uuid("parent_id"),
+    entryType: text("entry_type", { enum: entryTypes }).notNull().default("point"),
+    /**
+     * A point's place among the points with the same parent: 0, 1, 2, … with
+     * none missing. A section has no place to keep and holds 0.
+     */
+    position: integer("position").notNull(),
+    /** May be empty: an entry can be made first and written afterwards. */
+    title: text("title").notNull().default(""),
+    notes: text("notes"),
+    /** The saved point idea this entry was made from, while that idea exists. */
+    sourcePointId: uuid("source_point_id"),
+    /** How many times the entry's words have been changed. Moving it does not count. */
+    revision: integer("revision").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    foreignKey({
+      name: "outline_entries_outline_fk",
+      columns: [table.outlineId, table.ownerId],
+      foreignColumns: [sermonOutlines.id, sermonOutlines.ownerId],
+    }).onDelete("cascade"),
+    // What the parent key points at, so a parent is always in the same outline.
+    unique("outline_entries_id_outline_key").on(table.id, table.outlineId),
+    foreignKey({
+      name: "outline_entries_parent_fk",
+      columns: [table.parentId, table.outlineId],
+      foreignColumns: [table.id, table.outlineId],
+    }).onDelete("cascade"),
+    // In the migration this is ON DELETE SET NULL ("source_point_id"): only the
+    // link is cleared, and the owner stays. See docs/DATABASE.md.
+    foreignKey({
+      name: "outline_entries_source_point_fk",
+      columns: [table.sourcePointId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("set null"),
+    check(
+      "outline_entries_entry_type_check",
+      sql`${table.entryType} in ('introduction', 'point', 'conclusion')`,
+    ),
+    check(
+      "outline_entries_section_root_check",
+      sql`${table.entryType} = 'point' or ${table.parentId} is null`,
+    ),
+    check(
+      "outline_entries_not_own_parent_check",
+      sql`${table.parentId} is null or ${table.parentId} <> ${table.id}`,
+    ),
+    check("outline_entries_title_check", sql`char_length(${table.title}) <= 200`),
+    check(
+      "outline_entries_notes_check",
+      sql`${table.notes} is null or char_length(${table.notes}) between 1 and 2000`,
+    ),
+    // At most one introduction and one conclusion.
+    uniqueIndex("outline_entries_section_key")
+      .on(table.outlineId, table.entryType)
+      .where(sql`${table.entryType} <> 'point'`),
+    // One point to a place, among the main points and under each parent. The
+    // second also reads the points under a parent, and serves the cascade.
+    uniqueIndex("outline_entries_root_position_key")
+      .on(table.outlineId, table.position)
+      .where(sql`${table.parentId} is null and ${table.entryType} = 'point'`),
+    uniqueIndex("outline_entries_child_position_key")
+      .on(table.parentId, table.position)
+      .where(sql`${table.parentId} is not null`),
+    index("outline_entries_outline_idx").on(table.outlineId),
+    index("outline_entries_source_point_idx").on(table.sourcePointId),
+  ],
+);
+
+export type OutlineEntry = typeof outlineEntries.$inferSelect;
+
+/**
+ * A passage on an outline entry, as numbers only, exactly as on an idea
+ * (`idea_scripture_references`): no text, and no translation. It is a table
+ * of its own because a reference row belongs to one thing, and that table's
+ * rows belong to ideas. An entry has no main text, so there is no
+ * `is_primary`.
+ */
+export const outlineEntryScriptureReferences = pgTable(
+  "outline_entry_scripture_references",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id").notNull(),
+    position: smallint("position").notNull(),
+    book: smallint("book").notNull(),
+    chapterStart: smallint("chapter_start").notNull(),
+    verseStart: smallint("verse_start"),
+    chapterEnd: smallint("chapter_end"),
+    verseEnd: smallint("verse_end"),
+  },
+  (table) => [
+    // Named here: the name Drizzle would make up is longer than PostgreSQL keeps.
+    foreignKey({
+      name: "outline_entry_scripture_references_entry_fk",
+      columns: [table.entryId],
+      foreignColumns: [outlineEntries.id],
+    }).onDelete("cascade"),
+    unique("outline_entry_scripture_references_position_key").on(table.entryId, table.position),
+    check("outline_entry_scripture_references_book_check", sql`${table.book} between 1 and 66`),
+    check(
+      "outline_entry_scripture_references_start_check",
+      sql`${table.chapterStart} >= 1 and (${table.verseStart} is null or ${table.verseStart} >= 1)`,
+    ),
+    check(
+      "outline_entry_scripture_references_chapter_end_check",
+      sql`${table.chapterEnd} is null or ${table.chapterEnd} > ${table.chapterStart}`,
+    ),
+    check(
+      "outline_entry_scripture_references_verse_end_check",
+      sql`${table.verseEnd} is null or (${table.verseStart} is not null and ${table.verseEnd} >= 1 and (${table.chapterEnd} is not null or ${table.verseEnd} > ${table.verseStart}))`,
+    ),
+    check(
+      "outline_entry_scripture_references_range_check",
+      sql`${table.chapterEnd} is null or (${table.verseStart} is null) = (${table.verseEnd} is null)`,
+    ),
+  ],
+);

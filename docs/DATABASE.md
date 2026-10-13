@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below. Phase 2F.1 added `0010_idea_last_developed`, one nullable column on `ideas`. Phase 2F.2 added `0011_related_ideas`: two tables, `sermon_relations` and `sermon_points`. It only adds tables; see "Related ideas" below. Phase 2F.3 added `0012_profile_and_preaching_class`: three columns on `users`; see "Preferences on `users`" and "Phase 2F.3 migration" below.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below. Phase 2F.1 added `0010_idea_last_developed`, one nullable column on `ideas`. Phase 2F.2 added `0011_related_ideas`: two tables, `sermon_relations` and `sermon_points`. It only adds tables; see "Related ideas" below. Phase 2F.3 added `0012_profile_and_preaching_class`: three columns on `users`; see "Preferences on `users`" and "Phase 2F.3 migration" below. Phase 3A added `0013_outline_foundation`: three tables, `sermon_outlines`, `outline_entries`, and `outline_entry_scripture_references`. It only adds tables; see "Outlines" and "Phase 3A migration" below.
 
 ## Layout
 
@@ -342,6 +342,78 @@ Migration `0011_related_ideas` adds two tables and changes nothing else, so it i
 
 **What a key cannot say.** That an idea is a sermon or a point. `linkIdeas` (`src/features/ideas/relations.ts`) reads both ideas `WHERE owner_id = … FOR UPDATE`, lower ID first, and checks their kinds before it inserts with `ON CONFLICT DO NOTHING`. An idea refiled afterwards keeps its rows; they are left out when read, by a match on the current kind.
 
+### Outlines (Phase 3A)
+
+Migration `0013_outline_foundation` adds three tables of personal data and changes nothing else. A sermon is an `ideas` row; nothing about its outline is stored on it.
+
+#### `sermon_outlines`
+
+One outline, of one sermon.
+
+| Column                     | Type          | Notes                                                                        |
+| -------------------------- | ------------- | ---------------------------------------------------------------------------- |
+| `id`                       | `uuid`        | Primary key. Defaults to `gen_random_uuid()`; the browser may supply it      |
+| `owner_id`                 | `uuid`        | Not null                                                                     |
+| `sermon_id`                | `uuid`        | Not null. The idea                                                           |
+| `numbering_config`         | `jsonb`       | Not null, default `{"version":1,"preset":"traditional"}`                     |
+| `revision`                 | `integer`     | Not null, default 0. Moves when an entry is added, moved, or removed         |
+| `created_at`, `updated_at` | `timestamptz` | Not null; `updated_at` set by the application on any write to the outline or |
+|                            |               | to an entry's words                                                          |
+
+- `sermon_outlines_sermon_fk`: `(sermon_id, owner_id)` → `ideas (id, owner_id)`, `ON DELETE CASCADE`. The owner is in the key, as in `idea_tags`, so an outline of another account's sermon cannot exist. There is no separate key to `users`: the idea's own covers it.
+- **`sermon_outlines_sermon_key`: `UNIQUE (sermon_id)`.** One outline to a sermon, whatever asks for a second and however the requests arrive.
+- `sermon_outlines_id_owner_key`: `UNIQUE (id, owner_id)`, the target of the entries' key.
+- `sermon_outlines_numbering_config_check`: the value is a JSON object and at most 4,000 characters as text. What the object may hold is validated by the application (`numberingConfigSchema`); a value it cannot read is read as the default and not rewritten.
+- `sermon_outlines_owner_updated_idx (owner_id, updated_at desc)`: an account's outlines, most recently worked on first.
+
+**CASCADE, as for references and tags.** An outline is part of its sermon's content. Deleting a sermon that has been preached is still refused first, by history's RESTRICT. Deleting an outline deletes nothing of the idea.
+
+**What a key cannot say.** That the idea is a sermon. `createOutline` checks `kind = 'sermon'` after reading the idea `WHERE id = … AND owner_id = … FOR UPDATE`, which also puts two requests for one sermon one after the other. An idea refiled afterwards keeps its outline, so "every outline's idea is a sermon" is deliberately not an invariant of the table.
+
+#### `outline_entries`
+
+The points of an outline, at any depth, and its optional introduction and conclusion.
+
+| Column                     | Type          | Notes                                                                          |
+| -------------------------- | ------------- | ------------------------------------------------------------------------------ |
+| `id`                       | `uuid`        | Primary key. Defaults to `gen_random_uuid()`; the browser may supply it        |
+| `outline_id`               | `uuid`        | Not null                                                                       |
+| `owner_id`                 | `uuid`        | Not null. Repeats the outline's owner                                          |
+| `parent_id`                | `uuid`        | Nullable. The point this one is under; null for a main point and for a section |
+| `entry_type`               | `text`        | Not null, default `point`. CHECK: `introduction`, `point`, `conclusion`        |
+| `position`                 | `integer`     | Not null. A point's place among the points with the same parent, from 0        |
+| `title`                    | `text`        | Not null, default `''`. CHECK: at most 200 characters. May be empty            |
+| `notes`                    | `text`        | Nullable. CHECK: 1 to 2,000 characters                                         |
+| `source_point_id`          | `uuid`        | Nullable. The point idea the entry was made from, while that idea exists       |
+| `revision`                 | `integer`     | Not null, default 0. Moves when the entry's title, notes, or passages change   |
+| `created_at`, `updated_at` | `timestamptz` | Not null; `updated_at` is for the entry's words and is left alone by a move    |
+
+Foreign keys:
+
+- `outline_entries_outline_fk`: `(outline_id, owner_id)` → `sermon_outlines (id, owner_id)`, `ON DELETE CASCADE`.
+- `outline_entries_parent_fk`: `(parent_id, outline_id)` → `outline_entries (id, outline_id)`, `ON DELETE CASCADE`, with `outline_entries_id_outline_key` (`UNIQUE (id, outline_id)`) as its target. **The outline is in the key, so a parent in another outline cannot exist.** Deleting a point deletes what is under it.
+- `outline_entries_source_point_fk`: `(source_point_id, owner_id)` → `ideas (id, owner_id)`, **`ON DELETE SET NULL (source_point_id)`**. The owner is in the key, so an entry cannot be made from another account's idea; the column list means deleting the point clears only the link, where a plain `SET NULL` would try to clear the owner too and fail. `MATCH SIMPLE`: a null source is not checked.
+
+Constraints and indexes:
+
+- `outline_entries_section_root_check`: `entry_type = 'point' OR parent_id IS NULL`. An introduction or conclusion is under nothing.
+- `outline_entries_not_own_parent_check`: `parent_id <> id`.
+- `outline_entries_section_key`: unique on `(outline_id, entry_type) WHERE entry_type <> 'point'`. At most one introduction and one conclusion.
+- `outline_entries_root_position_key`: unique on `(outline_id, position) WHERE parent_id IS NULL AND entry_type = 'point'`; `outline_entries_child_position_key`: unique on `(parent_id, position) WHERE parent_id IS NOT NULL`. Two points are never at one place. Two indexes because a null `parent_id` is never equal to another in a unique index; the second also reads the points under a parent and serves the cascade.
+- `outline_entries_outline_idx (outline_id)`: an outline's entries, which is how they are always read; `outline_entries_source_point_idx (source_point_id)`: the entries made from a point, for the `SET NULL`.
+
+**There is no CHECK that `position` is not negative, on purpose.** A change of shape first sets the rows it moves aside at `-1 - position`, then writes each its parent and place, because PostgreSQL checks a unique index row by row and would refuse a shift written in one statement. At rest every list of siblings is 0, 1, 2, … with none missing; the tests assert it after every kind of change.
+
+**What the keys cannot say**, and the service checks with the outline's row locked: that a parent is a point and not a section, and that no point is under one of its own descendants. Neither can be written as a CHECK. Every write to an outline begins `SELECT … FROM sermon_outlines WHERE id = … AND owner_id = … FOR UPDATE`, so two never run at once on one outline, and each reads the whole tree before it writes.
+
+**A section's `position`** is 0 and means nothing: the introduction is first and the conclusion last by their type.
+
+**No depth column and no path column.** Depth is where a row is in the tree, worked out when the outline is read (one query for all of an outline's entries, ordered in memory). A stored path would have to be rewritten for a whole subtree on every move.
+
+#### `outline_entry_scripture_references`
+
+The passages on an entry: the same columns and CHECKs as `idea_scripture_references`, without `is_primary` (an entry has no main text). `entry_id` → `outline_entries (id)`, `ON DELETE CASCADE` (`outline_entry_scripture_references_entry_fk`, named by hand because the generated name is longer than PostgreSQL keeps); `UNIQUE (entry_id, position)`. Numbers only: no text and no translation. It is a separate table because a reference row belongs to one thing, and the existing table's rows belong to ideas; nothing else about Scripture was duplicated. A read joins to the entry so the owner is in the statement.
+
 ### `reference_datasets`
 
 Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. The rows the loader keeps are `scripture-kjv` and `scripture-rvg` (31,102 each), and `scripture-kjv-psalm-titles` (116) and `scripture-rvg-psalm-titles` (123). A database that existed before Phase 2C.2 also has `kjv` and `kjv-psalm-titles`, which describe the superseded tables and are no longer consulted.
@@ -435,6 +507,19 @@ Statements 3 to 5 were generated by `npm run db:generate` from `schema.ts`. The 
 - **Previews.** They share the development database, which has `0012`.
 
 **Tested** in `src/features/preferences/profile.test.ts` against an in-memory PostgreSQL running the committed migrations: a new account's defaults, and the two CHECKs refusing a blank and an over-long line.
+
+### Phase 3A migration
+
+`0013_outline_foundation`, generated by `npm run db:generate`: three `CREATE TABLE`s, five `ADD CONSTRAINT … FOREIGN KEY`s on the new tables, and six `CREATE INDEX`es on them.
+
+- **One clause was written into the generated file by hand, before it was applied anywhere:** `ON DELETE set null ("source_point_id")` on `outline_entries_source_point_fk`, where Drizzle generated `ON DELETE set null`. Drizzle cannot express the column list, and without it deleting a point would try to set `owner_id` to null and be refused. `schema.ts` and the snapshot say `set null`; a comment at the key says what the migration holds. **Do not edit the file again, and do not "regenerate" this key**: a future migration that touches it must carry the column list too. `src/db/outline-migration.test.ts` fails if the clause is ever lost.
+- **It only adds.** No existing table, column, constraint, index, or row is altered, dropped, or rewritten. It adds foreign keys _to_ `ideas (id, owner_id)`, checked against empty tables.
+- **Safe under the code already live.** That code never names the new tables. Its `DELETE FROM ideas` has two more keys to satisfy and always does: with no outline there is nothing to cascade to, and no entry names a point. After a rollback to the release before this one, deleting a sermon still removes its outline and deleting a point still clears its links, by the database alone.
+- **Order with a deployment.** None is needed: the tables are there before the code that reads them goes live.
+- **Previews.** They share the development database, which has `0013`.
+- **PostgreSQL version.** The column list needs PostgreSQL 15 or later. The development database and the in-memory test database accepted it; production has not run it yet, and its PostgreSQL version was not looked at, so the first production build that carries `0013` is where that is proven. If it were refused the build would fail and the previous deployment keep serving.
+
+**Tested** in `src/db/outline-migration.test.ts`: migrations 0000 to 0012 are applied to an empty in-memory PostgreSQL; an account, a sermon with a reference, a point, and their relation are saved; 0013 is applied; every row of those tables is compared with what was there before; the file is checked to contain nothing but `CREATE TABLE`, `CREATE INDEX`, and `ALTER TABLE` on the new tables, and to hold the column list; and the old code's deletes are run against the new schema.
 
 ## Bible text
 
@@ -542,7 +627,7 @@ Keep every migration backward compatible with the code currently in production (
 
 ## Tests
 
-Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions. Where a lock is what makes something true (recording an occasion against a reclassification or a deletion), the committed test checks that the lock is taken, in the statements the code sends; the race itself was run once by hand against the development database in Phase 2E.1 ([handoff](HANDOFF-2E.1.md)).
+Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions. Where a lock is what makes something true (recording an occasion against a reclassification or a deletion), the committed test checks that the lock is taken, in the statements the code sends; the race itself was run once by hand against the development database in Phase 2E.1 ([handoff](HANDOFF-2E.1.md)). Phase 3A did the same for outlines ([handoff](HANDOFF-3A.md)): the committed test checks that every write locks the outline's row before it touches an entry, and the races were run once against development on separate connections.
 
 ## Data model direction (later phases)
 
@@ -550,8 +635,7 @@ See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 
 - **Ideas** — implemented in Phase 2A (above). **Tags** — implemented in Phase 2B.1 (above). **Favorites and highlights** — implemented in Phase 2C.1B (above). **Scripture from the Bible to an idea** — Phase 2C.1C, with no schema change (see `idea_scripture_references`).
 - **A second translation** — implemented in Phase 2C.2 (above): `scripture_verses` and `scripture_psalm_titles` hold each translation's text. Favorites and highlights carry a translation and are never carried from one to the other. References on ideas carry none and need none. Still to do: a migration that drops `bible_verses` and `bible_psalm_titles`.
-- **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
-- **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
+- **Outlines** — implemented in Phase 3A (above): `outline_entries` carries order, an optional parent (subpoints), the entry's own wording and notes, its own passages, and an optional link to the point idea it was made from. The optional introduction and conclusion are entries of the outline, not point records. `sermon_points` (Phase 2F.2) stays a plain relation.
 - **Classification** — implemented in Phase 2D.1 and tightened in Phase 2D.3 (above).
 - **Preaching occurrences** — implemented in Phase 2E.1 (above): when, where, and in what context a sermon was preached, and the format actually used. They reference the idea with its owner; nothing about them is stored on the idea, and neither archiving, refiling, nor deleting an idea removes them.
 
