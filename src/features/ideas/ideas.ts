@@ -16,8 +16,14 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import { ideas, ideaScriptureReferences, ideaTags, type Idea } from "@/db/schema";
-import type { Database } from "@/db/types";
+import {
+  ideas,
+  ideaScriptureReferences,
+  ideaTags,
+  preachingOccurrences,
+  type Idea,
+} from "@/db/schema";
+import { isForeignKeyViolation, type Database } from "@/db/types";
 import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { searchTerms, startOfDay, startOfNextDay, type LibraryQuery } from "./library-query";
 import {
@@ -541,11 +547,47 @@ export async function restoreIdea(
   return updated ? asRead(updated) : null;
 }
 
-/** True when the owner's idea was deleted; its references go with it. */
-export async function deleteIdea(db: Database, ownerId: string, id: string): Promise<boolean> {
-  const deleted = await db
-    .delete(ideas)
-    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
-    .returning({ id: ideas.id });
-  return deleted.length > 0;
+/**
+ * What became of an attempt to delete an idea. `preached` is a sermon with
+ * preaching history: it was not deleted, and neither was any of its history.
+ */
+export type DeleteOutcome = "deleted" | "missing" | "preached";
+
+/**
+ * Deletes the owner's idea; its references and tag links go with it. An idea
+ * that has been preached is kept, whatever kind it is filed as now and
+ * whether or not it is archived: history is never erased by a deletion.
+ *
+ * The idea's row is locked while its history is looked for, as recording an
+ * occasion locks it, so the two cannot pass each other. The foreign key
+ * (ON DELETE RESTRICT) refuses the deletion too, whatever this misses.
+ */
+export async function deleteIdea(
+  db: Database,
+  ownerId: string,
+  id: string,
+): Promise<DeleteOutcome> {
+  try {
+    return await db.transaction(async (tx): Promise<DeleteOutcome> => {
+      const [idea] = await tx
+        .select({ id: ideas.id })
+        .from(ideas)
+        .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+        .for("update");
+      if (!idea) return "missing";
+      const preached = await tx
+        .select({ id: preachingOccurrences.id })
+        .from(preachingOccurrences)
+        .where(
+          and(eq(preachingOccurrences.sermonId, id), eq(preachingOccurrences.ownerId, ownerId)),
+        )
+        .limit(1);
+      if (preached.length > 0) return "preached";
+      await tx.delete(ideas).where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)));
+      return "deleted";
+    });
+  } catch (error) {
+    if (isForeignKeyViolation(error)) return "preached";
+    throw error;
+  }
 }

@@ -8,4 +8,5 @@ export { navigation } from "./navigation";
 export { dashboard } from "./dashboard";
 export { library } from "./library";
 export { ideas } from "./ideas";
+export { preaching } from "./preaching";
 export { auth } from "./auth";

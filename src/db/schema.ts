@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -16,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
+import { actualFormats, timesOfDay } from "../features/preaching/model";
 import { highlightColors } from "../features/scripture/saved/model";
 import { accentFold } from "../features/scripture/search-fold";
 import { translationIds } from "../features/scripture/translations";
@@ -493,3 +495,161 @@ export const bibleHighlights = pgTable(
     ),
   ],
 );
+
+/**
+ * Where a sermon was preached. Each belongs to one account and can be used on
+ * any number of its occasions. A name is unique within the account without
+ * regard to case; two accounts may use the same name.
+ */
+export const preachingVenues = pgTable(
+  "preaching_venues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    /** The town, or whatever else tells two venues of one name apart. */
+    locality: text("locality"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check("preaching_venues_name_check", sql`char_length(btrim(${table.name})) between 1 and 80`),
+    check(
+      "preaching_venues_locality_check",
+      sql`${table.locality} is null or char_length(btrim(${table.locality})) between 1 and 120`,
+    ),
+    uniqueIndex("preaching_venues_owner_name_key").on(table.ownerId, sql`lower(${table.name})`),
+    // What preaching_occurrences points at, so an occasion can only name its own owner's venue.
+    unique("preaching_venues_id_owner_key").on(table.id, table.ownerId),
+  ],
+);
+
+export type PreachingVenue = typeof preachingVenues.$inferSelect;
+
+/**
+ * What kind of occasion a sermon was preached on: a regular service, a
+ * preaching class, a conference. Never the weekday or the part of the day,
+ * which the occasion's date and `time_of_day` say. Owned and named like a
+ * venue. No account is given any until it chooses or writes one.
+ */
+export const preachingContexts = pgTable(
+  "preaching_contexts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check("preaching_contexts_name_check", sql`char_length(btrim(${table.name})) between 1 and 80`),
+    uniqueIndex("preaching_contexts_owner_name_key").on(table.ownerId, sql`lower(${table.name})`),
+    unique("preaching_contexts_id_owner_key").on(table.id, table.ownerId),
+  ],
+);
+
+export type PreachingContext = typeof preachingContexts.$inferSelect;
+
+/**
+ * One occasion a sermon was preached on. The sermon is an idea and keeps its
+ * one identity however often it is preached; nothing about an occasion is
+ * stored on the idea, and recording one changes nothing there.
+ *
+ * The owner is repeated and is part of all three foreign keys, as in
+ * `idea_tags`, so the database itself refuses an occasion that names another
+ * account's sermon, venue, or context. Each is ON DELETE RESTRICT: history is
+ * never removed, or left pointing at nothing, because something else was
+ * deleted. Whether the idea is a sermon is not something a foreign key can
+ * say; `createOccurrence` checks it with the idea's row locked.
+ *
+ * The same sermon may be preached twice on one date, so nothing here is
+ * unique but the ID.
+ */
+export const preachingOccurrences = pgTable(
+  "preaching_occurrences",
+  {
+    /** May be generated in the browser, so a repeated submission saves one row. */
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    sermonId: uuid("sermon_id").notNull(),
+    /** The calendar date where it was preached, as YYYY-MM-DD. It is never a moment and never converted. */
+    preachedOn: date("preached_on", { mode: "string" }).notNull(),
+    /** Null when it was not said. */
+    timeOfDay: text("time_of_day", { enum: timesOfDay }),
+    venueId: uuid("venue_id"),
+    contextId: uuid("context_id"),
+    /** The format it was delivered in, which the sermon's intended format does not decide. */
+    actualFormat: text("actual_format", { enum: actualFormats }).notNull().default("unspecified"),
+    /** Null when it was not said, which is not the same as zero. */
+    durationMinutes: integer("duration_minutes"),
+    notes: text("notes"),
+    /** A link to a recording kept elsewhere. Nothing is uploaded, fetched, or embedded. */
+    recordingUrl: text("recording_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    foreignKey({
+      name: "preaching_occurrences_sermon_fk",
+      columns: [table.sermonId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "preaching_occurrences_venue_fk",
+      columns: [table.venueId, table.ownerId],
+      foreignColumns: [preachingVenues.id, preachingVenues.ownerId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "preaching_occurrences_context_fk",
+      columns: [table.contextId, table.ownerId],
+      foreignColumns: [preachingContexts.id, preachingContexts.ownerId],
+    }).onDelete("restrict"),
+    check(
+      "preaching_occurrences_time_of_day_check",
+      sql`${table.timeOfDay} is null or ${table.timeOfDay} in ('am', 'pm')`,
+    ),
+    check(
+      "preaching_occurrences_actual_format_check",
+      sql`${table.actualFormat} in ('full_length', 'mini', 'flexible', 'unspecified')`,
+    ),
+    check(
+      "preaching_occurrences_duration_check",
+      sql`${table.durationMinutes} is null or ${table.durationMinutes} between 0 and 1440`,
+    ),
+    check(
+      "preaching_occurrences_notes_check",
+      sql`${table.notes} is null or char_length(${table.notes}) <= 5000`,
+    ),
+    check(
+      "preaching_occurrences_recording_url_check",
+      sql`${table.recordingUrl} is null or (${table.recordingUrl} like 'https://%' and char_length(${table.recordingUrl}) <= 2048)`,
+    ),
+    // History, most recently preached first, for one account.
+    index("preaching_occurrences_owner_date_idx").on(
+      table.ownerId,
+      table.preachedOn.desc(),
+      table.id.desc(),
+    ),
+    // One sermon's occasions and their count, and the check made when an idea is deleted.
+    index("preaching_occurrences_sermon_idx").on(table.sermonId, table.preachedOn.desc()),
+    index("preaching_occurrences_venue_idx").on(table.venueId),
+    index("preaching_occurrences_context_idx").on(table.contextId),
+  ],
+);
+
+export type PreachingOccurrence = typeof preachingOccurrences.$inferSelect;

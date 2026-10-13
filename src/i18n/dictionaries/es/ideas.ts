@@ -238,6 +238,7 @@ export const ideas: Untranslated<typeof english> = {
     restored: "Idea restaurada.",
     notRestored: "No se pudo restaurar la idea. Inténtalo de nuevo.",
     notDeleted: "No se pudo eliminar la idea. Inténtalo de nuevo.",
+    hasHistory: "Este sermón ya se ha predicado, así que no se puede eliminar. Archívalo.",
     deleted: "Idea eliminada.",
     missingTag: "Esa etiqueta ya no existe.",
     duplicateTag: "Ya tienes una etiqueta con ese nombre.",

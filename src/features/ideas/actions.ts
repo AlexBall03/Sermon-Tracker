@@ -238,7 +238,13 @@ export async function restoreIdea(id: unknown): Promise<ActionResult> {
   return { ok: true, message: t.restored };
 }
 
-export async function deleteIdea(id: unknown): Promise<ActionResult> {
+export type DeleteActionResult = ActionResult & {
+  /** Why nothing was deleted, where the caller can do something about it: the sermon has been preached. */
+  reason?: "preached";
+};
+
+/** Deletes one of the caller's ideas, unless it has preaching history, which is never erased this way. */
+export async function deleteIdea(id: unknown): Promise<DeleteActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
   const { t } = await context();
@@ -247,9 +253,9 @@ export async function deleteIdea(id: unknown): Promise<ActionResult> {
   if (!ideaId.success) return { ok: false, message: t.invalid };
 
   try {
-    if (!(await service.deleteIdea(getDb(), actor.user.id, ideaId.data))) {
-      return { ok: false, message: t.missing };
-    }
+    const outcome = await service.deleteIdea(getDb(), actor.user.id, ideaId.data);
+    if (outcome === "missing") return { ok: false, message: t.missing };
+    if (outcome === "preached") return { ok: false, message: t.hasHistory, reason: "preached" };
   } catch (error) {
     console.error("Idea delete failed:", describeDatabaseError(error));
     return { ok: false, message: t.notDeleted };

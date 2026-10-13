@@ -116,7 +116,7 @@ describe("ownership", () => {
     expect(await recentIdeas(db, me, 10)).toEqual([]);
     expect(await updateIdea(db, me, id, input({ title: "Taken" }))).toBeNull();
     expect(await setIdeaKind(db, me, id, "sermon")).toBeNull();
-    expect(await deleteIdea(db, me, id)).toBe(false);
+    expect(await deleteIdea(db, me, id)).toBe("missing");
 
     // Nothing about it changed, references included.
     expect(await getIdea(db, other, id)).toMatchObject({
@@ -209,10 +209,10 @@ describe("setIdeaKind", () => {
 describe("deleteIdea", () => {
   it("deletes the idea and its references", async () => {
     const idea = await createIdea(db, me, input({ title: "Gone", references: [john316] }));
-    expect(await deleteIdea(db, me, idea!.id)).toBe(true);
+    expect(await deleteIdea(db, me, idea!.id)).toBe("deleted");
     expect(await getIdea(db, me, idea!.id)).toBeNull();
     expect(await db.select().from(ideaScriptureReferences)).toEqual([]);
-    expect(await deleteIdea(db, me, idea!.id)).toBe(false);
+    expect(await deleteIdea(db, me, idea!.id)).toBe("missing");
   });
 });
 

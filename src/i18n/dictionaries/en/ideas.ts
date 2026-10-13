@@ -243,6 +243,7 @@ export const ideas = {
     restored: "Idea restored.",
     notRestored: "The idea could not be restored. Try again.",
     notDeleted: "The idea could not be deleted. Try again.",
+    hasHistory: "This sermon has been preached, so it cannot be deleted. Archive it instead.",
     deleted: "Idea deleted.",
     missingTag: "That tag no longer exists.",
     duplicateTag: "You already have a tag with that name.",

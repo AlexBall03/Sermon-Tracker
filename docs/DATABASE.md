@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below.
 
 ## Layout
 
@@ -243,6 +243,70 @@ EXISTS (SELECT 1 FROM bible_favorite_verses v
 
 A page of results is five queries whatever its size: the count, the favorites, their verses, their colors, and the text of their first three verses.
 
+### Preaching history (Phase 2E.1)
+
+Three tables of personal data. A sermon is an `ideas` row; nothing about preaching is stored on it.
+
+#### `preaching_venues`
+
+Where a sermon was preached. Reusable on any number of occasions.
+
+| Column                     | Type          | Notes                                               |
+| -------------------------- | ------------- | --------------------------------------------------- |
+| `id`                       | `uuid`        | Primary key, `gen_random_uuid()`                    |
+| `owner_id`                 | `uuid`        | Not null, references `users(id)` ON DELETE RESTRICT |
+| `name`                     | `text`        | Not null. CHECK: 1 to 80 characters after trimming  |
+| `locality`                 | `text`        | Nullable. CHECK: 1 to 120 characters after trimming |
+| `created_at`, `updated_at` | `timestamptz` | Not null; `updated_at` set by the application       |
+
+- `preaching_venues_owner_name_key`: unique index on `(owner_id, lower(name))`. One name per account whatever its case; two accounts may use the same name.
+- `preaching_venues_id_owner_key`: `UNIQUE (id, owner_id)`, the target of the occasion's foreign key.
+
+#### `preaching_contexts`
+
+What kind of occasion it was. The same shape as a venue without `locality`: `preaching_contexts_name_check` (1 to 80), `preaching_contexts_owner_name_key`, `preaching_contexts_id_owner_key`. There is no display-order column; contexts are listed by name. **No rows are created for an account by the migration or by anything else**: the suggested contexts live in the code and the dictionaries, and become a row only when an account picks one.
+
+#### `preaching_occurrences`
+
+One occasion a sermon was preached on.
+
+| Column                     | Type          | Notes                                                                                    |
+| -------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| `id`                       | `uuid`        | Primary key. Defaults to `gen_random_uuid()`; the browser may supply it                  |
+| `owner_id`                 | `uuid`        | Not null, references `users(id)` ON DELETE RESTRICT                                      |
+| `sermon_id`                | `uuid`        | Not null. The idea                                                                       |
+| `preached_on`              | `date`        | Not null. A calendar date; no time and no zone                                           |
+| `time_of_day`              | `text`        | Nullable. CHECK: `am` or `pm`                                                            |
+| `venue_id`                 | `uuid`        | Nullable                                                                                 |
+| `context_id`               | `uuid`        | Nullable                                                                                 |
+| `actual_format`            | `text`        | Not null, default `unspecified`. CHECK: `full_length`, `mini`, `flexible`, `unspecified` |
+| `duration_minutes`         | `integer`     | Nullable. CHECK: 0 to 1440                                                               |
+| `notes`                    | `text`        | Nullable. CHECK: at most 5,000 characters                                                |
+| `recording_url`            | `text`        | Nullable. CHECK: begins `https://`, at most 2,048 characters                             |
+| `created_at`, `updated_at` | `timestamptz` | Not null; `updated_at` set by the application                                            |
+
+Foreign keys, all `ON DELETE RESTRICT`:
+
+- `preaching_occurrences_sermon_fk`: `(sermon_id, owner_id)` → `ideas (id, owner_id)` (`ideas_id_owner_key`).
+- `preaching_occurrences_venue_fk`: `(venue_id, owner_id)` → `preaching_venues (id, owner_id)`.
+- `preaching_occurrences_context_fk`: `(context_id, owner_id)` → `preaching_contexts (id, owner_id)`.
+
+Because one `owner_id` must satisfy all three, an occasion can only name a sermon, a venue, and a context of its own account, as in `idea_tags`. The venue and context keys are `MATCH SIMPLE`, so a null venue or context is simply not checked.
+
+**RESTRICT, not CASCADE or SET NULL, on purpose.** Deleting an idea must never take its history with it, and deleting a venue or a context must never leave history silently saying less than it did. The application answers each case before the database has to (`deleteIdea` → `"preached"`, `deleteVenue` / `deleteContext` → `in_use`); the keys are what makes it true whatever path a delete takes.
+
+**What a key cannot say.** That the idea is a sermon. `createOccurrence` checks `kind = 'sermon'` after reading the idea `WHERE id = … AND owner_id = … FOR UPDATE`. A reclassification is an `UPDATE` of the same row and so waits for it, or is waited for; there is no CHECK or trigger. An idea refiled after it was preached keeps its occasions, so "every occasion's idea is a sermon" is deliberately **not** an invariant of the table.
+
+**Nothing is unique but the ID.** The same sermon on the same date, twice, is two rows. A repeated submission is caught by the ID: `INSERT … ON CONFLICT (id) DO NOTHING`, then a read scoped to the owner.
+
+Indexes:
+
+- `preaching_occurrences_owner_date_idx (owner_id, preached_on desc, id desc)`: an account's history, most recent first, and its date-range filter.
+- `preaching_occurrences_sermon_idx (sermon_id, preached_on desc)`: one sermon's occasions, the per-sermon counts, and the check made when an idea is deleted.
+- `preaching_occurrences_venue_idx (venue_id)`, `preaching_occurrences_context_idx (context_id)`: the filters, the counts in the venue and context lists, and the checks made when one is deleted.
+
+**History search uses no special index.** As in the library, it is `ILIKE '%word%'` behind `owner_id = …`, here on the joined sermon title, venue name and locality, and context name. The joins are to one row each, so an occasion is always one row.
+
 ### `reference_datasets`
 
 Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. The rows the loader keeps are `scripture-kjv` and `scripture-rvg` (31,102 each), and `scripture-kjv-psalm-titles` (116) and `scripture-rvg-psalm-titles` (123). A database that existed before Phase 2C.2 also has `kjv` and `kjv-psalm-titles`, which describe the superseded tables and are no longer consulted.
@@ -309,6 +373,17 @@ Statements 3 to 5 were generated by `npm run db:generate` from `schema.ts`. The 
 - **Not constrained, on purpose.** There is no CHECK tying `sermon_type` or `intended_format` to `kind = 'sermon'`. Both are kept when an idea is reclassified, so turning it back into a sermon loses nothing, and the live code saves a point's whole draft with them. That a format or a type belongs only to a sermon is enforced where it is shown, chosen, and filtered (`ClassificationSection`, `IdeaResults`, and `kind = 'sermon'` beside both filters in `libraryConditions`).
 
 **Tested** in `src/db/classification-tightening.test.ts`: migrations 0000 to 0007 are applied to an empty in-memory PostgreSQL; ideas are saved in the old words and the new, for two accounts, archived and not, with tags and references; 0008 is applied; the two mappings are checked, every other column, tag link, and reference is compared with what was there before, the old values are then refused, and the live code's insert and update are run against the tightened table. A fresh database gets 0008 with the rest in every other database test.
+
+### Phase 2E.1 migration
+
+`0009_preaching_history`, generated by `npm run db:generate` and not edited: three `CREATE TABLE`s, six `ADD CONSTRAINT … FOREIGN KEY`s on the new tables, and six `CREATE INDEX`es on them.
+
+- **It only adds.** No existing table, column, constraint, index, or row is altered, dropped, or rewritten. The one thing it adds that touches an existing table is the foreign key _to_ `ideas (id, owner_id)` and to `users (id)`, which are checked against empty tables and so cannot fail.
+- **Safe under the code already live.** That code never names the new tables. Its saves are unaffected. Its `DELETE FROM ideas` now has one more foreign key to satisfy, which it always does, because only the new code can create an occasion. Once the new release is live, a rollback to the release before it is still safe to run: the old code would be refused when deleting a preached sermon and would report that the idea could not be deleted, losing nothing.
+- **Order with a deployment.** None is needed: the tables are there before the code that reads them goes live, as with `0005`.
+- **Previews.** They share the development database, which has `0009`.
+
+**Tested** in `src/db/preaching-migration.test.ts`: migrations 0000 to 0008 are applied to an empty in-memory PostgreSQL; accounts, ideas (a sermon, a point, an archived sermon, another account's), a tag, and references are saved; 0009 is applied; every row of every existing table is compared with what was there before; the old constraints are shown still to refuse; the new foreign keys and indexes are read back from the catalog; and the old code's insert, update, and delete are run against the new schema. The file itself is checked to contain nothing but `CREATE TABLE`, `CREATE INDEX`, and `ALTER TABLE "preaching_…"`.
 
 ## Bible text
 
@@ -416,7 +491,7 @@ Keep every migration backward compatible with the code currently in production (
 
 ## Tests
 
-Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions.
+Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions. Where a lock is what makes something true (recording an occasion against a reclassification or a deletion), the committed test checks that the lock is taken, in the statements the code sends; the race itself was run once by hand against the development database in Phase 2E.1 ([handoff](HANDOFF-2E.1.md)).
 
 ## Data model direction (later phases)
 
@@ -427,7 +502,7 @@ See "Domain decisions" in [ARCHITECTURE.md](../ARCHITECTURE.md). In outline:
 - **Sermon-point associations** — a join table carrying order, optional parent (subpoints), sermon-specific wording and notes, and Scripture overrides.
 - **Outline sections** — optional introduction and conclusion belong to the sermon, not to point records.
 - **Classification** — implemented in Phase 2D.1 and tightened in Phase 2D.3 (above).
-- **Preaching occurrences** (Phase 2E) — when, where, and in what context a sermon was preached, and the format actually used. They will reference `ideas.id`; nothing about them is stored on the idea, and archiving an idea must not remove them.
+- **Preaching occurrences** — implemented in Phase 2E.1 (above): when, where, and in what context a sermon was preached, and the format actually used. They reference the idea with its owner; nothing about them is stored on the idea, and neither archiving, refiling, nor deleting an idea removes them.
 
 Conventions, already followed by `users`:
 

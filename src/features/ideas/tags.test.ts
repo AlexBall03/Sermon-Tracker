@@ -116,7 +116,7 @@ describe("tags", () => {
     const faith = await tag(me, "Faith");
     const thought = await idea(me, "Gone");
     await setIdeaTags(db, me, thought, [faith]);
-    expect(await deleteIdea(db, me, thought)).toBe(true);
+    expect(await deleteIdea(db, me, thought)).toBe("deleted");
     expect(await db.select().from(ideaTags)).toEqual([]);
     expect((await listTags(db, me)).map((item) => [item.name, item.ideaCount])).toEqual([
       ["Faith", 0],

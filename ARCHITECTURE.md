@@ -45,6 +45,8 @@ src/
     ideas/                  The idea model, queries, tags, the library query contract, server actions,
                             quick capture, list, editor, tag picker, and components/library/ (the
                             library's controls, results, pager, and tag management)
+    preaching/              Preaching history: the model, validation, the occurrence, venue, and
+                            context services, and their server actions. No components yet (2E.2)
     scripture/              Books, references, chapter and search reads, and every Scripture component;
                             saved/ holds favorites and highlights (model, services, actions, URL query)
     settings/               Account management: schemas, server action, Clerk hooks, components
@@ -213,6 +215,55 @@ Phase 2D.1 built the data model and Phase 2D.2 the interface (see "Classificatio
 - **Empty states.** A library with nothing active but something archived says "Every idea is archived" and leads to them (`archivedCount`), instead of inviting the same thought to be captured again. The archive asked for and found empty says so and leads back.
 
 **What later phases need from this.** A sermon is still one `ideas` row with one ID, whatever it is classified as and however often it is preached, so a preaching occurrence (2E) and an outline (Phase 3) can both point at it; a point is still its own row, and a classification change touches no other row. IDs can already be made in the browser, every value is a short string that can be checked without the server (`model.ts` and `schemas.ts` have no server code), and the changes go through three small actions, which is what offline work (Phase 5) will need.
+
+### Preaching history
+
+Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three tables, migration `0009`. There is no page, no component, and nothing in the navigation yet; Phase 2E.2 builds the interface, at `/library/history`, as a section of the library. **Library** stays the name people see. The tables and the migration are in [docs/DATABASE.md](docs/DATABASE.md); the summary is in [docs/HANDOFF-2E.1.md](docs/HANDOFF-2E.1.md).
+
+**The model.** A sermon is one `ideas` row and keeps that one identity however often it is preached. Each time is a row of `preaching_occurrences` that points at it. Nothing about preaching is stored on the idea: no count, date, flag, or status. An occasion records:
+
+| Field             | What it is                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `preachedOn`      | The calendar date, `YYYY-MM-DD`. Required                                           |
+| `timeOfDay`       | `am`, `pm`, or null when it was not said. Never a clock time                        |
+| `venueId`         | One of the account's venues, or null                                                |
+| `contextId`       | One of the account's contexts (what kind of occasion it was), or null               |
+| `actualFormat`    | `full_length`, `mini`, `flexible`, or `unspecified`: the format it was delivered in |
+| `durationMinutes` | Whole minutes, 0 to 1,440, or null. Null is "not said", never zero                  |
+| `notes`           | Up to 5,000 characters, or null                                                     |
+| `recordingUrl`    | An `https` link to a recording kept elsewhere, or null                              |
+
+- **Independent of classification.** Recording, changing, or removing an occasion writes nothing to `ideas`: not the status, the intended format, the sermon type, `archived_at`, or `updated_at`. `actualFormat` uses the intended format's words (`actualFormats` is `intendedFormats`) but is never copied from it, and is never worked out from the duration.
+- **Nothing is inferred.** The part of the day is not worked out from the venue, the context, or the date; the format is not worked out from anything.
+- **A context is a kind of occasion**, never a weekday or a part of the day: the date already says the day, and `timeOfDay` the part of it. The five suggested contexts (`suggestedContexts` in `model.ts`, named in the `preaching` dictionary in both languages, read with `suggestedContextOptions`) are Regular Church Service, Preaching Class, Conference / Preaching Bootcamp, Special Service, and Other. They are suggestions and not rows: **no account is given any context until it picks or writes one** (`createContext` with the name). A context an account writes may be named anything.
+
+**Files.** `model.ts` (values and limits, no server code), `schemas.ts` (Zod, no server code), `occurrences.ts`, `venues.ts`, `contexts.ts` (services), `suggestions.ts`, `actions.ts` (server actions).
+
+**Ownership.** Every statement in the three services has the owner in its WHERE clause, and a sermon, venue, context, or occasion that belongs to someone else is the same answer as one that does not exist. The database repeats it: `preaching_occurrences` carries `owner_id`, and its three foreign keys are composite, `(sermon_id, owner_id)`, `(venue_id, owner_id)`, `(context_id, owner_id)`, so a row joining one account's occasion to another's sermon, venue, or context cannot exist.
+
+**Only a sermon can be preached, and the check is locked.** A foreign key cannot say what kind an idea is, so `createOccurrence` reads the owner's idea `FOR UPDATE` inside its transaction and requires `kind = 'sermon'` before it inserts. `setIdeaKind` was not changed: its `UPDATE` takes the same row lock, so a reclassification and a recording at the same moment run one wholly before the other. Reclassified first, the recording is refused (`not_sermon`); recorded first, the occasion stands and the idea is refiled after it, which is the same state as any sermon refiled later. The foreign key's own lock would not do this (it does not conflict with an update of `kind`). `deleteIdea` takes the same lock.
+
+**Recording twice is recording once.** The occasion's ID may be made in the browser. A second `createOccurrence` with the same ID returns the first one's row as it stands (`existing`) and writes nothing, whatever the second request said, even if the idea has since stopped being a sermon. An ID that belongs to another account is `unavailable`: that row is neither read nor changed. Nothing is unique but the ID, so a sermon preached twice on one date is two rows.
+
+**Changing one.** `updateOccurrence` writes the fields the change names and no others; a field given as null is cleared (`occurrenceUpdate` tells the two apart, as `ideaUpdate` does for classifications). An occasion cannot be moved to another sermon. It can still be edited after its sermon is archived or refiled.
+
+**What happens to history when the sermon changes.**
+
+| The sermon is…                  | Its history                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Archived, then restored         | Untouched, and still returned by every history query. An archived sermon can still be recorded as preached  |
+| Refiled as a point or undecided | Untouched and still readable. New occasions are refused until it is a sermon again                          |
+| Deleted                         | **Refused** while it has any occasion: `deleteIdea` returns `"preached"`, whatever the idea is filed as now |
+
+`deleteIdea` returns `"deleted" | "missing" | "preached"` (it returned a boolean before Phase 2E.1), and the `deleteIdea` action answers `preached` with a message that suggests archiving and `reason: "preached"`. An idea with no history is deleted as before. A venue or a context that any occasion names cannot be deleted either (`in_use`, with the count); renaming one changes no occasion. Deleting one occasion touches nothing else. All of this is `ON DELETE RESTRICT` in the database as well, so nothing can erase or detach history by another path.
+
+**History queries.** `searchHistory(db, ownerId, query, pageSize)` returns one page (`items`, `total`, `page`, `pageSize`, `totalPages`), each item with its sermon (`id`, `title`, `kind`, `archivedAt`), venue, and context. `HistoryQuery` (`historyQuerySchema`) holds a search, one sermon, a date range (both ends inclusive, compared as calendar dates), venues, contexts, formats, parts of the day (`unspecified` asks for those that did not say), an order, and a page. The search requires every word, each in the sermon's title, the venue's name or locality, or the context's name. It never filters by archive or kind. The order is the date preached, then PM before AM before unsaid, then `created_at`, then the ID, all in one direction, so pages never repeat or drop a row. `listForSermon` is the same query for one sermon, `getOccurrence` reads one, and `occurrenceCounts` gives each sermon's count and last date in one query. The URL contract for `/library/history` belongs to Phase 2E.2.
+
+**Dates.** `preached_on` is a PostgreSQL `date` read and written as a `YYYY-MM-DD` string (`date(..., { mode: "string" })`); it is never a `Date` and never converted between zones. A date that is not a real calendar date is refused, as is one before 1900 or in the future. There is no time zone setting, so "the future" is anything after the latest date it currently is anywhere on Earth (`latestDateOnEarth`, UTC+14): a preacher east of the server is never refused today's date, at the cost of admitting a date up to a day ahead for one to the west.
+
+**Recording links.** Any `https` address is accepted, with no list of sites. `http`, other schemes, and addresses carrying a username or password are refused; the address is stored as `URL` writes it, at most 2,048 characters. Nothing is uploaded, fetched, embedded, or looked up.
+
+**For offline work later (Phase 5).** IDs are client-generated and creation is idempotent, the schemas and the model have no server code, and an update names only what changed. No service worker, local store, or conflict handling exists.
 
 ### Library
 
@@ -709,7 +760,7 @@ These are settled and constrain later phases. The first and fourth are implement
 
 ## Testing
 
-- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, Scripture, and saved Scripture code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
+- **Vitest**: configuration logic, component rendering (jsdom), the migration guard, the Bible dataset and its loader, and the auth, admin, dashboard, settings, ideas, library, tag, Scripture, saved Scripture, and preaching history code. Database tests run the committed migrations on PGlite, an in-memory PostgreSQL; Clerk is always mocked, so no test verifies Clerk itself.
 - **Playwright** (desktop Chrome and a mobile viewport): page rendering, metadata, navigation, theme behaviour, keyboard access, and horizontal overflow. It builds and serves the production app on port 3100 and stops the server when the run ends.
 - **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`, `scripture-ideas.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
