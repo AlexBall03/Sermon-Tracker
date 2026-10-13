@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
-import { formatReferences } from "@/features/scripture/reference";
+import { formatReferences, type ScriptureReference } from "@/features/scripture/reference";
 import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
@@ -70,6 +70,8 @@ type OutlineEditorProps = {
   snapshot: OutlineSnapshot;
   /** The sermon it is the outline of: where "back" and a deletion lead. */
   sermon: { id: string; title: string };
+  /** The sermon's own passages, main text first, offered on each entry. */
+  sermonReferences?: readonly ScriptureReference[];
 };
 
 type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, number | null] };
@@ -90,7 +92,7 @@ type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, num
  * an entry's passages are changed through its `setReferences`: both go through
  * the same queue as everything else, and neither is saved from here.
  */
-export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
+export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEditorProps) {
   const t = useT("outlines").editor;
   const locale = useLocale();
   const router = useRouter();
@@ -532,6 +534,7 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
           row={introduction}
           conflict={introduction && state.conflicts[introduction.id]}
           outlineId={snapshot.id}
+          sermonReferences={sermonReferences}
           passagesOpen={introduction !== undefined && passagesOpen.has(introduction.id)}
           onOpenPassages={handlers.openPassages}
           store={store}
@@ -566,6 +569,7 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
                     passagesOpen={passagesOpen.has(point.id)}
                     sourcePointId={point.sourcePointId}
                     outlineId={snapshot.id}
+                    sermonReferences={sermonReferences}
                     moves={possibleMoves(point, beside.get(point.parentId) ?? 1)}
                     dragging={drag.dragging?.id === point.id}
                     conflict={state.conflicts[point.id]}
@@ -615,6 +619,7 @@ export function OutlineEditor({ snapshot, sermon }: OutlineEditorProps) {
           row={conclusion}
           conflict={conclusion && state.conflicts[conclusion.id]}
           outlineId={snapshot.id}
+          sermonReferences={sermonReferences}
           passagesOpen={conclusion !== undefined && passagesOpen.has(conclusion.id)}
           onOpenPassages={handlers.openPassages}
           store={store}
@@ -687,6 +692,7 @@ function SectionBlock({
   row,
   conflict,
   outlineId,
+  sermonReferences,
   passagesOpen,
   onOpenPassages,
   store,
@@ -698,6 +704,7 @@ function SectionBlock({
   row: EditorRow | undefined;
   conflict: Conflict | undefined;
   outlineId: string;
+  sermonReferences?: readonly ScriptureReference[];
   passagesOpen: boolean;
   onOpenPassages: (id: string) => void;
   store: OutlineStore;
@@ -788,6 +795,7 @@ function SectionBlock({
             entryId={row.id}
             outlineId={outlineId}
             references={row.references}
+            suggested={sermonReferences}
             setReferences={store.setReferences}
             className="mt-1 mb-2 ml-2 animate-menu"
           />

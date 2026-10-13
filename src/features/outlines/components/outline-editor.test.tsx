@@ -621,6 +621,29 @@ describe("the outline editor", () => {
     expect(saved()).toBeInTheDocument();
   });
 
+  it("offers the sermon's passages on an entry, each added with one press", async () => {
+    render(
+      <I18nProvider locale="en">
+        <ToastProvider>
+          <OutlineEditor
+            snapshot={outline()}
+            sermon={sermon}
+            sermonReferences={[john316, psalm23]}
+          />
+        </ToastProvider>
+      </I18nProvider>,
+    );
+    await menu("II. Peace", "Add passage");
+    const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
+    expect(within(peace).getByText("From the sermon")).toBeInTheDocument();
+    fireEvent.click(within(peace).getByRole("button", { name: "Add John 3:16" }));
+    await pause(0);
+    expect(state.setEntryReferences).toHaveBeenCalledWith("peace", [john316], 1);
+    // What is on the entry is no longer offered; the rest still is.
+    expect(within(peace).queryByRole("button", { name: "Add John 3:16" })).not.toBeInTheDocument();
+    expect(within(peace).getByRole("button", { name: "Add Psalm 23" })).toBeInTheDocument();
+  });
+
   it("adds a typed passage through the store, saved at once with the entry's revision", async () => {
     open();
     await menu("II. Peace", "Add passage");

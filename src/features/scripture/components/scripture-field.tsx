@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronDown, ExternalLink, Star, X } from "lucide-react";
+import { BookOpen, ChevronDown, ExternalLink, Plus, Star, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,10 @@ type ScriptureFieldProps = {
   attachLabel?: string;
   /** What to say when it holds as many as it may, where that is not an idea's limit. */
   fullMessage?: (max: number) => string;
+  /** Passages worth offering here, each added with one press. Those already chosen are left out. */
+  suggestions?: readonly ScriptureReference[];
+  /** What the suggestions are, said before them. */
+  suggestionsLabel?: string;
   className?: string;
 };
 
@@ -198,6 +202,8 @@ export function ScriptureField({
   label,
   attachLabel,
   fullMessage,
+  suggestions,
+  suggestionsLabel,
   className,
 }: ScriptureFieldProps) {
   const id = useId();
@@ -211,6 +217,7 @@ export function ScriptureField({
 
   const has = (list: FieldReference[], reference: ScriptureReference) =>
     list.some((item) => referenceKey(item) === referenceKey(reference));
+  const offered = full ? [] : (suggestions ?? []).filter((reference) => !has(value, reference));
 
   // Each change is applied to the list as it stands when it lands, not as it
   // stood when the panel was opened: the form beside an open panel stays live.
@@ -353,6 +360,33 @@ export function ScriptureField({
             );
           })}
         </ul>
+      )}
+
+      {offered.length > 0 && (
+        <div className="mt-2 flex animate-menu flex-wrap items-center gap-1.5">
+          {suggestionsLabel && (
+            <span className="mr-0.5 text-[0.8125rem] text-muted-foreground">
+              {suggestionsLabel}
+            </span>
+          )}
+          {offered.map((reference) => {
+            const name = formatReference(reference, locale);
+            return (
+              <Button
+                key={referenceKey(reference)}
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={t.addNamed(name)}
+                onClick={() => add([reference])}
+                className="font-serif italic"
+              >
+                <Plus aria-hidden />
+                {name}
+              </Button>
+            );
+          })}
+        </div>
       )}
 
       <div className="mt-2 flex gap-2">

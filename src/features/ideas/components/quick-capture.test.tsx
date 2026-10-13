@@ -63,6 +63,12 @@ describe("quick capture", () => {
     expect(within(dialog).queryByRole("textbox", { name: "Notes" })).not.toBeInTheDocument();
   });
 
+  it("focuses the idea inside the press that opens it, so a phone raises its keyboard", () => {
+    open();
+    // No waiting: a focus that comes a frame later is too late for the keyboard.
+    expect(title()).toHaveFocus();
+  });
+
   it("saves a bare thought, closes, and confirms with a link to it", async () => {
     open();
     type(title(), "The story isn't over");

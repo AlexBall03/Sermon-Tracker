@@ -219,6 +219,7 @@ export const scripture = {
     openNamed: (reference: string) => `Open ${reference} in the Bible`,
     openInTheBible: "Open in the Bible",
     removeNamed: (reference: string) => `Remove ${reference}`,
+    addNamed: (reference: string) => `Add ${reference}`,
     remove: "Remove",
     updateReference: "Update reference",
     readOrChange: "Read or change",

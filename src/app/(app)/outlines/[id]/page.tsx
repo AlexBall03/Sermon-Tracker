@@ -7,6 +7,7 @@ import { BackLink } from "@/components/layout/back-link";
 import { PageHeader } from "@/components/layout/page-header";
 import { getDb } from "@/db";
 import { requireActiveUser } from "@/features/auth/access";
+import { getIdea } from "@/features/ideas/ideas";
 import { OutlineEditor } from "@/features/outlines/components/outline-editor";
 import { getOutline } from "@/features/outlines/outlines";
 import { outlineIdSchema } from "@/features/outlines/schemas";
@@ -35,6 +36,17 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   if (!outline) notFound();
   const t = (await getT("outlines")).page;
   const { sermon } = outline;
+  // The sermon's own passages, main text first, for the editor to offer on each entry.
+  const passages = (await getIdea(getDb(), user.id, sermon.id))?.references ?? [];
+  const sermonReferences = [...passages]
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
+    .map(({ book, chapterStart, verseStart, chapterEnd, verseEnd }) => ({
+      book,
+      chapterStart,
+      verseStart,
+      chapterEnd,
+      verseEnd,
+    }));
   const aside = sermon.kind !== "sermon" ? t.refiled : sermon.archivedAt ? t.archived : null;
 
   return (
@@ -63,6 +75,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
       <OutlineEditor
         key={outline.id}
         sermon={{ id: sermon.id, title: sermon.title }}
+        sermonReferences={sermonReferences}
         snapshot={{
           id: outline.id,
           revision: outline.revision,

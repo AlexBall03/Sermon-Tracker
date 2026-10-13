@@ -172,6 +172,7 @@ export const outlines: Untranslated<typeof english> = {
     addPassage: "Añadir pasaje",
     passages: "Pasajes",
     addToPoint: "Añadir al bosquejo",
+    fromSermon: "Del sermón",
     fromSavedPoint: "De un punto guardado",
     openSource: (name: string) => `${name}: abrir el punto guardado del que se hizo`,
     empty:

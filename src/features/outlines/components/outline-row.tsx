@@ -77,6 +77,8 @@ type OutlineRowProps = {
   sourcePointId: string | null;
   /** The outline it is in, for the way back from the Bible. */
   outlineId: string;
+  /** The sermon's own passages, offered on its points. The same array for every row. */
+  sermonReferences?: readonly ScriptureReference[];
   /** The ways it can move, joined by commas: "up,down,indent". */
   moves: string;
   dragging: boolean;
@@ -112,6 +114,7 @@ export const OutlineRow = memo(function OutlineRow({
   passagesOpen,
   sourcePointId,
   outlineId,
+  sermonReferences,
   moves,
   dragging,
   conflict,
@@ -290,6 +293,7 @@ export const OutlineRow = memo(function OutlineRow({
               entryId={id}
               outlineId={outlineId}
               references={references}
+              suggested={sermonReferences}
               setReferences={actions.setReferences}
               className="mt-1 mb-2 ml-2 animate-menu"
             />

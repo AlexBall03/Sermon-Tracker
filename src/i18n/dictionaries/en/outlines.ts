@@ -171,6 +171,8 @@ export const outlines = {
     passages: "Passages",
     /** The button in the Scripture panel that puts a passage on an entry. */
     addToPoint: "Add to outline",
+    /** Before the sermon's own passages, offered on an entry. */
+    fromSermon: "From the sermon",
     fromSavedPoint: "From a saved point",
     openSource: (name: string) => `${name}: open the saved point it was made from`,
     empty: "No points yet. Add the first, then press Enter in a heading to add the next.",

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ArrowLeft, ChevronDown, LoaderCircle, Plus } from "lucide-react";
 
 import { useLeaveGuard } from "@/components/layout/leave-guard";
@@ -144,23 +145,33 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
   const toast = useToast();
   const wide = useMediaQuery(wideEnough);
 
-  const value = useMemo(
-    () => ({
-      open: () => setOpen(true),
+  const value = useMemo(() => {
+    // A phone raises its keyboard only for a focus made inside the tap itself,
+    // and the dialog's own comes a frame later: so the dialog is drawn now and
+    // the title focused before the tap is over.
+    const show = (prepare?: () => void) => {
+      flushSync(() => {
+        prepare?.();
+        setOpen(true);
+      });
+      titleRef.current?.focus();
+    };
+    return {
+      open: () => show(),
       openWith: (given: CaptureSeed) => {
         const next = seededDraft(given);
-        setSeed(next);
-        setDraft(next);
-        setErrors({});
-        setResult(null);
-        setPanel(null);
         ideaId.current = null;
         afterSave.current = given.onSaved;
-        setOpen(true);
+        show(() => {
+          setSeed(next);
+          setDraft(next);
+          setErrors({});
+          setResult(null);
+          setPanel(null);
+        });
       },
-    }),
-    [],
-  );
+    };
+  }, []);
   const update: UpdateDraft = useCallback((change) => {
     setDraft(change);
     setErrors({});

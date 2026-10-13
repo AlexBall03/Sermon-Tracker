@@ -38,6 +38,7 @@ export const EntryPassages = memo(function EntryPassages({
   entryId,
   outlineId,
   references,
+  suggested,
   setReferences,
   className,
 }: {
@@ -45,6 +46,8 @@ export const EntryPassages = memo(function EntryPassages({
   /** The outline, so a passage opened in the Bible can lead back to it. */
   outlineId: string;
   references: ScriptureReference[];
+  /** The sermon's own passages, offered so they need not be looked up again. */
+  suggested?: readonly ScriptureReference[];
   setReferences: SetReferences;
   className?: string;
 }) {
@@ -73,6 +76,8 @@ export const EntryPassages = memo(function EntryPassages({
       label={t.editor.passages}
       attachLabel={t.editor.addToPoint}
       fullMessage={t.validation.tooManyReferences}
+      suggestions={suggested}
+      suggestionsLabel={t.editor.fromSermon}
       className={className}
     />
   );

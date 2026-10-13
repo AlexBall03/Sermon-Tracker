@@ -217,6 +217,7 @@ export const scripture: Untranslated<typeof english> = {
     openNamed: (reference) => `Abrir ${reference} en la Biblia`,
     openInTheBible: "Abrir en la Biblia",
     removeNamed: (reference) => `Quitar ${reference}`,
+    addNamed: (reference) => `Agregar ${reference}`,
     remove: "Quitar",
     updateReference: "Actualizar referencia",
     readOrChange: "Leer o cambiar",
