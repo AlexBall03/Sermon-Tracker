@@ -103,12 +103,12 @@ export const ideas = {
     archiveDescription: (title: string) =>
       `“${title}” will be hidden from your library, not deleted. Everything on it is kept, and you can restore it at any time from the archived ideas.`,
     archiveConfirm: "Archive",
+    archiveInstead: "Archive instead",
     archivedOn: (date: string) => `Archived ${date}.`,
     archivedHint:
       "It is hidden from your library until you restore it. Nothing else about it changed.",
     restore: "Restore idea",
     restoring: "Restoring…",
-    back: "Library",
   },
   capture: {
     button: "Capture an idea",
@@ -215,7 +215,11 @@ export const ideas = {
   },
   page: {
     metaTitle: "Idea",
-    back: "Library",
+    back: "Back to Sermon Ideas",
+    notFound: {
+      title: "Idea not found",
+      body: "There is no idea at this address in your library. It may have been deleted.",
+    },
     description: "Change anything here. Nothing is lost when an idea is reclassified.",
   },
   actions: {

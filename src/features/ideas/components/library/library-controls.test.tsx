@@ -101,7 +101,7 @@ describe("search", () => {
     wait(searchDebounceMs - 1);
     expect(state.push).not.toHaveBeenCalled();
     wait(1);
-    expect(went(state.push)).toEqual(["/library?q=grace"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?q=grace"]);
     expect(state.replace).not.toHaveBeenCalled();
   });
 
@@ -111,15 +111,15 @@ describe("search", () => {
     wait();
     type("grace alone");
     wait();
-    expect(went(state.push)).toEqual(["/library?q=grace"]);
-    expect(went(state.replace)).toEqual(["/library?q=grace+alone"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?q=grace"]);
+    expect(went(state.replace)).toEqual(["/library/sermon-ideas?q=grace+alone"]);
   });
 
   it("asks at once on Enter, and not a second time when the pause ends", () => {
     render(<Library />);
     type("  faith   works ");
     fireEvent.submit(screen.getByRole("search"));
-    expect(went(state.push)).toEqual(["/library?q=faith+works"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?q=faith+works"]);
     wait(searchDebounceMs * 2);
     expect(state.push).toHaveBeenCalledTimes(1);
     expect(state.replace).not.toHaveBeenCalled();
@@ -131,7 +131,7 @@ describe("search", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
     expect(box()).toHaveValue("");
     // The filter and the order stay; the page goes back to the first.
-    expect(went(state.push)).toEqual(["/library?kind=sermon&sort=title-asc"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?kind=sermon&sort=title-asc"]);
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
   });
 
@@ -144,7 +144,7 @@ describe("search", () => {
     render(<Library at={query({ statuses: ["ready"], tagIds: [faith], page: 4 })} />);
     type("hope");
     wait();
-    expect(went(state.push)).toEqual([`/library?q=hope&status=ready&tag=${faith}`]);
+    expect(went(state.push)).toEqual([`/library/sermon-ideas?q=hope&status=ready&tag=${faith}`]);
   });
 
   it("does not undo a filter chosen while the search was waiting", () => {
@@ -152,9 +152,9 @@ describe("search", () => {
     openFilters();
     type("faith");
     fireEvent.click(screen.getByRole("button", { name: "Sermon idea" }));
-    expect(went(state.push)).toEqual(["/library?kind=sermon"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?kind=sermon"]);
     wait();
-    expect(went(state.push).at(-1)).toBe("/library?q=faith&kind=sermon");
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?q=faith&kind=sermon");
   });
 
   it("follows the address when it changes from outside", () => {
@@ -193,10 +193,10 @@ describe("filters", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
     fireEvent.click(screen.getByRole("button", { name: "Expository" }));
     expect(went(state.push)).toEqual([
-      "/library?kind=point",
-      "/library?kind=sermon&kind=point",
-      "/library?kind=sermon&kind=point&status=ready",
-      "/library?kind=sermon&kind=point&status=ready&type=expository",
+      "/library/sermon-ideas?kind=point",
+      "/library/sermon-ideas?kind=sermon&kind=point",
+      "/library/sermon-ideas?kind=sermon&kind=point&status=ready",
+      "/library/sermon-ideas?kind=sermon&kind=point&status=ready&type=expository",
     ]);
     // What was chosen shows as chosen at once.
     expect(screen.getByRole("button", { name: "Sermon idea" })).toHaveAttribute(
@@ -213,7 +213,7 @@ describe("filters", () => {
     render(<Library at={query({ kinds: ["sermon", "point"] })} />);
     openFilters();
     fireEvent.click(screen.getByRole("button", { name: "Sermon idea" }));
-    expect(went(state.push)).toEqual(["/library?kind=point"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?kind=point"]);
   });
 
   it("filters by tags, and switches between any and all without losing them", () => {
@@ -227,15 +227,17 @@ describe("filters", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Faith/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Prayer/ }));
-    expect(went(state.push).at(-1)).toBe(`/library?tag=${faith}&tag=${prayer}`);
+    expect(went(state.push).at(-1)).toBe(`/library/sermon-ideas?tag=${faith}&tag=${prayer}`);
 
     expect(all).toBeEnabled();
     fireEvent.click(all);
-    expect(went(state.push).at(-1)).toBe(`/library?tag=${faith}&tag=${prayer}&tag_mode=all`);
+    expect(went(state.push).at(-1)).toBe(
+      `/library/sermon-ideas?tag=${faith}&tag=${prayer}&tag_mode=all`,
+    );
     expect(screen.getByText("Ideas that have every chosen tag.")).toBeVisible();
 
     fireEvent.click(screen.getByRole("radio", { name: "Any" }));
-    expect(went(state.push).at(-1)).toBe(`/library?tag=${faith}&tag=${prayer}`);
+    expect(went(state.push).at(-1)).toBe(`/library/sermon-ideas?tag=${faith}&tag=${prayer}`);
   });
 
   it("resets the page when the tag mode changes", () => {
@@ -244,7 +246,9 @@ describe("filters", () => {
     fireEvent.click(
       within(screen.getByRole("group", { name: "Tags" })).getByRole("radio", { name: "All" }),
     );
-    expect(went(state.push)).toEqual([`/library?tag=${faith}&tag=${prayer}&tag_mode=all`]);
+    expect(went(state.push)).toEqual([
+      `/library/sermon-ideas?tag=${faith}&tag=${prayer}&tag_mode=all`,
+    ]);
   });
 
   it("filters by intended format, and shows archived ideas only when asked", () => {
@@ -255,16 +259,16 @@ describe("filters", () => {
         name: "Mini",
       }),
     );
-    expect(went(state.push).at(-1)).toBe("/library?format=mini");
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?format=mini");
 
     const show = within(screen.getByRole("group", { name: "Show" }));
     expect(show.getByRole("radio", { name: "Active" })).toBeChecked();
     fireEvent.click(show.getByRole("radio", { name: "Archived" }));
-    expect(went(state.push).at(-1)).toBe("/library?format=mini&archived=archived");
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?format=mini&archived=archived");
 
     // Each is a chip of its own, and taking the archive's off goes back to active ideas.
     fireEvent.click(screen.getByRole("button", { name: "Remove filter: Showing Archived only" }));
-    expect(went(state.push).at(-1)).toBe("/library?format=mini");
+    expect(went(state.push).at(-1)).toBe("/library/sermon-ideas?format=mini");
   });
 
   it("sets either end of a date range", () => {
@@ -276,9 +280,9 @@ describe("filters", () => {
     const changed = screen.getByRole("group", { name: "Last changed" });
     fireEvent.change(within(changed).getByLabelText("To"), { target: { value: "2026-02-28" } });
     expect(went(state.push)).toEqual([
-      "/library?created_from=2026-01-01",
-      "/library?created_from=2026-01-01&created_to=2026-03-31",
-      "/library?created_from=2026-01-01&created_to=2026-03-31&updated_to=2026-02-28",
+      "/library/sermon-ideas?created_from=2026-01-01",
+      "/library/sermon-ideas?created_from=2026-01-01&created_to=2026-03-31",
+      "/library/sermon-ideas?created_from=2026-01-01&created_to=2026-03-31&updated_to=2026-02-28",
     ]);
     // Each end limits the other, so a range cannot be turned inside out here.
     expect(within(created).getByLabelText("To")).toHaveAttribute("min", "2026-01-01");
@@ -341,21 +345,21 @@ describe("active filters", () => {
     render(<Library at={busy} />);
     fireEvent.click(screen.getByRole("button", { name: "Remove filter: Status Ready" }));
     expect(went(state.push)).toEqual([
-      `/library?q=grace&kind=sermon&status=developing&type=topical&tag=${faith}&tag=${prayer}&tag_mode=all&created_from=2026-01-01&updated_to=2026-02-28&sort=title-asc`,
+      `/library/sermon-ideas?q=grace&kind=sermon&status=developing&type=topical&tag=${faith}&tag=${prayer}&tag_mode=all&created_from=2026-01-01&updated_to=2026-02-28&sort=title-asc`,
     ]);
   });
 
   it("clears every filter and keeps the search and the order", () => {
     render(<Library at={busy} />);
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(went(state.push)).toEqual(["/library?q=grace&sort=title-asc"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?q=grace&sort=title-asc"]);
   });
 
   it("names a tag it cannot find, and still lets it be removed", () => {
     const gone = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     render(<Library at={query({ tagIds: [gone] })} />);
     fireEvent.click(screen.getByRole("button", { name: "Remove filter: Tag Unknown tag" }));
-    expect(went(state.push)).toEqual(["/library"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas"]);
   });
 
   it("shows nothing when no filter is in force", () => {
@@ -386,7 +390,7 @@ describe("sorting", () => {
     fireEvent.pointerUp(option, { pointerType: "mouse" });
     fireEvent.mouseUp(option);
     fireEvent.click(option);
-    expect(went(state.push)).toEqual(["/library?q=grace&sort=title-asc"]);
+    expect(went(state.push)).toEqual(["/library/sermon-ideas?q=grace&sort=title-asc"]);
   });
 });
 
@@ -584,7 +588,7 @@ describe("tag management", () => {
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete tag" }),
     );
     await flush();
-    expect(went(state.replace)).toEqual([`/library?tag=${prayer}&tag_mode=all`]);
+    expect(went(state.replace)).toEqual([`/library/sermon-ideas?tag=${prayer}&tag_mode=all`]);
   });
 
   it("leaves the tag in place when the server refuses to delete it", async () => {

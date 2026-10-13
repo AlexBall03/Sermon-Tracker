@@ -99,12 +99,12 @@ export const ideas: Untranslated<typeof english> = {
     archiveDescription: (title) =>
       `“${title}” dejará de verse en tu biblioteca, pero no se eliminará. Se conserva todo lo que tiene, y puedes restaurarla cuando quieras desde las ideas archivadas.`,
     archiveConfirm: "Archivar",
+    archiveInstead: "Archivar en su lugar",
     archivedOn: (date) => `Archivada el ${date}.`,
     archivedHint:
       "No aparece en tu biblioteca hasta que la restaures. Nada más en ella ha cambiado.",
     restore: "Restaurar idea",
     restoring: "Restaurando…",
-    back: "Biblioteca",
   },
   capture: {
     button: "Capturar una idea",
@@ -210,7 +210,11 @@ export const ideas: Untranslated<typeof english> = {
   },
   page: {
     metaTitle: "Idea",
-    back: "Biblioteca",
+    back: "Volver a Ideas de sermón",
+    notFound: {
+      title: "Idea no encontrada",
+      body: "No hay ninguna idea en esta dirección de tu biblioteca. Puede que se haya eliminado.",
+    },
     description: "Cambia aquí lo que quieras. No se pierde nada al reclasificar una idea.",
   },
   actions: {

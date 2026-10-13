@@ -250,7 +250,7 @@ export function serializeLibraryQuery(query: LibraryQuery): URLSearchParams {
 /** The library's address for a query. Changing a filter should also reset `page` to 1. */
 export function libraryHref(query: LibraryQuery): string {
   const search = serializeLibraryQuery(query).toString();
-  return search ? `${routes.library}?${search}` : routes.library;
+  return search ? `${routes.sermonIdeas}?${search}` : routes.sermonIdeas;
 }
 
 /**

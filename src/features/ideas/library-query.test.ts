@@ -241,9 +241,11 @@ describe("format and archive", () => {
     for (const value of ["true", "1", "ARCHIVED", "", "deleted"]) {
       expect(parseLibraryQuery({ archived: value }).archive).toBe("active");
     }
-    expect(libraryHref({ ...defaultLibraryQuery, archive: "active" })).toBe("/library");
+    expect(libraryHref({ ...defaultLibraryQuery, archive: "active" })).toBe(
+      "/library/sermon-ideas",
+    );
     expect(libraryHref({ ...defaultLibraryQuery, archive: "archived" })).toBe(
-      "/library?archived=archived",
+      "/library/sermon-ideas?archived=archived",
     );
   });
 
@@ -253,7 +255,7 @@ describe("format and archive", () => {
       "mini",
     ]);
     expect(libraryHref({ ...defaultLibraryQuery, formats: ["unspecified", "flexible"] })).toBe(
-      "/library?format=flexible&format=unspecified",
+      "/library/sermon-ideas?format=flexible&format=unspecified",
     );
   });
 
@@ -267,7 +269,7 @@ describe("format and archive", () => {
 describe("serializeLibraryQuery", () => {
   it("leaves every default out", () => {
     expect(serializeLibraryQuery(defaultLibraryQuery).toString()).toBe("");
-    expect(libraryHref(defaultLibraryQuery)).toBe("/library");
+    expect(libraryHref(defaultLibraryQuery)).toBe("/library/sermon-ideas");
   });
 
   it("writes a full query in a fixed order and reads it back unchanged", () => {
@@ -311,15 +313,17 @@ describe("serializeLibraryQuery", () => {
     });
     expect(one).toBe(other);
     expect(one).toBe(
-      `/library?kind=sermon&kind=undecided&status=idea&status=ready&tag=${tagA}&tag=${tagB}`,
+      `/library/sermon-ideas?kind=sermon&kind=undecided&status=idea&status=ready&tag=${tagA}&tag=${tagB}`,
     );
   });
 
   it("writes the tag mode only when it is not the default and there is a tag", () => {
     const withTag = { ...defaultLibraryQuery, tagIds: [tagA] };
-    expect(libraryHref({ ...withTag, tagMode: "all" })).toBe(`/library?tag=${tagA}&tag_mode=all`);
-    expect(libraryHref({ ...withTag, tagMode: "any" })).toBe(`/library?tag=${tagA}`);
-    expect(libraryHref({ ...defaultLibraryQuery, tagMode: "all" })).toBe("/library");
+    expect(libraryHref({ ...withTag, tagMode: "all" })).toBe(
+      `/library/sermon-ideas?tag=${tagA}&tag_mode=all`,
+    );
+    expect(libraryHref({ ...withTag, tagMode: "any" })).toBe(`/library/sermon-ideas?tag=${tagA}`);
+    expect(libraryHref({ ...defaultLibraryQuery, tagMode: "all" })).toBe("/library/sermon-ideas");
   });
 
   it("keeps every other part of the query when one part changes", () => {
@@ -392,8 +396,8 @@ describe("the way back from an idea", () => {
   });
 
   it("only ever leads back to the library", () => {
-    expect(libraryReturnHref(undefined)).toBe("/library");
-    expect(libraryReturnHref(["q=a", "q=b"])).toBe("/library");
+    expect(libraryReturnHref(undefined)).toBe("/library/sermon-ideas");
+    expect(libraryReturnHref(["q=a", "q=b"])).toBe("/library/sermon-ideas");
     for (const from of [
       "https://evil.example",
       "//evil.example",
@@ -402,9 +406,11 @@ describe("the way back from an idea", () => {
       "next=https://evil.example&q=faith",
     ]) {
       const href = libraryReturnHref(from);
-      expect(href.startsWith("/library")).toBe(true);
+      expect(href.startsWith("/library/sermon-ideas")).toBe(true);
       expect(href).not.toContain("evil");
     }
-    expect(libraryReturnHref("q=faith&page=3&owner=x")).toBe("/library?q=faith&page=3");
+    expect(libraryReturnHref("q=faith&page=3&owner=x")).toBe(
+      "/library/sermon-ideas?q=faith&page=3",
+    );
   });
 });

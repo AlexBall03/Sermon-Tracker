@@ -28,7 +28,7 @@ function firstIssue(error: { issues: { message: string }[] }, fallback: string):
 }
 
 function refresh(id?: string) {
-  revalidatePath(routes.library);
+  revalidatePath(routes.sermonIdeas);
   revalidatePath(routes.dashboard);
   if (id) revalidatePath(`${routes.library}/${id}`);
 }

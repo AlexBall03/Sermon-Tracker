@@ -40,8 +40,8 @@ test.describe("library, signed in", () => {
     // A public page that loads Clerk; the helper signs in from there.
     await page.goto("/sign-in");
     await clerk.signIn({ page, emailAddress: email ?? "" });
-    await page.goto("/library");
-    await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
+    await page.goto("/library/sermon-ideas");
+    await expect(page.getByRole("heading", { level: 1, name: "Sermon Ideas" })).toBeVisible();
     // The first page after signing in is shown behind the loading screen.
     await expect(page.locator("html")).not.toHaveAttribute("data-splash", /.+/, {
       timeout: 15_000,
@@ -125,10 +125,10 @@ test.describe("library, signed in", () => {
 
       // Alpha gets both tags and beta one, each saved with the idea.
       await tagIdea(page, alpha, [faith, prayer]);
-      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
+      await page.getByRole("main").getByRole("link", { name: "Back to Sermon Ideas" }).click();
       await expect(search).toHaveValue(run);
       await tagIdea(page, beta, [faith]);
-      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
+      await page.getByRole("main").getByRole("link", { name: "Back to Sermon Ideas" }).click();
       await expect(results(page)).toHaveCount(2);
 
       // Changing something else leaves an idea's tags as they were.
@@ -139,7 +139,7 @@ test.describe("library, signed in", () => {
       await page.reload();
       await expect(page.getByRole("list", { name: "Tags" })).toContainText(faith);
       await expect(page.getByRole("list", { name: "Tags" })).toContainText(prayer);
-      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
+      await page.getByRole("main").getByRole("link", { name: "Back to Sermon Ideas" }).click();
 
       // Several filters at once; any tag, then all tags.
       await page.getByRole("button", { name: /^Filters/ }).click();
@@ -174,7 +174,7 @@ test.describe("library, signed in", () => {
       // Into the idea and back: the same search, filters, and mode.
       await page.getByRole("link", { name: alpha }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(alpha);
-      await page.getByRole("main").getByRole("link", { name: "Library", exact: true }).click();
+      await page.getByRole("main").getByRole("link", { name: "Back to Sermon Ideas" }).click();
       await expect(page).toHaveURL(address);
       await expect(search).toHaveValue(run);
       await expect(results(page)).toHaveCount(1);
@@ -188,10 +188,10 @@ test.describe("library, signed in", () => {
       await page.getByRole("button", { name: `Remove filter: Tag ${prayer}` }).click();
       await expect(results(page)).toHaveCount(2);
       await page.getByRole("button", { name: "Clear filters" }).first().click();
-      await expect(page).toHaveURL(new RegExp(`/library\\?q=${run}$`));
+      await expect(page).toHaveURL(new RegExp(`/library/sermon-ideas\\?q=${run}$`));
 
       // A page past the end lands on the last page instead of failing.
-      await page.goto(`/library?q=${run}&page=999`);
+      await page.goto(`/library/sermon-ideas?q=${run}&page=999`);
       await expect(results(page)).toHaveCount(2);
 
       // Nothing matches: the library is not called empty, and the search can be cleared.
@@ -202,7 +202,7 @@ test.describe("library, signed in", () => {
     } finally {
       // Remove what this run made, whatever happened above.
       for (const title of [alpha, beta]) {
-        await page.goto(`/library?q=${encodeURIComponent(title)}`);
+        await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
         const link = page.getByRole("link", { name: title });
         if ((await link.count()) === 0) continue;
         await link.click();
@@ -211,9 +211,9 @@ test.describe("library, signed in", () => {
           .getByRole("alertdialog")
           .getByRole("button", { name: /^Delete/ })
           .click();
-        await expect(page).toHaveURL(/\/library(\?|$)/);
+        await expect(page).toHaveURL(/\/library\/sermon-ideas(\?|$)/);
       }
-      await page.goto("/library");
+      await page.goto("/library/sermon-ideas");
       const manage = page.getByRole("button", { name: "Manage tags" });
       if ((await manage.count()) > 0) {
         await manage.click();
@@ -245,7 +245,9 @@ test.describe("library, signed in", () => {
       await page.getByRole("option", { name: option }).click();
     };
     const openIdea = async (title: string, archived = false) => {
-      await page.goto(`/library?q=${encodeURIComponent(title)}${archived ? "&archived=all" : ""}`);
+      await page.goto(
+        `/library/sermon-ideas?q=${encodeURIComponent(title)}${archived ? "&archived=all" : ""}`,
+      );
       await page.getByRole("link", { name: title }).click();
       await expect(page.getByRole("textbox", { name: "Idea" })).toHaveValue(title);
     };
@@ -286,10 +288,10 @@ test.describe("library, signed in", () => {
       await expect(page.getByText("Changes saved.").filter({ visible: true })).toBeVisible();
 
       // The library finds the sermon by its format and type, and not the point.
-      await page.goto(`/library?q=${run}&format=mini&type=textual`);
+      await page.goto(`/library/sermon-ideas?q=${run}&format=mini&type=textual`);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page).first()).toContainText(sermon);
-      await page.goto(`/library?q=${run}&status=developing`);
+      await page.goto(`/library/sermon-ideas?q=${run}&status=developing`);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page).first()).toContainText(point);
 
@@ -300,7 +302,7 @@ test.describe("library, signed in", () => {
       await expect(confirm).toContainText("not deleted");
       await confirm.getByRole("button", { name: "Archive" }).click();
       await expect(page.getByText(/^Archived /).filter({ visible: true })).toBeVisible();
-      await page.goto(`/library?q=${run}`);
+      await page.goto(`/library/sermon-ideas?q=${run}`);
       await expect(results(page)).toHaveCount(1);
       await expect(results(page).first()).toContainText(point);
 
@@ -330,7 +332,7 @@ test.describe("library, signed in", () => {
     } finally {
       // Remove what this run made, archived or not.
       for (const title of [sermon, point]) {
-        await page.goto(`/library?q=${encodeURIComponent(title)}&archived=all`);
+        await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}&archived=all`);
         const link = page.getByRole("link", { name: title });
         if ((await link.count()) === 0) continue;
         await link.click();
@@ -339,7 +341,7 @@ test.describe("library, signed in", () => {
           .getByRole("alertdialog")
           .getByRole("button", { name: /^Delete/ })
           .click();
-        await expect(page).toHaveURL(/\/library(\?|$)/);
+        await expect(page).toHaveURL(/\/library\/sermon-ideas(\?|$)/);
       }
     }
   });

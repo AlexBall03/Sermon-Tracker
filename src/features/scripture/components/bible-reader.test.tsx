@@ -1544,7 +1544,7 @@ describe("favorites", () => {
     const said = screen.getByText("Saved John 3:16.");
     expect(within(said.parentElement!).getByRole("link", { name: "View" })).toHaveAttribute(
       "href",
-      "/library/scripture",
+      "/library/saved-scripture",
     );
     // A favorite is not a highlight.
     expect(row(16)).not.toHaveAttribute("data-highlight");
@@ -1710,7 +1710,7 @@ describe("favorites", () => {
     expect(await within(dialog).findByText(/already saved that passage/)).toBeInTheDocument();
     expect(
       within(dialog).getByRole("link", { name: "Find the one you already have" }),
-    ).toHaveAttribute("href", "/library/scripture?q=John+3%3A17");
+    ).toHaveAttribute("href", "/library/saved-scripture?q=John+3%3A17");
     expect(account.favorites.map((favorite) => favorite.reference)).toEqual([
       "John 3:17",
       "John 3:16",

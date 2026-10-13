@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { RecordPreachingButton } from "@/features/preaching/components/record-preaching";
 import { ReferenceChip } from "@/features/scripture/components/reference-chip";
 import { referenceKey } from "@/features/scripture/reference";
 import { dictionary } from "@/i18n";
@@ -28,6 +29,10 @@ const shownReferences = 3;
  * so they open their preview instead. Only what an idea actually has is
  * shown: a point has no sermon type, format, or subject, even if it kept them
  * from its time as a sermon, and a type or format nobody chose is not named.
+ *
+ * A sermon can be recorded as preached from where it is listed, when the page
+ * has a `RecordPreachingProvider`; nothing about preaching is read for the
+ * list, so a page of ideas costs no more queries than it did.
  *
  * An archived idea is only here because it was asked for. It is marked as
  * archived, apart from its status, which it keeps, and can be restored where
@@ -150,6 +155,10 @@ export function IdeaResults({
                   {formatDate(idea.updatedAt, locale)}
                 </time>
               </p>
+              {/* Only a sermon can be preached; an archived one still can. */}
+              {sermon && (
+                <RecordPreachingButton sermon={{ id: idea.id, title: idea.title }} onCard />
+              )}
               {idea.archivedAt && <RestoreButton id={idea.id} title={idea.title} />}
             </div>
           </li>

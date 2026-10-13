@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The access helper and the idea queries are mocked: this covers what the pages do with their answers.
@@ -14,6 +14,10 @@ const state = vi.hoisted(() => ({
   listTags: vi.fn(),
   // How many of the account's ideas are archived.
   archived: 0,
+  // The idea's latest preaching occasions, and how many it has in all when that is more.
+  occasions: [] as unknown[],
+  preached: undefined as number | undefined,
+  listForSermon: vi.fn(),
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -25,6 +29,9 @@ vi.mock("@/features/auth/access", () => ({
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("not-found");
+  },
+  redirect: (href: string) => {
+    throw new Error(`redirect:${href}`);
   },
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
@@ -66,10 +73,33 @@ vi.mock("@/features/ideas/ideas", () => ({
   },
   archivedCount: async () => state.archived,
 }));
+vi.mock("@/features/preaching/occurrences", () => ({
+  listForSermon: async (...args: unknown[]) => {
+    state.listForSermon(...args);
+    return {
+      items: state.occasions,
+      total: state.preached ?? state.occasions.length,
+      page: 1,
+      pageSize: 5,
+      totalPages: 1,
+    };
+  },
+}));
+vi.mock("@/features/preaching/venues", () => ({ listVenues: async () => [] }));
+vi.mock("@/features/preaching/contexts", () => ({ listContexts: async () => [] }));
+vi.mock("@/features/preaching/actions", () => ({
+  recordOccurrence: vi.fn(),
+  updateOccurrence: vi.fn(),
+  deleteOccurrence: vi.fn(),
+  createVenue: vi.fn(),
+  createContext: vi.fn(),
+}));
 
 import IdeaPage from "./[id]/page";
 import { defaultLibraryQuery } from "@/features/ideas/library-query";
-import LibraryPage from "./page";
+import { testPreferences } from "@/features/preferences/testing";
+import OverviewPage from "./page";
+import LibraryPage from "./sermon-ideas/page";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const sermon = {
@@ -122,10 +152,70 @@ beforeEach(() => {
     idea: null,
     tags: [],
     archived: 0,
+    occasions: [],
+    preached: undefined,
   });
 });
 
-describe("LibraryPage", () => {
+describe("the library overview", () => {
+  it("refuses to render without an active account", async () => {
+    state.signedIn = false;
+    await expect(OverviewPage()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("leads to the three sections, and marks none as the one being shown", async () => {
+    render(await OverviewPage());
+    expect(screen.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
+    const sections = within(screen.getByRole("navigation", { name: "Library sections" }));
+    const links = sections.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/library/sermon-ideas",
+      "/library/saved-scripture",
+      "/library/preaching-record",
+    ]);
+    for (const link of links) expect(link).not.toHaveAttribute("aria-current");
+    expect(sections.getByRole("link", { name: /^Sermon Ideas/ })).toHaveTextContent(
+      "Capture, organize, and develop sermons and point ideas.",
+    );
+    expect(sections.getByRole("link", { name: /^Saved Scripture/ })).toBeVisible();
+    expect(sections.getByRole("link", { name: /^Preaching Record/ })).toBeVisible();
+  });
+
+  it("is for choosing a section: no way back to itself, no action, and no query", async () => {
+    render(await OverviewPage());
+    expect(screen.queryByRole("link", { name: "Back to Library" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(state.searchIdeas).not.toHaveBeenCalled();
+  });
+
+  it("sends an address from when the ideas were listed here on to them, query and all", async () => {
+    await expect(
+      OverviewPage({ searchParams: Promise.resolve({ q: "grace", kind: "sermon", page: "2" }) }),
+    ).rejects.toThrow("redirect:/library/sermon-ideas?q=grace&kind=sermon&page=2");
+    await expect(
+      OverviewPage({ searchParams: Promise.resolve({ archived: "archived" }) }),
+    ).rejects.toThrow("redirect:/library/sermon-ideas?archived=archived");
+  });
+
+  it("stays put for an address that asks for nothing the ideas understand", async () => {
+    render(
+      await OverviewPage({ searchParams: Promise.resolve({ utm_source: "mail", kind: "series" }) }),
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
+  });
+
+  it("is in Spanish for an account that reads Spanish", async () => {
+    testPreferences.locale = "es";
+    render(await OverviewPage());
+    expect(screen.getByRole("heading", { level: 1, name: "Biblioteca" })).toBeVisible();
+    expect(screen.getByRole("link", { name: /^Registro de predicación/ })).toHaveAttribute(
+      "href",
+      "/library/preaching-record",
+    );
+  });
+});
+
+describe("SermonIdeasPage", () => {
   it("refuses to render without an active account", async () => {
     state.signedIn = false;
     await expect(LibraryPage()).rejects.toThrow("redirect:/sign-in");
@@ -134,7 +224,18 @@ describe("LibraryPage", () => {
 
   it("invites a first capture when the library is empty", async () => {
     render(await LibraryPage());
-    expect(screen.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: 1, name: "Sermon Ideas" })).toBeVisible();
+    // The way up is a link to the overview, wherever this page was reached from.
+    expect(screen.getByRole("link", { name: "Back to Library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+    expect(screen.getAllByRole("link", { name: "Back to Library" })).toHaveLength(1);
+    expect(
+      within(screen.getByRole("navigation", { name: "Library sections" })).getByRole("link", {
+        name: "Sermon Ideas",
+      }),
+    ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeVisible();
     expect(screen.getAllByRole("button", { name: "Capture an idea" })[0]).toBeVisible();
     // Nothing to search or filter yet.
@@ -149,7 +250,7 @@ describe("LibraryPage", () => {
     expect(screen.getByText(/2 archived ideas/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Show archived ideas" })).toHaveAttribute(
       "href",
-      "/library?archived=archived",
+      "/library/sermon-ideas?archived=archived",
     );
     expect(screen.queryByRole("heading", { name: "Nothing here yet" })).not.toBeInTheDocument();
     // The library's controls are there, so the archive can be reached from them too.
@@ -161,7 +262,7 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("heading", { name: "No archived ideas" })).toBeVisible();
     expect(screen.getByRole("link", { name: "Back to active ideas" })).toHaveAttribute(
       "href",
-      "/library",
+      "/library/sermon-ideas",
     );
   });
 
@@ -295,7 +396,7 @@ describe("LibraryPage", () => {
     expect(screen.getByText(/“nothing like this”/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Clear search" })).toHaveAttribute(
       "href",
-      "/library?sort=title-asc",
+      "/library/sermon-ideas?sort=title-asc",
     );
     expect(screen.queryByRole("link", { name: "Clear filters" })).not.toBeInTheDocument();
     // The controls stay, so the search can be changed where it is.
@@ -309,7 +410,10 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("heading", { name: "No ideas match these filters" })).toBeVisible();
     expect(screen.getByText(/Your library has ideas, but none fits/)).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Nothing here yet" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/library");
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas",
+    );
     expect(screen.queryByRole("link", { name: "Clear search" })).not.toBeInTheDocument();
   });
 
@@ -318,11 +422,11 @@ describe("LibraryPage", () => {
     // Clearing the filters keeps the search; clearing the search keeps the filters.
     expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
       "href",
-      "/library?q=grace",
+      "/library/sermon-ideas?q=grace",
     );
     expect(screen.getByRole("link", { name: "Clear search" })).toHaveAttribute(
       "href",
-      "/library?kind=point",
+      "/library/sermon-ideas?kind=point",
     );
   });
 
@@ -353,16 +457,16 @@ describe("LibraryPage", () => {
     expect(pages).toHaveTextContent("Page 2 of 5");
     expect(within(pages).getByRole("link", { name: "Page 4" })).toHaveAttribute(
       "href",
-      "/library?q=grace&kind=sermon&page=4",
+      "/library/sermon-ideas?q=grace&kind=sermon&page=4",
     );
     // Page 1 is the address without a page.
     expect(within(pages).getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/library?q=grace&kind=sermon",
+      "/library/sermon-ideas?q=grace&kind=sermon",
     );
     expect(within(pages).getByRole("link", { name: "Next" })).toHaveAttribute(
       "href",
-      "/library?q=grace&kind=sermon&page=3",
+      "/library/sermon-ideas?q=grace&kind=sermon&page=3",
     );
     unmount();
 
@@ -372,9 +476,50 @@ describe("LibraryPage", () => {
     const last = screen.getByRole("navigation", { name: "Library pages" });
     expect(within(last).getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/library?page=4",
+      "/library/sermon-ideas?page=4",
     );
     expect(within(last).queryByRole("link", { name: "Next" })).not.toBeInTheDocument();
+  });
+});
+
+describe("recording from the library", () => {
+  const point = {
+    ...sermon,
+    id: "22222222-2222-4222-8222-222222222222",
+    kind: "point",
+    title: "A point",
+  };
+  const kept = {
+    ...sermon,
+    id: "33333333-3333-4333-8333-333333333333",
+    title: "An old favorite",
+    archivedAt: new Date("2026-10-05T10:00:00Z"),
+  };
+
+  it("offers it on a sermon, archived or not, and on no other kind of idea", async () => {
+    state.ideas = [sermon, point, kept];
+    render(await library({ archived: "all" }));
+    const card = (title: string) =>
+      screen.getByRole("link", { name: title }).closest("li") as HTMLElement;
+    const [first, second, third] = [sermon.title, "A point", "An old favorite"].map(card);
+    expect(
+      within(first).getByRole("button", { name: `Record preaching of ${sermon.title}` }),
+    ).toBeVisible();
+    expect(within(second).queryByRole("button", { name: /Record preaching/ })).toBeNull();
+    expect(
+      within(third).getByRole("button", { name: "Record preaching of An old favorite" }),
+    ).toBeVisible();
+    // Nothing about preaching is read to list ideas.
+    expect(state.listForSermon).not.toHaveBeenCalled();
+  });
+
+  it("opens the form for that sermon without leaving the library", async () => {
+    state.ideas = [sermon, kept];
+    render(await library({ archived: "all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record preaching of An old favorite" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record preaching" });
+    expect(dialog).toHaveTextContent("An old favorite");
+    expect(within(dialog).queryByRole("search")).not.toBeInTheDocument();
   });
 });
 
@@ -414,7 +559,10 @@ describe("IdeaPage", () => {
     for (const link of screen.getAllByRole("link", { name: /in the Bible$/ })) {
       expect(link.getAttribute("href")).toContain(`idea=${id}`);
     }
-    expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+    expect(screen.getByRole("link", { name: "Back to Sermon Ideas" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas",
+    );
     // The tags it has now are what the editor starts from.
     expect(state.listTags).toHaveBeenCalledWith("database", "owner-1");
     expect(screen.getByRole("list", { name: "Tags" })).toHaveTextContent("Faith");
@@ -423,9 +571,9 @@ describe("IdeaPage", () => {
   it("leads back to the library it was opened from", async () => {
     state.idea = sermon;
     render(await open(id, { from: "q=grace&kind=sermon&page=2" }));
-    expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Back to Sermon Ideas" })).toHaveAttribute(
       "href",
-      "/library?q=grace&kind=sermon&page=2",
+      "/library/sermon-ideas?q=grace&kind=sermon&page=2",
     );
   });
 
@@ -433,10 +581,102 @@ describe("IdeaPage", () => {
     state.idea = sermon;
     for (const from of ["https://evil.example", "//evil.example/x", "javascript:alert(1)"]) {
       const { unmount } = render(await open(id, { from }));
-      expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+      expect(screen.getByRole("link", { name: "Back to Sermon Ideas" })).toHaveAttribute(
+        "href",
+        "/library/sermon-ideas",
+      );
       unmount();
     }
     render(await open(id, { from: ["q=a", "q=b"] }));
-    expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+    expect(screen.getByRole("link", { name: "Back to Sermon Ideas" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas",
+    );
+  });
+
+  const occasion = (preachedOn: string, kind = "sermon") => ({
+    id: `aaaaaaaa-aaaa-4aaa-8aaa-${preachedOn.replaceAll("-", "").padStart(12, "0")}`,
+    ownerId: "owner-1",
+    sermonId: id,
+    preachedOn,
+    timeOfDay: null,
+    venueId: null,
+    contextId: null,
+    actualFormat: "unspecified",
+    durationMinutes: null,
+    notes: null,
+    recordingUrl: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    sermon: { id, title: sermon.title, kind, archivedAt: null },
+    venue: null,
+    context: null,
+  });
+  const history = () => within(screen.getByRole("region", { name: "Preaching record" }));
+
+  it("gives a sermon its preaching history, counted from the owner's own records", async () => {
+    state.idea = sermon;
+    state.occasions = [occasion("2026-10-04"), occasion("2026-09-27")];
+    state.preached = 9;
+    render(await open(id));
+    // The latest few and the count come from one owner-scoped query.
+    expect(state.listForSermon).toHaveBeenCalledTimes(1);
+    expect(state.listForSermon).toHaveBeenCalledWith("database", "owner-1", id, 1, 5);
+    expect(history().getByText("Preached 9 times, most recently on Oct 4, 2026.")).toBeVisible();
+    expect(history().getAllByRole("listitem")).toHaveLength(2);
+    expect(history().getByRole("button", { name: "Record preaching" })).toBeVisible();
+    expect(history().getByRole("link", { name: "View all 9" })).toHaveAttribute(
+      "href",
+      `/library/preaching-record?sermon=${id}`,
+    );
+  });
+
+  it("offers to record a sermon never preached, and one that is archived", async () => {
+    state.idea = sermon;
+    const first = render(await open(id));
+    expect(history().getByText("Not recorded as preached yet.")).toBeVisible();
+    expect(history().getByRole("button", { name: "Record preaching" })).toBeVisible();
+    first.unmount();
+
+    // Archived, it is still a sermon, and may still have been preached.
+    state.idea = { ...sermon, archivedAt: new Date("2026-10-05T10:00:00Z") };
+    state.occasions = [occasion("2026-10-04")];
+    render(await open(id));
+    expect(history().getByText("Preached once, on Oct 4, 2026.")).toBeVisible();
+    expect(history().getByRole("button", { name: "Record preaching" })).toBeVisible();
+  });
+
+  it("offers to record a sermon from the head of its page, and nothing else", async () => {
+    state.idea = sermon;
+    const first = render(await open(id));
+    const header = within(screen.getByRole("banner"));
+    fireEvent.click(header.getByRole("button", { name: "Record preaching" }));
+    // For this sermon: it is named, and there is no other to choose.
+    const dialog = await screen.findByRole("dialog", { name: "Record preaching" });
+    expect(dialog).toHaveTextContent(sermon.title);
+    expect(within(dialog).queryByRole("search")).not.toBeInTheDocument();
+    first.unmount();
+
+    state.idea = { ...sermon, kind: "undecided" };
+    render(await open(id));
+    expect(screen.queryByRole("button", { name: "Record preaching" })).not.toBeInTheDocument();
+  });
+
+  it("shows no preaching history on an idea that is not a sermon and never was preached", async () => {
+    state.idea = { ...sermon, kind: "point" };
+    render(await open(id));
+    expect(screen.queryByRole("region", { name: "Preaching record" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the history of a sermon since refiled, and records nothing new on it", async () => {
+    state.idea = { ...sermon, kind: "point" };
+    state.occasions = [occasion("2026-10-04", "point")];
+    render(await open(id));
+    expect(history().getByText("Preached once, on Oct 4, 2026.")).toBeVisible();
+    expect(history().getAllByRole("listitem")).toHaveLength(1);
+    expect(history().queryByRole("button", { name: "Record preaching" })).not.toBeInTheDocument();
+    expect(
+      history().getByText(/new preaching cannot be recorded. Its record is kept./),
+    ).toBeVisible();
   });
 });

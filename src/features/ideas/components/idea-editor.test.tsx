@@ -272,8 +272,86 @@ describe("IdeaEditor", () => {
         name: "Delete sermon idea",
       }),
     );
-    await waitFor(() => expect(state.push).toHaveBeenCalledWith("/library"));
+    await waitFor(() => expect(state.push).toHaveBeenCalledWith("/library/sermon-ideas"));
     expect(state.deleteIdea).toHaveBeenCalledWith(id);
+  });
+
+  const refused = {
+    ok: false,
+    message: "This sermon has been preached, so it cannot be deleted. Archive it instead.",
+    reason: "preached",
+  };
+  const tryToDelete = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Delete idea" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^Delete/ }),
+    );
+  };
+
+  it("explains why a preached sermon was not deleted, and offers to archive it without doing so", async () => {
+    state.deleteIdea.mockResolvedValue(refused);
+    state.archiveIdea.mockResolvedValue({ ok: true, message: "Idea archived." });
+    edit();
+    await tryToDelete();
+
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent(refused.message);
+    // Nothing was deleted, nothing was left, and nothing was archived for them.
+    expect(state.push).not.toHaveBeenCalled();
+    expect(state.archiveIdea).not.toHaveBeenCalled();
+    expect(title()).toHaveValue("It is Well");
+
+    fireEvent.click(within(notice).getByRole("button", { name: "Archive instead" }));
+    const question = await screen.findByRole("alertdialog", { name: "Archive this idea?" });
+    expect(state.archiveIdea).not.toHaveBeenCalled();
+    fireEvent.click(within(question).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(state.archiveIdea).toHaveBeenCalledWith(id));
+    await waitFor(() => expect(state.refresh).toHaveBeenCalled());
+    // Archived, the refusal has been answered.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(state.deleteIdea).toHaveBeenCalledTimes(1);
+  });
+
+  it("only explains, for a preached sermon that is archived already", async () => {
+    state.deleteIdea.mockResolvedValue(refused);
+    render(
+      <IdeaEditor
+        id={id}
+        initial={initial}
+        createdAt={new Date(0)}
+        updatedAt={new Date(0)}
+        archivedAt={new Date("2026-10-05T10:00:00Z")}
+      />,
+    );
+    await tryToDelete();
+    expect(await screen.findByRole("alert")).toHaveTextContent(refused.message);
+    expect(screen.queryByRole("button", { name: "Archive instead" })).not.toBeInTheDocument();
+  });
+
+  it("shows any other refusal as it always did", async () => {
+    state.deleteIdea.mockResolvedValue({ ok: false, message: "That idea no longer exists." });
+    edit();
+    await tryToDelete();
+    expect(await screen.findByText("That idea no longer exists.")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.queryByRole("button", { name: "Archive instead" })).not.toBeInTheDocument();
+  });
+
+  it("has room for the sermon's history between the form and what ends it", () => {
+    render(
+      <IdeaEditor id={id} initial={initial} createdAt={new Date(0)} updatedAt={new Date(0)}>
+        <section aria-label="Preaching history" />
+      </IdeaEditor>,
+    );
+    const history = screen.getByRole("region", { name: "Preaching history" });
+    const before = Node.DOCUMENT_POSITION_PRECEDING;
+    const after = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(history.compareDocumentPosition(save()) & before).toBeTruthy();
+    expect(
+      history.compareDocumentPosition(screen.getByRole("button", { name: "Delete idea" })) & after,
+    ).toBeTruthy();
   });
 });
 
@@ -375,12 +453,14 @@ describe("IdeaEditor tags", () => {
   });
 
   it("returns to the library it was opened from after a deletion", async () => {
-    edit({}, "/library?q=grace&page=2");
+    edit({}, "/library/sermon-ideas?q=grace&page=2");
     fireEvent.click(screen.getByRole("button", { name: "Delete idea" }));
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Delete/ }),
     );
-    await waitFor(() => expect(state.push).toHaveBeenCalledWith("/library?q=grace&page=2"));
+    await waitFor(() =>
+      expect(state.push).toHaveBeenCalledWith("/library/sermon-ideas?q=grace&page=2"),
+    );
   });
 });
 

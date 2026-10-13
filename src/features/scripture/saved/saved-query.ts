@@ -11,10 +11,10 @@ import { highlightColors, savedSorts, type HighlightColor, type SavedSort } from
  * about the account, and is read leniently: a link opened by someone else
  * shows their own passages, and a bad value falls back instead of failing.
  *
- *   /library/scripture                          every saved passage, newest first
- *   /library/scripture?q=grace&book=45          "grace" in Romans
- *   /library/scripture?color=yellow&sort=bible  with a yellow verse, in the Bible's order
- *   /library/scripture?translation=rvg          saved from the Reina-Valera Gómez
+ *   /library/saved-scripture                          every saved passage, newest first
+ *   /library/saved-scripture?q=grace&book=45          "grace" in Romans
+ *   /library/saved-scripture?color=yellow&sort=bible  with a yellow verse, in the Bible's order
+ *   /library/saved-scripture?translation=rvg          saved from the Reina-Valera Gómez
  */
 export type SavedQuery = {
   q: string;

@@ -8,13 +8,18 @@ type ShortcutLinkProps = {
   description: string;
 };
 
-/** A card that is one link, so it may have hover and pressed states. */
-export function ShortcutLink({ href, icon: Icon, title, description }: ShortcutLinkProps) {
+/** How a shortcut looks, whether it is a link or opens something on the page. */
+export const shortcutCard =
+  "group/shortcut flex items-start gap-3.5 rounded-xl border bg-surface p-5 shadow-card transition-[border-color,background-color] duration-150 hover:border-primary/70 active:bg-foreground/5";
+
+/** What a shortcut holds: its icon, what it is, a line about it, and an arrow. */
+export function ShortcutContent({
+  icon: Icon,
+  title,
+  description,
+}: Omit<ShortcutLinkProps, "href">) {
   return (
-    <Link
-      href={href}
-      className="group/shortcut flex items-start gap-3.5 rounded-xl border bg-surface p-5 shadow-card transition-[border-color,background-color] duration-150 hover:border-primary/70 active:bg-foreground/5"
-    >
+    <>
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-foreground">
         <Icon className="size-4" aria-hidden />
       </span>
@@ -28,6 +33,15 @@ export function ShortcutLink({ href, icon: Icon, title, description }: ShortcutL
         className="mt-1 size-4 shrink-0 text-muted-foreground transition-[color,translate] duration-150 group-hover/shortcut:translate-x-0.5 group-hover/shortcut:text-primary"
         aria-hidden
       />
+    </>
+  );
+}
+
+/** A card that is one link, so it may have hover and pressed states. */
+export function ShortcutLink({ href, ...content }: ShortcutLinkProps) {
+  return (
+    <Link href={href} className={shortcutCard}>
+      <ShortcutContent {...content} />
     </Link>
   );
 }

@@ -6,11 +6,14 @@ import { StatStrip } from "@/components/ui/stat-strip";
 import { IdeaList } from "@/features/ideas/components/idea-list";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
 import type { IdeaWithReferences } from "@/features/ideas/ideas";
+import { RecordPreachingProvider } from "@/features/preaching/components/record-preaching";
+import type { ReferenceOption } from "@/features/preaching/components/reference-field";
 import { dictionary } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 import { welcomeTitle } from "../greeting";
 import { summaryStats } from "../summary";
+import { RecordShortcut } from "./record-shortcut";
 import { ShortcutLink } from "./shortcut-link";
 import { WorkflowOverview } from "./workflow-overview";
 
@@ -20,6 +23,9 @@ type DashboardViewProps = {
   isAdmin: boolean;
   /** The person's latest ideas, newest first. The full list is the library. */
   recentIdeas: IdeaWithReferences[];
+  /** The account's venues and contexts, for recording a sermon as preached from here. */
+  venues?: readonly ReferenceOption[];
+  contexts?: readonly ReferenceOption[];
   /** The interface language. English when omitted. */
   locale?: Locale;
 };
@@ -32,6 +38,8 @@ export function DashboardView({
   firstName,
   isAdmin,
   recentIdeas,
+  venues = [],
+  contexts = [],
   locale = defaultLocale,
 }: DashboardViewProps) {
   const t = dictionary(locale, "dashboard");
@@ -67,7 +75,7 @@ export function DashboardView({
               <IdeaList ideas={recentIdeas} label={t.recent} locale={locale} />
             </div>
             <Link
-              href={routes.library}
+              href={routes.sermonIdeas}
               className="group/all mt-4 inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-primary link-underline"
             >
               {t.openLibrary}
@@ -80,6 +88,10 @@ export function DashboardView({
         )}
 
         <nav aria-label={t.shortcuts} className="grid content-start gap-4">
+          {/* The same form as the preaching record's, opened here; the sermon is chosen in it. */}
+          <RecordPreachingProvider venues={venues} contexts={contexts}>
+            <RecordShortcut />
+          </RecordPreachingProvider>
           <ShortcutLink
             href={routes.settings}
             icon={Settings}

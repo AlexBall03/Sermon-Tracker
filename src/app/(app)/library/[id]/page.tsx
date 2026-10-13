@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 
+import { BackLink } from "@/components/layout/back-link";
 import { PageHeader } from "@/components/layout/page-header";
 import { getDb } from "@/db";
 import { requireActiveUser } from "@/features/auth/access";
@@ -11,11 +10,22 @@ import { getIdea } from "@/features/ideas/ideas";
 import { libraryReturnHref } from "@/features/ideas/library-query";
 import { ideaIdSchema } from "@/features/ideas/schemas";
 import { listTags } from "@/features/ideas/tags";
+import {
+  RecordPreachingButton,
+  RecordPreachingProvider,
+} from "@/features/preaching/components/record-preaching";
+import { SermonHistory } from "@/features/preaching/components/sermon-history";
+import { listContexts } from "@/features/preaching/contexts";
+import { listForSermon } from "@/features/preaching/occurrences";
+import { listVenues } from "@/features/preaching/venues";
 import { getT } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT("ideas")).page.metaTitle };
 }
+
+/** How many of a sermon's occasions its own page lists. The rest are in the history section. */
+const recentOccasions = 5;
 
 /**
  * One idea. An ID that is malformed, unknown, or someone else's is the same
@@ -37,21 +47,36 @@ export default async function IdeaPage({
   if (!id.success) notFound();
 
   const db = getDb();
-  const [idea, tags] = await Promise.all([getIdea(db, user.id, id.data), listTags(db, user.id)]);
+  const [idea, tags, history, venues, contexts] = await Promise.all([
+    getIdea(db, user.id, id.data),
+    listTags(db, user.id),
+    // The latest few occasions and how many there are in all, in the one query.
+    listForSermon(db, user.id, id.data, 1, recentOccasions),
+    listVenues(db, user.id),
+    listContexts(db, user.id),
+  ]);
   if (!idea) notFound();
   const back = libraryReturnHref((await searchParams)?.from);
   const t = await getT("ideas");
+  const sermon = { id: idea.id, title: idea.title };
+  const venueOptions = venues.map(({ id, name, locality }) => ({ id, name, locality }));
+  const contextOptions = contexts.map(({ id, name }) => ({ id, name }));
 
   return (
     <div className="container-page py-10 lg:py-12">
-      <Link
-        href={back}
-        className="mb-5 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        {t.page.back}
-      </Link>
-      <PageHeader title={t.kinds[idea.kind]} description={t.page.description} />
+      <BackLink href={back}>{t.page.back}</BackLink>
+      <PageHeader
+        title={t.kinds[idea.kind]}
+        description={t.page.description}
+        action={
+          // Only a sermon can be recorded as preached. An archived one still can.
+          idea.kind === "sermon" ? (
+            <RecordPreachingProvider venues={venueOptions} contexts={contextOptions}>
+              <RecordPreachingButton sermon={sermon} />
+            </RecordPreachingProvider>
+          ) : undefined
+        }
+      />
       <IdeaEditor
         key={idea.id}
         id={idea.id}
@@ -72,7 +97,19 @@ export default async function IdeaPage({
           // The tags it has now: the editor sends these back with every save.
           tags: idea.tags,
         }}
-      />
+      >
+        {/* History outlives the idea's time as a sermon: it is shown wherever there is any. */}
+        {(idea.kind === "sermon" || history.total > 0) && (
+          <SermonHistory
+            sermon={sermon}
+            recordable={idea.kind === "sermon"}
+            recent={history.items}
+            total={history.total}
+            venues={venueOptions}
+            contexts={contextOptions}
+          />
+        )}
+      </IdeaEditor>
     </div>
   );
 }

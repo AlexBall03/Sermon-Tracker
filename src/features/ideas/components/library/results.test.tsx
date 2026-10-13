@@ -205,7 +205,7 @@ describe("Pagination", () => {
   it("links every page to the same query with only the page changed", () => {
     const at = query({ q: "grace", kinds: ["sermon"], sort: "title-asc", page: 2 });
     render(<Pagination query={at} page={2} totalPages={5} />);
-    const base = "/library?q=grace&kind=sermon&sort=title-asc";
+    const base = "/library/sermon-ideas?q=grace&kind=sermon&sort=title-asc";
     // Page 1 is the address without a page.
     expect(within(pages()).getByRole("link", { name: "Previous" })).toHaveAttribute("href", base);
     expect(within(pages()).getByRole("link", { name: "Page 1" })).toHaveAttribute("href", base);
@@ -229,7 +229,7 @@ describe("Pagination", () => {
     expect(within(pages()).getByText("Previous")).toHaveAttribute("aria-disabled", "true");
     expect(within(pages()).getByRole("link", { name: "Next" })).toHaveAttribute(
       "href",
-      "/library?page=2",
+      "/library/sermon-ideas?page=2",
     );
     unmount();
 
@@ -237,7 +237,7 @@ describe("Pagination", () => {
     render(<Pagination query={query({ page: 99 })} page={3} totalPages={3} />);
     expect(within(pages()).getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/library?page=2",
+      "/library/sermon-ideas?page=2",
     );
     expect(within(pages()).queryByRole("link", { name: "Next" })).not.toBeInTheDocument();
     expect(within(pages()).getByText("Next")).toHaveAttribute("aria-disabled", "true");

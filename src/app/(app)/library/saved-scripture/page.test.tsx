@@ -170,13 +170,26 @@ describe("the saved Scripture section", () => {
   it("belongs to the library: its heading, and the way between its sections", async () => {
     state.favorites = [favorite()];
     await show();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Library");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Saved Scripture");
+    // The way up is a link to the overview, wherever this page was reached from.
+    expect(screen.getByRole("link", { name: "Back to Library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+    expect(screen.getAllByRole("link", { name: "Back to Library" })).toHaveLength(1);
+    // Nothing is made here, so the header offers nothing to make.
+    expect(screen.queryByRole("button", { name: "Capture an idea" })).not.toBeInTheDocument();
     const sections = within(screen.getByRole("navigation", { name: "Library sections" }));
-    expect(sections.getByRole("link", { name: "Ideas" })).toHaveAttribute("href", "/library");
+    expect(sections.getByRole("link", { name: "Sermon Ideas" })).toHaveAttribute(
+      "href",
+      "/library/sermon-ideas",
+    );
     const here = sections.getByRole("link", { name: "Saved Scripture" });
-    expect(here).toHaveAttribute("href", "/library/scripture");
+    expect(here).toHaveAttribute("href", "/library/saved-scripture");
     expect(here).toHaveAttribute("aria-current", "page");
-    expect(sections.getByRole("link", { name: "Ideas" })).not.toHaveAttribute("aria-current");
+    expect(sections.getByRole("link", { name: "Sermon Ideas" })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("lists each passage with its text, notes, colors, and the way to it in the Bible", async () => {
@@ -233,11 +246,11 @@ describe("the saved Scripture section", () => {
     const pages = within(screen.getByRole("navigation", { name: "Saved Scripture pages" }));
     expect(pages.getByRole("link", { name: "Page 3" })).toHaveAttribute(
       "href",
-      "/library/scripture?q=grace&page=3",
+      "/library/saved-scripture?q=grace&page=3",
     );
     expect(pages.getByRole("link", { name: /Previous/ })).toHaveAttribute(
       "href",
-      "/library/scripture?q=grace",
+      "/library/saved-scripture?q=grace",
     );
   });
 
@@ -260,7 +273,7 @@ describe("the saved Scripture section", () => {
     expect(screen.getByText(/Nothing you have saved has “zebra”/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Clear search" })).toHaveAttribute(
       "href",
-      "/library/scripture",
+      "/library/saved-scripture",
     );
     expect(screen.getByRole("searchbox")).toHaveValue("zebra");
   });
@@ -276,7 +289,7 @@ describe("the saved Scripture section", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
       "href",
-      "/library/scripture?sort=bible",
+      "/library/saved-scripture?sort=bible",
     );
   });
 
@@ -302,7 +315,7 @@ describe("the saved Scripture controls", () => {
 
     fireEvent.click(colors.getByRole("button", { name: "Blue" }));
     expect(state.push).toHaveBeenLastCalledWith(
-      "/library/scripture?book=43&color=yellow&color=blue",
+      "/library/saved-scripture?book=43&color=yellow&color=blue",
       { scroll: false },
     );
   });
@@ -314,7 +327,7 @@ describe("the saved Scripture controls", () => {
     const colors = within(screen.getByRole("group", { name: "Highlight color" }));
     fireEvent.click(colors.getByRole("button", { name: "Red" }));
     expect(state.push).toHaveBeenLastCalledWith(
-      "/library/scripture?q=grace&color=green&color=red",
+      "/library/saved-scripture?q=grace&color=green&color=red",
       { scroll: false },
     );
     // Taking a color off is the same control again.
@@ -325,7 +338,7 @@ describe("the saved Scripture controls", () => {
   it("lift every filter at once and keep the search", async () => {
     await show("q=grace&book=43&color=red&sort=bible");
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(state.push).toHaveBeenLastCalledWith("/library/scripture?q=grace&sort=bible", {
+    expect(state.push).toHaveBeenLastCalledWith("/library/saved-scripture?q=grace&sort=bible", {
       scroll: false,
     });
   });
@@ -340,7 +353,7 @@ describe("the saved Scripture controls", () => {
     const box = screen.getByRole("searchbox", { name: "Search saved Scripture" });
     fireEvent.change(box, { target: { value: "  living   water " } });
     fireEvent.submit(box.closest("form")!);
-    expect(state.push).toHaveBeenLastCalledWith("/library/scripture?q=living+water", {
+    expect(state.push).toHaveBeenLastCalledWith("/library/saved-scripture?q=living+water", {
       scroll: false,
     });
   });

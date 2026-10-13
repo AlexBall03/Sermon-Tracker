@@ -46,7 +46,8 @@ src/
                             quick capture, list, editor, tag picker, and components/library/ (the
                             library's controls, results, pager, and tag management)
     preaching/              Preaching history: the model, validation, the occurrence, venue, and
-                            context services, and their server actions. No components yet (2E.2)
+                            context services, their server actions, the history URL contract, and
+                            the recording form, record list, and venue and context management
     scripture/              Books, references, chapter and search reads, and every Scripture component;
                             saved/ holds favorites and highlights (model, services, actions, URL query)
     settings/               Account management: schemas, server action, Clerk hooks, components
@@ -87,23 +88,24 @@ Conventions:
 
 ## Routing
 
-| Path                 | Purpose                                    | Phase | Indexed |
-| -------------------- | ------------------------------------------ | ----- | ------- |
-| `/`                  | Public landing page                        | 1A    | Yes     |
-| `/sign-in`           | Clerk sign-in                              | 1B    | No      |
-| `/accept-invitation` | Account creation from an invitation link   | 1B    | No      |
-| `/access-denied`     | Shown to disabled or unauthorised accounts | 1B    | No      |
-| `/dashboard`         | Authenticated home                         | 1C.1  | No      |
-| `/settings`          | Account management and appearance          | 1C.1  | No      |
-| `/admin`             | Restricted administration                  | 1B    | No      |
-| `/library`           | The owner's ideas: search, filter, browse  | 2B.2  | No      |
-| `/library/<id>`      | One idea: edit, reclassify, delete         | 2A    | No      |
-| `/library/scripture` | Saved Scripture, a section of the library  | 2C.1B | No      |
-| `/bible`             | The Bible reader                           | 2C.1A | No      |
-| `/api/bible/…`       | A chapter, its marks, or a word search     | 2A    | No      |
-| `/api/ideas/search`  | The account's own ideas, found by name     | 2C.1C | No      |
-| `/history`           | Preaching history                          | 2E    | No      |
-| `/analytics`         | Statistics (not in the route map yet)      | Later | No      |
+| Path                        | Purpose                                    | Phase | Indexed |
+| --------------------------- | ------------------------------------------ | ----- | ------- |
+| `/`                         | Public landing page                        | 1A    | Yes     |
+| `/sign-in`                  | Clerk sign-in                              | 1B    | No      |
+| `/accept-invitation`        | Account creation from an invitation link   | 1B    | No      |
+| `/access-denied`            | Shown to disabled or unauthorised accounts | 1B    | No      |
+| `/dashboard`                | Authenticated home                         | 1C.1  | No      |
+| `/settings`                 | Account management and appearance          | 1C.1  | No      |
+| `/admin`                    | Restricted administration                  | 1B    | No      |
+| `/library`                  | Library overview: the way to its sections  | 2E.2  | No      |
+| `/library/sermon-ideas`     | The owner's ideas: search, filter, browse  | 2B.2  | No      |
+| `/library/saved-scripture`  | Saved Scripture                            | 2C.1B | No      |
+| `/library/preaching-record` | Preaching Record                           | 2E.2  | No      |
+| `/library/<id>`             | One idea: edit, reclassify, delete         | 2A    | No      |
+| `/bible`                    | The Bible reader                           | 2C.1A | No      |
+| `/api/bible/…`              | A chapter, its marks, or a word search     | 2A    | No      |
+| `/api/ideas/search`         | The account's own ideas, found by name     | 2C.1C | No      |
+| `/analytics`                | Statistics (not in the route map yet)      | Later | No      |
 
 Route groups separate the three shells without affecting URLs:
 
@@ -158,7 +160,7 @@ Disabling an account takes effect on that person's next request, because status 
 
 ### Dashboard
 
-`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: the five most recently changed ideas (or an invitation to capture the first), shortcuts to settings and (administrators only, decided on the server) administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) wait for preaching history and the summary itself, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page has no phase yet (see the roadmap).
+`/dashboard` greets the person by first name (`welcomeTitle`, with a nameless fallback, also used if Clerk cannot be reached) and renders `DashboardView`: the five most recently changed ideas (or an invitation to capture the first), shortcuts to record preaching (the shared form, opened on the dashboard, sermon chosen in it), to settings, and (administrators only, decided on the server) to administration, the three-stage workflow, and the four figures it will later summarise. Those figures (`features/dashboard/summary.ts`) wait for preaching history and the summary itself, so each is shown as a label with a sentence, never a number and never zero. Give an entry a `value` when its data exists. There is no analytics route or link; that page has no phase yet (see the roadmap).
 
 ### Ideas
 
@@ -218,7 +220,7 @@ Phase 2D.1 built the data model and Phase 2D.2 the interface (see "Classificatio
 
 ### Preaching history
 
-Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three tables, migration `0009`. There is no page, no component, and nothing in the navigation yet; Phase 2E.2 builds the interface, at `/library/history`, as a section of the library. **Library** stays the name people see. The tables and the migration are in [docs/DATABASE.md](docs/DATABASE.md); the summary is in [docs/HANDOFF-2E.1.md](docs/HANDOFF-2E.1.md).
+Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three tables, migration `0009`. Phase 2E.2 is the interface: the **Preaching Record** section of the library at `/library/preaching-record` (see "Library" below for the hierarchy). People see "Preaching Record"; the code and the tables keep `history` and `occurrences`. The tables and the migration are in [docs/DATABASE.md](docs/DATABASE.md); the summary is in [docs/HANDOFF-2E.1.md](docs/HANDOFF-2E.1.md).
 
 **The model.** A sermon is one `ideas` row and keeps that one identity however often it is preached. Each time is a row of `preaching_occurrences` that points at it. Nothing about preaching is stored on the idea: no count, date, flag, or status. An occasion records:
 
@@ -257,7 +259,9 @@ Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three ta
 
 `deleteIdea` returns `"deleted" | "missing" | "preached"` (it returned a boolean before Phase 2E.1), and the `deleteIdea` action answers `preached` with a message that suggests archiving and `reason: "preached"`. An idea with no history is deleted as before. A venue or a context that any occasion names cannot be deleted either (`in_use`, with the count); renaming one changes no occasion. Deleting one occasion touches nothing else. All of this is `ON DELETE RESTRICT` in the database as well, so nothing can erase or detach history by another path.
 
-**History queries.** `searchHistory(db, ownerId, query, pageSize)` returns one page (`items`, `total`, `page`, `pageSize`, `totalPages`), each item with its sermon (`id`, `title`, `kind`, `archivedAt`), venue, and context. `HistoryQuery` (`historyQuerySchema`) holds a search, one sermon, a date range (both ends inclusive, compared as calendar dates), venues, contexts, formats, parts of the day (`unspecified` asks for those that did not say), an order, and a page. The search requires every word, each in the sermon's title, the venue's name or locality, or the context's name. It never filters by archive or kind. The order is the date preached, then PM before AM before unsaid, then `created_at`, then the ID, all in one direction, so pages never repeat or drop a row. `listForSermon` is the same query for one sermon, `getOccurrence` reads one, and `occurrenceCounts` gives each sermon's count and last date in one query. The URL contract for `/library/history` belongs to Phase 2E.2.
+**History queries.** `searchHistory(db, ownerId, query, pageSize)` returns one page (`items`, `total`, `page`, `pageSize`, `totalPages`), each item with its sermon (`id`, `title`, `kind`, `archivedAt`), venue, and context. `HistoryQuery` (`historyQuerySchema`) holds a search, one sermon, a date range (both ends inclusive, compared as calendar dates), venues, contexts, formats, parts of the day (`unspecified` asks for those that did not say), an order, and a page. The search requires every word, each in the sermon's title, the venue's name or locality, or the context's name. It never filters by archive or kind. The order is the date preached, then PM before AM before unsaid, then `created_at`, then the ID, all in one direction, so pages never repeat or drop a row. `listForSermon` is the same query for one sermon, `getOccurrence` reads one, and `occurrenceCounts` gives each sermon's count and last date in one query. The URL contract is `features/preaching/history-query.ts` (`q`, `sermon`, `from`, `to`, `venue`, `context`, `format`, `time`, `sort`, `page`), read and written only there, and the controls change the address only through `useHistory().apply`.
+
+**Recording.** There is one form, `OccurrenceDialog` (`features/preaching/components/occurrence-dialog.tsx`), behind one set of schemas and actions. It is opened from four places, and each leaves the person on the page they were on: the Preaching Record's header and empty state (`HistoryProvider` / `RecordButton`, sermon chosen in the form, or preselected when the record is filtered to one sermon); a sermon's own page, in its header and in its `SermonHistory`; a sermon's card in Sermon Ideas; and the dashboard's shortcuts. The last three go through `RecordPreachingProvider` (`record-preaching.tsx`): `RecordPreachingButton` for a known sermon, `useRecordPreaching()` called with none. Only an idea filed as a sermon is offered the action, archived or not; the server refuses anything else. The sermon picker asks `/api/preaching/sermons`, which searches the signed-in account's own sermons.
 
 **Dates.** `preached_on` is a PostgreSQL `date` read and written as a `YYYY-MM-DD` string (`date(..., { mode: "string" })`); it is never a `Date` and never converted between zones. A date that is not a real calendar date is refused, as is one before 1900 or in the future. There is no time zone setting, so "the future" is anything after the latest date it currently is anywhere on Earth (`latestDateOnEarth`, UTC+14): a preacher east of the server is never refused today's date, at the cost of admitting a date up to a day ahead for one to the west.
 
@@ -267,9 +271,16 @@ Phase 2E.1 is the data and persistence only: `src/features/preaching/`, three ta
 
 ### Library
 
-The library has two sections, chosen between under its heading by `LibrarySections` (`features/ideas/components/library/library-sections.tsx`): **Ideas** at `/library`, described here, and **Saved Scripture** at `/library/scripture` (see "Saved Scripture" below). Each has its own address and its own query; neither is in the main navigation beyond the one Library link.
+The library is an overview and three sections: **Library → section → one record**.
 
-The data layer is Phase 2B.1 and the interface Phase 2B.2. `/library` is a search box, a toolbar (filters, order, cards or list, tag management), an expandable filter panel, the filters in force as removable chips, a count, the results, and numbered pages.
+- `/library` is the overview: a heading and three cards, one per section, from the same `librarySections` list the section navigation uses. It runs no query, has no action of its own, shows no "Back to Library", and marks no section as current. It is the main navigation's Library link.
+- **Sermon Ideas** at `/library/sermon-ideas` (described here), **Saved Scripture** at `/library/saved-scripture` (see "Saved Scripture" below), and **Preaching Record** at `/library/preaching-record` (see "Preaching history" above). Each has its own address and query, and none is in the main navigation.
+- Every section's page begins with `LibrarySectionHeader` (`features/ideas/components/library/library-sections.tsx`): `BackLink` to `/library` ("Back to Library", `components/layout/back-link.tsx`), the section's own title and description in `PageHeader`, its main action if it has one (Capture on Sermon Ideas, Record preaching on Preaching Record, none on Saved Scripture), then `LibrarySections`, the horizontal navigation between the three with `aria-current` on the one shown.
+- An idea, `/library/<id>`, uses the same `BackLink`, to Sermon Ideas as it was left (`from`). `BackLink` is always a link to a place, never a step through browser history.
+
+Old addresses: `/library/scripture` and `/library/history` redirect in `next.config.ts`, query carried across. `/library` cannot redirect there, being the overview; instead its page sends on an address that still carries an ideas query (`/library?q=grace&kind=sermon`) to Sermon Ideas, by parsing it with `parseLibraryQuery` and redirecting only when the result is not the default query. Each section has its own `loading.tsx`; `library/loading.tsx` stands for the overview and an idea's page.
+
+The data layer is Phase 2B.1 and the interface Phase 2B.2. Sermon Ideas is a search box, a toolbar (filters, order, cards or list, tag management), an expandable filter panel, the filters in force as removable chips, a count, the results, and numbered pages.
 
 **The query is the URL.** `features/ideas/library-query.ts` is the contract, with no server code in it, so the browser can build links with it:
 
@@ -478,7 +489,7 @@ Phase 2C.2. The interface is in English or Spanish, the Bible is the King James 
 **The Spanish switch.** `app_settings.spanish_enabled`, changed only by `setSpanishEnabled` (`authorize("admin")`) from the Languages section of `/admin`. It is applied in `resolvePreferences` and nowhere else, and is for everyone, administrators included:
 
 - Off, the interface is English and only the KJV is on offer, whatever is stored. Stored preferences, favorites, and highlights are not touched, so switching it on restores them.
-- Enforced on the server, not by hiding controls: `/api/bible/<book>/<chapter>`, its `/marks`, and `/api/bible/search` answer 404 for `t=rvg`; `saveFavorite` and `setHighlight` refuse `rvg`; `updateFavorite` and `deleteFavorite` answer "no longer exists" for an RVG favorite and leave it; `/library/scripture` does not list or count RVG favorites; `setLocale("es")` and `setBibleTranslation("rvg")` are refused. The reader drops a `t` or `beside` it is not offered.
+- Enforced on the server, not by hiding controls: `/api/bible/<book>/<chapter>`, its `/marks`, and `/api/bible/search` answer 404 for `t=rvg`; `saveFavorite` and `setHighlight` refuse `rvg`; `updateFavorite` and `deleteFavorite` answer "no longer exists" for an RVG favorite and leave it; `/library/saved-scripture` does not list or count RVG favorites; `setLocale("es")` and `setBibleTranslation("rvg")` are refused. The reader drops a `t` or `beside` it is not offered.
 - It is read from the database on every request (once per request, `getAppSettings`), so it takes effect on the next request with no deployment. If it cannot be read, Spanish is treated as off: English and the KJV always work.
 - RVG chapter responses are `no-store`, so a browser cannot go on serving them after the switch.
 
@@ -765,6 +776,22 @@ These are settled and constrain later phases. The first and fourth are implement
 - **Signed-in end-to-end** (`tests/e2e/library.spec.ts`, `bible.spec.ts`, `saved-scripture.spec.ts`, `scripture-ideas.spec.ts`) uses `@clerk/testing`: a one-time sign-in ticket from Clerk's Backend API, no password anywhere. It runs only when `E2E_CLERK_USER_EMAIL` names an admitted user of the development Clerk instance, refuses a production key, and is skipped otherwise. It creates its own ideas and tags under a prefix unique to the run and deletes them.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before 1.8 seconds; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
+
+### How much to verify
+
+Verification is in proportion to what changed and what could go wrong, in every phase. It is neither skipped nor run at its widest by habit.
+
+- **While building:** type checking, lint and formatting on the files touched, the tests of what changed, and the tests of what depends on it. Not the whole suite after each edit.
+- **At an integration or release boundary:** what the change justifies on top of that. A production build, once, after the code has settled; the end-to-end journeys for the workflows that matter; a look at routing, at anything that guards access or data, at the migration against the deployment process, and at keyboard use and narrow screens for new controls.
+- **The whole unit suite or the whole end-to-end suite:** when the change is shared (routes, authentication or authorization, a migration, layout or other shared components, the dictionaries), when a failure suggests damage beyond the feature, or at a major release. The handoff says whether they were run and why.
+
+The rules that go with it:
+
+1. Every phase ends verified. A check of access, ownership, or data integrity is never put off to move faster.
+2. A phase's verification is part of that phase. A separate hardening phase is planned only when there is real work of its own to fill one, so that nothing unverified piles up from phase to phase.
+3. A result holds for the code it was run on. A later change means running again whatever it could have affected, and no more.
+4. Use the fixtures and helpers that exist. Do not write a second test of what one already proves, and do not add a test framework for one phase.
+5. A handoff says exactly what was run and what it showed, what was not run, and what was read instead of run. Passing in development, a production build passing, a migration reviewed, a migration applied in production, and a deployment made are five different things and are reported apart.
 
 ## Security
 

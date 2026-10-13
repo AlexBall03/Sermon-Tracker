@@ -39,7 +39,8 @@ function firstIssue(error: { issues: { message: string }[] }, fallback: string):
 }
 
 function refresh(sermonId?: string) {
-  revalidatePath(routes.library);
+  revalidatePath(routes.sermonIdeas);
+  revalidatePath(routes.preachingRecord);
   if (sermonId) revalidatePath(`${routes.library}/${sermonId}`);
 }
 

@@ -71,8 +71,8 @@ describe("parseSavedQuery", () => {
 
 describe("savedHref", () => {
   it("leaves every default out", () => {
-    expect(savedHref()).toBe("/library/scripture");
-    expect(savedHref(defaultSavedQuery)).toBe("/library/scripture");
+    expect(savedHref()).toBe("/library/saved-scripture");
+    expect(savedHref(defaultSavedQuery)).toBe("/library/saved-scripture");
   });
 
   it("writes one address per query, in a fixed order", () => {
@@ -85,7 +85,7 @@ describe("savedHref", () => {
       page: 2,
     });
     expect(href).toBe(
-      "/library/scripture?q=grace&book=45&color=yellow&color=blue&sort=bible&page=2",
+      "/library/saved-scripture?q=grace&book=45&color=yellow&color=blue&sort=bible&page=2",
     );
   });
 
@@ -103,7 +103,7 @@ describe("savedHref", () => {
 
   it("never writes a value it would not read", () => {
     const href = savedHref({ ...defaultSavedQuery, book: 99, sort: "nonsense" as never });
-    expect(href).toBe("/library/scripture");
+    expect(href).toBe("/library/saved-scripture");
   });
 });
 

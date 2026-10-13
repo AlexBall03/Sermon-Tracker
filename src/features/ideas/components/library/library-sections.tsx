@@ -1,22 +1,27 @@
 import Link from "next/link";
-import { BookMarked, Lightbulb } from "lucide-react";
+import { BookMarked, History, Lightbulb } from "lucide-react";
 
+import { BackLink } from "@/components/layout/back-link";
+import { PageHeader } from "@/components/layout/page-header";
 import { dictionary } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 
-const sections = [
-  { key: "ideas", href: routes.library, icon: Lightbulb },
+/** The library's sections, in the order they are always shown. */
+export const librarySections = [
+  { key: "ideas", href: routes.sermonIdeas, icon: Lightbulb },
   { key: "scripture", href: routes.savedScripture, icon: BookMarked },
+  { key: "history", href: routes.preachingRecord, icon: History },
 ] as const;
 
-export type LibrarySection = (typeof sections)[number]["key"];
+export type LibrarySection = (typeof librarySections)[number]["key"];
 
 /**
- * The library's sections: the ideas, and the Scripture that was saved while
- * reading. They are two views of one place, so they are chosen between here,
- * under the library's own heading, and neither is in the main navigation.
- * Each keeps its own search and filters in its own address.
+ * The way between the library's sections: the ideas, the Scripture that was
+ * saved while reading, and the record of what has been preached. It is on
+ * each section's page and marks the one being shown. The overview
+ * (`/library`) offers the same three as cards instead, and marks none. Each
+ * section keeps its own search and filters in its own address.
  */
 export function LibrarySections({
   current,
@@ -28,8 +33,8 @@ export function LibrarySections({
 }) {
   const t = dictionary(locale, "library").sections;
   return (
-    <nav aria-label={t.label} className="mt-4 flex gap-1">
-      {sections.map(({ key, href, icon: Icon }) => (
+    <nav aria-label={t.label} className="mt-4 flex flex-wrap gap-1">
+      {librarySections.map(({ key, href, icon: Icon }) => (
         <Link
           key={key}
           href={href}
@@ -41,5 +46,35 @@ export function LibrarySections({
         </Link>
       ))}
     </nav>
+  );
+}
+
+/**
+ * The head of a library section's page, the same on all three: the way back
+ * to the library, the section's own title and what it is for, its main action
+ * if it has one, then the way to the other sections.
+ */
+export function LibrarySectionHeader({
+  section,
+  action,
+  locale = defaultLocale,
+}: {
+  section: LibrarySection;
+  /** The section's one main action. Not every section has one. */
+  action?: React.ReactNode;
+  /** The interface language. English when omitted. */
+  locale?: Locale;
+}) {
+  const t = dictionary(locale, "library");
+  return (
+    <>
+      <BackLink href={routes.library}>{t.back}</BackLink>
+      <PageHeader
+        title={t.sections[section]}
+        description={t.descriptions[section]}
+        action={action}
+      />
+      <LibrarySections current={section} locale={locale} />
+    </>
   );
 }

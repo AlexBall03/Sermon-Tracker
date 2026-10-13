@@ -13,6 +13,10 @@ export const dashboard: Untranslated<typeof english> = {
   recent: "Ideas recientes",
   openLibrary: "Abrir la biblioteca",
   shortcuts: "Accesos directos",
+  record: {
+    title: "Registrar predicación",
+    description: "Anota cuándo y dónde predicaste un sermón.",
+  },
   settings: {
     title: "Configuración de la cuenta",
     description: "Tu nombre, correo, contraseña, idioma y el aspecto de la aplicación.",
@@ -24,7 +28,7 @@ export const dashboard: Untranslated<typeof english> = {
   workflow: {
     title: "Cómo funciona tu espacio",
     description:
-      "El camino que recorre una idea. La captura y la biblioteca ya están abiertas; el registro de predicación está por venir.",
+      "El camino que recorre una idea. La captura, la biblioteca y el registro de predicación ya están abiertos.",
     stages: [
       {
         stage: "Capturar",

@@ -207,7 +207,7 @@ describe("NavigationProgress", () => {
   it("counts a change of query string as an arrival", () => {
     const view = render(<NavigationProgress />);
     settle();
-    navigate("/library?kind=sermon");
+    navigate("/library/sermon-ideas?kind=sermon");
     arrive(view, "/", "kind=sermon");
     settle();
     expect(bar().dataset.state).toBe("idle");

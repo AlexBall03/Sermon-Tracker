@@ -1,8 +1,27 @@
-/** The library: its two sections, their controls, their results, and their empty states. */
+/** The library: its sections, their controls, their results, and their empty states. */
 export const library = {
   title: "Library",
-  description: "Every idea you have captured, and the Scripture you have saved.",
-  sections: { label: "Library sections", ideas: "Ideas", scripture: "Saved Scripture" },
+  description: "Your sermon ideas, saved Scripture, and preaching records in one place.",
+  /** The way from a section to the overview. */
+  back: "Back to Library",
+  sections: {
+    label: "Library sections",
+    ideas: "Sermon Ideas",
+    scripture: "Saved Scripture",
+    history: "Preaching Record",
+  },
+  /** Under each section's own heading. */
+  descriptions: {
+    ideas: "Every sermon and point idea you have captured, to search, organize, and develop.",
+    scripture: "The verses and passages you saved while reading.",
+    history: "Keep track of when and where you've preached.",
+  },
+  /** On the overview's cards, where each section is still a choice. */
+  overview: {
+    ideas: "Capture, organize, and develop sermons and point ideas.",
+    scripture: "Revisit your saved verses and passages.",
+    history: "Record and review when and where you have preached.",
+  },
   search: {
     label: "Search ideas",
     landmark: "Search your library",
@@ -125,7 +144,6 @@ export const library = {
   },
   saved: {
     metaTitle: "Saved Scripture",
-    heading: "Saved Scripture",
     label: "Your saved Scripture",
     pages: "Saved Scripture pages",
     count: (total: number, written: string, filtered: boolean) =>

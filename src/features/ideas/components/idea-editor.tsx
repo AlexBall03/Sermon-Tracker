@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, LoaderCircle, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
 
 import { useLeaveGuard } from "@/components/layout/leave-guard";
 import { ActionStatus } from "@/components/ui/action-status";
@@ -41,6 +41,8 @@ type IdeaEditorProps = {
   updatedAt: Date;
   /** When the idea was archived, if it is. Never part of the draft: a save does not touch it. */
   archivedAt?: Date | null;
+  /** Shown between the form and the footer: the sermon's preaching history, which is not part of the draft. */
+  children?: React.ReactNode;
 };
 
 const form = "idea";
@@ -65,10 +67,11 @@ export function IdeaEditor({
   id,
   initial,
   allTags = [],
-  backHref = routes.library,
+  backHref = routes.sermonIdeas,
   createdAt,
   updatedAt,
   archivedAt = null,
+  children,
 }: IdeaEditorProps) {
   const router = useRouter();
   const toast = useToast();
@@ -81,6 +84,8 @@ export function IdeaEditor({
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, setBusy] = useState<"save" | "kind" | "delete" | "archive" | "restore" | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  /** Why the idea could not be deleted, when that is because it has been preached. */
+  const [preached, setPreached] = useState<string | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
@@ -170,15 +175,29 @@ export function IdeaEditor({
     router.refresh();
   }
 
+  function askToArchive() {
+    setConfirmation({
+      title: t.archiveTitle,
+      description: t.archiveDescription(saved.title),
+      confirmLabel: t.archiveConfirm,
+      run: () => archiveIdea(id),
+    });
+  }
+
   async function confirmed(request: Confirmation) {
     const deleting = request.destructive === true;
     setBusy(deleting ? "delete" : "archive");
     const outcome = await request.run().catch(() => offline);
     setBusy(null);
     setConfirmation(null);
-    if (!outcome.ok) return setResult(outcome);
+    if (!outcome.ok) {
+      // A preached sermon is kept with its history. That is said beside the way to archive it.
+      if ("reason" in outcome && outcome.reason === "preached") return setPreached(outcome.message);
+      return setResult(outcome);
+    }
     if (!deleting) {
       // Archived, and still here: the page says so once the server sends it again.
+      setPreached(null);
       toast({ message: outcome.message });
       router.refresh();
       return;
@@ -263,7 +282,36 @@ export function IdeaEditor({
         </div>
       </form>
 
-      <footer className="mt-10 flex max-w-2xl flex-wrap items-center justify-between gap-4 border-t pt-6">
+      {children}
+
+      {preached && (
+        <div
+          role="alert"
+          className="mt-10 flex max-w-2xl animate-menu flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl border bg-muted/50 px-4 py-3"
+        >
+          <p className="flex min-w-0 flex-1 basis-64 items-start gap-2 text-sm font-medium">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+            {preached}
+          </p>
+          {/* Offered, never done for them: archiving is still theirs to confirm. */}
+          {!archivedAt && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy !== null}
+              onClick={askToArchive}
+            >
+              <Archive aria-hidden />
+              {t.archiveInstead}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <footer
+        className={`${preached ? "mt-4" : "mt-10 border-t pt-6"} flex max-w-2xl flex-wrap items-center justify-between gap-4`}
+      >
         <p className="text-sm text-muted-foreground">
           {t.captured}{" "}
           <time dateTime={createdAt.toISOString()}>{formatDate(createdAt, locale)}</time>
@@ -279,14 +327,7 @@ export function IdeaEditor({
               variant="outline"
               size="sm"
               disabled={busy !== null}
-              onClick={() =>
-                setConfirmation({
-                  title: t.archiveTitle,
-                  description: t.archiveDescription(saved.title),
-                  confirmLabel: t.archiveConfirm,
-                  run: () => archiveIdea(id),
-                })
-              }
+              onClick={askToArchive}
             >
               <Archive aria-hidden />
               {t.archive}
@@ -298,15 +339,17 @@ export function IdeaEditor({
             size="sm"
             disabled={busy !== null}
             className="text-destructive hover:border-destructive/60"
-            onClick={() =>
+            onClick={() => {
+              // A refusal from the last try goes when it is tried again.
+              setPreached(null);
               setConfirmation({
                 title: t.deleteTitle,
                 description: t.deleteDescription(saved.title),
                 confirmLabel: t.deleteConfirm(saved.kind),
                 destructive: true,
                 run: () => deleteIdea(id),
-              })
-            }
+              });
+            }}
           >
             <Trash2 aria-hidden />
             {t.delete}

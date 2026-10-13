@@ -87,7 +87,7 @@ test.describe("saved Scripture, signed in", () => {
         await saved;
       }
     }
-    await page.goto(`/library/scripture?q=${encodeURIComponent(label)}`);
+    await page.goto(`/library/saved-scripture?q=${encodeURIComponent(label)}`);
     const remove = page.getByRole("button", { name: `Remove ${label}` });
     if (await remove.isVisible()) {
       await remove.click();
@@ -173,17 +173,22 @@ test.describe("saved Scripture, signed in", () => {
         .first()
         .click();
       await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Saved Scripture" })).toHaveCount(1);
+      // The overview: each section is a card, and none is marked as the current one.
       await page
         .getByRole("navigation", { name: "Library sections" })
-        .getByRole("link", { name: "Saved Scripture" })
+        .getByRole("link", { name: /^Saved Scripture/ })
         .click();
-      await expect(page).toHaveURL(/\/library\/scripture$/);
+      await expect(page).toHaveURL(/\/library\/saved-scripture$/);
+      await expect(page.getByRole("heading", { level: 1, name: "Saved Scripture" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Back to Library" })).toHaveAttribute(
+        "href",
+        "/library",
+      );
 
       // Found by its label, by its reference, and by its book; the address says what was asked.
       const results = page.getByRole("list", { name: "Your saved Scripture" });
       await page.getByRole("searchbox", { name: "Search saved Scripture" }).fill(label);
-      await expect(page).toHaveURL(/\/library\/scripture\?q=E2E/);
+      await expect(page).toHaveURL(/\/library\/saved-scripture\?q=E2E/);
       await expect(results.getByRole("listitem")).toHaveCount(1);
       const card = results.getByRole("listitem").first();
       await expect(card).toContainText(label);

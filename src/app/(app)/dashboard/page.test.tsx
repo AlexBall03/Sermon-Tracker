@@ -1,10 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The access helper, Clerk, and the idea query are mocked: this covers what the page does with their answers.
 const state = vi.hoisted(() => ({
   ideas: [] as unknown[],
   recentIdeas: vi.fn(),
+  listVenues: vi.fn(),
   role: "user" as "user" | "admin",
   firstName: "Ada" as string | null,
   clerkDown: false,
@@ -38,6 +39,21 @@ vi.mock("@/features/ideas/ideas", () => ({
     return state.ideas;
   },
 }));
+vi.mock("@/features/preaching/venues", () => ({
+  listVenues: async (...args: unknown[]) => {
+    state.listVenues(...args);
+    return [];
+  },
+}));
+vi.mock("@/features/preaching/contexts", () => ({ listContexts: async () => [] }));
+vi.mock("@/features/preaching/actions", () => ({
+  recordOccurrence: vi.fn(),
+  updateOccurrence: vi.fn(),
+  deleteOccurrence: vi.fn(),
+  createVenue: vi.fn(),
+  createContext: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
 import DashboardPage from "./page";
 
@@ -112,6 +128,26 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("link", { name: /Administration/ })).toHaveAttribute("href", "/admin");
   });
 
+  it("offers to record preaching from here, with the sermon chosen in the form", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ items: [], total: 0 }))),
+    );
+    render(await DashboardPage());
+    // The form's lists are the signed-in account's own.
+    expect(state.listVenues).toHaveBeenCalledWith("database", "1");
+    const shortcuts = within(screen.getByRole("navigation", { name: "Shortcuts" }));
+    fireEvent.click(shortcuts.getByRole("button", { name: /Record preaching/ }));
+    // The same form as the preaching record's, with no sermon chosen yet.
+    const dialog = await screen.findByRole("dialog", { name: "Record preaching" });
+    expect(within(dialog).getByRole("search")).toBeVisible();
+    // The dashboard is still the page.
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Welcome back, Ada", hidden: true }),
+    ).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("invites a first capture when there are no ideas", async () => {
     render(await DashboardPage());
     expect(screen.getByRole("heading", { name: "No ideas yet" })).toBeVisible();
@@ -140,7 +176,7 @@ describe("DashboardPage", () => {
     expect(within(recent).getAllByRole("button", { name: /John 3:16/ })).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Open the library" })).toHaveAttribute(
       "href",
-      "/library",
+      "/library/sermon-ideas",
     );
   });
 

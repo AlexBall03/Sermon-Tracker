@@ -57,7 +57,7 @@ test.describe("Scripture and ideas, signed in", () => {
 
   /** Deletes the idea this run made, if it got as far as making it. */
   async function tidy(page: Page, title: string) {
-    await page.goto(`/library?q=${encodeURIComponent(title)}`);
+    await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
     const link = page.getByRole("link", { name: title });
     if (!(await link.isVisible())) return;
     await link.click();
@@ -66,7 +66,7 @@ test.describe("Scripture and ideas, signed in", () => {
       .getByRole("alertdialog")
       .getByRole("button", { name: /^Delete/ })
       .click();
-    await expect(page).toHaveURL(/\/library(\?|$)/);
+    await expect(page).toHaveURL(/\/library\/sermon-ideas(\?|$)/);
   }
 
   test("begin an idea from a passage, add to it, and go there and back", async ({
@@ -126,7 +126,7 @@ test.describe("Scripture and ideas, signed in", () => {
       await picker(page).getByRole("button", { name: "Close" }).click();
 
       // To the idea, which shows both references, closed until opened.
-      await page.goto(`/library?q=${encodeURIComponent(title)}`);
+      await page.goto(`/library/sermon-ideas?q=${encodeURIComponent(title)}`);
       await page.getByRole("link", { name: title }).click();
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Point idea");
       const references = page.getByRole("list", { name: "References" });

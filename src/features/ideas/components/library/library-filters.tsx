@@ -32,7 +32,7 @@ import { filtersPanelId } from "./library-toolbar";
 const tagSearchFrom = 12;
 
 /** A value that is in the filter or not. The tick means it never rests on color alone. */
-function Toggle({
+export function Toggle({
   pressed,
   onToggle,
   disabled,
@@ -70,7 +70,8 @@ function Toggle({
   );
 }
 
-function Group({
+/** One filter's choices under its name. Shared with the library's other sections. */
+export function Group({
   label,
   hint,
   children,

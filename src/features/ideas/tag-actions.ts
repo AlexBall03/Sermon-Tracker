@@ -25,7 +25,7 @@ async function context() {
 }
 
 function refresh(ideaId?: string) {
-  revalidatePath(routes.library);
+  revalidatePath(routes.sermonIdeas);
   revalidatePath(routes.dashboard);
   if (ideaId) revalidatePath(`${routes.library}/${ideaId}`);
 }

@@ -10,11 +10,25 @@ const passages = (total: number, filtered: boolean) =>
 
 export const library: Untranslated<typeof english> = {
   title: "Biblioteca",
-  description: "Todas las ideas que has capturado y la Escritura que has guardado.",
+  description:
+    "Tus ideas de sermón, la Escritura guardada y tus registros de predicación en un solo lugar.",
+  back: "Volver a la biblioteca",
   sections: {
     label: "Secciones de la biblioteca",
-    ideas: "Ideas",
+    ideas: "Ideas de sermón",
     scripture: "Escritura guardada",
+    history: "Registro de predicación",
+  },
+  descriptions: {
+    ideas:
+      "Todas las ideas de sermón y de punto que has capturado, para buscar, organizar y desarrollar.",
+    scripture: "Los versículos y pasajes que guardaste mientras leías.",
+    history: "Lleva la cuenta de cuándo y dónde has predicado.",
+  },
+  overview: {
+    ideas: "Captura, organiza y desarrolla sermones e ideas de punto.",
+    scripture: "Vuelve a tus versículos y pasajes guardados.",
+    history: "Registra y repasa cuándo y dónde has predicado.",
   },
   search: {
     label: "Buscar ideas",
@@ -139,7 +153,6 @@ export const library: Untranslated<typeof english> = {
   },
   saved: {
     metaTitle: "Escritura guardada",
-    heading: "Escritura guardada",
     label: "Tu Escritura guardada",
     pages: "Páginas de la Escritura guardada",
     count: (total, written, filtered) => `${written} ${passages(total, filtered)}`,

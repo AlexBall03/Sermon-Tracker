@@ -11,6 +11,10 @@ export const dashboard = {
   recent: "Recent ideas",
   openLibrary: "Open the library",
   shortcuts: "Shortcuts",
+  record: {
+    title: "Record preaching",
+    description: "Note when and where you preached a sermon.",
+  },
   settings: {
     title: "Account settings",
     description: "Your name, email, password, language, and how the app looks.",
@@ -22,7 +26,7 @@ export const dashboard = {
   workflow: {
     title: "How your workspace works",
     description:
-      "The path an idea takes. Capture and the library are open; the preaching record is still to come.",
+      "The path an idea takes. Capture, the library, and the preaching record are all open.",
     stages: [
       {
         stage: "Capture",

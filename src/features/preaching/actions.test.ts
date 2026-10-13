@@ -112,7 +112,7 @@ describe("preaching actions", () => {
       contextId: context.context!.id,
       durationMinutes: 50,
     });
-    expect(recorded).toMatchObject({ ok: true, message: "Added to your preaching history." });
+    expect(recorded).toMatchObject({ ok: true, message: "Added to your preaching record." });
     expect(await getOccurrence(db, me, recorded.id!)).toMatchObject({
       ownerId: me,
       preachedOn: yesterday(),
@@ -135,7 +135,7 @@ describe("preaching actions", () => {
 
     expect(await deleteOccurrence(recorded.id)).toEqual({
       ok: true,
-      message: "Removed from your preaching history.",
+      message: "Removed from your preaching record.",
     });
     expect(await deleteOccurrence(recorded.id)).toEqual({
       ok: false,
@@ -149,7 +149,7 @@ describe("preaching actions", () => {
     const id = "99999999-9999-4999-8999-999999999999";
     const first = await recordOccurrence({ sermonId, preachedOn: yesterday(), notes: "One." }, id);
     const again = await recordOccurrence({ sermonId, preachedOn: yesterday(), notes: "Two." }, id);
-    expect(first).toEqual({ ok: true, message: "Added to your preaching history.", id });
+    expect(first).toEqual({ ok: true, message: "Added to your preaching record.", id });
     expect(again).toEqual(first);
     expect(await db.select().from(preachingOccurrences)).toHaveLength(1);
     expect((await getOccurrence(db, me, id))?.notes).toBe("One.");
@@ -267,11 +267,11 @@ describe("preaching actions", () => {
 
     expect(await deleteVenue(venue.id)).toEqual({
       ok: false,
-      message: "That venue is on 1 record in your history and cannot be deleted.",
+      message: "That venue is on 1 record in your preaching record and cannot be deleted.",
     });
     expect(await deleteContext(context.id)).toEqual({
       ok: false,
-      message: "That context is on 1 record in your history and cannot be deleted.",
+      message: "That context is on 1 record in your preaching record and cannot be deleted.",
     });
     expect(await createVenue({ name: "CHURCH" })).toEqual({
       ok: false,

@@ -2,14 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
-import { PageHeader } from "@/components/layout/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { getDb } from "@/db";
 import { requireActiveUser } from "@/features/auth/access";
 import { getPreferences } from "@/features/preferences/current";
-import { LibrarySections } from "@/features/ideas/components/library/library-sections";
+import { LibrarySectionHeader } from "@/features/ideas/components/library/library-sections";
 import { Pagination } from "@/features/ideas/components/library/pagination";
-import { CaptureButton } from "@/features/ideas/components/quick-capture";
 import { searchTerms } from "@/features/ideas/library-query";
 import { getBook } from "@/features/scripture/books";
 import { SavedSearch, SavedToolbar } from "@/features/scripture/components/saved/saved-controls";
@@ -98,17 +96,8 @@ export default async function SavedScripturePage({
     total === 0 &&
     (!filtered || (await countFavorites(db, user.id, preferences.translations)) === 0);
 
-  const header = (
-    <>
-      <PageHeader
-        title={t.title}
-        description={t.description}
-        action={<CaptureButton className="max-md:hidden" />}
-      />
-      <LibrarySections current="scripture" locale={locale} />
-      <h2 className="sr-only">{t.saved.heading}</h2>
-    </>
-  );
+  // Nothing is made here: a passage is saved while reading, in the Bible.
+  const header = <LibrarySectionHeader section="scripture" locale={locale} />;
 
   // Nothing saved at all: there is nothing to search or filter yet.
   if (nothingSaved) {
@@ -116,9 +105,9 @@ export default async function SavedScripturePage({
       <div className="container-page py-10 lg:py-12">
         {header}
         <section aria-labelledby="empty-heading" className={emptyState}>
-          <h3 id="empty-heading" className={emptyHeading}>
+          <h2 id="empty-heading" className={emptyHeading}>
             {t.saved.empty.nothing}
-          </h3>
+          </h2>
           <p className={emptyCopy}>{t.saved.empty.nothingBody}</p>
           <Link href={routes.bible} className={buttonVariants({ className: "mt-6" })}>
             <BookOpen aria-hidden />
@@ -144,9 +133,9 @@ export default async function SavedScripturePage({
         <SavedResultsRegion>
           {total === 0 ? (
             <section aria-labelledby="empty-heading" className={emptyState}>
-              <h3 id="empty-heading" className={emptyHeading}>
+              <h2 id="empty-heading" className={emptyHeading}>
                 {filtering ? t.saved.empty.noFilterMatch : t.saved.empty.noSearchMatch}
-              </h3>
+              </h2>
               <p role="status" className={emptyCopy}>
                 {filtering && searching
                   ? t.saved.empty.both(query.q)

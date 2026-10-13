@@ -13,9 +13,11 @@ export const siteConfig = {
 } as const;
 
 /**
- * Route map. `history` is the agreed path for a later phase and is listed so
- * links and robots rules have one source. An idea is at `/library/<id>`; a
- * place in the Bible is `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts).
+ * Route map, the one source for links and robots rules. `/library` is the
+ * library's overview and the main navigation's destination; its three
+ * sections are each at an address of their own beneath it, and the addresses
+ * two of them used to have redirect (next.config.ts). An idea is at `/library/<id>`; a place in the Bible is
+ * `/bible?book=&chapter=&verse=` (features/scripture/reader-location.ts).
  */
 export const routes = {
   home: "/",
@@ -24,10 +26,11 @@ export const routes = {
   accessDenied: "/access-denied",
   dashboard: "/dashboard",
   library: "/library",
-  /** A section of the library, not a destination of its own: it has no place in the navigation. */
-  savedScripture: "/library/scripture",
+  /** The library's sections. Reached from the overview and from each other: the navigation names only the library. */
+  sermonIdeas: "/library/sermon-ideas",
+  savedScripture: "/library/saved-scripture",
+  preachingRecord: "/library/preaching-record",
   bible: "/bible",
-  history: "/history",
   settings: "/settings",
   admin: "/admin",
 } as const;
@@ -39,9 +42,10 @@ export const privateRoutes = [
   routes.accessDenied,
   routes.dashboard,
   routes.library,
+  routes.sermonIdeas,
   routes.savedScripture,
+  routes.preachingRecord,
   routes.bible,
-  routes.history,
   routes.settings,
   routes.admin,
 ] as const;
@@ -50,9 +54,10 @@ export const privateRoutes = [
 export const appRoutes = [
   routes.dashboard,
   routes.library,
+  routes.sermonIdeas,
   routes.savedScripture,
+  routes.preachingRecord,
   routes.bible,
-  routes.history,
   routes.settings,
   routes.admin,
 ] as const;
