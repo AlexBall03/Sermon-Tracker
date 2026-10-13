@@ -32,6 +32,7 @@ const idea = (fields: Partial<IdeaMatch> & { title: string }): IdeaMatch => ({
   status: "idea",
   subject: null,
   references: [],
+  archived: false,
   ...fields,
 });
 const library: IdeaMatch[] = [

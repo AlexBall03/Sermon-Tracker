@@ -18,6 +18,9 @@ const state = vi.hoisted(() => ({
   occasions: [] as unknown[],
   preached: undefined as number | undefined,
   listForSermon: vi.fn(),
+  // The ideas related to the one on the page.
+  related: { sermons: [] as unknown[], points: [] as unknown[] },
+  relatedIdeas: vi.fn(),
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -84,6 +87,16 @@ vi.mock("@/features/preaching/occurrences", () => ({
       totalPages: 1,
     };
   },
+}));
+vi.mock("@/features/ideas/relations", () => ({
+  relatedIdeas: async (...args: unknown[]) => {
+    state.relatedIdeas(...args);
+    return state.related;
+  },
+}));
+vi.mock("@/features/ideas/relation-actions", () => ({
+  relateIdeas: vi.fn(),
+  unrelateIdeas: vi.fn(),
 }));
 vi.mock("@/features/preaching/venues", () => ({ listVenues: async () => [] }));
 vi.mock("@/features/preaching/contexts", () => ({ listContexts: async () => [] }));
@@ -154,6 +167,7 @@ beforeEach(() => {
     archived: 0,
     occasions: [],
     preached: undefined,
+    related: { sermons: [], points: [] },
   });
 });
 
@@ -678,5 +692,51 @@ describe("IdeaPage", () => {
     expect(
       history().getByText(/new preaching cannot be recorded. Its record is kept./),
     ).toBeVisible();
+  });
+
+  it("shows a sermon its related sermons and points, read for the owner, archived ones marked", async () => {
+    state.idea = sermon;
+    const other = (title: string, fields: object = {}) => ({
+      id: `id-${title}`,
+      title,
+      kind: "sermon",
+      status: "idea",
+      archivedAt: null,
+      ...fields,
+    });
+    state.related = {
+      sermons: [other("Faith"), other("Hope", { archivedAt: new Date() })],
+      points: [other("Faith speaks first", { kind: "point" })],
+    };
+    render(await open(id, { from: "q=grace" }));
+    expect(state.relatedIdeas).toHaveBeenCalledWith("database", "owner-1", id);
+
+    const section = within(screen.getByRole("region", { name: "Related Ideas" }));
+    const sermons = within(section.getByRole("list", { name: "Related Sermons" }));
+    expect(sermons.getAllByRole("listitem")).toHaveLength(2);
+    expect(sermons.getAllByRole("listitem")[1]).toHaveTextContent("Archived");
+    // Opened from a related idea, "back" still leads to the library as it was left.
+    expect(sermons.getByRole("link", { name: "Faith" })).toHaveAttribute(
+      "href",
+      "/library/id-Faith?from=q%3Dgrace",
+    );
+    expect(
+      within(section.getByRole("list", { name: "Related Points" })).getByRole("link", {
+        name: "Faith speaks first",
+      }),
+    ).toBeVisible();
+  });
+
+  it("shows a point the sermons it is related to, and an undecided idea nothing", async () => {
+    state.idea = { ...sermon, kind: "point" };
+    const first = render(await open(id));
+    const section = within(screen.getByRole("region", { name: "Related Ideas" }));
+    expect(section.getByText("This point is not related to any sermon yet.")).toBeVisible();
+    expect(section.queryByRole("button", { name: "Add point" })).not.toBeInTheDocument();
+    first.unmount();
+
+    state.idea = { ...sermon, kind: "undecided" };
+    render(await open(id));
+    expect(screen.queryByRole("region", { name: "Related Ideas" })).not.toBeInTheDocument();
   });
 });

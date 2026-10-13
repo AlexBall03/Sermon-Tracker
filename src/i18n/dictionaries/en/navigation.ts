@@ -30,5 +30,15 @@ export const navigation = {
     detail:
       "This page could not be loaded. Nothing was changed. Try again, and if it keeps happening, let an administrator know.",
     retry: "Try again",
+    dashboard: "Go to Dashboard",
+    home: "Go to home page",
+    reference: "Reference",
+  },
+  notFound: {
+    code: "404",
+    title: "Page not found",
+    body: "Nothing lives at this address. It may have been mistyped, or the page may have moved.",
+    dashboard: "Go to Dashboard",
+    home: "Go to home page",
   },
 };

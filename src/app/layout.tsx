@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Figtree, Lora, Playfair_Display } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 
 import { NavigationProgress } from "@/components/layout/navigation-progress";
@@ -8,29 +7,8 @@ import { ThemeProvider } from "@/components/layout/theme-provider";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { isAuthConfigured, isIndexable } from "@/lib/env";
 import { routes, siteConfig } from "@/lib/site";
+import { fontVariables } from "./fonts";
 import "./globals.css";
-
-// All interface text: navigation, controls, tables, forms, body copy.
-const figtree = Figtree({
-  variable: "--font-figtree",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-// Headlines only: the wordmark, page titles, dialog titles. Never italic.
-const playfair = Playfair_Display({
-  variable: "--font-playfair",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-// Sermon material, set to be read: Scripture, references, idea titles.
-const lora = Lora({
-  variable: "--font-lora",
-  subsets: ["latin"],
-  display: "swap",
-  style: ["normal", "italic"],
-});
 
 const title = `${siteConfig.name} — ${siteConfig.tagline}`;
 
@@ -87,11 +65,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${figtree.variable} ${playfair.variable} ${lora.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col">
         <a
           href="#main"

@@ -37,8 +37,8 @@ Work stays inside the current phase. Do not implement later-phase functionality 
   - **2E.2: Preaching Record UI, integration, and verification** — implemented ([handoff](HANDOFF-2E.2.md)). The library is an overview at `/library` with three sections beneath it: Sermon Ideas (`/library/sermon-ideas`), Saved Scripture (`/library/saved-scripture`), and Preaching Record (`/library/preaching-record`), each with "Back to Library", its own heading, and the shared section navigation. Recording, editing, and removing an occasion in one form, opened from the record, a sermon's page, a sermon's card, and the dashboard; search, filters, and pages in the address; a sermon's own record on its page; venues and contexts; English and Spanish. Old addresses redirect. No migration. This step also carries the phase's integration and release-readiness checks: the whole unit suite, the end-to-end suite signed in with a journey for the record, a production build, and a review of migration `0009` against the deployment process. They were planned as a separate step, 2E.3, which was folded in here on 12 October 2026 and no longer exists
 - **2F: Sermon workflow enhancements** — in progress. After preaching history, before the outline system
   - **2F.1: Idea revisiting and resurfacing** — implemented ([handoff](HANDOFF-2F.1.md)). A date for when an idea's content was last worked on (`last_developed_at`), apart from when it last changed; "Revisit an Idea" on the dashboard, up to three unfinished sermon ideas left alone for 30 days, in a fixed order; two filters in Sermon Ideas, Never revisited and Needs attention, which say on each result why it was found; the "Least recently updated" order named. Migration `0010`, applied to development only. Checked with type checking, lint and formatting on the files changed, its own unit, database, and component tests, and a production build; the whole unit suite and the end-to-end suite were not run, and it was not seen in a signed-in browser
-  - **2F.2: Related ideas and workflow improvements** — next
-  - **2F.3: Preaching-class preferences** — after 2F.2
+  - **2F.2: Related ideas** — implemented ([handoff](HANDOFF-2F.2.md)). Relating two sermon ideas, seen from both and stored once; relating a reusable point idea to any number of sermons; a Related Ideas section on an idea's page with a searchable picker, where archived ideas are shown and offered, marked; removing a relation without touching either idea. Two tables (`sermon_relations`, `sermon_points`), each tied to its owner by the database. Relating is not development: neither `updated_at` nor `last_developed_at` moves. Migration `0011`, applied to development only. The brief for this step assumed sermon-to-point associations already existed; they did not, and the plain association was built here, without order. Checked with type checking, lint and formatting on the files changed, its own database, action, component, and page tests, and a production build; the whole unit suite and the end-to-end suite were not run, and it was not seen in a signed-in browser. Suggesting relations automatically is not built and is later work
+  - **2F.3: Preaching-class preferences** — next
 
 ## Bilingual milestone — English and Spanish (Phase 2C.2)
 
@@ -56,7 +56,7 @@ Implemented ([handoff](HANDOFF-2C.2.md)).
 
 After Phase 2E and Phase 2F, in that order.
 
-- Sermon-point associations: linking reusable point ideas to sermon ideas, with order and relationships (this was listed as 2C.3; it is not started, and no table for it exists)
+- Outline entries: placing reusable point ideas in a sermon's outline, with order and parent (a table of its own; the plain sermon-to-point relation of Phase 2F.2, `sermon_points`, has no order and is not required for a point to be placed)
 - Ordered sermon outlines
 - Optional introductions and conclusions
 - Main points and subpoints

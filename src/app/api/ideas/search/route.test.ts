@@ -7,7 +7,7 @@ import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
 import type { IdeaMatches } from "@/features/ideas/idea-search";
 import { ideaSearchHref } from "@/features/ideas/idea-search";
-import { createIdea } from "@/features/ideas/ideas";
+import { archiveIdea, createIdea } from "@/features/ideas/ideas";
 import { ideaInputSchema } from "@/features/ideas/schemas";
 
 // The access helper is mocked; the database is a real in-memory PostgreSQL.
@@ -96,7 +96,7 @@ describe("GET /api/ideas/search", () => {
     ]);
     // Only what the picker shows: no notes, no owner, no dates.
     expect(Object.keys(matches.items[0]).sort()).toEqual(
-      ["id", "kind", "references", "status", "subject", "title"].sort(),
+      ["archived", "id", "kind", "references", "status", "subject", "title"].sort(),
     );
     expect(JSON.stringify(matches)).not.toContain("humble");
   });
@@ -151,7 +151,27 @@ describe("GET /api/ideas/search", () => {
     expect(matches.total).toBe(11);
   });
 
-  it("takes nothing from the address but the words and the kind", async () => {
+  it("offers archived ideas only when the address asks for them, and marks them", async () => {
+    const kept = await save(me, { title: "Kept", kind: "sermon" });
+    const put = await save(me, { title: "Put away", kind: "sermon" });
+    await archiveIdea(db, me, put!.id);
+    signInAs(me);
+
+    // What the Scripture picker asks: archived ideas are not there.
+    expect(await titles(ideaSearchHref("", "sermon"))).toEqual(["Kept"]);
+    // What the related-ideas picker asks.
+    const all = await found(ideaSearchHref("", "sermon", "all"));
+    expect(all.total).toBe(2);
+    expect(Object.fromEntries(all.items.map((idea) => [idea.title, idea.archived]))).toEqual({
+      Kept: false,
+      "Put away": true,
+    });
+    expect(all.items.find((idea) => idea.id === kept!.id)?.archived).toBe(false);
+    // Anything else in its place is the default.
+    expect(await titles("/api/ideas/search?kind=sermon&archived=everything")).toEqual(["Kept"]);
+  });
+
+  it("takes nothing from the address but the words, the kind, and the archive view", async () => {
     await save(me, { title: "Zebra", status: "ready" });
     await save(me, { title: "Apple" });
     await save(other, { title: "Theirs" });

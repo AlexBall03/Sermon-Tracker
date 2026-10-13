@@ -1,5 +1,5 @@
 import { libraryParams } from "./library-query";
-import type { IdeaKind, IdeaStatus } from "./model";
+import type { ArchiveView, IdeaKind, IdeaStatus } from "./model";
 import type { IdeaReference } from "./schemas";
 
 /**
@@ -11,9 +11,12 @@ import type { IdeaReference } from "./schemas";
  *   /api/ideas/search?q=grace              those with "grace" in them
  *   /api/ideas/search?q=grace&kind=point   the point ideas among them
  *
- * `q` and `kind` mean what they mean in the library's address and are read by
- * the same parser. Nothing else in the address is used, so the answer is the
- * library's default: archived ideas are never offered.
+ *   /api/ideas/search?kind=sermon&archived=all   the sermon ideas, archived ones too
+ *
+ * `q`, `kind`, and `archived` mean what they mean in the library's address and
+ * are read by the same parser. Nothing else in the address is used, so without
+ * `archived` the answer is the library's default: archived ideas are not
+ * offered. Only the related-ideas picker asks for them.
  */
 export const ideaSearchPath = "/api/ideas/search";
 
@@ -30,6 +33,8 @@ export type IdeaMatch = {
   subject: string | null;
   /** The passages it has, so one it already holds can be said to be there. */
   references: IdeaReference[];
+  /** True for an archived idea, which is only ever among the matches when they were asked for. */
+  archived: boolean;
 };
 
 export type IdeaMatches = {
@@ -38,11 +43,15 @@ export type IdeaMatches = {
   total: number;
 };
 
-/** The address of one search. */
-export function ideaSearchHref(q: string, kind: IdeaKind | null): string {
+/**
+ * The address of one search. `archive` is given only by the related-ideas
+ * picker, which offers archived ideas too; left out, they are never offered.
+ */
+export function ideaSearchHref(q: string, kind: IdeaKind | null, archive?: ArchiveView): string {
   const params = new URLSearchParams();
   if (q.trim()) params.set(libraryParams.q, q.trim());
   if (kind) params.set(libraryParams.kinds, kind);
+  if (archive) params.set(libraryParams.archive, archive);
   const query = params.toString();
   return query ? `${ideaSearchPath}?${query}` : ideaSearchPath;
 }

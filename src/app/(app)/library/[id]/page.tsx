@@ -6,8 +6,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { getDb } from "@/db";
 import { requireActiveUser } from "@/features/auth/access";
 import { IdeaEditor } from "@/features/ideas/components/idea-editor";
+import { RelatedIdeas } from "@/features/ideas/components/related-ideas";
 import { getIdea } from "@/features/ideas/ideas";
 import { libraryReturnHref } from "@/features/ideas/library-query";
+import { relatedIdeas } from "@/features/ideas/relations";
 import { ideaIdSchema } from "@/features/ideas/schemas";
 import { listTags } from "@/features/ideas/tags";
 import {
@@ -47,16 +49,19 @@ export default async function IdeaPage({
   if (!id.success) notFound();
 
   const db = getDb();
-  const [idea, tags, history, venues, contexts] = await Promise.all([
+  const [idea, tags, related, history, venues, contexts] = await Promise.all([
     getIdea(db, user.id, id.data),
     listTags(db, user.id),
+    // Archived ones too, which the section marks; nothing for an undecided idea.
+    relatedIdeas(db, user.id, id.data),
     // The latest few occasions and how many there are in all, in the one query.
     listForSermon(db, user.id, id.data, 1, recentOccasions),
     listVenues(db, user.id),
     listContexts(db, user.id),
   ]);
   if (!idea) notFound();
-  const back = libraryReturnHref((await searchParams)?.from);
+  const from = (await searchParams)?.from;
+  const back = libraryReturnHref(from);
   const t = await getT("ideas");
   const sermon = { id: idea.id, title: idea.title };
   const venueOptions = venues.map(({ id, name, locality }) => ({ id, name, locality }));
@@ -98,6 +103,15 @@ export default async function IdeaPage({
           tags: idea.tags,
         }}
       >
+        {/* Not part of the draft: relating takes effect at once and changes neither idea. */}
+        {idea.kind !== "undecided" && (
+          <RelatedIdeas
+            idea={{ id: idea.id, title: idea.title, kind: idea.kind }}
+            sermons={related.sermons}
+            points={related.points}
+            from={typeof from === "string" ? from : undefined}
+          />
+        )}
         {/* History outlives the idea's time as a sermon: it is shown wherever there is any. */}
         {(idea.kind === "sermon" || history.total > 0) && (
           <SermonHistory

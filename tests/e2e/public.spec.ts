@@ -124,6 +124,13 @@ test.describe("theme", () => {
   });
 });
 
+test("an address nothing answers to says so, and offers the way home", async ({ page }) => {
+  const response = await page.goto("/no-such-page");
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to home page" })).toHaveAttribute("href", "/");
+});
+
 test("robots.txt keeps application routes out of search", async ({ request }) => {
   const body = await (await request.get("/robots.txt")).text();
   expect(body).toContain("Disallow: /dashboard");

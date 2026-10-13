@@ -32,5 +32,15 @@ export const navigation: Untranslated<typeof english> = {
     detail:
       "No se pudo cargar esta página. No se cambió nada. Inténtalo de nuevo y, si sigue pasando, avisa a un administrador.",
     retry: "Reintentar",
+    dashboard: "Ir al inicio",
+    home: "Ir a la página principal",
+    reference: "Referencia",
+  },
+  notFound: {
+    code: "404",
+    title: "Página no encontrada",
+    body: "No hay nada en esta dirección. Puede que esté mal escrita o que la página se haya movido.",
+    dashboard: "Ir al inicio",
+    home: "Ir a la página principal",
   },
 };

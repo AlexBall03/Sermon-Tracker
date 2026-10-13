@@ -1,20 +1,43 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { useT } from "@/i18n/client";
+import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
 
-/** Error boundary for application pages. Details stay in the server log. */
-export default function AppError({ reset }: { error: Error; reset: () => void }) {
+import { StatusPage } from "@/components/layout/status-page";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { useT } from "@/i18n/client";
+import { routes } from "@/lib/site";
+
+/**
+ * Error boundary for application pages. Details stay in the server log; the
+ * reference is only the hash that finds them there.
+ */
+export default function AppError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
   const t = useT("navigation").error;
   return (
-    <div className="container-page py-16">
-      <div role="alert" className="mx-auto max-w-lg rounded-xl border bg-surface p-8 shadow-card">
-        <h1 className="font-display text-2xl leading-snug font-medium">{t.title}</h1>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-muted-foreground">{t.detail}</p>
-        <Button className="mt-6" onClick={reset}>
-          {t.retry}
-        </Button>
-      </div>
-    </div>
+    <StatusPage
+      role="alert"
+      icon={TriangleAlert}
+      title={t.title}
+      body={t.detail}
+      note={
+        error.digest && (
+          <>
+            {t.reference}: <span className="font-mono select-all">{error.digest}</span>
+          </>
+        )
+      }
+    >
+      <Button onClick={() => retry()}>{t.retry}</Button>
+      <Link href={routes.dashboard} className={buttonVariants({ variant: "outline" })}>
+        {t.dashboard}
+      </Link>
+    </StatusPage>
   );
 }

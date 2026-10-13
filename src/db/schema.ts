@@ -225,6 +225,78 @@ export const ideaTags = pgTable(
 );
 
 /**
+ * Which sermon ideas are related to which. The relation has no direction, so
+ * each pair is stored once, with the lower ID first: the CHECK refuses a
+ * sermon related to itself and the same pair written the other way round, and
+ * the primary key refuses it twice. Reading a sermon's relations looks at both
+ * columns.
+ *
+ * The owner is repeated and is part of both foreign keys, as in `idea_tags`,
+ * so the database itself refuses a relation across accounts. Deleting either
+ * sermon removes the row and leaves the other sermon alone. Whether an idea is
+ * a sermon is not something a foreign key can say; `linkIdeas` checks it with
+ * both rows locked. Nothing about a relation is stored on an idea.
+ */
+export const sermonRelations = pgTable(
+  "sermon_relations",
+  {
+    sermonAId: uuid("sermon_a_id").notNull(),
+    sermonBId: uuid("sermon_b_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sermonAId, table.sermonBId] }),
+    foreignKey({
+      name: "sermon_relations_sermon_a_fk",
+      columns: [table.sermonAId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sermon_relations_sermon_b_fk",
+      columns: [table.sermonBId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    check("sermon_relations_order_check", sql`${table.sermonAId} < ${table.sermonBId}`),
+    index("sermon_relations_sermon_b_idx").on(table.sermonBId),
+  ],
+);
+
+/**
+ * Which point ideas are related to which sermon ideas. A point may be related
+ * to any number of sermons and stays one record; removing the row removes
+ * neither idea. It says only that the two go together: it has no order and
+ * nothing written for one sermon. A sermon's outline, when there is one, is
+ * its own table and names a point directly, without needing a row here.
+ *
+ * Owned and deleted like `sermon_relations`.
+ */
+export const sermonPoints = pgTable(
+  "sermon_points",
+  {
+    sermonId: uuid("sermon_id").notNull(),
+    pointId: uuid("point_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sermonId, table.pointId] }),
+    foreignKey({
+      name: "sermon_points_sermon_fk",
+      columns: [table.sermonId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sermon_points_point_fk",
+      columns: [table.pointId, table.ownerId],
+      foreignColumns: [ideas.id, ideas.ownerId],
+    }).onDelete("cascade"),
+    check("sermon_points_distinct_check", sql`${table.sermonId} <> ${table.pointId}`),
+    index("sermon_points_point_idx").on(table.pointId),
+  ],
+);
+
+/**
  * A passage attached to an idea, as numbers only: book 1 to 66 in canonical
  * order, then where it starts and ends. The text is read from `scripture_verses`
  * when shown and is never copied here.

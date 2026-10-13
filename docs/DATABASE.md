@@ -1,6 +1,6 @@
 # Database
 
-Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below.
+Neon PostgreSQL, accessed through Drizzle ORM. Implemented in Phase 1B; ideas and the Bible were added in Phase 2A, tags in Phase 2B.1. Phase 2B.2 added no migration: its filters are changes to the library query only (see "Library filters" under `idea_tags`). Phase 2C.1A added one, `0004_bible_psalm_titles`, for the titles of the Psalms; the Bible reader itself stores nothing. Phase 2C.1B added `0005_bible_favorites_and_highlights`: three tables of personal data, `bible_favorites`, `bible_favorite_verses`, and `bible_highlights`. It only adds tables, so it is safe under the code already live. Phase 2C.2 added `0006_scripture_translations_and_languages`: the Bible text by translation (`scripture_verses`, `scripture_psalm_titles`), two preference columns on `users`, and `app_settings`. It adds and widens only; see "Phase 2C.2 migration" below. Phase 2D.1 added `0007_idea_classification`: two columns on `ideas` (`intended_format`, `archived_at`), wider CHECKs and new defaults on `status` and `sermon_type`. It too adds and widens only, and rewrites no row; see "Phase 2D.1 migration" below. Phase 2D.2 added no migration: the classification controls, the library's format and archive filters, and archive and restore all use the 2D.1 columns as they are. Phase 2D.3 added `0008_idea_classification_tightening`: it rewrites the two old classification values and then refuses them; see "Phase 2D.3 migration" below. Phase 2E.1 added `0009_preaching_history`: three tables of personal data, `preaching_occurrences`, `preaching_venues`, and `preaching_contexts`. It only adds tables; see "Preaching history" and "Phase 2E.1 migration" below. Phase 2F.1 added `0010_idea_last_developed`, one nullable column on `ideas`. Phase 2F.2 added `0011_related_ideas`: two tables, `sermon_relations` and `sermon_points`. It only adds tables; see "Related ideas" below.
 
 ## Layout
 
@@ -306,6 +306,41 @@ Indexes:
 - `preaching_occurrences_venue_idx (venue_id)`, `preaching_occurrences_context_idx (context_id)`: the filters, the counts in the venue and context lists, and the checks made when one is deleted.
 
 **History search uses no special index.** As in the library, it is `ILIKE '%word%'` behind `owner_id = …`, here on the joined sermon title, venue name and locality, and context name. The joins are to one row each, so an occasion is always one row.
+
+### Related ideas (Phase 2F.2)
+
+Migration `0011_related_ideas` adds two tables and changes nothing else, so it is safe under the code already live and after a rollback. Neither table has a position or anything written for one sermon: a sermon's outline (Phase 3) is to be a table of its own.
+
+**`sermon_relations`**: which sermon ideas go together.
+
+| Column        | Type          | Constraints            |
+| ------------- | ------------- | ---------------------- |
+| `sermon_a_id` | `uuid`        | Not null               |
+| `sermon_b_id` | `uuid`        | Not null               |
+| `owner_id`    | `uuid`        | Not null               |
+| `created_at`  | `timestamptz` | Not null, default now. |
+
+- Primary key `(sermon_a_id, sermon_b_id)`.
+- `sermon_relations_order_check`: `sermon_a_id < sermon_b_id`. A relation has no direction, so the pair is stored once, lower ID first; the CHECK refuses a sermon with itself and the pair written the other way round.
+- `sermon_relations_sermon_a_fk` and `sermon_relations_sermon_b_fk`: `(sermon_x_id, owner_id)` → `ideas (id, owner_id)`, `ON DELETE CASCADE`. One `owner_id` must satisfy both, so both sermons are that account's, as in `idea_tags`.
+- `sermon_relations_sermon_b_idx (sermon_b_id)`: a sermon's relations are read from both columns; the primary key serves the first.
+
+**`sermon_points`**: which point ideas go with which sermon ideas.
+
+| Column       | Type          | Constraints            |
+| ------------ | ------------- | ---------------------- |
+| `sermon_id`  | `uuid`        | Not null               |
+| `point_id`   | `uuid`        | Not null               |
+| `owner_id`   | `uuid`        | Not null               |
+| `created_at` | `timestamptz` | Not null, default now. |
+
+- Primary key `(sermon_id, point_id)`; `sermon_points_distinct_check`: `sermon_id <> point_id`.
+- `sermon_points_sermon_fk` and `sermon_points_point_fk`: as above, `ON DELETE CASCADE`.
+- `sermon_points_point_idx (point_id)`: the sermons a point goes with.
+
+**CASCADE here, RESTRICT on history.** A relation is nothing without both its ideas, so deleting either removes the row and leaves the other idea alone. Archiving is not deleting and touches neither table.
+
+**What a key cannot say.** That an idea is a sermon or a point. `linkIdeas` (`src/features/ideas/relations.ts`) reads both ideas `WHERE owner_id = … FOR UPDATE`, lower ID first, and checks their kinds before it inserts with `ON CONFLICT DO NOTHING`. An idea refiled afterwards keeps its rows; they are left out when read, by a match on the current kind.
 
 ### `reference_datasets`
 

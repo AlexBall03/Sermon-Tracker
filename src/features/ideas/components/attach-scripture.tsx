@@ -26,11 +26,11 @@ import { routes } from "@/lib/site";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { attachScripture, type AttachActionResult } from "../actions";
-import { ideaSearchHref, type IdeaMatch, type IdeaMatches } from "../idea-search";
+import type { IdeaMatch } from "../idea-search";
 import { normaliseSearch } from "../library-query";
 import { ideaLimits, searchLimits, type IdeaKind } from "../model";
-import { searchDebounceMs } from "./library/library-search";
 import { useQuickCapture } from "./quick-capture";
+import { useIdeaSearch } from "./use-idea-search";
 
 type AttachScriptureProps = {
   /** The passages to put on an idea, one for each unbroken run. Null closes the dialog. */
@@ -107,8 +107,6 @@ export function AttachScripture({ references, onClose }: AttachScriptureProps) {
   );
 }
 
-type Answer = { key: string } & ({ matches: IdeaMatches } | { problem: string });
-
 /** True when the idea has every one of the passages already. */
 function holdsAll(idea: IdeaMatch, references: readonly ScriptureReference[]) {
   const held = new Set(idea.references.map(referenceKey));
@@ -137,53 +135,17 @@ function AttachForm({
   const offline: AttachActionResult = { ok: false, message: t.offline };
   const [text, setText] = useState("");
   const [scope, setScope] = useState<Scope>("all");
-  const [answer, setAnswer] = useState<Answer | null>(null);
-  /** Counts the times the same search was asked for again after it failed. */
-  const [attempt, setAttempt] = useState(0);
   const [attaching, setAttaching] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  // Typing waits for a pause; the first list and a change of scope do not.
-  const paused = useRef(false);
 
   const passage = formatReferences(references, locale);
   const q = normaliseSearch(text);
   const kind: IdeaKind | null = scope === "all" ? null : scope;
-  const key = `${scope}|${q}|${attempt}`;
-
-  useEffect(() => {
-    const control = new AbortController();
-    const timer = window.setTimeout(
-      async () => {
-        try {
-          const response = await fetch(ideaSearchHref(q, kind), { signal: control.signal });
-          const body: unknown = await response.json();
-          if (!response.ok) {
-            const message = (body as { message?: unknown } | null)?.message;
-            throw new Error(typeof message === "string" ? message : "");
-          }
-          setAnswer({ key, matches: body as IdeaMatches });
-        } catch (error) {
-          // Withdrawn because a newer search replaced it: nobody is waiting for this one.
-          if (control.signal.aborted) return;
-          setAnswer({
-            key,
-            problem: (error instanceof Error && error.message) || t.searchFailed,
-          });
-        }
-      },
-      paused.current ? searchDebounceMs : 0,
-    );
-    paused.current = false;
-    return () => {
-      window.clearTimeout(timer);
-      control.abort();
-    };
-  }, [key, q, kind, t.searchFailed]);
-
-  const loading = answer?.key !== key;
+  // Typing waits for a pause; the first list and a change of scope do not.
   // The list last received stays, dimmed, until the next one arrives.
-  const matches = answer && "matches" in answer ? answer.matches : null;
-  const failed = !loading && answer && "problem" in answer ? answer.problem : null;
+  const { loading, matches, failed, typed, retry } = useIdeaSearch(q, kind, {
+    failure: t.searchFailed,
+  });
   const tooMany = references.length > ideaLimits.references;
 
   async function attach(idea: IdeaMatch) {
@@ -241,7 +203,7 @@ function AttachForm({
             type="search"
             value={text}
             onChange={(event) => {
-              paused.current = true;
+              typed();
               setText(event.target.value);
             }}
             placeholder={t.placeholder}
@@ -287,13 +249,7 @@ function AttachForm({
         {failed ? (
           <div role="alert" className="px-2.5 py-3 text-sm text-muted-foreground">
             <p>{failed}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() => setAttempt((count) => count + 1)}
-            >
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={retry}>
               {t.tryAgain}
             </Button>
           </div>

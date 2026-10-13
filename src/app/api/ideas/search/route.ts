@@ -15,8 +15,10 @@ const noStore = { "Cache-Control": "no-store" };
  * The signed-in account's ideas by name, for choosing one to put Scripture
  * on. It is the library's own search, so the owner is in its WHERE clause and
  * another account's ideas cannot be found, counted, or named. Only the search
- * text and the kind are taken from the address, through the library's parser;
- * the order is always most recently changed first.
+ * text, the kind, and the archive view are taken from the address, through the
+ * library's parser; the order is always most recently changed first. Archived
+ * ideas are left out unless the address asks for them, which only the
+ * related-ideas picker does.
  */
 export async function GET(request: Request) {
   const actor = await authorize("active");
@@ -24,16 +26,16 @@ export async function GET(request: Request) {
 
   const asked = new URL(request.url).searchParams;
   const params = new URLSearchParams();
-  for (const name of [libraryParams.q, libraryParams.kinds]) {
+  for (const name of [libraryParams.q, libraryParams.kinds, libraryParams.archive]) {
     for (const value of asked.getAll(name)) params.append(name, value);
   }
-  const { q, kinds } = parseLibraryQuery(params);
+  const { q, kinds, archive } = parseLibraryQuery(params);
 
   try {
     const page = await searchIdeas(
       getDb(),
       actor.user.id,
-      { ...defaultLibraryQuery, q, kinds },
+      { ...defaultLibraryQuery, q, kinds, archive },
       ideaSearchSize,
     );
     const matches: IdeaMatches = {
@@ -46,6 +48,7 @@ export async function GET(request: Request) {
         // Kept from an idea's time as a sermon, a subject is not shown on anything else.
         subject: idea.kind === "sermon" ? idea.subject : null,
         references: idea.references,
+        archived: idea.archivedAt !== null,
       })),
     };
     return Response.json(matches, { headers: noStore });
