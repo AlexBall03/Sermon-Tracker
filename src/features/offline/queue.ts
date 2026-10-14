@@ -5,6 +5,7 @@ import {
   type MutationRecord,
   type MutationType,
 } from "./model";
+import type { SyncConflict } from "@/features/sync/model";
 
 /*
  * Changes made on this device and not yet acknowledged by the server, each
@@ -12,20 +13,45 @@ import {
  * owner's records: one account never reads, sends, or deletes another's.
  *
  * Nothing here deletes a record on its own. A record goes only when the
- * server has acknowledged it (`removeMutation` after a successful send) or
- * when its owner chooses to delete it; clearing downloads, signing out, and
- * switching accounts leave every one in place.
+ * server has acknowledged it (`settleMutation` with `done`) or when its owner
+ * chooses to delete it; a failure, signing out, switching accounts, and
+ * clearing downloads leave every one in place.
  *
- * Phase 5B only adds records (a quick capture the server could not take) and
- * lets the owner send one again by hand. Phase 5C sends them by itself.
+ * The records are sent by the sync engine (sync/engine.ts), which moves them
+ * through these states and nothing else. A queued record is durable: it is
+ * never unsaved work (lib/unsaved-work.ts), even while it is being sent.
  */
+
+/** Passing failures in a row before a change stops being sent by itself. */
+export const maxAutoAttempts = 6;
+
+/** How long to wait after the `n`th passing failure: doubling from 2 s to 10 min, give or take a fifth. */
+export function retryDelay(n: number, random = Math.random) {
+  const base = Math.min(2_000 * 2 ** Math.max(0, n - 1), 600_000);
+  return Math.round(base * (0.8 + 0.4 * random()));
+}
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
-const changed = () => listeners.forEach((listener) => listener());
+const channelName = "sermon-tracker-queue";
+let channel: BroadcastChannel | null | undefined;
 
-/** Called after any change to the queue, in this tab. */
+/** The other tabs of this application, told of every change so their lists and engines follow. */
+function tabs() {
+  if (channel !== undefined) return channel;
+  channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(channelName);
+  channel?.addEventListener("message", () => listeners.forEach((listener) => listener()));
+  return channel;
+}
+
+const changed = () => {
+  listeners.forEach((listener) => listener());
+  tabs()?.postMessage("changed");
+};
+
+/** Called after any change to the queue, in this tab or another. */
 export function onQueueChange(listener: Listener) {
+  tabs();
   listeners.add(listener);
   return () => void listeners.delete(listener);
 }
@@ -80,28 +106,151 @@ export async function listMutations(
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** Records the outcome of one attempt to send a change. */
-export async function markAttempt(
+/**
+ * Changes one of the owner's records in one transaction. `change` returns the
+ * new record, `null` to delete it, or `undefined` to leave it as it is.
+ */
+async function update(
   owner: string,
   opId: string,
-  outcome: { ok: true } | { ok: false; kind: MutationErrorKind; message?: string },
-) {
+  change: (record: MutationRecord) => MutationRecord | null | undefined,
+): Promise<MutationRecord | null> {
   const db = await openOfflineDb();
   const tx = db.transaction("mutations", "readwrite");
   const record = await tx.store.get(opId);
   if (!record || record.owner !== owner) {
     await tx.done;
-    return;
+    return null;
   }
-  await tx.store.put({
-    ...record,
-    attempts: record.attempts + 1,
-    lastAttemptAt: Date.now(),
-    status: outcome.ok ? "done" : "failed",
-    error: outcome.ok ? undefined : { kind: outcome.kind, message: outcome.message },
-  });
+  const next = change(record);
+  if (next === undefined) {
+    await tx.done;
+    return null;
+  }
+  if (next === null) await tx.store.delete(opId);
+  else await tx.store.put(next);
   await tx.done;
   changed();
+  return next;
+}
+
+/** Marks a waiting change as on its way. `null` if it is not the owner's or not waiting. */
+export function claimMutation(owner: string, opId: string) {
+  return update(owner, opId, (record) =>
+    record.status === "pending"
+      ? { ...record, status: "sending", lastAttemptAt: Date.now() }
+      : undefined,
+  );
+}
+
+export type Settlement =
+  /** The server has it: the record goes. */
+  | { outcome: "done" }
+  /** Passing (no answer, a server error): wait and try again, until `maxAutoAttempts`. */
+  | { outcome: "retry"; kind: MutationErrorKind; message?: string }
+  /** It can never be applied as it is: kept, failed, for the person. */
+  | { outcome: "failed"; kind: MutationErrorKind; message?: string }
+  /** The server disagrees: kept until the person chooses. */
+  | { outcome: "conflict"; conflict: SyncConflict }
+  /** Not now and not its fault (signed out, another account): back as it was. */
+  | { outcome: "release" };
+
+/** Records how one attempt to send a change ended. */
+export function settleMutation(owner: string, opId: string, settlement: Settlement) {
+  return update(owner, opId, (record) => {
+    const now = Date.now();
+    switch (settlement.outcome) {
+      case "done":
+        return null;
+      case "release":
+        return record.status === "sending" ? { ...record, status: "pending" } : undefined;
+      case "retry": {
+        const autoAttempts = (record.autoAttempts ?? 0) + 1;
+        const stop = autoAttempts >= maxAutoAttempts;
+        return {
+          ...record,
+          attempts: record.attempts + 1,
+          autoAttempts,
+          lastAttemptAt: now,
+          status: stop ? "failed" : "pending",
+          nextAttemptAt: stop ? undefined : now + retryDelay(autoAttempts),
+          error: { kind: settlement.kind, message: settlement.message },
+        };
+      }
+      case "failed":
+        return {
+          ...record,
+          attempts: record.attempts + 1,
+          lastAttemptAt: now,
+          status: "failed",
+          nextAttemptAt: undefined,
+          error: { kind: settlement.kind, message: settlement.message },
+        };
+      case "conflict":
+        return {
+          ...record,
+          attempts: record.attempts + 1,
+          lastAttemptAt: now,
+          status: "conflict",
+          nextAttemptAt: undefined,
+          conflict: settlement.conflict,
+          error: { kind: "conflict" },
+        };
+    }
+  });
+}
+
+/** The person asks to send a change again: it waits its turn as if new, keeping what it says. */
+export function retryMutation(owner: string, opId: string) {
+  return update(owner, opId, (record) =>
+    record.status === "sending"
+      ? undefined
+      : {
+          ...record,
+          status: "pending",
+          autoAttempts: 0,
+          nextAttemptAt: undefined,
+          error: undefined,
+          conflict: undefined,
+        },
+  );
+}
+
+/**
+ * The person settles a conflict by choosing what the change should say
+ * (a capture without the tags that are gone). It is sent again as the same
+ * change, under the same ID.
+ */
+export function resolveMutation(owner: string, opId: string, payload: unknown) {
+  return update(owner, opId, (record) =>
+    record.status === "conflict"
+      ? {
+          ...record,
+          payload,
+          status: "pending",
+          autoAttempts: 0,
+          nextAttemptAt: undefined,
+          error: undefined,
+          conflict: undefined,
+        }
+      : undefined,
+  );
+}
+
+/**
+ * Changes left `sending` by a run that never finished (a closed tab, a
+ * reload). Only the engine calls this, holding the lock that says no other
+ * run is sending; the server makes sending one twice harmless.
+ */
+export async function recoverInterrupted(owner: string) {
+  const db = await openOfflineDb();
+  const stuck = await db.getAllFromIndex("mutations", "ownerStatus", [owner, "sending"]);
+  for (const record of stuck) {
+    await update(owner, record.opId, (current) =>
+      current.status === "sending" ? { ...current, status: "pending" } : undefined,
+    );
+  }
+  return stuck.length;
 }
 
 /** Removes one of the owner's changes: acknowledged by the server, or deleted by its owner. */

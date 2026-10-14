@@ -14,10 +14,23 @@ export const offline = {
     badge: "On this device only",
     untitled: "Untitled",
     captured: (when: string) => `Captured ${when}`,
-    save: "Save to account",
+    save: "Save now",
     saving: "Saving…",
-    saved: "Saved to your account.",
-    notSaved: "Still not saved. Check your connection and try again.",
+    retry: "Try again",
+    status: {
+      waiting: "Waiting to sync",
+      sending: "Syncing…",
+      failed: "Not saved",
+      conflict: "Needs your choice",
+    },
+    nextTry: (when: string) => `Trying again ${when}`,
+    stopped: "Stopped trying by itself. Check your connection and try again.",
+    rejected: "The server would not accept it as it is. Try again, or delete it.",
+    missingTags: (count: number) =>
+      count === 1
+        ? "A tag on it was deleted since it was captured."
+        : `${count} tags on it were deleted since it was captured.`,
+    saveWithoutTags: "Save without the deleted tags",
     delete: "Delete",
     deleteTitle: "Delete this thought?",
     deleteBody: "It has not been saved to your account, so deleting it here deletes it for good.",
@@ -29,6 +42,21 @@ export const offline = {
         : `${count} thoughts are waiting on this device`,
     review: "Review",
     unavailable: "This browser is not letting Sermon Tracker keep anything on this device.",
+  },
+  sync: {
+    statusTitle: "Sync Status",
+    statusDescription:
+      "What you keep on this device while offline is saved to your account by itself whenever the server can be reached. Nothing is lost if saving fails.",
+    running: "Syncing…",
+    paused: "Paused until you sign in again.",
+    clear: "Everything on this device is in your account.",
+    waiting: (count: number) => `${count} waiting to sync`,
+    failed: (count: number) => `${count} not saved`,
+    conflict: (count: number) => `${count} need your choice`,
+    lastSync: (when: string) => `Last saved to your account ${when}`,
+    never: "Nothing has been saved from this device yet.",
+    now: "Sync now",
+    queueTitle: "Waiting on this device",
   },
   settings: {
     title: "Offline Storage",

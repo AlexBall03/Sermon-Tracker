@@ -16,10 +16,23 @@ export const offline: Untranslated<typeof english> = {
     badge: "Solo en este dispositivo",
     untitled: "Sin título",
     captured: (when: string) => `Capturada ${when}`,
-    save: "Guardar en la cuenta",
+    save: "Guardar ahora",
     saving: "Guardando…",
-    saved: "Guardada en tu cuenta.",
-    notSaved: "Todavía no se guardó. Revisa tu conexión y vuelve a intentarlo.",
+    retry: "Volver a intentar",
+    status: {
+      waiting: "En espera de sincronizar",
+      sending: "Sincronizando…",
+      failed: "Sin guardar",
+      conflict: "Necesita tu decisión",
+    },
+    nextTry: (when: string) => `Se intentará de nuevo ${when}`,
+    stopped: "Dejó de intentarlo por sí sola. Revisa tu conexión y vuelve a intentarlo.",
+    rejected: "El servidor no la aceptó tal como está. Vuelve a intentarlo o elimínala.",
+    missingTags: (count: number) =>
+      count === 1
+        ? "Una etiqueta que tenía se eliminó después de capturarla."
+        : `${count} etiquetas que tenía se eliminaron después de capturarla.`,
+    saveWithoutTags: "Guardar sin las etiquetas eliminadas",
     delete: "Eliminar",
     deleteTitle: "¿Eliminar esta idea?",
     deleteBody: "No se ha guardado en tu cuenta, así que eliminarla aquí la elimina para siempre.",
@@ -31,6 +44,21 @@ export const offline: Untranslated<typeof english> = {
         : `${count} ideas en espera en este dispositivo`,
     review: "Revisar",
     unavailable: "Este navegador no permite que Sermon Tracker guarde nada en este dispositivo.",
+  },
+  sync: {
+    statusTitle: "Estado de la sincronización",
+    statusDescription:
+      "Lo que guardas en este dispositivo sin conexión se guarda en tu cuenta por sí solo cuando se puede conectar con el servidor. Si falla, no se pierde nada.",
+    running: "Sincronizando…",
+    paused: "En pausa hasta que vuelvas a iniciar sesión.",
+    clear: "Todo lo de este dispositivo está en tu cuenta.",
+    waiting: (count: number) => `${count} en espera de sincronizar`,
+    failed: (count: number) => `${count} sin guardar`,
+    conflict: (count: number) => `${count} necesitan tu decisión`,
+    lastSync: (when: string) => `Guardado en tu cuenta por última vez ${when}`,
+    never: "Todavía no se ha guardado nada desde este dispositivo.",
+    now: "Sincronizar ahora",
+    queueTitle: "En espera en este dispositivo",
   },
   settings: {
     title: "Almacenamiento sin conexión",

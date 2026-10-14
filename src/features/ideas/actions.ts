@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import { applyMutation } from "@/features/sync/apply";
 import { formatReferences } from "@/features/scripture/reference";
 import { dictionary } from "@/i18n";
 import { getLocale } from "@/i18n/server";
@@ -47,7 +48,7 @@ function refresh(id?: string) {
 export async function createIdea(input: unknown, id?: unknown): Promise<IdeaActionResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
-  const { t, schemas } = await context();
+  const { locale, t, schemas } = await context();
 
   const parsed = schemas.ideaInput.safeParse(input);
   if (!parsed.success) return firstIssue(parsed.error, t.couldNotSave);
@@ -55,7 +56,30 @@ export async function createIdea(input: unknown, id?: unknown): Promise<IdeaActi
   if (ideaId && !ideaId.success) return { ok: false, message: t.invalid };
 
   try {
-    const idea = await service.createIdea(getDb(), actor.user.id, parsed.data, ideaId?.data);
+    if (ideaId) {
+      // An idea with its own ID is a capture that may also wait in a device's queue:
+      // both are applied once, through the same record (features/sync).
+      const outcome = await applyMutation(
+        getDb(),
+        actor.user.id,
+        {
+          opId: ideaId.data,
+          owner: actor.user.id,
+          type: "idea.create",
+          entityId: ideaId.data,
+          schemaVersion: 1,
+          payload: input,
+        },
+        locale,
+      );
+      if (outcome.status === "conflict") return { ok: false, message: t.unknownTag };
+      if (outcome.status !== "applied" && outcome.status !== "duplicate") {
+        return { ok: false, message: t.notSaved };
+      }
+      refresh();
+      return { ok: true, message: t.saved, id: outcome.entityId };
+    }
+    const idea = await service.createIdea(getDb(), actor.user.id, parsed.data);
     if (!idea) return { ok: false, message: t.notSaved };
     refresh();
     return { ok: true, message: t.saved, id: idea.id };

@@ -1000,3 +1000,26 @@ export const outlineEntryScriptureReferences = pgTable(
     ),
   ],
 );
+
+/**
+ * Changes sent from a device's offline queue (Phase 5C), one row per change
+ * the server has applied, under its owner. The row is written in the same
+ * transaction as the change, so a change delivered again (a retry, a second
+ * tab, a reply that never arrived) is answered from here and never applied
+ * twice, even after what it made was deleted. `op_id` is the device's own ID
+ * for the change; for a quick capture it is the idea's ID. Nothing is stored
+ * here but the fact: never the change's content.
+ */
+export const syncOperations = pgTable(
+  "sync_operations",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    opId: uuid("op_id").notNull(),
+    type: text("type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.ownerId, table.opId] })],
+);

@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect } from "react";
 import { useReading } from "@/features/preferences/client";
 import { clearActiveAccount, setActiveAccount, setPermittedTranslations } from "../account";
 import { autoDownload } from "../bible/auto";
+import { SyncAgent } from "../sync/agent";
 
 const OfflineAccountContext = createContext<string | null>(null);
 
@@ -66,7 +67,11 @@ export function OfflineAgent({
 
   useEffect(() => whenIdle(() => void autoDownload(translation).catch(() => {})), [translation]);
 
-  return <OfflineAccountProvider account={account}>{children}</OfflineAccountProvider>;
+  return (
+    <OfflineAccountProvider account={account}>
+      <SyncAgent account={account}>{children}</SyncAgent>
+    </OfflineAccountProvider>
+  );
 }
 
 /**

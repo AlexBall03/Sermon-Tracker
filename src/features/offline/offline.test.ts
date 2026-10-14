@@ -12,7 +12,7 @@ import {
   setActiveAccount,
 } from "./account";
 import { closeOfflineDb, dbName, dbVersion, migrations, openOfflineDb } from "./db";
-import { enqueue, listMutations, markAttempt, removeMutation } from "./queue";
+import { enqueue, listMutations, removeMutation, settleMutation } from "./queue";
 import { readOfflineSettings, resetOfflineSettingsMemory, saveOfflineSettings } from "./settings";
 import { isQuotaError } from "./storage";
 
@@ -92,7 +92,7 @@ describe("the queue", () => {
     await enqueue("owner-b", capture("op-b"));
     expect((await listMutations("owner-a")).map((record) => record.opId)).toEqual(["op-a"]);
     expect(await removeMutation("owner-b", "op-a")).toBe(false);
-    await markAttempt("owner-b", "op-a", { ok: false, kind: "network" });
+    await settleMutation("owner-b", "op-a", { outcome: "failed", kind: "network" });
     expect((await listMutations("owner-a"))[0].attempts).toBe(0);
     await expect(enqueue("owner-b", capture("op-a"))).rejects.toThrow(/another account/);
     expect(await listMutations("")).toEqual([]);
@@ -100,7 +100,7 @@ describe("the queue", () => {
 
   it("records attempts and removes a change only when asked", async () => {
     await enqueue("owner-a", capture("op-1"));
-    await markAttempt("owner-a", "op-1", { ok: false, kind: "network" });
+    await settleMutation("owner-a", "op-1", { outcome: "failed", kind: "network" });
     expect((await listMutations("owner-a"))[0]).toMatchObject({
       attempts: 1,
       status: "failed",

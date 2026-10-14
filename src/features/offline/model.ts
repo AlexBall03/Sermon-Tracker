@@ -1,4 +1,5 @@
 import type { TranslationId } from "@/features/scripture/translations";
+import type { SyncConflict } from "@/features/sync/model";
 
 /*
  * What this device keeps for working offline, in IndexedDB (db.ts). Plain
@@ -51,15 +52,23 @@ export type StoredChapter = {
   title: string | null;
 };
 
-export type MutationStatus = "pending" | "sending" | "failed" | "done";
+/**
+ * Where a queued change stands. `pending` waits its turn (after
+ * `nextAttemptAt`, when set); `sending` is on its way, and one the next run
+ * finds so was interrupted and is sent again; `failed` stopped trying by itself
+ * and waits for the person; `conflict` disagrees with the server and waits for
+ * the person to choose. `done` is no longer written: an acknowledged change is
+ * removed.
+ */
+export type MutationStatus = "pending" | "sending" | "failed" | "conflict" | "done";
 
-/** Why a change could not be sent; it decides whether to try again (Phase 5C). */
+/** Why a change could not be sent; it decides whether to try again. */
 export type MutationErrorKind = "network" | "auth" | "validation" | "conflict" | "server";
 
 /**
  * One change made on this device and not yet acknowledged by the server.
  * Phase 5B writes only `idea.create` (a quick capture made while the server
- * could not be reached); Phase 5C sends them.
+ * could not be reached); the sync engine (sync/engine.ts) sends them.
  *
  * `opId` is made on the device once and never changes, so sending it twice is
  * one change. `entityId` is the ID the thing will have on the server: for an
@@ -82,6 +91,12 @@ export type MutationRecord = {
   error?: { kind: MutationErrorKind; message?: string };
   /** The revision the change was made against, for detecting a conflict. */
   baseRevision?: number;
+  /** Not to be sent by itself before this time: the backoff after a passing failure. */
+  nextAttemptAt?: number;
+  /** Passing failures since the person last asked; sending by itself stops at `maxAutoAttempts`. */
+  autoAttempts?: number;
+  /** What the server disagreed with, while `status` is `conflict`. */
+  conflict?: SyncConflict;
 };
 
 export type MutationType = "idea.create";

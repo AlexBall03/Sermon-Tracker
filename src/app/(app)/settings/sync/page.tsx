@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { RefreshCw } from "lucide-react";
 
 import { requireActiveUser } from "@/features/auth/access";
+import { SyncSettings } from "@/features/offline/components/sync-settings";
 import { getPreferences } from "@/features/preferences/current";
 import { SettingsPageHeader } from "@/features/settings/components/settings-layout";
 import { SettingsStack } from "@/features/settings/components/settings-section";
@@ -12,8 +12,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Reserved for synchronization (Phase 5C). It says what is coming and offers
- * nothing: no control, no status, and nothing that pretends to work.
+ * Synchronization (Phase 5C): where the work this device keeps stands, and a
+ * way to send it now. The engine itself runs in the signed-in shell
+ * (features/offline/sync); this page only shows it.
  */
 export default async function SyncSettingsPage() {
   await requireActiveUser();
@@ -22,18 +23,7 @@ export default async function SyncSettingsPage() {
     <>
       <SettingsPageHeader {...t.categories.sync} locale={preferences.locale} />
       <SettingsStack>
-        <section
-          aria-label={t.sync.title}
-          className="flex flex-col items-start gap-4 rounded-xl border border-dashed bg-surface p-6 sm:flex-row sm:p-7"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary">
-            <RefreshCw className="size-[1.125rem] text-muted-foreground" aria-hidden />
-          </span>
-          <div>
-            <h2 className="text-[0.9375rem] font-semibold">{t.sync.title}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.sync.body}</p>
-          </div>
-        </section>
+        <SyncSettings />
       </SettingsStack>
     </>
   );

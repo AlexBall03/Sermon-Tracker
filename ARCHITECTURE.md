@@ -640,7 +640,15 @@ Phase 5B ([handoff](docs/HANDOFF-5B.md)), `src/features/offline`. Each device ke
 
 A translation arrives in a few parts of whole books from `/api/bible/package/[translation]/[part]` (signed in, only a translation on offer, whole or 503). Each part is written with its "done" note in one transaction beside the edition already kept; when all are in, the text is read back and must match the committed checksums before it becomes the one read and the old one is deleted. The reading translation is downloaded by itself when the signed-in shell is idle (`OfflineAgent`), a few tries per edition at most; Settings → Offline Storage downloads, retries, resumes, and removes. `loadChapter` reads the device when the network gives no answer.
 
-The service worker still keeps only the offline page and static files. That page is `OfflineShell`: from the device alone it opens the real reader in local mode (`BibleReader local`: no marks or account actions), offers Quick Capture under the account last signed in on the device (recorded by the `(app)` shell, forgotten by the `(auth)` shell), and lists captures waiting. Quick capture that gets no answer from `createIdea` queues the idea under its own ID, so sending it later through the same idempotent action saves it once.
+The service worker still keeps only the offline page and static files. That page is `OfflineShell`: from the device alone it opens the real reader in local mode (`BibleReader local`: no marks or account actions), offers Quick Capture under the account last signed in on the device (recorded by the `(app)` shell, forgotten by the `(auth)` shell), and lists captures waiting. Quick capture that gets no answer from `createIdea` queues the idea under its own ID; the sync engine sends it (see "Synchronization").
+
+### Synchronization
+
+Phase 5C ([handoff](docs/HANDOFF-5C.md)). One engine sends every queued change (`src/features/offline/sync/engine.ts`). `SyncAgent` runs it in the signed-in shell: on opening, on `online`, on returning to the front, on new work in any tab (`BroadcastChannel`), when a backoff is due, and on Sync now. A run holds the Web Lock `sermon-tracker-sync:<owner>` (`ifAvailable`; without Web Locks, one run per tab), recovers records left `sending`, and sends due ones oldest first with a 30 s timeout.
+
+The server's half is `syncMutation` (`src/features/sync/actions.ts`): `authorize("active")`, the owner must be the session's, then `applyMutation` writes the change and its `sync_operations` row (primary key owner and op ID) in one transaction. A repeat is `duplicate` and writes nothing, so a retry, a lost answer, or a second tab never writes twice, and an idea deleted after it was saved is not brought back. `createIdea` with an ID goes through the same function.
+
+Answers: `applied` and `duplicate` remove the record; `conflict` keeps it as `conflict` until the person chooses (today, a capture whose tags were deleted: save without them, or delete); `rejected` keeps it as `failed`; `auth` and `wrongAccount` stop the run and leave it untouched. No answer or a server error is passing: the wait doubles from 2 s to 10 min, and after `maxAutoAttempts` (6) the record is `failed` until the person tries again. Handlers for changes to existing things (Phase 5D) compare `baseRevision` in the same transaction and answer `conflict` instead of overwriting.
 
 ### Scripture
 
@@ -838,7 +846,7 @@ Phase 2C.1C. A reference on an idea is a row of `idea_scripture_references`, as 
 | `/settings/appearance` | The theme, kept in the browser                                                                      |
 | `/settings/app`        | Installing (`#install`), Restart Product Tour, Run Account Setup                                    |
 | `/settings/offline`    | `OfflineStorageSettings` (`#offline-capture`, `#offline-bible`): this device's, never the account's |
-| `/settings/sync`       | Reserved for Phase 5C: says what is coming and offers no control or status                          |
+| `/settings/sync`       | Sync status: what waits, failed, or needs a choice; last sync; Sync now; the queue                  |
 | `/settings/account`    | Role, status, and joining date, read-only; password, connected accounts, and devices (Clerk's)      |
 
 - `settings/layout.tsx` frames them: from `lg` up a sidebar (`SettingsNav`, `aria-current="page"` on the category shown, none on the overview) that is sticky below the bar; below `lg` no sidebar, the overview lists the categories as cards (`SettingsCategoryList`) and each page starts with a `BackLink` to it. The layout sets `I18nProvider` from `getPreferences()`, so a language saved here reads right at once. Every page calls `requireActiveUser()` itself.

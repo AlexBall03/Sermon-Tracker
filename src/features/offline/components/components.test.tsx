@@ -4,8 +4,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ createIdea: vi.fn() }));
+const state = vi.hoisted(() => ({ createIdea: vi.fn(), syncMutation: vi.fn() }));
 vi.mock("@/features/ideas/actions", () => ({ createIdea: state.createIdea }));
+vi.mock("@/features/sync/actions", () => ({ syncMutation: state.syncMutation }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
@@ -23,6 +24,8 @@ import { OfflineNotice, offlineNoticeKey, resetOfflineNoticeForTests } from "./o
 import { setActiveAccount } from "../account";
 import { OfflineShell } from "./offline-shell";
 import { OfflineStorageSettings } from "./offline-storage-settings";
+import { SyncAgent } from "../sync/agent";
+import { SyncSettings } from "./sync-settings";
 
 function view(children: React.ReactNode, account: string | null = "owner-a") {
   return render(
@@ -51,6 +54,7 @@ beforeEach(async () => {
   resetOfflineNoticeForTests();
   localStorage.clear();
   state.createIdea.mockReset();
+  state.syncMutation.mockReset();
 });
 afterEach(() => closeOfflineDb());
 
@@ -91,19 +95,53 @@ describe("OfflineStorageSettings", () => {
 });
 
 describe("PendingCaptures", () => {
-  it("saves a waiting thought as the same idea, and lets it go only once the server has it", async () => {
+  it("is sent by the engine as the same change, and leaves only once the server has it", async () => {
     await enqueue("owner-a", capture("op-1", "A thought"));
-    state.createIdea.mockResolvedValueOnce({ ok: false, message: "Still offline." });
-    state.createIdea.mockResolvedValueOnce({ ok: true, message: "Saved.", id: "op-1" });
-    view(<OfflineStorageSettings />);
+    state.syncMutation.mockRejectedValueOnce(new Error("offline"));
+    state.syncMutation.mockResolvedValueOnce({ status: "applied", entityId: "op-1" });
+    view(
+      <SyncAgent account="owner-a">
+        <OfflineStorageSettings />
+      </SyncAgent>,
+    );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Save to account" }));
-    await waitFor(() => expect(state.createIdea).toHaveBeenCalledTimes(1));
+    // Sent by itself on opening; no answer, so it waits and says so.
+    expect(await screen.findByText(/Trying again/)).toBeVisible();
     expect(await listMutations("owner-a")).toHaveLength(1);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Save to account" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save now" }));
     await waitFor(async () => expect(await listMutations("owner-a")).toEqual([]));
-    expect(state.createIdea.mock.calls.map(([, id]) => id)).toEqual(["op-1", "op-1"]);
+    expect(state.syncMutation.mock.calls.map(([change]) => change.opId)).toEqual(["op-1", "op-1"]);
+    expect(state.syncMutation.mock.calls[0][0]).toMatchObject({
+      owner: "owner-a",
+      entityId: "op-1",
+    });
+  });
+
+  it("keeps a conflict until the person chooses, then sends what they chose", async () => {
+    await enqueue("owner-a", {
+      ...capture("op-1", "Tagged"),
+      payload: { title: "Tagged", tagIds: ["tag-kept", "tag-gone"] },
+    });
+    state.syncMutation.mockResolvedValueOnce({
+      status: "conflict",
+      conflict: { reason: "missingTags", missingTagIds: ["tag-gone"] },
+    });
+    state.syncMutation.mockResolvedValueOnce({ status: "applied", entityId: "op-1" });
+    view(
+      <SyncAgent account="owner-a">
+        <OfflineStorageSettings />
+      </SyncAgent>,
+    );
+
+    expect(await screen.findByText("Needs your choice")).toBeVisible();
+    expect(await listMutations("owner-a")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Save without the deleted tags" }));
+    await waitFor(async () => expect(await listMutations("owner-a")).toEqual([]));
+    expect(state.syncMutation.mock.calls[1][0].payload).toEqual({
+      title: "Tagged",
+      tagIds: ["tag-kept"],
+    });
   });
 
   it("shows nothing of another account, and deletes only after asking", async () => {
@@ -119,6 +157,35 @@ describe("PendingCaptures", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete for good" }));
     await waitFor(async () => expect(await listMutations("owner-a")).toEqual([]));
     expect(await listMutations("owner-b")).toHaveLength(1);
+  });
+});
+
+describe("SyncSettings", () => {
+  it("says what is waiting and what needs the person, and that all is saved once it is", async () => {
+    await enqueue("owner-a", capture("op-1", "First"));
+    await enqueue("owner-a", capture("op-2", "Second"));
+    state.syncMutation.mockImplementation(async (change: { opId: string }) =>
+      change.opId === "op-1" ? { status: "rejected", reason: "validation" } : { status: "auth" },
+    );
+    view(
+      <SyncAgent account="owner-a">
+        <SyncSettings />
+      </SyncAgent>,
+    );
+    expect(await screen.findByText("Paused until you sign in again.")).toBeVisible();
+    expect(await screen.findByText("Not saved")).toBeVisible();
+    expect((await listMutations("owner-a")).map((record) => record.status)).toEqual([
+      "failed",
+      "pending",
+    ]);
+
+    state.syncMutation.mockImplementation(async (change: { opId: string; entityId: string }) => ({
+      status: "applied",
+      entityId: change.entityId,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Everything on this device is in your account.")).toBeVisible();
+    expect(screen.getByText(/Last saved to your account/)).toBeVisible();
   });
 });
 

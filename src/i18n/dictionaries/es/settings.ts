@@ -46,10 +46,6 @@ export const settings: Untranslated<typeof english> = {
         "Tu acceso, tu contraseña, las cuentas conectadas y los dispositivos donde tienes la sesión abierta. Algunos cambios te piden confirmar primero que eres tú.",
     },
   },
-  sync: {
-    title: "Llegará en una próxima actualización",
-    body: "La sincronización mantendrá lo que hagas en este dispositivo al día con tu cuenta en todos los demás. Todavía no hay nada que configurar.",
-  },
   unsaved: "Los cambios de esta página no se han guardado.",
   blocks: {
     ministry: "Iglesia y ministerio",

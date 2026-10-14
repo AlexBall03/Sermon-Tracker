@@ -44,10 +44,6 @@ export const settings = {
         "Your access, your password, connected accounts, and the devices you are signed in on. Some changes ask you to confirm it is you first.",
     },
   },
-  sync: {
-    title: "Coming in a later update",
-    body: "Synchronization will keep the work you do on this device in step with your account on every other one. There is nothing to set up yet.",
-  },
   unsaved: "Your changes on this page have not been saved.",
   blocks: {
     ministry: "Church & Ministry",

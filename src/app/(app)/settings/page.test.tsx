@@ -39,6 +39,9 @@ vi.mock("@/features/settings/components/appearance-settings", () => ({
 vi.mock("@/features/offline/components/offline-storage-settings", () => ({
   OfflineStorageSettings: () => <div>offline controls</div>,
 }));
+vi.mock("@/features/offline/components/sync-settings", () => ({
+  SyncSettings: () => <div>sync status</div>,
+}));
 vi.mock("@/features/preferences/actions", () => ({
   updateProfile: vi.fn(),
   setLocale: vi.fn(),
@@ -203,13 +206,10 @@ describe("Settings", () => {
     expect(screen.getByText("offline controls")).toBeInTheDocument();
   });
 
-  it("says synchronization is coming and offers nothing to change", async () => {
+  it("shows where this device's synchronization stands", async () => {
     show(await SyncSettingsPage());
     expect(screen.getByRole("heading", { level: 1, name: "Synchronization" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Coming in a later update" })).toBeInTheDocument();
-    for (const role of ["button", "textbox", "checkbox", "radio", "switch"]) {
-      expect(screen.queryAllByRole(role)).toHaveLength(0);
-    }
+    expect(screen.getByText("sync status")).toBeInTheDocument();
   });
 
   it("shows role, status, and joining date with nothing to change them", async () => {
