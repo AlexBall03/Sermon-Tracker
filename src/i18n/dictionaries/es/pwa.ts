@@ -49,6 +49,13 @@ export const pwa: Untranslated<typeof english> = {
     unsupported:
       "Este navegador no puede instalar aplicaciones. Abre Sermon Tracker en Chrome, Edge o Safari para instalarlo.",
   },
+  notice: {
+    title: "Instala Sermon Tracker",
+    body: "Ábrelo desde tu pantalla de inicio, el Dock o tu lista de aplicaciones, en su propia ventana y directo a tu espacio de trabajo.",
+    install: "Instalar",
+    howTo: "Cómo instalarlo",
+    dismiss: "Descartar",
+  },
   update: {
     title: "Hay una nueva versión de Sermon Tracker.",
     body: "Actualiza para empezar a usarla. La página se recarga una vez.",

@@ -49,6 +49,8 @@ Changed:
 
 There is no banner and no prompt anywhere but Settings, so nothing promotes installing to someone who has installed.
 
+_Changed 14 October 2026 at the owner's request:_ the dashboard also shows a dismissible `InstallNotice` card once the tour invitation has been answered. It is hidden in the installed window and once this browser dismisses it or installs from it. See "Installed application" in `ARCHITECTURE.md`.
+
 ## 4. The service worker
 
 Hand-written, about 200 lines of plain script, no Serwist: the policy is an allowlist small enough to read in full, and Serwist would add a build plugin and defaults that would need overriding. `service-worker.test.ts` runs the real script in `node:vm`.

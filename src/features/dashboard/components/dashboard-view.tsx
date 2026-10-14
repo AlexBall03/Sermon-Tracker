@@ -3,6 +3,7 @@ import { StatStrip } from "@/components/ui/stat-strip";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
 import type { IdeaRecord, WorkspaceCounts } from "@/features/ideas/ideas";
 import { RecordPreachingProvider } from "@/features/preaching/components/record-preaching";
+import { InstallNotice } from "@/features/pwa/components/install-notice";
 import { TourInvitation } from "@/features/tour/components/tour-invitation";
 import type { ReferenceOption } from "@/features/preaching/components/reference-field";
 import type { HistoryItem } from "@/features/preaching/occurrences";
@@ -94,7 +95,8 @@ export function DashboardView({
         />
 
         {/* An invitation, in the page and not over it: nothing begins until it is taken up. */}
-        {offerTour && <TourInvitation />}
+        {/* Installing waits until the tour has been answered: never two invitations at once. */}
+        {offerTour ? <TourInvitation /> : <InstallNotice />}
 
         {empty ? (
           <section

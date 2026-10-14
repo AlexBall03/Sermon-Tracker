@@ -47,6 +47,13 @@ export const pwa = {
     unsupported:
       "This browser cannot install apps. Open Sermon Tracker in Chrome, Edge, or Safari to install it.",
   },
+  notice: {
+    title: "Install Sermon Tracker",
+    body: "Open it from your home screen, dock, or app list, in its own window, straight into your workspace.",
+    install: "Install",
+    howTo: "How to install",
+    dismiss: "Dismiss",
+  },
   update: {
     title: "A new version of Sermon Tracker is ready.",
     body: "Update to start using it. The page reloads once.",

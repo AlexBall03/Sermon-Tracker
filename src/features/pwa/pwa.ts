@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 import { hasUnsavedWork } from "@/lib/unsaved-work";
+import { storeInstallNotice } from "./install-notice";
 import { isStandalone } from "./standalone";
 
 /*
@@ -101,6 +102,8 @@ export function startPwa() {
   });
   window.addEventListener("appinstalled", () => {
     deferred = null;
+    // A later visit in this browser cannot tell it was installed; the dashboard's notice remembers.
+    storeInstallNotice("installed");
     set({ canPrompt: false, justInstalled: true, declined: false });
   });
 
