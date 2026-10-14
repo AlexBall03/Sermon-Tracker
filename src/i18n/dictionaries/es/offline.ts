@@ -11,11 +11,52 @@ export const offline: Untranslated<typeof english> = {
   pending: {
     title: "En espera en este dispositivo",
     description:
-      "Ideas capturadas cuando no se podía conectar con el servidor. Solo están en este dispositivo hasta que se guarden en tu cuenta.",
-    empty: "No hay nada en espera. Todo lo que capturaste está en tu cuenta.",
+      "Ideas capturadas o modificadas cuando no se podía conectar con el servidor. Solo están en este dispositivo hasta que se guarden en tu cuenta.",
+    empty: "No hay nada en espera. Todo lo que capturaste o modificaste está en tu cuenta.",
     badge: "Solo en este dispositivo",
     untitled: "Sin título",
     captured: (when: string) => `Capturada ${when}`,
+    changed: (when: string) => `Modificada ${when}`,
+    kinds: {
+      "idea.create": "Idea nueva",
+      "idea.update": "Editada",
+      "idea.archive": "Archivada",
+      "idea.restore": "Restaurada",
+      "idea.delete": "Eliminada",
+    },
+    behind: "Espera al cambio anterior en esta idea.",
+    conflicts: {
+      stale: "Esta idea se modificó en tu cuenta después de que la cambiaras aquí.",
+      staleDelete: "Esta idea se modificó en tu cuenta después de que la eliminaras aquí.",
+      differs: (fields: string) => `Es distinto allí: ${fields}.`,
+      missing: "Esta idea se eliminó de tu cuenta.",
+      preached:
+        "Ya se predicó, así que no se puede eliminar. Su registro de predicación se conserva.",
+      outline: "Ahora tiene un bosquejo, que se eliminaría con ella.",
+    },
+    fields: {
+      title: "título",
+      notes: "notas",
+      subject: "tema",
+      passages: "pasajes",
+      tags: "etiquetas",
+      classification: "clasificación",
+    },
+    choices: {
+      keepMine: "Conservar mi versión",
+      deleteAnyway: "Eliminar de todos modos",
+      useAccount: "Usar la versión de mi cuenta",
+      discard: "Descartar mis cambios",
+      keepIdea: "Conservar la idea",
+      saveAsNew: "Guardar como idea nueva",
+      archiveInstead: "Archivarla en su lugar",
+      deleteWithOutline: "Eliminarla con su bosquejo",
+    },
+    discard: "Descartar",
+    discardTitle: "¿Descartar este cambio?",
+    discardBody:
+      "No se ha guardado en tu cuenta. Al descartarlo, esta idea vuelve a estar como en tu cuenta, junto con cualquier otro cambio hecho aquí.",
+    discardConfirm: "Descartar",
     save: "Guardar ahora",
     saving: "Guardando…",
     retry: "Volver a intentar",
@@ -40,8 +81,8 @@ export const offline: Untranslated<typeof english> = {
     deleteConfirm: "Eliminar para siempre",
     count: (count: number) =>
       count === 1
-        ? "1 idea en espera en este dispositivo"
-        : `${count} ideas en espera en este dispositivo`,
+        ? "1 cambio en espera en este dispositivo"
+        : `${count} cambios en espera en este dispositivo`,
     review: "Revisar",
     unavailable: "Este navegador no permite que Sermon Tracker guarde nada en este dispositivo.",
   },
@@ -105,6 +146,26 @@ export const offline: Untranslated<typeof english> = {
     moreDescription:
       "Llegará en una próxima actualización. Todavía no se guarda nada de esto en este dispositivo.",
     ideas: "Ideas de sermones y puntos",
+    ideasDescription:
+      "Una copia de tus ideas en este dispositivo, para leerlas, buscarlas y modificarlas sin conexión. Los cambios se guardan en tu cuenta cuando vuelve la conexión.",
+    ideasSwitch: "Guardar mis ideas en este dispositivo",
+    ideasOff: "Tus ideas no se guardan en este dispositivo.",
+    ideasKept: (count: number, when: string) =>
+      `${count === 1 ? "1 idea guardada" : `${count} ideas guardadas`}, actualizadas ${when}.`,
+    ideasNever: "Aún no se han descargado. Se descargan solas mientras tienes conexión.",
+    ideasDownloading: (have: number, total: number) => `Descargando… ${have} de ${total} ideas.`,
+    ideasPartial: (have: number, total: number) =>
+      `Por ahora solo hay ${have} de ${total} ideas en este dispositivo.`,
+    ideasFailed: "La última actualización no pudo terminar. Se volverá a intentar sola.",
+    ideasAuth:
+      "La última actualización fue rechazada. Vuelve a iniciar sesión para mantener tus ideas al día.",
+    ideasSize: (size: string) => `Unos ${size}.`,
+    ideasRefresh: "Actualizar ahora",
+    ideasRemove: "Quitar de este dispositivo",
+    ideasRemoveTitle: "¿Quitar tus ideas de este dispositivo?",
+    ideasRemoveBody:
+      "Se quita la copia de este dispositivo; tus ideas siguen en tu cuenta. Las ideas con cambios que esperan sincronizarse se conservan aquí hasta que se guarden.",
+    ideasRemoveConfirm: "Quitar",
     outlines: "Bosquejos de sermones",
     later: "Próximamente",
     storageTitle: "Almacenamiento en este dispositivo",
@@ -132,6 +193,36 @@ export const offline: Untranslated<typeof english> = {
     signedOut: "Inicia sesión con conexión para capturar ideas en este dispositivo.",
     back: "Volver",
     readerBadge: "Sin conexión",
+    ideasTitle: "Tus ideas",
+    ideasBody: (count: number) =>
+      count === 1
+        ? "1 idea está guardada en este dispositivo. Léela, búscala y modifícala aquí."
+        : `${count} ideas están guardadas en este dispositivo. Léelas, búscalas y modifícalas aquí.`,
+    openIdeas: "Abrir tus ideas",
+  },
+  ideas: {
+    copy: (when: string) =>
+      `Esta es la copia guardada en este dispositivo, actualizada por última vez ${when}. Lo que cambies aquí se guardará en tu cuenta cuando vuelva la conexión.`,
+    copyNever:
+      "Esta es la copia guardada en este dispositivo. Lo que cambies aquí se guardará en tu cuenta cuando vuelva la conexión.",
+    partial: (have: number, total: number) =>
+      `Solo se habían descargado ${have} de ${total} ideas en este dispositivo, así que aquí faltan algunas. Siguen en tu cuenta.`,
+    notYet: "Tus ideas aún no están en este dispositivo",
+    notYetBody:
+      "Se descargan solas mientras tienes la sesión iniciada y conexión. Abre Sermon Tracker cuando estés conectado y estarán aquí la próxima vez.",
+    off: "Las ideas no se guardan en este dispositivo",
+    offBody:
+      "Guardar tus ideas aquí está desactivado en Configuración, en Almacenamiento sin conexión. Actívalo cuando tengas conexión para usarlas sin ella.",
+    signedOut: "Inicia sesión con conexión para guardar tus ideas en este dispositivo.",
+    empty: "Aún no hay ideas en este dispositivo.",
+    missing: "Esta idea no está en este dispositivo",
+    missingBody:
+      "Puede que se capturara o modificara después de la última descarga de tus ideas en este dispositivo. Sigue en tu cuenta.",
+    back: "Volver a tus ideas",
+    connection:
+      "Las ideas relacionadas, los bosquejos y el registro de predicación necesitan conexión.",
+    waiting: (count: number) =>
+      count === 1 ? "1 cambio espera sincronizarse." : `${count} cambios esperan sincronizarse.`,
   },
   notice: {
     title: "Sermon Tracker ya funciona sin conexión",

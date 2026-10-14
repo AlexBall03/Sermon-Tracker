@@ -86,6 +86,17 @@ export const ideas = {
   },
   editor: {
     offline: "That could not be saved. Check your connection and try again.",
+    notKept: "That could not be kept on this device either. Copy your changes somewhere safe.",
+    /** Said once a change is kept on the device: never that it is in the account. */
+    kept: {
+      update: "Saved on this device. It will be saved to your account when the connection returns.",
+      archive: "Archived on this device. Your account will follow when the connection returns.",
+      restore: "Restored on this device. Your account will follow when the connection returns.",
+      delete: "Deleted on this device. Your account will follow when the connection returns.",
+    },
+    waiting:
+      "Changes made to this idea on this device are waiting to be saved to your account. You can edit it again once they are.",
+    keptHere: "Changes on this device are waiting to be saved to your account.",
     unsaved: "Your changes to this idea have not been saved.",
     kindHint: "Changing this takes effect straight away and keeps everything else as it is.",
     saving: "Saving…",

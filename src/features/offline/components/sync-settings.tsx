@@ -7,7 +7,7 @@ import { SettingsBlock } from "@/features/settings/components/settings-section";
 import { useLocale, useT } from "@/i18n/client";
 import { countByStatus } from "../sync/engine";
 import { useSync } from "../sync/agent";
-import { PendingCaptures, usePendingCaptures } from "./pending-captures";
+import { PendingChanges, usePendingChanges } from "./pending-changes";
 
 /**
  * The Synchronization settings (Phase 5C): where this device's queued work
@@ -19,7 +19,7 @@ export function SyncSettings() {
   const t = useT("offline").sync;
   const locale = useLocale();
   const sync = useSync();
-  const records = usePendingCaptures();
+  const records = usePendingChanges();
   const counts = Array.isArray(records) ? countByStatus(records) : null;
   const when = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
 
@@ -65,7 +65,7 @@ export function SyncSettings() {
         </div>
       </SettingsBlock>
       <SettingsBlock id="sync-queue" title={t.queueTitle}>
-        <PendingCaptures />
+        <PendingChanges />
       </SettingsBlock>
     </>
   );

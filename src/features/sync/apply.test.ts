@@ -35,7 +35,7 @@ const count = async (owner: string) =>
 describe("applying a queued capture", () => {
   it("saves it once however often it is delivered", async () => {
     const change = capture(me);
-    expect(await applyMutation(db, me, change, "en")).toEqual({
+    expect(await applyMutation(db, me, change, "en")).toMatchObject({
       status: "applied",
       entityId: change.entityId,
     });
@@ -79,7 +79,7 @@ describe("applying a queued capture", () => {
     if (!kept.ok || !gone.ok) throw new Error("tags not created");
     await deleteTag(db, me, gone.tag.id);
     const change = capture(me, { title: "Tagged", tagIds: [kept.tag.id, gone.tag.id] });
-    expect(await applyMutation(db, me, change, "en")).toEqual({
+    expect(await applyMutation(db, me, change, "en")).toMatchObject({
       status: "conflict",
       conflict: { reason: "missingTags", missingTagIds: [gone.tag.id] },
     });

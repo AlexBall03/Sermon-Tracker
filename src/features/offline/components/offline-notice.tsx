@@ -8,7 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
-import { usePendingCaptures } from "./pending-captures";
+import { usePendingChanges } from "./pending-changes";
 
 /**
  * Whether this browser has dismissed the dashboard's note about working
@@ -71,7 +71,7 @@ export function OfflineNotice({
   introduce?: boolean;
 }) {
   const t = useT("offline");
-  const pending = usePendingCaptures();
+  const pending = usePendingChanges();
   const gone = useSyncExternalStore(subscribe, dismissed, () => true);
   const [phase, setPhase] = useState<"shown" | "leaving" | "gone">("shown");
 

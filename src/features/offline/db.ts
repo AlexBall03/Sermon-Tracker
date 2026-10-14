@@ -39,11 +39,11 @@ export interface OfflineSchema extends DBSchema {
     value: MutationRecord;
     indexes: { owner: string; ownerStatus: [string, MutationStatus] };
   };
-  /** `[owner, kind, id]`. Reserved for Phase 5D. */
+  /** `[owner, kind, id]`: an account's own copies (Phase 5D.1, ideas/store.ts). */
   accountData: {
     key: [string, string, string];
     value: AccountRecord;
-    indexes: { owner: string };
+    indexes: { owner: string; ownerKind: [string, string] };
   };
 }
 
@@ -63,6 +63,10 @@ export const migrations: ((db: OfflineDb, tx: Upgrade) => void)[] = [
     mutations.createIndex("ownerStatus", ["owner", "status"]);
     const accountData = db.createObjectStore("accountData", { keyPath: ["owner", "kind", "id"] });
     accountData.createIndex("owner", "owner");
+  },
+  // Phase 5D.1: an account's copies of one kind, read without the rest.
+  (_db, tx) => {
+    tx.objectStore("accountData").createIndex("ownerKind", ["owner", "kind"]);
   },
 ];
 

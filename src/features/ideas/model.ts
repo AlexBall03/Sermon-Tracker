@@ -69,6 +69,27 @@ export const activeStatuses = ["idea", "developing"] as const satisfies readonly
  */
 export const revisitAfterDays = 30;
 
+/** The instant at or before which an idea not worked on since has waited long enough to be offered again. */
+export function revisitCutoff(now: Date = new Date()) {
+  return new Date(now.getTime() - revisitAfterDays * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * `needsAttention` (ideas.ts) for one idea held in the browser: the offline
+ * library's copy of the rule, and the only one. It must say what the SQL
+ * says; `revisit.test.ts` holds the two to the same ideas.
+ */
+export function needsAttentionAt(
+  idea: { kind: IdeaKind; status: IdeaStatus; lastDevelopedAt: Date | null; createdAt: Date },
+  now: Date,
+) {
+  return (
+    idea.kind === "sermon" &&
+    (unfinishedStatuses as readonly IdeaStatus[]).includes(idea.status) &&
+    (idea.lastDevelopedAt ?? idea.createdAt).getTime() <= revisitCutoff(now).getTime()
+  );
+}
+
 /**
  * The library's two revisiting filters, both about sermon ideas only. `never`:
  * not worked on since it was captured. `attention`: unfinished, and not worked

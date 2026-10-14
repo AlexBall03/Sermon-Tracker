@@ -1,12 +1,19 @@
 import { and, eq, inArray } from "drizzle-orm";
 
-import { syncOperations, tags } from "@/db/schema";
+import { ideas as ideaRows, syncOperations, tags } from "@/db/schema";
 import type { Database } from "@/db/types";
 import * as ideas from "@/features/ideas/ideas";
 import { ideaSchemas } from "@/features/ideas/schemas";
 import { UnknownTagError } from "@/features/ideas/tags";
+import { outlineIdsForSermons } from "@/features/outlines/outlines";
 import type { Locale } from "@/i18n/locales";
-import type { SyncEnvelope, SyncOutcome, SyncType } from "./model";
+import {
+  ideaDeletePayloadSchema,
+  type SyncEnvelope,
+  type SyncOutcome,
+  type SyncType,
+} from "./model";
+import { offlineIdeas } from "./snapshot";
 
 /*
  * Applies one change from a device's queue for its owner, exactly once.
@@ -18,10 +25,13 @@ import type { SyncEnvelope, SyncOutcome, SyncType } from "./model";
  * again later is still possible. The owner is always the session's, never
  * the device's word for it (the action checks that the two agree).
  *
- * Each type has a handler. A handler for a change to something that already
- * exists (Phase 5D) compares the change's `baseRevision` with the stored one
- * inside this transaction, with the row locked, and answers `conflict` with
- * the server's copy rather than writing over it.
+ * Each type has a handler. A change to an idea that already exists (Phase
+ * 5D.1) is checked against `ideas.revision` inside this transaction, with the
+ * row locked: an edit or a deletion made on an older revision is a `stale`
+ * conflict carrying the server's copy, never an overwrite. Archiving and
+ * restoring say what the idea should be and need no revision. A deletion
+ * keeps every server rule (preaching history, an outline the person was not
+ * told of), each answered as a conflict for the person to settle.
  */
 
 type Handler = (
@@ -38,6 +48,31 @@ class Refused extends Error {
   }
 }
 
+/** The answer to a change naming tags that are not (or no longer) the owner's. */
+async function missingTags(tx: Database, ownerId: string, wanted: string[]): Promise<SyncOutcome> {
+  const found = wanted.length
+    ? await tx
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(eq(tags.ownerId, ownerId), inArray(tags.id, wanted)))
+    : [];
+  const kept = new Set(found.map((tag) => tag.id));
+  return {
+    status: "conflict",
+    conflict: { reason: "missingTags", missingTagIds: wanted.filter((id) => !kept.has(id)) },
+  };
+}
+
+/** The idea as the server holds it now, for a `stale` conflict. */
+async function stale(tx: Database, ownerId: string, id: string): Promise<SyncOutcome> {
+  const [server] = await offlineIdeas(tx, ownerId, [id]);
+  return server
+    ? { status: "conflict", conflict: { reason: "stale", server } }
+    : { status: "conflict", conflict: { reason: "missing" } };
+}
+
+const missing: SyncOutcome = { status: "conflict", conflict: { reason: "missing" } };
+
 const handlers: Record<SyncType, Handler> = {
   async "idea.create"(tx, ownerId, change, locale) {
     const parsed = ideaSchemas(locale).ideaInput.safeParse(change.payload);
@@ -52,22 +87,71 @@ const handlers: Record<SyncType, Handler> = {
       const idea = await ideas.createIdea(tx, ownerId, parsed.data, change.entityId);
       // The ID is someone else's idea: this capture can never be saved under it.
       if (!idea) return { status: "rejected", reason: "taken" };
-      return { status: "applied", entityId: idea.id };
+      return { status: "applied", entityId: idea.id, revision: idea.revision };
     } catch (error) {
       if (!(error instanceof UnknownTagError)) throw error;
-      const wanted = parsed.data.tagIds ?? [];
-      const found = wanted.length
-        ? await tx
-            .select({ id: tags.id })
-            .from(tags)
-            .where(and(eq(tags.ownerId, ownerId), inArray(tags.id, wanted)))
-        : [];
-      const kept = new Set(found.map((tag) => tag.id));
+      return missingTags(tx, ownerId, parsed.data.tagIds ?? []);
+    }
+  },
+
+  // The whole draft, made against `baseRevision`: written only while the idea is still there.
+  async "idea.update"(tx, ownerId, change, locale) {
+    const parsed = ideaSchemas(locale).ideaInput.safeParse(change.payload);
+    if (!parsed.success || change.baseRevision === undefined) {
       return {
-        status: "conflict",
-        conflict: { reason: "missingTags", missingTagIds: wanted.filter((id) => !kept.has(id)) },
+        status: "rejected",
+        reason: "validation",
+        message: parsed.success ? "baseRevision" : parsed.error.issues[0]?.message,
       };
     }
+    try {
+      const outcome = await ideas.updateIdeaAt(
+        tx,
+        ownerId,
+        change.entityId,
+        parsed.data,
+        change.baseRevision,
+      );
+      if (outcome.status === "missing") return missing;
+      if (outcome.status === "stale") return stale(tx, ownerId, change.entityId);
+      return { status: "applied", entityId: change.entityId, revision: outcome.idea.revision };
+    } catch (error) {
+      if (!(error instanceof UnknownTagError)) throw error;
+      return missingTags(tx, ownerId, parsed.data.tagIds ?? []);
+    }
+  },
+
+  // Archiving and restoring say what the idea should be, so saying it twice, or late, is harmless.
+  async "idea.archive"(tx, ownerId, change) {
+    const idea = await ideas.archiveIdea(tx, ownerId, change.entityId);
+    return idea ? { status: "applied", entityId: idea.id, revision: idea.revision } : missing;
+  },
+  async "idea.restore"(tx, ownerId, change) {
+    const idea = await ideas.restoreIdea(tx, ownerId, change.entityId);
+    return idea ? { status: "applied", entityId: idea.id, revision: idea.revision } : missing;
+  },
+
+  // Never erases what the person did not see: a change made since, or an outline they were not told of.
+  async "idea.delete"(tx, ownerId, change) {
+    const payload = ideaDeletePayloadSchema.safeParse(change.payload ?? undefined);
+    if (!payload.success || change.baseRevision === undefined) {
+      return { status: "rejected", reason: "validation" };
+    }
+    const [row] = await tx
+      .select({ revision: ideaRows.revision })
+      .from(ideaRows)
+      .where(and(eq(ideaRows.id, change.entityId), eq(ideaRows.ownerId, ownerId)))
+      .for("update");
+    // Gone already: there is nothing left to delete, and nothing to lose.
+    if (!row) return { status: "applied", entityId: change.entityId };
+    if (row.revision !== change.baseRevision) return stale(tx, ownerId, change.entityId);
+    if (!payload.data.outline) {
+      const outlines = await outlineIdsForSermons(tx, ownerId, [change.entityId]);
+      if (outlines.size > 0) return { status: "conflict", conflict: { reason: "outline" } };
+    }
+    const outcome = await ideas.deleteIdea(tx, ownerId, change.entityId);
+    if (outcome === "preached") return { status: "conflict", conflict: { reason: "preached" } };
+    return { status: "applied", entityId: change.entityId };
   },
 };
 

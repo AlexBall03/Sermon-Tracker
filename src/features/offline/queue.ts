@@ -1,4 +1,6 @@
-import { openOfflineDb } from "./db";
+import type { IDBPObjectStore, StoreNames } from "idb";
+
+import { openOfflineDb, type OfflineSchema } from "./db";
 import {
   mutationSchemaVersions,
   type MutationErrorKind,
@@ -49,6 +51,9 @@ const changed = () => {
   tabs()?.postMessage("changed");
 };
 
+/** For a change written beside other stores (ideas/operations.ts): tells this tab and the others, once committed. */
+export const announceQueueChange = changed;
+
 /** Called after any change to the queue, in this tab or another. */
 export function onQueueChange(listener: Listener) {
   tabs();
@@ -65,19 +70,29 @@ export type NewMutation = {
   baseRevision?: number;
 };
 
+export type MutationStore = IDBPObjectStore<
+  OfflineSchema,
+  ArrayLike<StoreNames<OfflineSchema>>,
+  "mutations",
+  "readwrite"
+>;
+
 /**
- * Adds a change to the owner's queue. Adding the same `opId` again keeps the
- * first, so a retried write never makes two.
+ * Adds a change to the owner's queue inside a transaction the caller holds,
+ * so it is written with what else that transaction writes or not at all.
+ * The caller announces it (`announceQueueChange`) once the transaction is done.
+ * Returns the record, and whether it is new: the same `opId` again keeps the first.
  */
-export async function enqueue(owner: string, change: NewMutation): Promise<MutationRecord> {
+export async function putMutation(
+  store: MutationStore,
+  owner: string,
+  change: NewMutation,
+): Promise<{ record: MutationRecord; added: boolean }> {
   if (!owner) throw new Error("A queued change needs its owner.");
-  const db = await openOfflineDb();
-  const tx = db.transaction("mutations", "readwrite");
-  const existing = await tx.store.get(change.opId);
+  const existing = await store.get(change.opId);
   if (existing) {
-    await tx.done;
     if (existing.owner !== owner) throw new Error("That change belongs to another account.");
-    return existing;
+    return { record: existing, added: false };
   }
   const record: MutationRecord = {
     ...change,
@@ -87,23 +102,62 @@ export async function enqueue(owner: string, change: NewMutation): Promise<Mutat
     attempts: 0,
     status: "pending",
   };
-  await tx.store.add(record);
-  await tx.done;
-  changed();
-  return record;
+  await store.add(record);
+  return { record, added: true };
 }
 
-/** The owner's queued changes, oldest first; of one type when asked. */
+/**
+ * Adds a change to the owner's queue. Adding the same `opId` again keeps the
+ * first, so a retried write never makes two.
+ */
+export async function enqueue(owner: string, change: NewMutation): Promise<MutationRecord> {
+  if (!owner) throw new Error("A queued change needs its owner.");
+  const db = await openOfflineDb();
+  const tx = db.transaction("mutations", "readwrite");
+  const done = putMutation(tx.store, owner, change);
+  // A refusal (another account's ID) still lets the transaction finish before it is thrown.
+  const [outcome] = await Promise.allSettled([done, tx.done]);
+  if (outcome.status === "rejected") throw outcome.reason;
+  if (outcome.value.added) changed();
+  return outcome.value.record;
+}
+
+/** The owner's queued changes, oldest first; of one type, or about one thing, when asked. */
 export async function listMutations(
   owner: string,
-  filter: { type?: MutationType } = {},
+  filter: { type?: MutationType; entityId?: string } = {},
 ): Promise<MutationRecord[]> {
   if (!owner) return [];
   const db = await openOfflineDb();
   const records = await db.getAllFromIndex("mutations", "owner", owner);
   return records
-    .filter((record) => record.status !== "done" && (!filter.type || record.type === filter.type))
-    .sort((a, b) => a.createdAt - b.createdAt);
+    .filter(
+      (record) =>
+        record.status !== "done" &&
+        (!filter.type || record.type === filter.type) &&
+        (!filter.entityId || record.entityId === filter.entityId),
+    )
+    .sort(byAge);
+}
+
+/** Oldest first; the opId settles a tie, so the order is the same in every tab. */
+export const byAge = (a: MutationRecord, b: MutationRecord) =>
+  a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0);
+
+/**
+ * The records that may be sent now: those with no older record about the same
+ * thing still queued. A change is made on top of the ones before it, so it is
+ * never sent past one that has not been acknowledged (waiting, failed, or in
+ * conflict); it waits behind it.
+ */
+export function sendable(records: MutationRecord[]): MutationRecord[] {
+  const ahead = new Set<string>();
+  const free: MutationRecord[] = [];
+  for (const record of [...records].sort(byAge)) {
+    if (!ahead.has(record.entityId)) free.push(record);
+    ahead.add(record.entityId);
+  }
+  return free;
 }
 
 /**
@@ -216,17 +270,33 @@ export function retryMutation(owner: string, opId: string) {
   );
 }
 
+/** What a person's choice in a conflict makes of the change; what it leaves out stays. */
+export type Resolution = {
+  payload?: unknown;
+  baseRevision?: number;
+  type?: MutationType;
+  entityId?: string;
+};
+
 /**
  * The person settles a conflict by choosing what the change should say
- * (a capture without the tags that are gone). It is sent again as the same
- * change, under the same ID.
+ * (a capture without the tags that are gone, an edit made over the server's
+ * newer copy, a deletion turned into archiving). It is sent again under the
+ * same ID: the server wrote nothing for it, so that is still its first time.
  */
-export function resolveMutation(owner: string, opId: string, payload: unknown) {
+export function resolveMutation(owner: string, opId: string, resolution: Resolution) {
   return update(owner, opId, (record) =>
     record.status === "conflict"
       ? {
           ...record,
-          payload,
+          ...("payload" in resolution ? { payload: resolution.payload } : {}),
+          ...(resolution.baseRevision !== undefined
+            ? { baseRevision: resolution.baseRevision }
+            : {}),
+          ...(resolution.type
+            ? { type: resolution.type, schemaVersion: mutationSchemaVersions[resolution.type] }
+            : {}),
+          ...(resolution.entityId ? { entityId: resolution.entityId } : {}),
           status: "pending",
           autoAttempts: 0,
           nextAttemptAt: undefined,
@@ -235,6 +305,43 @@ export function resolveMutation(owner: string, opId: string, payload: unknown) {
         }
       : undefined,
   );
+}
+
+/**
+ * After the server acknowledged a change to one thing at `revision`, the
+ * changes queued behind it, which were made on top of it, are made against
+ * that revision: the server then checks them against what they really follow.
+ */
+export async function rebaseFollowing(owner: string, entityId: string, revision: number) {
+  const db = await openOfflineDb();
+  const tx = db.transaction("mutations", "readwrite");
+  const records = await tx.store.index("owner").getAll(owner);
+  let moved = 0;
+  for (const record of records) {
+    if (record.entityId !== entityId || record.status === "sending") continue;
+    if (record.type === "idea.create" || record.baseRevision === revision) continue;
+    await tx.store.put({ ...record, baseRevision: revision });
+    moved++;
+  }
+  await tx.done;
+  if (moved) changed();
+}
+
+/**
+ * Points the owner's changes about one thing at another (an edit to an idea
+ * deleted elsewhere, saved as a new idea instead). Never one being sent.
+ */
+export async function retargetMutations(owner: string, from: string, to: string) {
+  const db = await openOfflineDb();
+  const tx = db.transaction("mutations", "readwrite");
+  const records = await tx.store.index("owner").getAll(owner);
+  for (const record of records) {
+    if (record.entityId === from && record.status !== "sending") {
+      await tx.store.put({ ...record, entityId: to });
+    }
+  }
+  await tx.done;
+  changed();
 }
 
 /**

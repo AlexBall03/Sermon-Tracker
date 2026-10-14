@@ -1,10 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useCallback, useContext, useEffect } from "react";
 
 import { useReading } from "@/features/preferences/client";
 import { clearActiveAccount, setActiveAccount, setPermittedTranslations } from "../account";
 import { autoDownload } from "../bible/auto";
+import { refreshDue, refreshIdeas } from "../ideas/refresh";
+import { useOfflineSettings } from "../settings";
 import { SyncAgent } from "../sync/agent";
 
 const OfflineAccountContext = createContext<string | null>(null);
@@ -28,6 +30,9 @@ export function OfflineAccountProvider({
   return <OfflineAccountContext value={account}>{children}</OfflineAccountContext>;
 }
 
+/** How long a kept copy of the ideas goes before it is checked again by itself. */
+const ideasRefreshEvery = 5 * 60 * 1000;
+
 /** Runs `task` when the browser is idle, so it never competes with the page arriving. */
 function whenIdle(task: () => void) {
   if (typeof window.requestIdleCallback === "function") {
@@ -42,7 +47,10 @@ function whenIdle(task: () => void) {
  * Mounted once in the signed-in shell, for the account signed in. It tells
  * this device who is signed in and which translations they may read, for the
  * offline page; then, once the page is idle, it keeps the reading translation
- * downloaded (bible/auto.ts). It draws nothing and never holds the page up:
+ * downloaded (bible/auto.ts) and, unless this device was told not to, a copy
+ * of the account's ideas current (ideas/refresh.ts): on opening, on coming
+ * back online or to the front once a while has passed, and after the server
+ * acknowledged changes sent from here. It draws nothing and never holds the page up:
  * anything it cannot do is shown in Settings, not here.
  */
 export function OfflineAgent({
@@ -67,9 +75,35 @@ export function OfflineAgent({
 
   useEffect(() => whenIdle(() => void autoDownload(translation).catch(() => {})), [translation]);
 
+  const { ideasOffline } = useOfflineSettings();
+  const refresh = useCallback(
+    (force: boolean) => {
+      if (!ideasOffline) return;
+      void (async () => {
+        if (force || (await refreshDue(account, ideasRefreshEvery))) await refreshIdeas(account);
+      })().catch(() => {});
+    },
+    [account, ideasOffline],
+  );
+  useEffect(() => {
+    const cancel = whenIdle(() => refresh(false));
+    const online = () => refresh(false);
+    const visible = () => document.visibilityState === "visible" && refresh(false);
+    window.addEventListener("online", online);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      cancel();
+      window.removeEventListener("online", online);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [refresh]);
+  const synced = useCallback(() => refresh(true), [refresh]);
+
   return (
     <OfflineAccountProvider account={account}>
-      <SyncAgent account={account}>{children}</SyncAgent>
+      <SyncAgent account={account} onSynced={synced}>
+        {children}
+      </SyncAgent>
     </OfflineAccountProvider>
   );
 }

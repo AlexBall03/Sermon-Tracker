@@ -1,0 +1,2657 @@
+{
+  "id": "5751ad04-54bc-4ad4-99f1-58eb61bd1cef",
+  "prevId": "bc5f020b-1805-4063-a123-33665fc6f1eb",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_settings": {
+      "name": "app_settings",
+      "schema": "",
+      "columns": {
+        "singleton": {
+          "name": "singleton",
+          "type": "boolean",
+          "primaryKey": true,
+          "notNull": true,
+          "default": true
+        },
+        "spanish_enabled": {
+          "name": "spanish_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "app_settings_updated_by_users_id_fk": {
+          "name": "app_settings_updated_by_users_id_fk",
+          "tableFrom": "app_settings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "app_settings_singleton_check": {
+          "name": "app_settings_singleton_check",
+          "value": "\"app_settings\".\"singleton\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bible_favorite_verses": {
+      "name": "bible_favorite_verses",
+      "schema": "",
+      "columns": {
+        "favorite_id": {
+          "name": "favorite_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter": {
+          "name": "chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse": {
+          "name": "verse",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "bible_favorite_verses_owner_place_idx": {
+          "name": "bible_favorite_verses_owner_place_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "book",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "chapter",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bible_favorite_verses_favorite_fk": {
+          "name": "bible_favorite_verses_favorite_fk",
+          "tableFrom": "bible_favorite_verses",
+          "tableTo": "bible_favorites",
+          "columnsFrom": [
+            "favorite_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bible_favorite_verses_favorite_id_book_chapter_verse_pk": {
+          "name": "bible_favorite_verses_favorite_id_book_chapter_verse_pk",
+          "columns": [
+            "favorite_id",
+            "book",
+            "chapter",
+            "verse"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "bible_favorite_verses_position_key": {
+          "name": "bible_favorite_verses_position_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "favorite_id",
+            "position"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "bible_favorite_verses_place_check": {
+          "name": "bible_favorite_verses_place_check",
+          "value": "\"bible_favorite_verses\".\"book\" between 1 and 66 and \"bible_favorite_verses\".\"chapter\" >= 1 and \"bible_favorite_verses\".\"verse\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bible_favorites": {
+      "name": "bible_favorites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "translation": {
+          "name": "translation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selection_key": {
+          "name": "selection_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_book": {
+          "name": "first_book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_chapter": {
+          "name": "first_chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_verse": {
+          "name": "first_verse",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bible_favorites_owner_created_idx": {
+          "name": "bible_favorites_owner_created_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bible_favorites_owner_updated_idx": {
+          "name": "bible_favorites_owner_updated_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bible_favorites_owner_place_idx": {
+          "name": "bible_favorites_owner_place_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_book",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_chapter",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_verse",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bible_favorites_owner_id_users_id_fk": {
+          "name": "bible_favorites_owner_id_users_id_fk",
+          "tableFrom": "bible_favorites",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "bible_favorites_selection_key": {
+          "name": "bible_favorites_selection_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "owner_id",
+            "translation",
+            "selection_key"
+          ]
+        },
+        "bible_favorites_id_owner_key": {
+          "name": "bible_favorites_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "bible_favorites_translation_check": {
+          "name": "bible_favorites_translation_check",
+          "value": "\"bible_favorites\".\"translation\" in ('kjv', 'rvg')"
+        },
+        "bible_favorites_label_check": {
+          "name": "bible_favorites_label_check",
+          "value": "\"bible_favorites\".\"label\" is null or char_length(btrim(\"bible_favorites\".\"label\")) between 1 and 120"
+        },
+        "bible_favorites_notes_check": {
+          "name": "bible_favorites_notes_check",
+          "value": "\"bible_favorites\".\"notes\" is null or char_length(\"bible_favorites\".\"notes\") <= 2000"
+        },
+        "bible_favorites_first_check": {
+          "name": "bible_favorites_first_check",
+          "value": "\"bible_favorites\".\"first_book\" between 1 and 66"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bible_highlights": {
+      "name": "bible_highlights",
+      "schema": "",
+      "columns": {
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "translation": {
+          "name": "translation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter": {
+          "name": "chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse": {
+          "name": "verse",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "bible_highlights_owner_id_users_id_fk": {
+          "name": "bible_highlights_owner_id_users_id_fk",
+          "tableFrom": "bible_highlights",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bible_highlights_owner_id_translation_book_chapter_verse_pk": {
+          "name": "bible_highlights_owner_id_translation_book_chapter_verse_pk",
+          "columns": [
+            "owner_id",
+            "translation",
+            "book",
+            "chapter",
+            "verse"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bible_highlights_translation_check": {
+          "name": "bible_highlights_translation_check",
+          "value": "\"bible_highlights\".\"translation\" in ('kjv', 'rvg')"
+        },
+        "bible_highlights_color_check": {
+          "name": "bible_highlights_color_check",
+          "value": "\"bible_highlights\".\"color\" in ('yellow', 'green', 'blue', 'red')"
+        },
+        "bible_highlights_place_check": {
+          "name": "bible_highlights_place_check",
+          "value": "\"bible_highlights\".\"book\" between 1 and 66 and \"bible_highlights\".\"chapter\" >= 1 and \"bible_highlights\".\"verse\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bible_psalm_titles": {
+      "name": "bible_psalm_titles",
+      "schema": "",
+      "columns": {
+        "psalm": {
+          "name": "psalm",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bible_psalm_titles_psalm_check": {
+          "name": "bible_psalm_titles_psalm_check",
+          "value": "\"bible_psalm_titles\".\"psalm\" between 1 and 150"
+        },
+        "bible_psalm_titles_text_check": {
+          "name": "bible_psalm_titles_text_check",
+          "value": "char_length(btrim(\"bible_psalm_titles\".\"text\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bible_verses": {
+      "name": "bible_verses",
+      "schema": "",
+      "columns": {
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter": {
+          "name": "chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse": {
+          "name": "verse",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "bible_verses_search_idx": {
+          "name": "bible_verses_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', \"text\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "bible_verses_book_chapter_verse_pk": {
+          "name": "bible_verses_book_chapter_verse_pk",
+          "columns": [
+            "book",
+            "chapter",
+            "verse"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.idea_scripture_references": {
+      "name": "idea_scripture_references",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "idea_id": {
+          "name": "idea_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter_start": {
+          "name": "chapter_start",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse_start": {
+          "name": "verse_start",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chapter_end": {
+          "name": "chapter_end",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verse_end": {
+          "name": "verse_end",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idea_scripture_references_primary_key": {
+          "name": "idea_scripture_references_primary_key",
+          "columns": [
+            {
+              "expression": "idea_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"idea_scripture_references\".\"is_primary\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idea_scripture_references_idea_id_ideas_id_fk": {
+          "name": "idea_scripture_references_idea_id_ideas_id_fk",
+          "tableFrom": "idea_scripture_references",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "idea_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idea_scripture_references_position_key": {
+          "name": "idea_scripture_references_position_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idea_id",
+            "position"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idea_scripture_references_book_check": {
+          "name": "idea_scripture_references_book_check",
+          "value": "\"idea_scripture_references\".\"book\" between 1 and 66"
+        },
+        "idea_scripture_references_start_check": {
+          "name": "idea_scripture_references_start_check",
+          "value": "\"idea_scripture_references\".\"chapter_start\" >= 1 and (\"idea_scripture_references\".\"verse_start\" is null or \"idea_scripture_references\".\"verse_start\" >= 1)"
+        },
+        "idea_scripture_references_chapter_end_check": {
+          "name": "idea_scripture_references_chapter_end_check",
+          "value": "\"idea_scripture_references\".\"chapter_end\" is null or \"idea_scripture_references\".\"chapter_end\" > \"idea_scripture_references\".\"chapter_start\""
+        },
+        "idea_scripture_references_verse_end_check": {
+          "name": "idea_scripture_references_verse_end_check",
+          "value": "\"idea_scripture_references\".\"verse_end\" is null or (\"idea_scripture_references\".\"verse_start\" is not null and \"idea_scripture_references\".\"verse_end\" >= 1 and (\"idea_scripture_references\".\"chapter_end\" is not null or \"idea_scripture_references\".\"verse_end\" > \"idea_scripture_references\".\"verse_start\"))"
+        },
+        "idea_scripture_references_range_check": {
+          "name": "idea_scripture_references_range_check",
+          "value": "\"idea_scripture_references\".\"chapter_end\" is null or (\"idea_scripture_references\".\"verse_start\" is null) = (\"idea_scripture_references\".\"verse_end\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idea_tags": {
+      "name": "idea_tags",
+      "schema": "",
+      "columns": {
+        "idea_id": {
+          "name": "idea_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tag_id": {
+          "name": "tag_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idea_tags_tag_idx": {
+          "name": "idea_tags_tag_idx",
+          "columns": [
+            {
+              "expression": "tag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idea_tags_idea_fk": {
+          "name": "idea_tags_idea_fk",
+          "tableFrom": "idea_tags",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "idea_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idea_tags_tag_fk": {
+          "name": "idea_tags_tag_fk",
+          "tableFrom": "idea_tags",
+          "tableTo": "tags",
+          "columnsFrom": [
+            "tag_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idea_tags_idea_id_tag_id_pk": {
+          "name": "idea_tags_idea_id_tag_id_pk",
+          "columns": [
+            "idea_id",
+            "tag_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ideas": {
+      "name": "ideas",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'undecided'"
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'idea'"
+        },
+        "intended_format": {
+          "name": "intended_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unspecified'"
+        },
+        "sermon_type": {
+          "name": "sermon_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unspecified'"
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_developed_at": {
+          "name": "last_developed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ideas_owner_updated_idx": {
+          "name": "ideas_owner_updated_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ideas_owner_created_idx": {
+          "name": "ideas_owner_created_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ideas_owner_id_users_id_fk": {
+          "name": "ideas_owner_id_users_id_fk",
+          "tableFrom": "ideas",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ideas_id_owner_key": {
+          "name": "ideas_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ideas_kind_check": {
+          "name": "ideas_kind_check",
+          "value": "\"ideas\".\"kind\" in ('sermon', 'point', 'undecided')"
+        },
+        "ideas_status_check": {
+          "name": "ideas_status_check",
+          "value": "\"ideas\".\"status\" in ('idea', 'developing', 'ready', 'on_hold')"
+        },
+        "ideas_intended_format_check": {
+          "name": "ideas_intended_format_check",
+          "value": "\"ideas\".\"intended_format\" in ('full_length', 'mini', 'flexible', 'unspecified')"
+        },
+        "ideas_sermon_type_check": {
+          "name": "ideas_sermon_type_check",
+          "value": "\"ideas\".\"sermon_type\" in ('topical', 'textual', 'expository', 'unspecified')"
+        },
+        "ideas_title_check": {
+          "name": "ideas_title_check",
+          "value": "char_length(btrim(\"ideas\".\"title\")) between 1 and 200"
+        },
+        "ideas_subject_check": {
+          "name": "ideas_subject_check",
+          "value": "\"ideas\".\"subject\" is null or char_length(\"ideas\".\"subject\") between 1 and 200"
+        },
+        "ideas_notes_check": {
+          "name": "ideas_notes_check",
+          "value": "\"ideas\".\"notes\" is null or char_length(\"ideas\".\"notes\") <= 20000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.outline_entries": {
+      "name": "outline_entries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "outline_id": {
+          "name": "outline_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entry_type": {
+          "name": "entry_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'point'"
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_point_id": {
+          "name": "source_point_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "outline_entries_section_key": {
+          "name": "outline_entries_section_key",
+          "columns": [
+            {
+              "expression": "outline_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entry_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"outline_entries\".\"entry_type\" <> 'point'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "outline_entries_root_position_key": {
+          "name": "outline_entries_root_position_key",
+          "columns": [
+            {
+              "expression": "outline_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"outline_entries\".\"parent_id\" is null and \"outline_entries\".\"entry_type\" = 'point'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "outline_entries_child_position_key": {
+          "name": "outline_entries_child_position_key",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"outline_entries\".\"parent_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "outline_entries_outline_idx": {
+          "name": "outline_entries_outline_idx",
+          "columns": [
+            {
+              "expression": "outline_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "outline_entries_source_point_idx": {
+          "name": "outline_entries_source_point_idx",
+          "columns": [
+            {
+              "expression": "source_point_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "outline_entries_outline_fk": {
+          "name": "outline_entries_outline_fk",
+          "tableFrom": "outline_entries",
+          "tableTo": "sermon_outlines",
+          "columnsFrom": [
+            "outline_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "outline_entries_parent_fk": {
+          "name": "outline_entries_parent_fk",
+          "tableFrom": "outline_entries",
+          "tableTo": "outline_entries",
+          "columnsFrom": [
+            "parent_id",
+            "outline_id"
+          ],
+          "columnsTo": [
+            "id",
+            "outline_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "outline_entries_source_point_fk": {
+          "name": "outline_entries_source_point_fk",
+          "tableFrom": "outline_entries",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "source_point_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "outline_entries_id_outline_key": {
+          "name": "outline_entries_id_outline_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "outline_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "outline_entries_entry_type_check": {
+          "name": "outline_entries_entry_type_check",
+          "value": "\"outline_entries\".\"entry_type\" in ('introduction', 'point', 'conclusion')"
+        },
+        "outline_entries_section_root_check": {
+          "name": "outline_entries_section_root_check",
+          "value": "\"outline_entries\".\"entry_type\" = 'point' or \"outline_entries\".\"parent_id\" is null"
+        },
+        "outline_entries_not_own_parent_check": {
+          "name": "outline_entries_not_own_parent_check",
+          "value": "\"outline_entries\".\"parent_id\" is null or \"outline_entries\".\"parent_id\" <> \"outline_entries\".\"id\""
+        },
+        "outline_entries_title_check": {
+          "name": "outline_entries_title_check",
+          "value": "char_length(\"outline_entries\".\"title\") <= 200"
+        },
+        "outline_entries_notes_check": {
+          "name": "outline_entries_notes_check",
+          "value": "\"outline_entries\".\"notes\" is null or char_length(\"outline_entries\".\"notes\") between 1 and 2000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.outline_entry_scripture_references": {
+      "name": "outline_entry_scripture_references",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entry_id": {
+          "name": "entry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter_start": {
+          "name": "chapter_start",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse_start": {
+          "name": "verse_start",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "chapter_end": {
+          "name": "chapter_end",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verse_end": {
+          "name": "verse_end",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "outline_entry_scripture_references_entry_fk": {
+          "name": "outline_entry_scripture_references_entry_fk",
+          "tableFrom": "outline_entry_scripture_references",
+          "tableTo": "outline_entries",
+          "columnsFrom": [
+            "entry_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "outline_entry_scripture_references_position_key": {
+          "name": "outline_entry_scripture_references_position_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "entry_id",
+            "position"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "outline_entry_scripture_references_book_check": {
+          "name": "outline_entry_scripture_references_book_check",
+          "value": "\"outline_entry_scripture_references\".\"book\" between 1 and 66"
+        },
+        "outline_entry_scripture_references_start_check": {
+          "name": "outline_entry_scripture_references_start_check",
+          "value": "\"outline_entry_scripture_references\".\"chapter_start\" >= 1 and (\"outline_entry_scripture_references\".\"verse_start\" is null or \"outline_entry_scripture_references\".\"verse_start\" >= 1)"
+        },
+        "outline_entry_scripture_references_chapter_end_check": {
+          "name": "outline_entry_scripture_references_chapter_end_check",
+          "value": "\"outline_entry_scripture_references\".\"chapter_end\" is null or \"outline_entry_scripture_references\".\"chapter_end\" > \"outline_entry_scripture_references\".\"chapter_start\""
+        },
+        "outline_entry_scripture_references_verse_end_check": {
+          "name": "outline_entry_scripture_references_verse_end_check",
+          "value": "\"outline_entry_scripture_references\".\"verse_end\" is null or (\"outline_entry_scripture_references\".\"verse_start\" is not null and \"outline_entry_scripture_references\".\"verse_end\" >= 1 and (\"outline_entry_scripture_references\".\"chapter_end\" is not null or \"outline_entry_scripture_references\".\"verse_end\" > \"outline_entry_scripture_references\".\"verse_start\"))"
+        },
+        "outline_entry_scripture_references_range_check": {
+          "name": "outline_entry_scripture_references_range_check",
+          "value": "\"outline_entry_scripture_references\".\"chapter_end\" is null or (\"outline_entry_scripture_references\".\"verse_start\" is null) = (\"outline_entry_scripture_references\".\"verse_end\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.preaching_contexts": {
+      "name": "preaching_contexts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "preaching_contexts_owner_name_key": {
+          "name": "preaching_contexts_owner_name_key",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "preaching_contexts_owner_id_users_id_fk": {
+          "name": "preaching_contexts_owner_id_users_id_fk",
+          "tableFrom": "preaching_contexts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "preaching_contexts_id_owner_key": {
+          "name": "preaching_contexts_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "preaching_contexts_name_check": {
+          "name": "preaching_contexts_name_check",
+          "value": "char_length(btrim(\"preaching_contexts\".\"name\")) between 1 and 80"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.preaching_occurrences": {
+      "name": "preaching_occurrences",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sermon_id": {
+          "name": "sermon_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preached_on": {
+          "name": "preached_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_of_day": {
+          "name": "time_of_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "context_id": {
+          "name": "context_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actual_format": {
+          "name": "actual_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unspecified'"
+        },
+        "duration_minutes": {
+          "name": "duration_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recording_url": {
+          "name": "recording_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "preaching_occurrences_owner_date_idx": {
+          "name": "preaching_occurrences_owner_date_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "preached_on",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "preaching_occurrences_sermon_idx": {
+          "name": "preaching_occurrences_sermon_idx",
+          "columns": [
+            {
+              "expression": "sermon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "preached_on",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "preaching_occurrences_venue_idx": {
+          "name": "preaching_occurrences_venue_idx",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "preaching_occurrences_context_idx": {
+          "name": "preaching_occurrences_context_idx",
+          "columns": [
+            {
+              "expression": "context_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "preaching_occurrences_owner_id_users_id_fk": {
+          "name": "preaching_occurrences_owner_id_users_id_fk",
+          "tableFrom": "preaching_occurrences",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "preaching_occurrences_sermon_fk": {
+          "name": "preaching_occurrences_sermon_fk",
+          "tableFrom": "preaching_occurrences",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "sermon_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "preaching_occurrences_venue_fk": {
+          "name": "preaching_occurrences_venue_fk",
+          "tableFrom": "preaching_occurrences",
+          "tableTo": "preaching_venues",
+          "columnsFrom": [
+            "venue_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "preaching_occurrences_context_fk": {
+          "name": "preaching_occurrences_context_fk",
+          "tableFrom": "preaching_occurrences",
+          "tableTo": "preaching_contexts",
+          "columnsFrom": [
+            "context_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "preaching_occurrences_time_of_day_check": {
+          "name": "preaching_occurrences_time_of_day_check",
+          "value": "\"preaching_occurrences\".\"time_of_day\" is null or \"preaching_occurrences\".\"time_of_day\" in ('am', 'pm')"
+        },
+        "preaching_occurrences_actual_format_check": {
+          "name": "preaching_occurrences_actual_format_check",
+          "value": "\"preaching_occurrences\".\"actual_format\" in ('full_length', 'mini', 'flexible', 'unspecified')"
+        },
+        "preaching_occurrences_duration_check": {
+          "name": "preaching_occurrences_duration_check",
+          "value": "\"preaching_occurrences\".\"duration_minutes\" is null or \"preaching_occurrences\".\"duration_minutes\" between 0 and 1440"
+        },
+        "preaching_occurrences_notes_check": {
+          "name": "preaching_occurrences_notes_check",
+          "value": "\"preaching_occurrences\".\"notes\" is null or char_length(\"preaching_occurrences\".\"notes\") <= 5000"
+        },
+        "preaching_occurrences_recording_url_check": {
+          "name": "preaching_occurrences_recording_url_check",
+          "value": "\"preaching_occurrences\".\"recording_url\" is null or (\"preaching_occurrences\".\"recording_url\" like 'https://%' and char_length(\"preaching_occurrences\".\"recording_url\") <= 2048)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.preaching_venues": {
+      "name": "preaching_venues",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "locality": {
+          "name": "locality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "preaching_venues_owner_name_key": {
+          "name": "preaching_venues_owner_name_key",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "preaching_venues_owner_id_users_id_fk": {
+          "name": "preaching_venues_owner_id_users_id_fk",
+          "tableFrom": "preaching_venues",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "preaching_venues_id_owner_key": {
+          "name": "preaching_venues_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "preaching_venues_name_check": {
+          "name": "preaching_venues_name_check",
+          "value": "char_length(btrim(\"preaching_venues\".\"name\")) between 1 and 80"
+        },
+        "preaching_venues_locality_check": {
+          "name": "preaching_venues_locality_check",
+          "value": "\"preaching_venues\".\"locality\" is null or char_length(btrim(\"preaching_venues\".\"locality\")) between 1 and 120"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.reference_datasets": {
+      "name": "reference_datasets",
+      "schema": "",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "row_count": {
+          "name": "row_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "loaded_at": {
+          "name": "loaded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scripture_psalm_titles": {
+      "name": "scripture_psalm_titles",
+      "schema": "",
+      "columns": {
+        "translation": {
+          "name": "translation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "psalm": {
+          "name": "psalm",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "scripture_psalm_titles_translation_psalm_pk": {
+          "name": "scripture_psalm_titles_translation_psalm_pk",
+          "columns": [
+            "translation",
+            "psalm"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "scripture_psalm_titles_translation_check": {
+          "name": "scripture_psalm_titles_translation_check",
+          "value": "\"scripture_psalm_titles\".\"translation\" in ('kjv', 'rvg')"
+        },
+        "scripture_psalm_titles_psalm_check": {
+          "name": "scripture_psalm_titles_psalm_check",
+          "value": "\"scripture_psalm_titles\".\"psalm\" between 1 and 150"
+        },
+        "scripture_psalm_titles_text_check": {
+          "name": "scripture_psalm_titles_text_check",
+          "value": "char_length(btrim(\"scripture_psalm_titles\".\"text\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.scripture_verses": {
+      "name": "scripture_verses",
+      "schema": "",
+      "columns": {
+        "translation": {
+          "name": "translation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book": {
+          "name": "book",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter": {
+          "name": "chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse": {
+          "name": "verse",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "scripture_verses_search_idx": {
+          "name": "scripture_verses_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('simple', translate(\"text\", 'áéíóúüÁÉÍÓÚÜ', 'aeiouuAEIOUU'))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "scripture_verses_translation_book_chapter_verse_pk": {
+          "name": "scripture_verses_translation_book_chapter_verse_pk",
+          "columns": [
+            "translation",
+            "book",
+            "chapter",
+            "verse"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "scripture_verses_translation_check": {
+          "name": "scripture_verses_translation_check",
+          "value": "\"scripture_verses\".\"translation\" in ('kjv', 'rvg')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sermon_outlines": {
+      "name": "sermon_outlines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sermon_id": {
+          "name": "sermon_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numbering_config": {
+          "name": "numbering_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"version\":1,\"preset\":\"traditional\"}'::jsonb"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sermon_outlines_owner_updated_idx": {
+          "name": "sermon_outlines_owner_updated_idx",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sermon_outlines_sermon_fk": {
+          "name": "sermon_outlines_sermon_fk",
+          "tableFrom": "sermon_outlines",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "sermon_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sermon_outlines_sermon_key": {
+          "name": "sermon_outlines_sermon_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "sermon_id"
+          ]
+        },
+        "sermon_outlines_id_owner_key": {
+          "name": "sermon_outlines_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "sermon_outlines_numbering_config_check": {
+          "name": "sermon_outlines_numbering_config_check",
+          "value": "jsonb_typeof(\"sermon_outlines\".\"numbering_config\") = 'object' and char_length(\"sermon_outlines\".\"numbering_config\"::text) <= 4000"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sermon_points": {
+      "name": "sermon_points",
+      "schema": "",
+      "columns": {
+        "sermon_id": {
+          "name": "sermon_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "point_id": {
+          "name": "point_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sermon_points_point_idx": {
+          "name": "sermon_points_point_idx",
+          "columns": [
+            {
+              "expression": "point_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sermon_points_sermon_fk": {
+          "name": "sermon_points_sermon_fk",
+          "tableFrom": "sermon_points",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "sermon_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sermon_points_point_fk": {
+          "name": "sermon_points_point_fk",
+          "tableFrom": "sermon_points",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "point_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sermon_points_sermon_id_point_id_pk": {
+          "name": "sermon_points_sermon_id_point_id_pk",
+          "columns": [
+            "sermon_id",
+            "point_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "sermon_points_distinct_check": {
+          "name": "sermon_points_distinct_check",
+          "value": "\"sermon_points\".\"sermon_id\" <> \"sermon_points\".\"point_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sermon_relations": {
+      "name": "sermon_relations",
+      "schema": "",
+      "columns": {
+        "sermon_a_id": {
+          "name": "sermon_a_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sermon_b_id": {
+          "name": "sermon_b_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "sermon_relations_sermon_b_idx": {
+          "name": "sermon_relations_sermon_b_idx",
+          "columns": [
+            {
+              "expression": "sermon_b_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sermon_relations_sermon_a_fk": {
+          "name": "sermon_relations_sermon_a_fk",
+          "tableFrom": "sermon_relations",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "sermon_a_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sermon_relations_sermon_b_fk": {
+          "name": "sermon_relations_sermon_b_fk",
+          "tableFrom": "sermon_relations",
+          "tableTo": "ideas",
+          "columnsFrom": [
+            "sermon_b_id",
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id",
+            "owner_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sermon_relations_sermon_a_id_sermon_b_id_pk": {
+          "name": "sermon_relations_sermon_a_id_sermon_b_id_pk",
+          "columns": [
+            "sermon_a_id",
+            "sermon_b_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "sermon_relations_order_check": {
+          "name": "sermon_relations_order_check",
+          "value": "\"sermon_relations\".\"sermon_a_id\" < \"sermon_relations\".\"sermon_b_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.sync_operations": {
+      "name": "sync_operations",
+      "schema": "",
+      "columns": {
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "op_id": {
+          "name": "op_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sync_operations_owner_id_users_id_fk": {
+          "name": "sync_operations_owner_id_users_id_fk",
+          "tableFrom": "sync_operations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "sync_operations_owner_id_op_id_pk": {
+          "name": "sync_operations_owner_id_op_id_pk",
+          "columns": [
+            "owner_id",
+            "op_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tags": {
+      "name": "tags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tags_owner_name_key": {
+          "name": "tags_owner_name_key",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tags_owner_id_users_id_fk": {
+          "name": "tags_owner_id_users_id_fk",
+          "tableFrom": "tags",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tags_id_owner_key": {
+          "name": "tags_id_owner_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "owner_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "tags_name_check": {
+          "name": "tags_name_check",
+          "value": "char_length(btrim(\"tags\".\"name\")) between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "clerk_user_id": {
+          "name": "clerk_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en'"
+        },
+        "bible_translation": {
+          "name": "bible_translation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "church_name": {
+          "name": "church_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ministry_role": {
+          "name": "ministry_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attends_preaching_class": {
+          "name": "attends_preaching_class",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "onboarding_status": {
+          "name": "onboarding_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "onboarding_step": {
+          "name": "onboarding_step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'welcome'"
+        },
+        "onboarding_completed_at": {
+          "name": "onboarding_completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tour_state": {
+          "name": "tour_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'not_offered'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_clerk_user_id_unique": {
+          "name": "users_clerk_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "clerk_user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "users_role_check": {
+          "name": "users_role_check",
+          "value": "\"users\".\"role\" in ('admin', 'user')"
+        },
+        "users_status_check": {
+          "name": "users_status_check",
+          "value": "\"users\".\"status\" in ('active', 'disabled')"
+        },
+        "users_locale_check": {
+          "name": "users_locale_check",
+          "value": "\"users\".\"locale\" in ('en', 'es')"
+        },
+        "users_bible_translation_check": {
+          "name": "users_bible_translation_check",
+          "value": "\"users\".\"bible_translation\" is null or \"users\".\"bible_translation\" in ('kjv', 'rvg')"
+        },
+        "users_church_name_check": {
+          "name": "users_church_name_check",
+          "value": "\"users\".\"church_name\" is null or char_length(btrim(\"users\".\"church_name\")) between 1 and 120"
+        },
+        "users_ministry_role_check": {
+          "name": "users_ministry_role_check",
+          "value": "\"users\".\"ministry_role\" is null or char_length(btrim(\"users\".\"ministry_role\")) between 1 and 80"
+        },
+        "users_onboarding_status_check": {
+          "name": "users_onboarding_status_check",
+          "value": "\"users\".\"onboarding_status\" in ('pending', 'completed', 'grandfathered')"
+        },
+        "users_onboarding_step_check": {
+          "name": "users_onboarding_step_check",
+          "value": "\"users\".\"onboarding_step\" in ('welcome', 'ministry', 'preferences', 'finish')"
+        },
+        "users_onboarding_completed_check": {
+          "name": "users_onboarding_completed_check",
+          "value": "(\"users\".\"onboarding_status\" = 'completed') = (\"users\".\"onboarding_completed_at\" is not null)"
+        },
+        "users_tour_state_check": {
+          "name": "users_tour_state_check",
+          "value": "\"users\".\"tour_state\" in ('not_offered', 'offered', 'dismissed', 'completed')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

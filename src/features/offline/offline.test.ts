@@ -56,8 +56,10 @@ describe("the offline database", () => {
     migrations.push((db) => void db.createObjectStore("later" as never));
     try {
       const db = await openOfflineDb();
-      expect(db.version).toBe(2);
+      expect(db.version).toBe(migrations.length);
       expect(db.objectStoreNames.contains("later" as never)).toBe(true);
+      // The 5D.1 step ran too: the account's copies can be read by kind.
+      expect(db.transaction("accountData").store.indexNames.contains("ownerKind")).toBe(true);
       expect(await db.get("meta", "probe")).toBe("kept");
     } finally {
       migrations.pop();
@@ -132,17 +134,29 @@ describe("the active account", () => {
 
 describe("the device's settings", () => {
   it("start from the defaults and keep what is changed", async () => {
-    expect(await readOfflineSettings()).toEqual({ captureOffline: true, autoBible: true });
+    expect(await readOfflineSettings()).toEqual({
+      captureOffline: true,
+      autoBible: true,
+      ideasOffline: true,
+    });
     await saveOfflineSettings({ autoBible: false });
     resetOfflineSettingsMemory();
-    expect(await readOfflineSettings()).toEqual({ captureOffline: true, autoBible: false });
+    expect(await readOfflineSettings()).toEqual({
+      captureOffline: true,
+      autoBible: false,
+      ideasOffline: true,
+    });
   });
 
   it("fall back to the defaults where storage is refused", async () => {
     await closeOfflineDb();
     // @ts-expect-error: no IndexedDB, as in some private windows.
     delete globalThis.indexedDB;
-    expect(await readOfflineSettings()).toEqual({ captureOffline: true, autoBible: true });
+    expect(await readOfflineSettings()).toEqual({
+      captureOffline: true,
+      autoBible: true,
+      ideasOffline: true,
+    });
     await expect(enqueue("owner-a", capture("op"))).rejects.toThrow(/unavailable/);
   });
 });

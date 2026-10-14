@@ -12,7 +12,14 @@ import {
 
 import { syncMutation } from "@/features/sync/actions";
 import type { MutationRecord } from "../model";
-import { listMutations, onQueueChange, resolveMutation, retryMutation } from "../queue";
+import { afterApplied } from "../ideas/sync";
+import {
+  listMutations,
+  onQueueChange,
+  resolveMutation,
+  retryMutation,
+  type Resolution,
+} from "../queue";
 import { lastSyncedAt, nextDue, runSync, type RunResult } from "./engine";
 
 export type SyncState = {
@@ -27,7 +34,7 @@ export type SyncState = {
   /** Send a failed or conflicting change again, as it is. */
   retry: (opId: string) => Promise<void>;
   /** Settle a conflict with what the change should now say, and send it. */
-  resolve: (opId: string, payload: unknown) => Promise<void>;
+  resolve: (opId: string, resolution: Resolution) => Promise<void>;
 };
 
 const SyncContext = createContext<SyncState | null>(null);
@@ -36,6 +43,9 @@ const SyncContext = createContext<SyncState | null>(null);
 export function useSync() {
   return useContext(SyncContext);
 }
+
+/** How soon to try again when another run was sending. */
+const busyRetryMs = 500;
 
 /** One queued change as the server's action takes it. */
 const send = (record: MutationRecord) =>
@@ -56,17 +66,35 @@ const send = (record: MutationRecord) =>
  * draws nothing. A queued change is durable, so nothing here holds unsaved
  * work: a reload in the middle of a send only means it is sent again.
  */
-export function SyncAgent({ account, children }: { account: string; children: React.ReactNode }) {
+export function SyncAgent({
+  account,
+  onSynced,
+  children,
+}: {
+  account: string;
+  /** Called after a run in which the server acknowledged something. */
+  onSynced?: () => void;
+  children: React.ReactNode;
+}) {
   const [running, setRunning] = useState(false);
   const [last, setLast] = useState<RunResult | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const current = useRef(account);
   const state = useRef({ running: false, again: false, manual: false });
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const synced = useRef(onSynced);
 
   useEffect(() => {
     current.current = account;
-  }, [account]);
+    synced.current = onSynced;
+  }, [account, onSynced]);
+  // Gone from the page: a run under way stops before its next change.
+  useEffect(
+    () => () => {
+      current.current = "";
+    },
+    [],
+  );
 
   const kick = useCallback(
     (manual = false) => {
@@ -79,6 +107,8 @@ export function SyncAgent({ account, children }: { account: string; children: Re
       run.running = true;
       setRunning(true);
       void (async () => {
+        let applied = false;
+        let busy = false;
         try {
           do {
             run.again = false;
@@ -87,15 +117,25 @@ export function SyncAgent({ account, children }: { account: string; children: Re
             const result = await runSync(account, send, {
               manual: asked,
               isCurrent: (owner) => current.current === owner,
+              onApplied: (record, outcome) => {
+                applied = true;
+                return afterApplied(account, record, outcome);
+              },
             }).catch((): RunResult => "idle");
             setLast(result);
+            busy = result === "busy";
             if (result === "paused") break;
           } while (run.again && current.current === account);
           setLastSyncAt(await lastSyncedAt(account).catch(() => null));
+          if (applied) synced.current?.();
           // Wake again when the next backoff is due.
           const due = nextDue(await listMutations(account).catch(() => []));
           clearTimeout(timer.current);
-          if (due !== null) {
+          if (busy && current.current === account) {
+            // Another run held the lock (in another tab, or one this page left behind): ask again soon,
+            // so work never waits for the next event because that run had already looked.
+            timer.current = setTimeout(() => kick(), busyRetryMs);
+          } else if (due !== null) {
             timer.current = setTimeout(() => kick(), Math.max(1_000, due - Date.now()));
           }
         } finally {
@@ -135,8 +175,8 @@ export function SyncAgent({ account, children }: { account: string; children: Re
         await retryMutation(account, opId);
         kick(true);
       },
-      resolve: async (opId, payload) => {
-        await resolveMutation(account, opId, payload);
+      resolve: async (opId, resolution) => {
+        await resolveMutation(account, opId, resolution);
         kick(true);
       },
     }),

@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import { ToastProvider } from "@/components/ui/toast";
 import { OfflineAccountProvider } from "@/features/offline/components/offline-account";
 import * as queue from "@/features/offline/queue";
+import * as operations from "@/features/offline/ideas/operations";
 import { CaptureButton, QuickCaptureProvider } from "./quick-capture";
 
 const saved: IdeaActionResult = {
@@ -162,7 +163,9 @@ describe("quick capture", () => {
 
   it("keeps every word in the form when the device cannot keep it either", async () => {
     state.createIdea.mockRejectedValueOnce(new Error("Failed to fetch"));
-    const failing = vi.spyOn(queue, "enqueue").mockRejectedValueOnce(new Error("QuotaExceededError"));
+    const failing = vi
+      .spyOn(operations, "createIdeaOffline")
+      .mockRejectedValueOnce(new Error("QuotaExceededError"));
     const dialog = open("owner-a");
     type(title(), "A thought");
     submit();

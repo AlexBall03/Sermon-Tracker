@@ -217,7 +217,9 @@ describe("the sync engine", () => {
     });
 
     // The person settles the conflict; it is sent once more, as they chose.
-    await resolveMutation("owner-a", "op-conflict", { title: "A thought", tagIds: [] });
+    await resolveMutation("owner-a", "op-conflict", {
+      payload: { title: "A thought", tagIds: [] },
+    });
     const server = idempotentServer();
     await runSync("owner-a", server.send, { locks });
     expect(server.applied.get("op-conflict")).toEqual({ title: "A thought", tagIds: [] });

@@ -82,6 +82,17 @@ export const ideas: Untranslated<typeof english> = {
   },
   editor: {
     offline: "No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.",
+    notKept: "Tampoco se pudo conservar en este dispositivo. Copia tus cambios en un lugar seguro.",
+    kept: {
+      update: "Guardado en este dispositivo. Se guardará en tu cuenta cuando vuelva la conexión.",
+      archive: "Archivada en este dispositivo. Tu cuenta se actualizará cuando vuelva la conexión.",
+      restore:
+        "Restaurada en este dispositivo. Tu cuenta se actualizará cuando vuelva la conexión.",
+      delete: "Eliminada en este dispositivo. Tu cuenta se actualizará cuando vuelva la conexión.",
+    },
+    waiting:
+      "Hay cambios en esta idea hechos en este dispositivo que esperan guardarse en tu cuenta. Podrás editarla de nuevo cuando se guarden.",
+    keptHere: "Hay cambios en este dispositivo que esperan guardarse en tu cuenta.",
     unsaved: "Tus cambios en esta idea no se han guardado.",
     kindHint: "Este cambio se aplica de inmediato y deja todo lo demás como está.",
     saving: "Guardando…",

@@ -103,6 +103,9 @@ export default async function IdeaPage({
         updatedAt={idea.updatedAt}
         archivedAt={idea.archivedAt}
         hasOutline={outlineId !== null}
+        revision={idea.revision}
+        lastDevelopedAt={idea.lastDevelopedAt}
+        preached={history.total > 0}
         initial={{
           kind: idea.kind,
           title: idea.title,

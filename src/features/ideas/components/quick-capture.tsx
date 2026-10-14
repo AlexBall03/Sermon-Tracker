@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { useOfflineAccount } from "@/features/offline/components/offline-account";
-import { enqueue } from "@/features/offline/queue";
+import { createIdeaOffline } from "@/features/offline/ideas/operations";
 import { useOfflineSettings } from "@/features/offline/settings";
 import { useReading } from "@/features/preferences/client";
 import { ScriptureBrowser } from "@/features/scripture/components/scripture-browser";
@@ -44,7 +44,14 @@ import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import { createIdea } from "../actions";
 import type { IdeaKind } from "../model";
-import { emptyDraft, fieldErrors, hasContent, ideaSchemas, type IdeaDraft } from "../schemas";
+import {
+  emptyDraft,
+  fieldErrors,
+  hasContent,
+  ideaSchemas,
+  type IdeaDraft,
+  type IdeaInput,
+} from "../schemas";
 import { ClassificationSection } from "./classification-section";
 import {
   KindField,
@@ -209,17 +216,12 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
    * under; "failed" where the device would not keep it. Either way the form
    * keeps every word.
    */
-  async function keepOnDevice(input: unknown, id: string): Promise<"kept" | "off" | "failed"> {
+  async function keepOnDevice(input: IdeaInput, id: string): Promise<"kept" | "off" | "failed"> {
     if (!account || !offlineSettings.captureOffline) return "off";
     holdUnsavedWork(keepOnDevice);
     try {
-      await enqueue(account, {
-        opId: id,
-        type: "idea.create",
-        entityType: "idea",
-        entityId: id,
-        payload: input,
-      });
+      // Queued with the device's copy of the idea, so the offline library shows it too.
+      await createIdeaOffline(account, id, input);
       return "kept";
     } catch {
       return "failed";

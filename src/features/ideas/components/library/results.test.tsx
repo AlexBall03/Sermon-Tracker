@@ -27,6 +27,7 @@ const idea = (fields: Partial<IdeaWithReferences> = {}): IdeaWithReferences => (
   sermonType: "expository",
   archivedAt: null,
   lastDevelopedAt: null,
+  revision: 0,
   subject: "Grace",
   createdAt: new Date("2026-10-01T10:00:00Z"),
   updatedAt: new Date("2026-10-02T10:00:00Z"),

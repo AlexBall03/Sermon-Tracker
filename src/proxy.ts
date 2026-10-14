@@ -1,16 +1,27 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
 import { isAuthConfigured } from "@/lib/env";
 import { appRoutes, routes } from "@/lib/site";
 import { applySplash } from "@/lib/splash";
 
-const isAppRoute = createRouteMatcher(appRoutes.map((route) => `${route}(.*)`));
-const isGuestRoute = createRouteMatcher([
-  routes.home,
-  `${routes.signIn}(.*)`,
-  `${routes.acceptInvitation}(.*)`,
-]);
+/** The route itself or anything beneath it. */
+function under(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+function isAppRoute(request: NextRequest) {
+  return appRoutes.some((route) => under(request.nextUrl.pathname, route));
+}
+
+function isGuestRoute(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  return (
+    pathname === routes.home ||
+    under(pathname, routes.signIn) ||
+    under(pathname, routes.acceptInvitation)
+  );
+}
 
 /**
  * Routing only: guests are sent to sign-in and signed-in visitors skip the

@@ -134,7 +134,8 @@ describe("PendingCaptures", () => {
       </SyncAgent>,
     );
 
-    expect(await screen.findByText("Needs your choice")).toBeVisible();
+    // A run left by the test before may still hold the lock; the agent asks again shortly.
+    expect(await screen.findByText("Needs your choice", {}, { timeout: 3000 })).toBeVisible();
     expect(await listMutations("owner-a")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Save without the deleted tags" }));
     await waitFor(async () => expect(await listMutations("owner-a")).toEqual([]));
@@ -210,7 +211,7 @@ describe("OfflineNotice", () => {
     localStorage.setItem(offlineNoticeKey, "dismissed");
     await enqueue("owner-a", capture("op-1", "A thought"));
     view(<OfflineNotice />);
-    expect(await screen.findByText("1 thought is waiting on this device")).toBeVisible();
+    expect(await screen.findByText("1 change is waiting on this device")).toBeVisible();
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
       "href",
       "/settings/offline#offline-capture",

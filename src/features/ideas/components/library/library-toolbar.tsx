@@ -19,7 +19,8 @@ export const filtersPanelId = "library-filters";
  * they wrap onto a second row; nothing is hidden behind a menu.
  */
 export function LibraryToolbar({ className }: { className?: string }) {
-  const { query, apply, filtersOpen, setFiltersOpen, setManagingTags } = useLibrary();
+  const { query, apply, filtersOpen, setFiltersOpen, setManagingTags, canManageTags } =
+    useLibrary();
   const active = activeFilterCount(query);
   const t = useT("library").toolbar;
   const sorts = useT("library").sorts;
@@ -56,16 +57,18 @@ export function LibraryToolbar({ className }: { className?: string }) {
 
       <div className="flex items-center gap-2 sm:ml-auto">
         <ViewSwitcher />
-        <Button
-          type="button"
-          variant="outline"
-          aria-haspopup="dialog"
-          onClick={() => setManagingTags(true)}
-          className="px-3.5"
-        >
-          <Tags aria-hidden />
-          <span className="max-sm:sr-only">{t.manageTags}</span>
-        </Button>
+        {canManageTags && (
+          <Button
+            type="button"
+            variant="outline"
+            aria-haspopup="dialog"
+            onClick={() => setManagingTags(true)}
+            className="px-3.5"
+          >
+            <Tags aria-hidden />
+            <span className="max-sm:sr-only">{t.manageTags}</span>
+          </Button>
+        )}
       </div>
     </div>
   );

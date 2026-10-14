@@ -1,7 +1,13 @@
 import type { SyncOutcome } from "@/features/sync/model";
 import { openOfflineDb } from "../db";
 import type { MutationRecord } from "../model";
-import { claimMutation, listMutations, recoverInterrupted, settleMutation } from "../queue";
+import {
+  claimMutation,
+  listMutations,
+  recoverInterrupted,
+  sendable,
+  settleMutation,
+} from "../queue";
 
 /*
  * The one engine that sends an account's queued changes to the server
@@ -20,6 +26,11 @@ import { claimMutation, listMutations, recoverInterrupted, settleMutation } from
  * that cannot pass is kept, failed, for the person; a conflict is kept until
  * the person chooses. Signed out, or another account in the session: the run
  * stops and leaves the change as it was.
+ *
+ * Changes to one thing go one at a time, oldest first: a change waits while an
+ * older one about the same thing is still queued, whatever its state, because
+ * it was made on top of it (queue.ts, `sendable`). Once one is acknowledged,
+ * `onApplied` lets the kind's own code catch the device up (ideas/sync.ts).
  */
 
 export type Sender = (record: MutationRecord) => Promise<SyncOutcome>;
@@ -41,6 +52,8 @@ export type RunOptions = {
   isCurrent?: (owner: string) => boolean;
   /** For tests: the lock manager standing in for `navigator.locks`. */
   locks?: LockManagerLike | null;
+  /** Called once a change is acknowledged and gone from the queue. */
+  onApplied?: (record: MutationRecord, outcome: SyncOutcome) => Promise<void>;
 };
 
 /**
@@ -103,7 +116,7 @@ async function drain(owner: string, send: Sender, options: RunOptions): Promise<
   for (;;) {
     if (options.isCurrent && !options.isCurrent(owner)) return "paused";
     const now = Date.now();
-    const next = (await listMutations(owner)).find(
+    const next = sendable(await listMutations(owner)).find(
       (record) =>
         record.status === "pending" &&
         !tried.has(record.opId) &&
@@ -132,6 +145,7 @@ async function drain(owner: string, send: Sender, options: RunOptions): Promise<
       case "duplicate":
         await settleMutation(owner, claimed.opId, { outcome: "done" });
         await markSynced(owner);
+        await options.onApplied?.(claimed, outcome).catch(() => {});
         break;
       case "conflict":
         await settleMutation(owner, claimed.opId, {

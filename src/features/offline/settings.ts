@@ -24,6 +24,10 @@ function settle(value: unknown): OfflineSettings {
         : defaultOfflineSettings.captureOffline,
     autoBible:
       typeof stored.autoBible === "boolean" ? stored.autoBible : defaultOfflineSettings.autoBible,
+    ideasOffline:
+      typeof stored.ideasOffline === "boolean"
+        ? stored.ideasOffline
+        : defaultOfflineSettings.ideasOffline,
   };
 }
 

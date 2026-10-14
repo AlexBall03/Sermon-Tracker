@@ -80,9 +80,16 @@ export function IdeaResults({
   query,
   outlines,
   locale = defaultLocale,
+  offline = false,
 }: {
   ideas: IdeaWithReferences[];
   label: string;
+  /**
+   * Drawn from the copy on this device (the offline page, Phase 5D.1): what
+   * needs the server (an outline, recording preaching, restoring from the
+   * card) is left off; the idea's own page still archives and restores.
+   */
+  offline?: boolean;
   /**
    * The outline of each sermon here that has one, by the sermon's ID. Left
    * out, no way to an outline is shown.
@@ -205,7 +212,7 @@ export function IdeaResults({
                 </p>
               )}
               {/* Only a sermon can be outlined or preached; an archived one still can. */}
-              {sermon && (
+              {sermon && !offline && (
                 <span className="-mr-2 flex items-center">
                   {outlines && (
                     <OutlineLink
@@ -222,7 +229,7 @@ export function IdeaResults({
                   />
                 </span>
               )}
-              {idea.archivedAt && <RestoreButton id={idea.id} title={idea.title} />}
+              {idea.archivedAt && !offline && <RestoreButton id={idea.id} title={idea.title} />}
             </div>
           </li>
         );

@@ -30,6 +30,9 @@ export async function syncMutation(change: unknown): Promise<SyncOutcome> {
     if (outcome.status === "applied") {
       revalidatePath(routes.sermonIdeas);
       revalidatePath(routes.dashboard);
+      if (parsed.data.type !== "idea.create") {
+        revalidatePath(`${routes.library}/${parsed.data.entityId}`);
+      }
     }
     return outcome;
   } catch (error) {

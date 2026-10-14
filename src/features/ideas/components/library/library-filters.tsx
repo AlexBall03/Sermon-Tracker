@@ -164,7 +164,7 @@ function DateRange({
  * is one choice of three, and is active ideas only until it is changed.
  */
 export function LibraryFilters() {
-  const { query, tags, apply, filtersOpen, setManagingTags } = useLibrary();
+  const { query, tags, apply, filtersOpen, setManagingTags, canManageTags } = useLibrary();
   const [tagSearch, setTagSearch] = useState("");
   const t = useT("library").filters;
   const modes = useT("library").tagModes;
@@ -289,14 +289,16 @@ export function LibraryFilters() {
           {tags.length === 0 ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <p className="text-sm text-muted-foreground">{t.noTags}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setManagingTags(true)}
-              >
-                {t.createTag}
-              </Button>
+              {canManageTags && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setManagingTags(true)}
+                >
+                  {t.createTag}
+                </Button>
+              )}
             </div>
           ) : (
             <>

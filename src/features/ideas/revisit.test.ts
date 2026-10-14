@@ -22,6 +22,7 @@ import { defaultLibraryQuery, type LibraryQuery } from "./library-query";
 import { revisitAfterDays } from "./model";
 import { ideaInputSchema, ideaUpdateSchema, type IdeaReference } from "./schemas";
 import { createTag, setIdeaTags } from "./tags";
+import { searchLocalIdeas } from "@/features/offline/ideas/search";
 
 /*
  * What counts as developing an idea, which ideas are offered for revisiting,
@@ -362,5 +363,32 @@ describe("the library's revisiting filters", () => {
     const page = await searchIdeas(db, me, query({ revisit: "attention" }), 2, now);
     expect(page).toMatchObject({ total: 3, totalPages: 2, page: 1 });
     expect(page.items.map((idea) => idea.title)).toEqual(["A never, old", "D developed, old"]);
+  });
+
+  // The offline library (Phase 5D.1) answers every query as this one does,
+  // the revisiting rule (`needsAttentionAt`) included.
+  it("is answered the same by the device's copy", async () => {
+    const all = (await searchIdeas(db, me, query({ archive: "all" }), 100, now)).items;
+    const queries: Partial<LibraryQuery>[] = [
+      {},
+      { revisit: "never" },
+      { revisit: "attention" },
+      { revisit: "attention", archive: "all" },
+      { q: "grace" },
+      { q: "NEVER old" },
+      { archive: "archived" },
+      { archive: "all", sort: "created-desc" },
+      { kinds: ["point"], archive: "all" },
+      { statuses: ["developing", "on_hold"] },
+      { createdFrom: "2026-10-01", archive: "all" },
+      { createdThrough: "2026-10-01", sort: "updated-asc" },
+    ];
+    for (const fields of queries) {
+      const local = searchLocalIdeas(all, query(fields), now);
+      expect(
+        local.items.map((idea) => idea.title),
+        JSON.stringify(fields),
+      ).toEqual(await found(fields));
+    }
   });
 });

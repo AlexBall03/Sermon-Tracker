@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
-import { ArrowLeft, BookOpen, PenLine, RefreshCw, WifiOff } from "lucide-react";
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowLeft, BookOpen, Lightbulb, PenLine, RefreshCw, WifiOff } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
@@ -25,10 +25,12 @@ import type { Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 import { getActiveAccount, getPermittedTranslations } from "../account";
 import { localTranslations } from "../bible/local";
+import { listLocalIdeas } from "../ideas/store";
 import type { OfflineSettings } from "../model";
 import { readOfflineSettings } from "../settings";
 import { OfflineAccountProvider } from "./offline-account";
-import { PendingCaptures } from "./pending-captures";
+import { OfflineIdea, OfflineLibrary, type Go } from "./offline-ideas";
+import { PendingChanges } from "./pending-changes";
 
 /** What this device holds for the offline page, read once it is in the browser. */
 type Local = {
@@ -36,6 +38,8 @@ type Local = {
   /** Translations kept whole here that were last on offer to this device. */
   readable: TranslationId[];
   settings: OfflineSettings;
+  /** How many of the account's ideas are kept here. */
+  ideas: number;
 };
 
 async function readLocal(): Promise<Local> {
@@ -47,11 +51,34 @@ async function readLocal(): Promise<Local> {
   ]);
   // Never told what was on offer: only the text that can never be switched off.
   const allowed = permitted.length > 0 ? permitted : [fallbackTranslation];
-  return { account, readable: kept.filter((id) => allowed.includes(id)), settings };
+  const ideas = account ? (await listLocalIdeas(account).catch(() => [])).length : 0;
+  return { account, readable: kept.filter((id) => allowed.includes(id)), settings, ideas };
 }
 
 const subscribeNothing = () => () => {};
 const onReaderPath = () => window.location.pathname.startsWith(routes.bible);
+const ideaPath = /^\/library\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/** The addresses this page draws by itself, from the device. */
+type Place =
+  | { view: "hub" }
+  | { view: "bible" }
+  | { view: "library"; search: string }
+  | { view: "idea"; id: string; search: string };
+
+function placeOf(): Place {
+  const { pathname, search } = window.location;
+  if (pathname.startsWith(routes.bible)) return { view: "bible" };
+  if (pathname === routes.sermonIdeas) return { view: "library", search };
+  const idea = ideaPath.exec(pathname);
+  if (idea) return { view: "idea", id: idea[1].toLowerCase(), search };
+  return { view: "hub" };
+}
+
+/** True for an address this page draws itself: followed here rather than asked of the server. */
+const drawnHere = (url: URL) =>
+  url.origin === window.location.origin &&
+  (url.pathname === routes.sermonIdeas || ideaPath.test(url.pathname));
 
 /**
  * The offline page as the service worker shows it for any page the network
@@ -75,7 +102,38 @@ export function OfflineShell() {
   const locale = useSyncExternalStore<Locale | null>(subscribeNothing, offlineLocale, () => null);
   const [local, setLocal] = useState<Local | null>(null);
   const [reading, setReading] = useState(false);
+  const [place, setPlace] = useState<Place>({ view: "hub" });
   const [online, setOnline] = useState(false);
+  const main = useRef<HTMLElement>(null);
+
+  /** Moves between this page's own addresses, with no request; null state, as Next needs. */
+  const go = useCallback<Go>((href, options) => {
+    if (options?.replace) window.history.replaceState(null, "", href);
+    else window.history.pushState(null, "", href);
+    setPlace(placeOf());
+    setReading(onReaderPath());
+    if (!options?.replace) window.scrollTo({ top: 0 });
+  }, []);
+
+  // A link to an address drawn here (a result, the pager, a way back) is followed here.
+  // One something else already took (the leave guard asking first) is left alone.
+  useEffect(() => {
+    const element = main.current;
+    if (!element) return;
+    const follow = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank") return;
+      const url = new URL(anchor.href);
+      if (!drawnHere(url)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      go(url.pathname + url.search);
+    };
+    element.addEventListener("click", follow, true);
+    return () => element.removeEventListener("click", follow, true);
+  }, [go, local]);
 
   useEffect(() => {
     void readLocal().then((value) => {
@@ -88,8 +146,12 @@ export function OfflineShell() {
         window.history.replaceState(null, "", readerHref(place));
       }
       setReading(reader);
+      setPlace(placeOf());
     });
-    const back = () => setReading(onReaderPath());
+    const back = () => {
+      setReading(onReaderPath());
+      setPlace(placeOf());
+    };
     window.addEventListener("popstate", back);
     return () => window.removeEventListener("popstate", back);
   }, []);
@@ -106,9 +168,12 @@ export function OfflineShell() {
   }, [locale]);
 
   // Back on the first screen with nothing open, the page is simply tried again.
+  // Anywhere else something may be half written: the bar offers to try again instead.
   useEffect(() => {
-    if (online && !reading && !document.querySelector('[role="dialog"]')) window.location.reload();
-  }, [online, reading]);
+    if (online && !reading && place.view === "hub" && !document.querySelector('[role="dialog"]')) {
+      window.location.reload();
+    }
+  }, [online, reading, place.view]);
 
   if (!locale || !local) return null;
   const preferred = defaultTranslationFor(locale);
@@ -122,8 +187,7 @@ export function OfflineShell() {
   }
   function leaveBible() {
     // A reload from here, once online, goes to the dashboard rather than this page.
-    window.history.pushState(null, "", routes.dashboard);
-    setReading(false);
+    go(routes.dashboard);
   }
 
   return (
@@ -136,18 +200,33 @@ export function OfflineShell() {
           <ToastProvider>
             <ScriptureProvider>
               <QuickCaptureProvider>
-                <Bar reading={reading} online={online} onBack={leaveBible} />
-                <main id="main" className="flex-1 pt-bar">
+                <Bar
+                  reading={reading || place.view === "library" || place.view === "idea"}
+                  online={online}
+                  onBack={leaveBible}
+                />
+                <main id="main" ref={main} className="flex-1 pt-bar">
                   {reading && translation ? (
                     <Suspense>
                       <BibleReader local />
                     </Suspense>
+                  ) : place.view === "library" ? (
+                    <OfflineLibrary account={local.account} search={place.search} go={go} />
+                  ) : place.view === "idea" ? (
+                    <OfflineIdea
+                      account={local.account}
+                      id={place.id}
+                      search={place.search}
+                      go={go}
+                    />
                   ) : (
                     <Hub
                       readable={local.readable}
                       canCapture={canCapture}
                       signedOut={!local.account}
+                      ideas={local.settings.ideasOffline ? local.ideas : 0}
                       onRead={openBible}
+                      onIdeas={() => go(routes.sermonIdeas)}
                     />
                   )}
                 </main>
@@ -200,12 +279,17 @@ function Hub({
   readable,
   canCapture,
   signedOut,
+  ideas,
   onRead,
+  onIdeas,
 }: {
   readable: TranslationId[];
   canCapture: boolean;
   signedOut: boolean;
+  /** How many ideas are kept here for the account; none hides the card. */
+  ideas: number;
   onRead: () => void;
+  onIdeas: () => void;
 }) {
   const t = useT("offline").shell;
   const message = useT("pwa").offline;
@@ -257,6 +341,21 @@ function Hub({
           </p>
           {canCapture && <CaptureButton className="mt-4">{t.capture}</CaptureButton>}
         </section>
+
+        {ideas > 0 && (
+          <section className="lit-edge rounded-xl border bg-surface p-5 shadow-card sm:col-span-2">
+            <div className="flex items-center gap-2.5">
+              <Lightbulb className="size-5 text-primary" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-[-0.015em]">{t.ideasTitle}</h2>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {t.ideasBody(ideas)}
+            </p>
+            <Button className="mt-4" onClick={onIdeas}>
+              {t.openIdeas}
+            </Button>
+          </section>
+        )}
       </div>
 
       {!signedOut && <Waiting />}
@@ -270,7 +369,7 @@ function Waiting() {
     <section className="mt-10">
       <h2 className="text-lg font-semibold tracking-[-0.015em]">{t.title}</h2>
       <p className="mt-1 mb-4 text-sm leading-relaxed text-muted-foreground">{t.description}</p>
-      <PendingCaptures />
+      <PendingChanges />
     </section>
   );
 }

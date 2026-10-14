@@ -32,7 +32,7 @@ import {
   ideaLimits,
   legacyIdeaStatus,
   libraryPageSize,
-  revisitAfterDays,
+  revisitCutoff,
   unfinishedStatuses,
   type IdeaKind,
   type LibrarySort,
@@ -180,6 +180,45 @@ export async function getIdea(
 }
 
 /**
+ * What a device needs to tell which of its kept ideas are out of date
+ * (Phase 5D.1): every idea of the owner's, archived ones too, with what can
+ * change without its revision moving. An idea whose revision differs from the
+ * device's copy is read again whole, with `ideasByIds`.
+ */
+export async function ideaManifest(db: Reader, ownerId: string) {
+  return db
+    .select({
+      id: ideas.id,
+      revision: ideas.revision,
+      updatedAt: ideas.updatedAt,
+      lastDevelopedAt: ideas.lastDevelopedAt,
+      archivedAt: ideas.archivedAt,
+    })
+    .from(ideas)
+    .where(eq(ideas.ownerId, ownerId))
+    .orderBy(asc(ideas.id));
+}
+export type IdeaManifestEntry = Awaited<ReturnType<typeof ideaManifest>>[number];
+
+/** The most ideas `ideasByIds` reads in one call. */
+export const ideasByIdsLimit = 100;
+
+/** Some of the owner's ideas, whole, archived or not; IDs that are not the owner's are not found. */
+export async function ideasByIds(
+  db: Reader,
+  ownerId: string,
+  ids: string[],
+): Promise<IdeaWithReferences[]> {
+  const wanted = [...new Set(ids)].slice(0, ideasByIdsLimit);
+  if (wanted.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(ideas)
+    .where(and(eq(ideas.ownerId, ownerId), inArray(ideas.id, wanted)));
+  return withReferences(db, ownerId, rows);
+}
+
+/**
  * The owner's few most recently changed ideas, of every kind, for the
  * dashboard. An archived idea has been put away and is not among them. Only
  * the rows are read: the dashboard names an idea and does not show its
@@ -265,10 +304,7 @@ export async function workspaceCounts(db: Reader, ownerId: string): Promise<Work
  */
 const workedOn = sql`coalesce(${ideas.lastDevelopedAt}, ${ideas.createdAt})`;
 
-/** The instant at or before which an idea not worked on since has waited long enough to be offered again. */
-export function revisitCutoff(now: Date = new Date()) {
-  return new Date(now.getTime() - revisitAfterDays * 24 * 60 * 60 * 1000);
-}
+export { revisitCutoff };
 
 /** A sermon idea that has not been worked on since it was captured, whatever its status or age. */
 function neverDeveloped() {
@@ -508,6 +544,7 @@ const referenceMark = (reference: IdeaReference) =>
  * passages are different from what was stored. The editor sends the whole
  * draft, so a save that changed only a status or a tag sends the same content
  * back and is not development. The row is locked while the two are compared.
+ * Every save raises the idea's `revision`.
  */
 export async function updateIdea(
   db: Database,
@@ -515,13 +552,44 @@ export async function updateIdea(
   id: string,
   input: IdeaInput | IdeaUpdate,
 ): Promise<IdeaWithReferences | null> {
-  return db.transaction(async (tx) => {
+  const outcome = await updateIdeaAt(db, ownerId, id, input);
+  return outcome.status === "updated" ? outcome.idea : null;
+}
+
+/** What became of a save that may name the revision it was made against. */
+export type RevisedUpdate =
+  | { status: "updated"; idea: IdeaWithReferences }
+  | { status: "missing" }
+  /** The idea was changed since that revision; nothing was written. */
+  | { status: "stale"; revision: number };
+
+/**
+ * `updateIdea`, and when `expectedRevision` is given, only while the idea is
+ * still at that revision: compared with the row locked, so a change queued
+ * offline (features/sync/apply.ts) never writes over one made since.
+ */
+export async function updateIdeaAt(
+  db: Database,
+  ownerId: string,
+  id: string,
+  input: IdeaInput | IdeaUpdate,
+  expectedRevision?: number,
+): Promise<RevisedUpdate> {
+  return db.transaction(async (tx): Promise<RevisedUpdate> => {
     const [stored] = await tx
-      .select({ title: ideas.title, subject: ideas.subject, notes: ideas.notes })
+      .select({
+        title: ideas.title,
+        subject: ideas.subject,
+        notes: ideas.notes,
+        revision: ideas.revision,
+      })
       .from(ideas)
       .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
       .for("update");
-    if (!stored) return null;
+    if (!stored) return { status: "missing" };
+    if (expectedRevision !== undefined && stored.revision !== expectedRevision) {
+      return { status: "stale", revision: stored.revision };
+    }
     const held = (await referencesFor(tx, ownerId, [id])).get(id) ?? [];
     const developed =
       input.title !== stored.title ||
@@ -531,16 +599,23 @@ export async function updateIdea(
 
     const [updated] = await tx
       .update(ideas)
-      .set({ ...columns(input), ...(developed ? { lastDevelopedAt: new Date() } : {}) })
+      .set({
+        ...columns(input),
+        revision: sql`${ideas.revision} + 1`,
+        ...(developed ? { lastDevelopedAt: new Date() } : {}),
+      })
       .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
       .returning();
     // References are touched only once the owner-scoped update has matched.
-    if (!updated) return null;
+    if (!updated) return { status: "missing" };
     await writeReferences(tx, updated.id, input.references);
     return {
-      ...asRead(updated),
-      references: input.references,
-      tags: await saveTags(tx, updated, input),
+      status: "updated",
+      idea: {
+        ...asRead(updated),
+        references: input.references,
+        tags: await saveTags(tx, updated, input),
+      },
     };
   });
 }
@@ -628,7 +703,7 @@ export async function attachReferences(
     const now = new Date();
     await tx
       .update(ideas)
-      .set({ updatedAt: now, lastDevelopedAt: now })
+      .set({ updatedAt: now, lastDevelopedAt: now, revision: sql`${ideas.revision} + 1` })
       .where(eq(ideas.id, idea.id));
     return { status: "attached", idea, added, already } as const;
   });
@@ -659,7 +734,7 @@ export async function setIdeaKind(
 ): Promise<IdeaRecord | null> {
   const [updated] = await db
     .update(ideas)
-    .set({ kind })
+    .set({ kind, revision: sql`${ideas.revision} + 1` })
     .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
     .returning();
   return updated ? asRead(updated) : null;
@@ -683,6 +758,7 @@ export async function classifyIdea(
       status: change.status,
       intendedFormat: change.intendedFormat,
       sermonType: change.sermonType,
+      revision: sql`${ideas.revision} + 1`,
     })
     .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
     .returning();

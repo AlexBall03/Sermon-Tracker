@@ -26,7 +26,8 @@ import {
 import type { BibleDataset } from "../model";
 import { saveOfflineSettings, useOfflineSettings } from "../settings";
 import { estimateStorage, formatBytes, requestPersistence, type StorageEstimate } from "../storage";
-import { PendingCaptures } from "./pending-captures";
+import { OfflineIdeasSettings } from "./offline-ideas-settings";
+import { PendingChanges } from "./pending-changes";
 
 /** Below this share of the quota left, the device is said to be nearly full. */
 const lowShare = 0.05;
@@ -113,7 +114,7 @@ export function OfflineStorageSettings() {
             <p className="mt-1 mb-3 text-sm leading-relaxed text-muted-foreground">
               {pending.description}
             </p>
-            <PendingCaptures />
+            <PendingChanges type="idea.create" />
           </div>
         </div>
       </SettingsBlock>
@@ -243,12 +244,17 @@ export function OfflineStorageSettings() {
         </div>
       </SettingsBlock>
 
+      <OfflineIdeasSettings unavailable={unavailable} />
+
       <SettingsBlock title={t.moreTitle} description={t.moreDescription}>
         <div className="space-y-3">
-          {[t.ideas, t.outlines].map((label) => (
-            <div key={label} className="flex items-center justify-between gap-3 opacity-70">
+          {[t.outlines].map((label) => (
+            <div key={label} className="flex items-start justify-between gap-3 opacity-70">
               <Switch label={label} checked={false} disabled onChange={() => {}} />
-              <Badge tone="muted">{t.later}</Badge>
+              {/* Centered on the switch's track, which sits at the top of its row. */}
+              <span className="mt-1 shrink-0">
+                <Badge tone="muted">{t.later}</Badge>
+              </span>
             </div>
           ))}
         </div>

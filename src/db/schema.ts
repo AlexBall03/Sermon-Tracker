@@ -190,6 +190,15 @@ export const ideas = pgTable(
      * it; `updatedAt` is the one that moves for any write.
      */
     lastDevelopedAt: timestamp("last_developed_at", { withTimezone: true }),
+    /**
+     * The version of what the idea itself says: its kind, title, notes,
+     * subject, classifications, passages, and tags. Raised by one on each
+     * write that changes any of those (features/ideas/ideas.ts) and by
+     * nothing else: not archiving, outline work, relations, or preaching.
+     * A change queued offline (Phase 5D.1) names the revision it was made
+     * against, and a different one here is a conflict, never an overwrite.
+     */
+    revision: integer("revision").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

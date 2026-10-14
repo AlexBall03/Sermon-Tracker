@@ -9,11 +9,51 @@ export const offline = {
   pending: {
     title: "Waiting on this device",
     description:
-      "Thoughts captured while the server could not be reached. They are only on this device until they are saved to your account.",
-    empty: "Nothing is waiting. Everything you captured is in your account.",
+      "Thoughts captured and ideas changed while the server could not be reached. They are only on this device until they are saved to your account.",
+    empty: "Nothing is waiting. Everything you captured or changed is in your account.",
     badge: "On this device only",
     untitled: "Untitled",
     captured: (when: string) => `Captured ${when}`,
+    changed: (when: string) => `Changed ${when}`,
+    kinds: {
+      "idea.create": "New idea",
+      "idea.update": "Edited",
+      "idea.archive": "Archived",
+      "idea.restore": "Restored",
+      "idea.delete": "Deleted",
+    },
+    behind: "Waits for the earlier change to this idea.",
+    conflicts: {
+      stale: "This idea was changed in your account after you changed it here.",
+      staleDelete: "This idea was changed in your account after you deleted it here.",
+      differs: (fields: string) => `Different there: ${fields}.`,
+      missing: "This idea was deleted from your account.",
+      preached: "It has been preached, so it cannot be deleted. Its preaching record is kept.",
+      outline: "It now has an outline, which deleting it would delete too.",
+    },
+    fields: {
+      title: "title",
+      notes: "notes",
+      subject: "subject",
+      passages: "passages",
+      tags: "tags",
+      classification: "classification",
+    },
+    choices: {
+      keepMine: "Keep my version",
+      deleteAnyway: "Delete anyway",
+      useAccount: "Use my account's version",
+      discard: "Discard my changes",
+      keepIdea: "Keep the idea",
+      saveAsNew: "Save as a new idea",
+      archiveInstead: "Archive it instead",
+      deleteWithOutline: "Delete it and its outline",
+    },
+    discard: "Discard",
+    discardTitle: "Discard this change?",
+    discardBody:
+      "It has not been saved to your account. Discarding it puts this idea back as your account has it, with any other change made to it here.",
+    discardConfirm: "Discard",
     save: "Save now",
     saving: "Saving…",
     retry: "Try again",
@@ -38,8 +78,8 @@ export const offline = {
     deleteConfirm: "Delete for good",
     count: (count: number) =>
       count === 1
-        ? "1 thought is waiting on this device"
-        : `${count} thoughts are waiting on this device`,
+        ? "1 change is waiting on this device"
+        : `${count} changes are waiting on this device`,
     review: "Review",
     unavailable: "This browser is not letting Sermon Tracker keep anything on this device.",
   },
@@ -101,6 +141,25 @@ export const offline = {
     moreTitle: "More offline content",
     moreDescription: "Coming in a later update. Nothing here is kept on this device yet.",
     ideas: "Sermon ideas and points",
+    ideasDescription:
+      "A copy of your ideas on this device, to read, search, and change them with no connection. Changes are saved to your account when the connection returns.",
+    ideasSwitch: "Keep my ideas on this device",
+    ideasOff: "Your ideas are not kept on this device.",
+    ideasKept: (count: number, when: string) =>
+      `${count === 1 ? "1 idea" : `${count} ideas`} kept, brought up to date ${when}.`,
+    ideasNever: "Not downloaded yet. They are downloaded by themselves while you are online.",
+    ideasDownloading: (have: number, total: number) => `Downloading… ${have} of ${total} ideas.`,
+    ideasPartial: (have: number, total: number) =>
+      `Only ${have} of ${total} ideas are on this device so far.`,
+    ideasFailed: "The last update could not finish. It will try again by itself.",
+    ideasAuth: "The last update was refused. Sign in again to keep your ideas current.",
+    ideasSize: (size: string) => `About ${size}.`,
+    ideasRefresh: "Update now",
+    ideasRemove: "Remove from this device",
+    ideasRemoveTitle: "Remove your ideas from this device?",
+    ideasRemoveBody:
+      "The copy on this device is removed; your ideas stay in your account. Any idea with changes still waiting to sync is kept here until they are saved.",
+    ideasRemoveConfirm: "Remove",
     outlines: "Sermon outlines",
     later: "Coming later",
     storageTitle: "Storage on this device",
@@ -126,6 +185,35 @@ export const offline = {
     signedOut: "Sign in while online to capture thoughts on this device.",
     back: "Back",
     readerBadge: "Offline",
+    ideasTitle: "Your ideas",
+    ideasBody: (count: number) =>
+      count === 1
+        ? "1 idea is kept on this device. Read, search, and change it here."
+        : `${count} ideas are kept on this device. Read, search, and change them here.`,
+    openIdeas: "Open your ideas",
+  },
+  ideas: {
+    copy: (when: string) =>
+      `This is the copy kept on this device, last brought up to date ${when}. What you change here is saved to your account when the connection returns.`,
+    copyNever:
+      "This is the copy kept on this device. What you change here is saved to your account when the connection returns.",
+    partial: (have: number, total: number) =>
+      `Only ${have} of ${total} ideas had been downloaded to this device, so some are missing here. They are still in your account.`,
+    notYet: "Your ideas are not on this device yet",
+    notYetBody:
+      "They are downloaded by themselves while you are signed in and online. Open Sermon Tracker once you are connected, and they will be here next time.",
+    off: "Ideas are not kept on this device",
+    offBody:
+      "Keeping your ideas here is turned off in Settings, under Offline Storage. Turn it on while you are online to use them without a connection.",
+    signedOut: "Sign in while online to keep your ideas on this device.",
+    empty: "There are no ideas on this device yet.",
+    missing: "This idea is not on this device",
+    missingBody:
+      "It may have been captured or changed after this device last downloaded your ideas. It is still in your account.",
+    back: "Back to your ideas",
+    connection: "Related ideas, outlines, and the preaching record need a connection.",
+    waiting: (count: number) =>
+      count === 1 ? "1 change is waiting to sync." : `${count} changes are waiting to sync.`,
   },
   notice: {
     title: "Sermon Tracker works offline now",

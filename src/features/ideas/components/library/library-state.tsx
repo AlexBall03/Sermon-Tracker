@@ -6,6 +6,13 @@ import { libraryHref, type LibraryQuery } from "../../library-query";
 import type { TagSummary } from "../../tags";
 import { useQueryNavigation, type ApplyQuery } from "./query-navigation";
 
+/** How the library's address changes where there is no server to ask (the offline page). */
+export type LibraryNavigation = {
+  query: LibraryQuery;
+  pending: boolean;
+  apply: ApplyQuery<LibraryQuery>;
+};
+
 type LibraryState = {
   /**
    * The query the controls should show: the one last asked for, which is a
@@ -26,6 +33,8 @@ type LibraryState = {
   setFiltersOpen: (open: boolean) => void;
   managingTags: boolean;
   setManagingTags: (open: boolean) => void;
+  /** False where tags cannot be managed (the offline page): no control offers it. */
+  canManageTags: boolean;
 };
 
 const LibraryContext = createContext<LibraryState | null>(null);
@@ -51,14 +60,23 @@ export function useLibrary() {
 export function LibraryProvider({
   query,
   tags,
+  navigation,
   children,
 }: {
   /** As parsed from the URL by the page. */
   query: LibraryQuery;
   tags: TagSummary[];
+  /**
+   * The offline page's own: the address changes in the browser and the kept
+   * ideas are searched again, with no request. Every change is still built on
+   * the query last asked for. Tags cannot be managed there.
+   */
+  navigation?: LibraryNavigation;
   children: React.ReactNode;
 }) {
-  const { query: shown, pending, apply } = useQueryNavigation(query, libraryHref);
+  const routed = useQueryNavigation(query, libraryHref);
+  const { query: shown, pending, apply } = navigation ?? routed;
+  const canManageTags = !navigation;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [managingTags, setManagingTags] = useState(false);
 
@@ -72,8 +90,9 @@ export function LibraryProvider({
       setFiltersOpen,
       managingTags,
       setManagingTags,
+      canManageTags,
     }),
-    [shown, tags, pending, apply, filtersOpen, managingTags],
+    [shown, tags, pending, apply, filtersOpen, managingTags, canManageTags],
   );
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

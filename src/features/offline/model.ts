@@ -1,5 +1,5 @@
 import type { TranslationId } from "@/features/scripture/translations";
-import type { SyncConflict } from "@/features/sync/model";
+import type { SyncConflict, SyncType } from "@/features/sync/model";
 
 /*
  * What this device keeps for working offline, in IndexedDB (db.ts). Plain
@@ -10,7 +10,7 @@ import type { SyncConflict } from "@/features/sync/model";
  * - Reference data, the same for everyone: the Bible's text. It belongs to
  *   no account, and any account on the device may read it.
  * - An account's own data: its queued changes (`MutationRecord`) and, from
- *   Phase 5D, copies of its ideas and outlines (`AccountRecord`). Every one
+ *   Phase 5D.1, copies of its ideas (`AccountRecord`, ideas/store.ts). Every one
  *   carries its owner, the application's user ID (`users.id`), and is only
  *   ever read for that owner.
  *
@@ -67,8 +67,9 @@ export type MutationErrorKind = "network" | "auth" | "validation" | "conflict" |
 
 /**
  * One change made on this device and not yet acknowledged by the server.
- * Phase 5B writes only `idea.create` (a quick capture made while the server
- * could not be reached); the sync engine (sync/engine.ts) sends them.
+ * Quick capture writes `idea.create` (Phase 5B); an idea changed, archived,
+ * restored, or deleted without the server writes the others (Phase 5D.1,
+ * ideas/operations.ts). The sync engine (sync/engine.ts) sends them all.
  *
  * `opId` is made on the device once and never changes, so sending it twice is
  * one change. `entityId` is the ID the thing will have on the server: for an
@@ -99,12 +100,18 @@ export type MutationRecord = {
   conflict?: SyncConflict;
 };
 
-export type MutationType = "idea.create";
+export type MutationType = SyncType;
 
 /** The schema version of each type's payload, written on every record. */
-export const mutationSchemaVersions: Record<MutationType, number> = { "idea.create": 1 };
+export const mutationSchemaVersions: Record<MutationType, number> = {
+  "idea.create": 1,
+  "idea.update": 1,
+  "idea.archive": 1,
+  "idea.restore": 1,
+  "idea.delete": 1,
+};
 
-/** An account's own copy of something it owns (Phase 5D). Nothing writes one yet. */
+/** An account's own copy of something it owns (Phase 5D.1: ideas/store.ts). */
 export type AccountRecord = {
   owner: string;
   kind: string;
@@ -119,6 +126,12 @@ export type OfflineSettings = {
   captureOffline: boolean;
   /** Keep the reading translation downloaded by itself. */
   autoBible: boolean;
+  /** Keep a copy of the account's ideas, to read and change them without the server. */
+  ideasOffline: boolean;
 };
 
-export const defaultOfflineSettings: OfflineSettings = { captureOffline: true, autoBible: true };
+export const defaultOfflineSettings: OfflineSettings = {
+  captureOffline: true,
+  autoBible: true,
+  ideasOffline: true,
+};
