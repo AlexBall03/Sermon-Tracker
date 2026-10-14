@@ -112,13 +112,20 @@ type Found = { index: number; element: HTMLElement | null; sections: DashboardSe
 const visible = (element: HTMLElement | null): element is HTMLElement =>
   !!element && element.getClientRects().length > 0;
 
-/** The element's box, padded, and kept inside the window: a tall section is lit as far as is seen. */
-function measure(element: HTMLElement): Box {
+/**
+ * The element's box, padded, and kept inside the layer the light is drawn in: a tall or
+ * full-width section is lit as far as is seen. The layer, not the window, because the window
+ * counts the scrollbar and the gutter the dialog's scroll lock keeps in its place.
+ */
+function measure(element: HTMLElement, layer: HTMLElement | null): Box {
   const r = element.getBoundingClientRect();
+  const frame = layer?.getBoundingClientRect();
+  const seenWidth = frame?.width || window.innerWidth;
+  const seenHeight = frame?.height || window.innerHeight;
   const top = Math.max(r.top - pad, pad);
   const left = Math.max(r.left - pad, pad);
-  const bottom = Math.min(r.bottom + pad, window.innerHeight - pad);
-  const right = Math.min(r.right + pad, window.innerWidth - pad);
+  const bottom = Math.min(r.bottom + pad, seenHeight - pad);
+  const right = Math.min(r.right + pad, seenWidth - pad);
   return { top, left, width: Math.max(right - left, 0), height: Math.max(bottom - top, 0) };
 }
 
@@ -150,6 +157,7 @@ function TourOverlay({
   const [box, setBox] = useState<Box | null>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
 
   const ready = found?.index === index;
   const target = ready ? found.element : null;
@@ -208,11 +216,13 @@ function TourOverlay({
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setBox(measure(target)));
+      frame = requestAnimationFrame(() => setBox(measure(target, layerRef.current)));
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(target);
+    // The scroll lock takes its gutter after the tour opens, and no resize event says so.
+    if (layerRef.current) observer.observe(layerRef.current);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
@@ -253,6 +263,7 @@ function TourOverlay({
       <DialogPrimitive.Portal>
         {/* The page stays in view, dimmed, and cannot be clicked; one thing on it is lit. */}
         <div
+          ref={layerRef}
           aria-hidden
           data-tour-layer
           className="fixed inset-0 z-[65] duration-200 data-[closing]:animate-out data-[closing]:fade-out-0"
