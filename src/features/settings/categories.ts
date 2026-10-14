@@ -14,7 +14,7 @@ import { routes } from "@/lib/site";
  * Settings' categories, in the order they are always shown: the sidebar beside
  * every settings page and the overview's list both read this. Each is its own
  * page under `/settings`; their words are `settings.categories` in the
- * dictionary. `soon` marks a category reserved for a later phase.
+ * dictionary.
  */
 export const settingsCategories = [
   { key: "profile", href: routes.settingsProfile, icon: UserRound },
@@ -22,7 +22,7 @@ export const settingsCategories = [
   { key: "appearance", href: routes.settingsAppearance, icon: Palette },
   { key: "app", href: routes.settingsApp, icon: AppWindow },
   { key: "offline", href: routes.settingsOffline, icon: HardDriveDownload },
-  { key: "sync", href: routes.settingsSync, icon: RefreshCw, soon: true },
+  { key: "sync", href: routes.settingsSync, icon: RefreshCw },
   { key: "account", href: routes.settingsAccount, icon: ShieldCheck },
 ] as const;
 

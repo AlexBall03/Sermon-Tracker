@@ -10,7 +10,6 @@ export const settings: Untranslated<typeof english> = {
   nav: {
     label: "Categorías de configuración",
     back: "Configuración",
-    soon: "Pronto",
   },
   categories: {
     profile: {

@@ -29,11 +29,6 @@ export function SettingsNav() {
               >
                 <Icon className="size-4 shrink-0" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">{t.categories[category.key].title}</span>
-                {"soon" in category && (
-                  <span className="rounded-md border px-1.5 py-px text-[0.6875rem] font-medium text-muted-foreground">
-                    {t.nav.soon}
-                  </span>
-                )}
               </Link>
             </li>
           );

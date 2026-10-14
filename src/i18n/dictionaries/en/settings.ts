@@ -8,7 +8,6 @@ export const settings = {
   nav: {
     label: "Settings categories",
     back: "Settings",
-    soon: "Soon",
   },
   /** The categories, in the order they are shown (features/settings/categories.ts). */
   categories: {

@@ -62,11 +62,6 @@ export function SettingsCategoryList({ locale = defaultLocale }: { locale?: Loca
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-[0.9375rem] font-semibold">
                   {words.title}
-                  {"soon" in category && (
-                    <span className="rounded-md border px-1.5 py-px text-[0.6875rem] font-medium text-muted-foreground">
-                      {t.nav.soon}
-                    </span>
-                  )}
                 </span>
                 <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">
                   {words.description}
