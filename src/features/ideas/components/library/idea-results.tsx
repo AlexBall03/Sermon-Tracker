@@ -86,8 +86,9 @@ export function IdeaResults({
   label: string;
   /**
    * Drawn from the copy on this device (the offline page, Phase 5D.1): what
-   * needs the server (an outline, recording preaching, restoring from the
-   * card) is left off; the idea's own page still archives and restores.
+   * needs the server (recording preaching, restoring from the card) is left
+   * off, and an outline is offered only where one is kept on this device
+   * (`outlines`, Phase 5D.2); the idea's own page still archives and restores.
    */
   offline?: boolean;
   /**
@@ -226,6 +227,17 @@ export function IdeaResults({
                     sermon={{ id: idea.id, title: idea.title }}
                     onCard
                     className="mr-0"
+                  />
+                </span>
+              )}
+              {/* Offline, only an outline kept on this device can be opened (Phase 5D.2). */}
+              {sermon && offline && outlines?.has(idea.id) && (
+                <span className="-mr-2 flex items-center">
+                  <OutlineLink
+                    sermon={{ id: idea.id, title: idea.title }}
+                    outlineId={outlines.get(idea.id) ?? null}
+                    onCard
+                    locale={locale}
                   />
                 </span>
               )}

@@ -957,3 +957,27 @@ describe("stopping", () => {
     expect(api.updateEntry).not.toHaveBeenCalled();
   });
 });
+
+describe("what the server has acknowledged (Phase 5D.2)", () => {
+  it("follows each acknowledged change, and leaves out what is still on its way", async () => {
+    const { store } = editor();
+    const added = store.addPoint("a")!;
+    store.setTitle(added, "Under One");
+    store.move("b", null, 0);
+    store.remove("c");
+    await pause();
+    await pause();
+    expect(store.getState().status).toBe("saved");
+    const confirmed = store.confirmedSnapshot()!;
+    expect(confirmed.revision).toBe(6);
+    const byId = new Map(confirmed.entries.map((entry) => [entry.id, entry]));
+    expect(byId.get("b")).toMatchObject({ parentId: null, position: 0 });
+    expect(byId.get("a")).toMatchObject({ parentId: null, position: 1 });
+    expect(byId.get(added)).toMatchObject({ parentId: "a", position: 0, title: "Under One" });
+    expect(byId.has("c")).toBe(false);
+
+    // Typed and not yet sent: not acknowledged, so not in it.
+    store.setTitle("a", "Not yet");
+    expect(store.confirmedSnapshot()!.entries.find((entry) => entry.id === "a")?.title).toBe("One");
+  });
+});

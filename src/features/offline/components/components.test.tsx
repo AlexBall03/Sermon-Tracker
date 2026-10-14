@@ -73,8 +73,10 @@ describe("OfflineStorageSettings", () => {
     expect(await screen.findByText(/not enough room on this device/)).toBeVisible();
     expect(screen.getByText("Kept automatically")).toBeVisible();
     expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
-    // Future content is shown as not yet available, never as working.
-    expect(screen.getByRole("switch", { name: "Sermon outlines" })).toBeDisabled();
+    // Outlines are kept only once the person asks (Phase 5D.2).
+    expect(
+      screen.getByRole("switch", { name: "Keep my outlines on this device" }),
+    ).not.toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     const dialog = await screen.findByRole("alertdialog");

@@ -11,6 +11,13 @@ import type { OfflineIdea } from "@/features/sync/ideas";
 import { useLocale, useT } from "@/i18n/client";
 import { readKeptIdeas, shown } from "../ideas/store";
 import { choicesFor, discardIdeaChanges, settle, type Choice } from "../ideas/sync";
+import { readKeptOutlines, shownOutline } from "../outlines/store";
+import {
+  discardOutlineChanges,
+  outlineChoicesFor,
+  settleOutline,
+  type OutlineChoice,
+} from "../outlines/sync";
 import type { MutationRecord, MutationType } from "../model";
 import { listMutations, onQueueChange, retryMutation } from "../queue";
 import { useSync } from "../sync/agent";
@@ -22,7 +29,7 @@ type Filter = { type?: MutationType; entityId?: string };
  * The signed-in account's changes waiting on this device, and theirs only:
  * `null` while they are being read, "unavailable" where storage is refused.
  * Each carries the title of the idea it is about, from the change itself or
- * from the device's copy.
+ * from the device's copy; a change to an outline, its sermon's title.
  */
 export function usePendingChanges(
   filter: Filter = {},
@@ -38,17 +45,24 @@ export function usePendingChanges(
     let current = true;
     const read = () => {
       if (!account) return setRecords({ account, list: [] });
-      Promise.all([listMutations(account, { type, entityId }), readKeptIdeas(account)]).then(
-        ([list, kept]) =>
+      Promise.all([
+        listMutations(account, { type, entityId }),
+        readKeptIdeas(account),
+        readKeptOutlines(account),
+      ]).then(
+        ([list, kept, outlines]) =>
           current &&
           setRecords({
             account,
             list: list.map((record) => ({
               ...record,
               title:
-                titleOf(record) ||
-                (shown(kept.get(record.entityId)) ?? kept.get(record.entityId)?.server)?.title ||
-                "",
+                record.entityType === "outline"
+                  ? (shownOutline(outlines.get(record.entityId))?.sermon.title ?? "")
+                  : titleOf(record) ||
+                    (shown(kept.get(record.entityId)) ?? kept.get(record.entityId)?.server)
+                      ?.title ||
+                    "",
             })),
           }),
         () => current && setRecords({ account, list: "unavailable" }),
@@ -144,6 +158,21 @@ export function PendingChanges({
     const resolution = await settle(account, record, choice);
     if (resolution) sync?.syncNow();
   };
+  const chooseForOutline = async (record: MutationRecord, choice: OutlineChoice) => {
+    if (!account) return;
+    const resolution = await settleOutline(account, record, choice);
+    if (resolution) sync?.syncNow();
+  };
+  // An outline's changes are one row: the first, which the rest wait behind, and how many there are.
+  const outlines = new Map<string, { count: number; latest: number }>();
+  for (const record of records) {
+    if (record.entityType !== "outline") continue;
+    const seen = outlines.get(record.entityId);
+    outlines.set(record.entityId, {
+      count: (seen?.count ?? 0) + 1,
+      latest: Math.max(seen?.latest ?? 0, record.createdAt),
+    });
+  }
   // Waiting behind an older change to the same idea: sent once that one is.
   const ahead = new Set<string>();
   const behind = new Set<string>();
@@ -166,7 +195,9 @@ export function PendingChanges({
             : lead;
         }
         default:
-          return t.conflicts[conflict.reason];
+          return record.entityType === "outline" && conflict.reason === "missing"
+            ? t.conflicts.missingOutline
+            : t.conflicts[conflict.reason];
       }
     }
     if (record.status === "failed") {
@@ -193,6 +224,8 @@ export function PendingChanges({
               ? t.choices.discard
               : t.choices.keepIdea
           : t.choices[choice];
+  const outlineChoiceLabel = (choice: OutlineChoice) =>
+    choice === "discard" ? t.choices.discard : t.choices[choice];
 
   return (
     <>
@@ -200,6 +233,9 @@ export function PendingChanges({
         {records.map((record) => {
           const sending = record.status === "sending";
           const capture = record.type === "idea.create";
+          const outline = record.entityType === "outline" ? outlines.get(record.entityId) : null;
+          // Only the first of an outline's changes is listed; the rest are counted on it.
+          if (outline && behind.has(record.opId)) return null;
           const note = noteFor(record);
           return (
             <li
@@ -211,7 +247,9 @@ export function PendingChanges({
                 <div className="min-w-0">
                   <p className="truncate font-medium">{record.title || t.untitled}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <Badge tone="muted">{capture ? t.badge : t.kinds[record.type]}</Badge>
+                    <Badge tone="muted">
+                      {capture ? t.badge : outline ? t.outline : t.kinds[record.type]}
+                    </Badge>
                     <Badge
                       tone={
                         record.status === "failed" || record.status === "conflict"
@@ -226,14 +264,28 @@ export function PendingChanges({
                     <span>
                       {capture
                         ? t.captured(when.format(record.createdAt))
-                        : t.changed(when.format(record.createdAt))}
+                        : t.changed(when.format(outline?.latest ?? record.createdAt))}
                     </span>
+                    {outline && <span>{t.outlineChanges(outline.count)}</span>}
                   </div>
                   {note && <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 {record.status === "conflict" &&
+                  outline &&
+                  outlineChoicesFor(record).map((choice, index) => (
+                    <Button
+                      key={choice}
+                      size="sm"
+                      variant={index === 0 ? "default" : "outline"}
+                      onClick={() => void chooseForOutline(record, choice)}
+                    >
+                      {outlineChoiceLabel(choice)}
+                    </Button>
+                  ))}
+                {record.status === "conflict" &&
+                  !outline &&
                   choicesFor(record).map((choice, index) => (
                     <Button
                       key={choice}
@@ -260,7 +312,7 @@ export function PendingChanges({
                     {sending ? t.saving : t.save}
                   </Button>
                 )}
-                {!(record.status === "conflict" && !capture) && (
+                {(outline || !(record.status === "conflict" && !capture)) && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -268,29 +320,41 @@ export function PendingChanges({
                     disabled={sending}
                     onClick={() =>
                       setConfirmation(
-                        capture
+                        outline
                           ? {
-                              title: t.deleteTitle,
-                              description: t.deleteBody,
-                              confirmLabel: t.deleteConfirm,
-                              destructive: true,
-                              run: async () => {
-                                if (!account) return { ok: false, message: "" };
-                                await discardIdeaChanges(account, record.entityId);
-                                return { ok: true, message: "" };
-                              },
-                            }
-                          : {
-                              title: t.discardTitle,
-                              description: t.discardBody,
+                              title: t.discardOutlineTitle,
+                              description: t.discardOutlineBody,
                               confirmLabel: t.discardConfirm,
                               destructive: true,
                               run: async () => {
                                 if (!account) return { ok: false, message: "" };
-                                await discardIdeaChanges(account, record.entityId);
+                                await discardOutlineChanges(account, record.entityId);
                                 return { ok: true, message: "" };
                               },
-                            },
+                            }
+                          : capture
+                            ? {
+                                title: t.deleteTitle,
+                                description: t.deleteBody,
+                                confirmLabel: t.deleteConfirm,
+                                destructive: true,
+                                run: async () => {
+                                  if (!account) return { ok: false, message: "" };
+                                  await discardIdeaChanges(account, record.entityId);
+                                  return { ok: true, message: "" };
+                                },
+                              }
+                            : {
+                                title: t.discardTitle,
+                                description: t.discardBody,
+                                confirmLabel: t.discardConfirm,
+                                destructive: true,
+                                run: async () => {
+                                  if (!account) return { ok: false, message: "" };
+                                  await discardIdeaChanges(account, record.entityId);
+                                  return { ok: true, message: "" };
+                                },
+                              },
                       )
                     }
                   >

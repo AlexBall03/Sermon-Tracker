@@ -37,7 +37,8 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   const t = (await getT("outlines")).page;
   const { sermon } = outline;
   // The sermon's own passages, main text first, for the editor to offer on each entry.
-  const passages = (await getIdea(getDb(), user.id, sermon.id))?.references ?? [];
+  const idea = await getIdea(getDb(), user.id, sermon.id);
+  const passages = idea?.references ?? [];
   const sermonReferences = [...passages]
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
     .map(({ book, chapterStart, verseStart, chapterEnd, verseEnd }) => ({
@@ -74,7 +75,13 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
       )}
       <OutlineEditor
         key={outline.id}
-        sermon={{ id: sermon.id, title: sermon.title }}
+        sermon={{
+          id: sermon.id,
+          title: sermon.title,
+          kind: sermon.kind,
+          status: idea?.status,
+          archivedAt: sermon.archivedAt?.toISOString() ?? null,
+        }}
         sermonReferences={sermonReferences}
         snapshot={{
           id: outline.id,

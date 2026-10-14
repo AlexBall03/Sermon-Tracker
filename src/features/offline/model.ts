@@ -68,20 +68,23 @@ export type MutationErrorKind = "network" | "auth" | "validation" | "conflict" |
 /**
  * One change made on this device and not yet acknowledged by the server.
  * Quick capture writes `idea.create` (Phase 5B); an idea changed, archived,
- * restored, or deleted without the server writes the others (Phase 5D.1,
- * ideas/operations.ts). The sync engine (sync/engine.ts) sends them all.
+ * restored, or deleted without the server writes the `idea.*` others (Phase
+ * 5D.1, ideas/operations.ts), and a change to an outline the `outline.*` ones
+ * (Phase 5D.2, outlines/operations.ts). The sync engine (sync/engine.ts) sends
+ * them all.
  *
  * `opId` is made on the device once and never changes, so sending it twice is
  * one change. `entityId` is the ID the thing will have on the server: for an
  * idea it is the idea's own ID, which `createIdea` accepts and saves only
- * once. `payload` is the action's input as validated when it was made, in the
- * shape of `schemaVersion`.
+ * once. For an outline it is the outline's ID, whatever entry the change is
+ * about, so one outline's changes go in order. `payload` is the action's
+ * input as validated when it was made, in the shape of `schemaVersion`.
  */
 export type MutationRecord = {
   opId: string;
   owner: string;
   type: MutationType;
-  entityType: "idea";
+  entityType: "idea" | "outline";
   entityId: string;
   payload: unknown;
   schemaVersion: number;
@@ -109,9 +112,15 @@ export const mutationSchemaVersions: Record<MutationType, number> = {
   "idea.archive": 1,
   "idea.restore": 1,
   "idea.delete": 1,
+  "outline.entry.add": 1,
+  "outline.entry.update": 1,
+  "outline.entry.references": 1,
+  "outline.entry.move": 1,
+  "outline.entry.remove": 1,
+  "outline.numbering": 1,
 };
 
-/** An account's own copy of something it owns (Phase 5D.1: ideas/store.ts). */
+/** An account's own copy of something it owns (ideas/store.ts, Phase 5D.1; outlines/store.ts, 5D.2). */
 export type AccountRecord = {
   owner: string;
   kind: string;
@@ -128,10 +137,14 @@ export type OfflineSettings = {
   autoBible: boolean;
   /** Keep a copy of the account's ideas, to read and change them without the server. */
   ideasOffline: boolean;
+  /** Keep a copy of the account's outlines, to read and change them without the server. */
+  outlinesOffline: boolean;
 };
 
 export const defaultOfflineSettings: OfflineSettings = {
   captureOffline: true,
   autoBible: true,
   ideasOffline: true,
+  // Off until the person asks for it (decided by the owner, Phase 5D.2).
+  outlinesOffline: false,
 };

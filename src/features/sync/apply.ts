@@ -13,6 +13,7 @@ import {
   type SyncOutcome,
   type SyncType,
 } from "./model";
+import { outlineHandlers } from "./apply-outlines";
 import { offlineIdeas } from "./snapshot";
 
 /*
@@ -32,6 +33,8 @@ import { offlineIdeas } from "./snapshot";
  * restoring say what the idea should be and need no revision. A deletion
  * keeps every server rule (preaching history, an outline the person was not
  * told of), each answered as a conflict for the person to settle.
+ *
+ * Changes to an outline (Phase 5D.2) have their handlers in apply-outlines.ts.
  */
 
 type Handler = (
@@ -153,6 +156,8 @@ const handlers: Record<SyncType, Handler> = {
     if (outcome === "preached") return { status: "conflict", conflict: { reason: "preached" } };
     return { status: "applied", entityId: change.entityId };
   },
+
+  ...outlineHandlers,
 };
 
 export async function applyMutation(

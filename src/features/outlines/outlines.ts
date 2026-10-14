@@ -217,6 +217,31 @@ export async function getOutlineForSermon(
 }
 
 /**
+ * Every one of the owner's outlines, without entries: what a device compares
+ * with its copy to know which to download again (Phase 5D.2). Each comes with
+ * its sermon as it is now, archived or refiled ones included, because
+ * `getOutline` still opens those.
+ */
+export async function outlineManifest(
+  db: Reader,
+  ownerId: string,
+): Promise<(OutlineRecord & { sermon: OutlineSermon & Pick<Idea, "status"> })[]> {
+  const rows = await db
+    .select({ outline: sermonOutlines, sermon: { ...sermon, status: ideas.status } })
+    .from(sermonOutlines)
+    .innerJoin(
+      ideas,
+      and(eq(ideas.id, sermonOutlines.sermonId), eq(ideas.ownerId, sermonOutlines.ownerId)),
+    )
+    .where(eq(sermonOutlines.ownerId, ownerId))
+    .orderBy(asc(sermonOutlines.id));
+  return rows.map((row) => ({
+    ...asOutline(row.outline),
+    sermon: { ...row.sermon, status: statusAsRead(row.sermon.status) },
+  }));
+}
+
+/**
  * The outlines of these sermons, by sermon: one query, for a page that shows
  * several sermons and says of each whether it has an outline. A sermon that
  * has none, or is not the owner's, is simply not in the answer.

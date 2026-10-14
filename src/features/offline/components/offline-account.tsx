@@ -6,6 +6,7 @@ import { useReading } from "@/features/preferences/client";
 import { clearActiveAccount, setActiveAccount, setPermittedTranslations } from "../account";
 import { autoDownload } from "../bible/auto";
 import { refreshDue, refreshIdeas } from "../ideas/refresh";
+import { refreshOutlines, refreshOutlinesDue } from "../outlines/refresh";
 import { useOfflineSettings } from "../settings";
 import { SyncAgent } from "../sync/agent";
 
@@ -48,7 +49,8 @@ function whenIdle(task: () => void) {
  * this device who is signed in and which translations they may read, for the
  * offline page; then, once the page is idle, it keeps the reading translation
  * downloaded (bible/auto.ts) and, unless this device was told not to, a copy
- * of the account's ideas current (ideas/refresh.ts): on opening, on coming
+ * of the account's ideas current (ideas/refresh.ts), and of its outlines where
+ * this device was asked to keep them (outlines/refresh.ts): on opening, on coming
  * back online or to the front once a while has passed, and after the server
  * acknowledged changes sent from here. It draws nothing and never holds the page up:
  * anything it cannot do is shown in Settings, not here.
@@ -75,15 +77,23 @@ export function OfflineAgent({
 
   useEffect(() => whenIdle(() => void autoDownload(translation).catch(() => {})), [translation]);
 
-  const { ideasOffline } = useOfflineSettings();
+  const { ideasOffline, outlinesOffline } = useOfflineSettings();
   const refresh = useCallback(
     (force: boolean) => {
-      if (!ideasOffline) return;
-      void (async () => {
-        if (force || (await refreshDue(account, ideasRefreshEvery))) await refreshIdeas(account);
-      })().catch(() => {});
+      if (ideasOffline) {
+        void (async () => {
+          if (force || (await refreshDue(account, ideasRefreshEvery))) await refreshIdeas(account);
+        })().catch(() => {});
+      }
+      if (outlinesOffline) {
+        void (async () => {
+          if (force || (await refreshOutlinesDue(account, ideasRefreshEvery))) {
+            await refreshOutlines(account);
+          }
+        })().catch(() => {});
+      }
     },
-    [account, ideasOffline],
+    [account, ideasOffline, outlinesOffline],
   );
   useEffect(() => {
     const cancel = whenIdle(() => refresh(false));

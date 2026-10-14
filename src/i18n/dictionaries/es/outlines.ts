@@ -145,6 +145,9 @@ export const outlines: Untranslated<typeof english> = {
       failed: "No se pudo guardar",
       conflict: "Requiere tu atención",
     },
+    savedOnDevice: "Guardado en este dispositivo",
+    notKept: "Este cambio no se pudo guardar en este dispositivo. Se intentará de nuevo.",
+    needsConnection: "Para agregar un punto guardado se necesita conexión.",
     retry: "Intentar de nuevo",
     offline:
       "Eso no llegó al servidor. Tus cambios se conservan en esta página y se intentará de nuevo.",

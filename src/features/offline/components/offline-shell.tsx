@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowLeft, BookOpen, Lightbulb, PenLine, RefreshCw, WifiOff } from "lucide-react";
+import { ArrowLeft, BookOpen, Lightbulb, List, PenLine, RefreshCw, WifiOff } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
@@ -26,10 +26,12 @@ import { routes } from "@/lib/site";
 import { getActiveAccount, getPermittedTranslations } from "../account";
 import { localTranslations } from "../bible/local";
 import { listLocalIdeas } from "../ideas/store";
+import { listLocalOutlines } from "../outlines/store";
 import type { OfflineSettings } from "../model";
 import { readOfflineSettings } from "../settings";
 import { OfflineAccountProvider } from "./offline-account";
 import { OfflineIdea, OfflineLibrary, type Go } from "./offline-ideas";
+import { OfflineOutline, OfflineOutlines } from "./offline-outlines";
 import { PendingChanges } from "./pending-changes";
 
 /** What this device holds for the offline page, read once it is in the browser. */
@@ -40,6 +42,8 @@ type Local = {
   settings: OfflineSettings;
   /** How many of the account's ideas are kept here. */
   ideas: number;
+  /** How many of the account's outlines are kept here. */
+  outlines: number;
 };
 
 async function readLocal(): Promise<Local> {
@@ -51,20 +55,40 @@ async function readLocal(): Promise<Local> {
   ]);
   // Never told what was on offer: only the text that can never be switched off.
   const allowed = permitted.length > 0 ? permitted : [fallbackTranslation];
-  const ideas = account ? (await listLocalIdeas(account).catch(() => [])).length : 0;
-  return { account, readable: kept.filter((id) => allowed.includes(id)), settings, ideas };
+  const [ideas, outlines] = account
+    ? await Promise.all([
+        listLocalIdeas(account).then(
+          (list) => list.length,
+          () => 0,
+        ),
+        listLocalOutlines(account).then(
+          (list) => list.length,
+          () => 0,
+        ),
+      ])
+    : [0, 0];
+  return {
+    account,
+    readable: kept.filter((id) => allowed.includes(id)),
+    settings,
+    ideas,
+    outlines,
+  };
 }
 
 const subscribeNothing = () => () => {};
 const onReaderPath = () => window.location.pathname.startsWith(routes.bible);
 const ideaPath = /^\/library\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const outlinePath = /^\/outlines\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 /** The addresses this page draws by itself, from the device. */
 type Place =
   | { view: "hub" }
   | { view: "bible" }
   | { view: "library"; search: string }
-  | { view: "idea"; id: string; search: string };
+  | { view: "idea"; id: string; search: string }
+  | { view: "outlines"; search: string }
+  | { view: "outline"; id: string };
 
 function placeOf(): Place {
   const { pathname, search } = window.location;
@@ -72,13 +96,19 @@ function placeOf(): Place {
   if (pathname === routes.sermonIdeas) return { view: "library", search };
   const idea = ideaPath.exec(pathname);
   if (idea) return { view: "idea", id: idea[1].toLowerCase(), search };
+  if (pathname === routes.outlines) return { view: "outlines", search };
+  const outline = outlinePath.exec(pathname);
+  if (outline) return { view: "outline", id: outline[1].toLowerCase() };
   return { view: "hub" };
 }
 
 /** True for an address this page draws itself: followed here rather than asked of the server. */
 const drawnHere = (url: URL) =>
   url.origin === window.location.origin &&
-  (url.pathname === routes.sermonIdeas || ideaPath.test(url.pathname));
+  (url.pathname === routes.sermonIdeas ||
+    ideaPath.test(url.pathname) ||
+    url.pathname === routes.outlines ||
+    outlinePath.test(url.pathname));
 
 /**
  * The offline page as the service worker shows it for any page the network
@@ -201,7 +231,7 @@ export function OfflineShell() {
             <ScriptureProvider>
               <QuickCaptureProvider>
                 <Bar
-                  reading={reading || place.view === "library" || place.view === "idea"}
+                  reading={reading || place.view !== "hub"}
                   online={online}
                   onBack={leaveBible}
                 />
@@ -219,14 +249,20 @@ export function OfflineShell() {
                       search={place.search}
                       go={go}
                     />
+                  ) : place.view === "outlines" ? (
+                    <OfflineOutlines account={local.account} search={place.search} go={go} />
+                  ) : place.view === "outline" ? (
+                    <OfflineOutline account={local.account} id={place.id} />
                   ) : (
                     <Hub
                       readable={local.readable}
                       canCapture={canCapture}
                       signedOut={!local.account}
                       ideas={local.settings.ideasOffline ? local.ideas : 0}
+                      outlines={local.outlines}
                       onRead={openBible}
                       onIdeas={() => go(routes.sermonIdeas)}
+                      onOutlines={() => go(routes.outlines)}
                     />
                   )}
                 </main>
@@ -280,16 +316,21 @@ function Hub({
   canCapture,
   signedOut,
   ideas,
+  outlines,
   onRead,
   onIdeas,
+  onOutlines,
 }: {
   readable: TranslationId[];
   canCapture: boolean;
   signedOut: boolean;
   /** How many ideas are kept here for the account; none hides the card. */
   ideas: number;
+  /** How many outlines are kept here for the account; none hides the card. */
+  outlines: number;
   onRead: () => void;
   onIdeas: () => void;
+  onOutlines: () => void;
 }) {
   const t = useT("offline").shell;
   const message = useT("pwa").offline;
@@ -353,6 +394,21 @@ function Hub({
             </p>
             <Button className="mt-4" onClick={onIdeas}>
               {t.openIdeas}
+            </Button>
+          </section>
+        )}
+
+        {outlines > 0 && (
+          <section className="lit-edge rounded-xl border bg-surface p-5 shadow-card sm:col-span-2">
+            <div className="flex items-center gap-2.5">
+              <List className="size-5 text-primary" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-[-0.015em]">{t.outlinesTitle}</h2>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {t.outlinesBody(outlines)}
+            </p>
+            <Button className="mt-4" onClick={onOutlines}>
+              {t.openOutlines}
             </Button>
           </section>
         )}

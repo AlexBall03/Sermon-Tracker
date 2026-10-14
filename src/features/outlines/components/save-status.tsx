@@ -17,16 +17,19 @@ const icons = {
 /**
  * Whether the outline is saved, said in words with an icon beside them and
  * announced as it changes. A failure says why and offers to try again; it is
- * never shown as saved.
+ * never shown as saved. Kept on this device and not yet in the account
+ * (`onDevice`, Phase 5D.2), it never says "Saved" alone.
  */
 export function SaveStatus({
   status,
   problem,
   onRetry,
+  onDevice = false,
 }: {
   status: Status;
   problem: string | null;
   onRetry: () => void;
+  onDevice?: boolean;
 }) {
   const t = useT("outlines").editor;
   const Icon = icons[status];
@@ -43,7 +46,7 @@ export function SaveStatus({
           className={`size-4 shrink-0 ${status === "saving" ? "animate-spin" : ""}`}
           aria-hidden
         />
-        <span>{t.status[status]}</span>
+        <span>{status === "saved" && onDevice ? t.savedOnDevice : t.status[status]}</span>
         {status === "failed" && problem && (
           <span className="font-normal text-foreground">{problem}</span>
         )}
