@@ -5,13 +5,20 @@ import { splashCookie } from "@/lib/splash";
 /** If the page's script never runs, the splash lets go by itself after this long. */
 const lastResortMs = 10_000;
 
+/** Set for the life of one launch of the installed application, once its splash has been shown. */
+export const launchedKey = "st-launched";
+
 /*
- * Runs before the first paint. If the proxy signalled a splash (a first visit,
- * or the first page after signing in), it takes the signal, turns the splash
- * on, and notes the time so the controller knows when its opening has played.
- * With no signal the splash stays `display: none` and is never seen.
+ * Runs before the first paint. The splash is turned on when the proxy
+ * signalled one (a first visit, or the first page after signing in), or when
+ * this is the first page of a launch of the installed application, signed in
+ * or not: the proxy cannot tell a launch from a page, because the installed
+ * window keeps the browser session's cookies between launches, while its
+ * session storage starts empty with each. It notes the time so the controller
+ * knows when its opening has played. Otherwise the splash stays
+ * `display: none` and is never seen.
  */
-const script = `(function(){try{var d=document.documentElement;if(/(?:^|; )${splashCookie}=1/.test(document.cookie)){document.cookie="${splashCookie}=; Max-Age=0; path=/";d.dataset.splash="on";window.__splashAt=performance.now();setTimeout(function(){if(!window.__splashManaged)delete d.dataset.splash},${lastResortMs})}}catch(e){}})()`;
+export const splashScript = `(function(){try{var d=document.documentElement,on=false;if(/(?:^|; )${splashCookie}=1/.test(document.cookie)){document.cookie="${splashCookie}=; Max-Age=0; path=/";on=true}try{if((navigator.standalone===true||matchMedia("(display-mode: standalone)").matches)&&!sessionStorage.getItem("${launchedKey}")){sessionStorage.setItem("${launchedKey}","1");on=true}}catch(e){}if(on){d.dataset.splash="on";window.__splashAt=performance.now();setTimeout(function(){if(!window.__splashManaged)delete d.dataset.splash},${lastResortMs})}}catch(e){}})()`;
 
 /**
  * The splash's inline script. It only means anything in the server's HTML,
@@ -24,7 +31,7 @@ export function SplashScript() {
     <script
       type={typeof window === "undefined" ? "text/javascript" : "text/plain"}
       suppressHydrationWarning
-      dangerouslySetInnerHTML={{ __html: script }}
+      dangerouslySetInnerHTML={{ __html: splashScript }}
     />
   );
 }

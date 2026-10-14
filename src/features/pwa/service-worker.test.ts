@@ -161,6 +161,8 @@ describe("which requests the worker answers", () => {
       route(request("/library", { method: "POST", headers: { "Next-Action": "x" } })),
     ).toBeNull();
     expect(route(request("/api/bible/1/1"))).toBeNull();
+    // A whole translation for the device goes to IndexedDB (features/offline), never into this cache.
+    expect(route(request("/api/bible/package/kjv/0"))).toBeNull();
     expect(route(request("/__clerk/v1/client"))).toBeNull();
     expect(route(request("/_next/image?url=%2Fa.png&w=64&q=75"))).toBeNull();
     expect(route(request("https://clerk.sermontracker.com/v1/client"))).toBeNull();
@@ -169,6 +171,7 @@ describe("which requests the worker answers", () => {
 
   it("leaves a request it does not answer entirely to the network", async () => {
     expect(await dispatch(request("/api/ideas/search?q=x"))).toBe("untouched");
+    expect(await dispatch(request("/api/bible/package/kjv/0"))).toBe("untouched");
     expect(await dispatch(request("/dashboard", { headers: { RSC: "1" } }))).toBe("untouched");
     expect(caches.stores.size).toBe(0);
   });

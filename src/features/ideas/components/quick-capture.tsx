@@ -25,6 +25,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { useOfflineAccount } from "@/features/offline/components/offline-account";
+import { enqueue } from "@/features/offline/queue";
+import { useOfflineSettings } from "@/features/offline/settings";
 import { useReading } from "@/features/preferences/client";
 import { ScriptureBrowser } from "@/features/scripture/components/scripture-browser";
 import {
@@ -35,6 +38,7 @@ import type { ScriptureReference } from "@/features/scripture/reference";
 import { translations } from "@/features/scripture/translations";
 import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
+import { holdUnsavedWork, releaseUnsavedWork } from "@/lib/unsaved-work";
 import { routes } from "@/lib/site";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
@@ -120,10 +124,15 @@ const form = "capture";
  * with something written asks first; choosing to go discards it, and every
  * close clears the validation messages. A failed save leaves every field as it
  * was, and the idea's ID is made before the first attempt so a retry cannot
- * save it twice.
+ * save it twice. A save the server never answered is kept on this device
+ * instead, where it can be (`keepOnDevice`), and is said to be there and not
+ * in the account; Settings and the offline page list what is waiting.
  */
 export function QuickCaptureProvider({ children }: { children: React.ReactNode }) {
   const t = useT("ideas").capture;
+  const offline = useT("offline");
+  const account = useOfflineAccount();
+  const offlineSettings = useOfflineSettings();
   const locale = useLocale();
   const reading = useReading();
   const [open, setOpen] = useState(false);
@@ -193,6 +202,32 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     afterSave.current = undefined;
   }
 
+  /**
+   * Keeps a capture the server did not answer on this device, in its owner's
+   * queue (features/offline), to be saved to the account later. "off" where
+   * this device does not keep captures or there is no account to keep it
+   * under; "failed" where the device would not keep it. Either way the form
+   * keeps every word.
+   */
+  async function keepOnDevice(input: unknown, id: string): Promise<"kept" | "off" | "failed"> {
+    if (!account || !offlineSettings.captureOffline) return "off";
+    holdUnsavedWork(keepOnDevice);
+    try {
+      await enqueue(account, {
+        opId: id,
+        type: "idea.create",
+        entityType: "idea",
+        entityId: id,
+        payload: input,
+      });
+      return "kept";
+    } catch {
+      return "failed";
+    } finally {
+      releaseUnsavedWork(keepOnDevice);
+    }
+  }
+
   async function save() {
     if (busy) return;
     const parsed = ideaSchemas(locale).ideaInput.safeParse(draft);
@@ -212,7 +247,17 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
     try {
       outcome = await createIdea(parsed.data, ideaId.current);
     } catch {
-      outcome = { ok: false, message: t.offline };
+      // No answer from the server: kept on this device instead where it can be, under
+      // the same ID, so saving it later is this same capture and never a second.
+      const kept = await keepOnDevice(parsed.data, ideaId.current);
+      setBusy(false);
+      if (kept === "kept") {
+        clear();
+        setOpen(false);
+        toast({ message: offline.capture.kept });
+        return;
+      }
+      outcome = { ok: false, message: kept === "failed" ? offline.capture.notKept : t.offline };
     }
     setBusy(false);
 
@@ -271,7 +316,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
           className={cn(
             "transition-[max-width] duration-200",
             sideBySide ? "max-w-5xl" : "max-w-xl",
-            replaced && "h-[calc(100dvh-1.5rem)]",
+            replaced && "h-[calc(var(--vv-h,100dvh)-1.5rem)]",
           )}
         >
           <ScriptureHost onOpenPanel={openPanel}>

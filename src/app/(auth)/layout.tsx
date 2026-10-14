@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { GuestLanguage } from "@/components/layout/guest-language";
+import { ForgetOfflineAccount } from "@/features/offline/components/offline-account";
 import { getPreferences } from "@/features/preferences/current";
 import { dictionary } from "@/i18n";
 import { I18nProvider } from "@/i18n/client";
@@ -25,6 +26,8 @@ import { routes } from "@/lib/site";
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center overflow-x-clip px-5 py-12 sm:py-16">
+      {/* No one is signed in here: the offline page stops offering anyone's work (features/offline). */}
+      <ForgetOfflineAccount />
       {/* 25rem is the width of Clerk's card. */}
       <div className="w-full max-w-[25rem]">
         <div className="mb-8 flex justify-center">

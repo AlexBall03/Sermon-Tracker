@@ -170,16 +170,18 @@ export function useChapterMarks(
   translation: TranslationId,
   book: number,
   chapter: number,
+  /** False where there is no account to ask (the offline reader): nothing is asked for. */
+  enabled = true,
 ): ChapterMarksState {
   const key = keyOf(translation, book, chapter);
   const entry = useSyncExternalStore(
     subscribe,
-    () => entries.get(key),
+    () => (enabled ? entries.get(key) : undefined),
     () => undefined,
   );
   useEffect(() => {
-    void loadMarks(translation, book, chapter);
-  }, [translation, book, chapter]);
+    if (enabled) void loadMarks(translation, book, chapter);
+  }, [translation, book, chapter, enabled]);
   return {
     marks: entry?.shown ?? noMarks,
     ready: Boolean(entry?.confirmed),

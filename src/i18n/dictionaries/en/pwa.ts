@@ -10,7 +10,7 @@ export const pwa = {
   install: {
     title: "Install the app",
     description:
-      "Open Sermon Tracker from your home screen, dock, or app list, in its own window, straight into your workspace. It still needs a connection; working offline is not built yet.",
+      "Open Sermon Tracker from your home screen, dock, or app list, in its own window, straight into your workspace. Without a connection it still opens, to read your downloaded Bible and capture thoughts.",
     installed: "You're using the installed app.",
     justInstalled:
       "Sermon Tracker is installed. Open it from your home screen or app list; it opens on your dashboard.",
@@ -61,5 +61,10 @@ export const pwa = {
     updating: "Updating…",
     later: "Later",
     unsaved: "Some of your work is not saved yet. Save it or let it finish saving, then update.",
+  },
+  refresh: {
+    pull: "Pull to refresh",
+    release: "Release to refresh",
+    refreshing: "Refreshing…",
   },
 };

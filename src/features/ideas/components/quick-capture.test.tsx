@@ -1,3 +1,5 @@
+import "fake-indexeddb/auto";
+
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +11,8 @@ vi.mock("../actions", () => ({ createIdea: state.createIdea }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { ToastProvider } from "@/components/ui/toast";
+import { OfflineAccountProvider } from "@/features/offline/components/offline-account";
+import * as queue from "@/features/offline/queue";
 import { CaptureButton, QuickCaptureProvider } from "./quick-capture";
 
 const saved: IdeaActionResult = {
@@ -17,13 +21,15 @@ const saved: IdeaActionResult = {
   id: "99999999-9999-4999-8999-999999999999",
 };
 
-function open() {
+function open(account: string | null = null) {
   render(
-    <ToastProvider>
-      <QuickCaptureProvider>
-        <CaptureButton />
-      </QuickCaptureProvider>
-    </ToastProvider>,
+    <OfflineAccountProvider account={account}>
+      <ToastProvider>
+        <QuickCaptureProvider>
+          <CaptureButton />
+        </QuickCaptureProvider>
+      </ToastProvider>
+    </OfflineAccountProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Capture an idea" }));
   return screen.getByRole("dialog", { name: "Capture an idea" });
@@ -135,6 +141,34 @@ describe("quick capture", () => {
     submit();
     expect(await within(dialog).findByText(/Check your connection/)).toBeVisible();
     expect(title()).toHaveValue("A thought");
+  });
+
+  it("keeps a capture the server never answered on this device, and says it is not saved", async () => {
+    state.createIdea.mockRejectedValueOnce(new Error("Failed to fetch"));
+    open("owner-a");
+    type(title(), "A thought kept here");
+    submit();
+    expect(await screen.findByText(/not in your account yet/)).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const [kept] = await queue.listMutations("owner-a");
+    const [, id] = state.createIdea.mock.calls[0];
+    expect(kept).toMatchObject({ type: "idea.create", entityId: id, opId: id, status: "pending" });
+    expect(kept.payload).toMatchObject({ title: "A thought kept here" });
+    // Another account on the device never sees it.
+    expect(await queue.listMutations("owner-b")).toEqual([]);
+    await queue.removeMutation("owner-a", id);
+  });
+
+  it("keeps every word in the form when the device cannot keep it either", async () => {
+    state.createIdea.mockRejectedValueOnce(new Error("Failed to fetch"));
+    const failing = vi.spyOn(queue, "enqueue").mockRejectedValueOnce(new Error("QuotaExceededError"));
+    const dialog = open("owner-a");
+    type(title(), "A thought");
+    submit();
+    expect(await within(dialog).findByText(/could not keep your thought/)).toBeVisible();
+    expect(title()).toHaveValue("A thought");
+    failing.mockRestore();
   });
 
   it("saves once however many times it is submitted while saving", async () => {

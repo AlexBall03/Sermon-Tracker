@@ -12,7 +12,7 @@ export const pwa: Untranslated<typeof english> = {
   install: {
     title: "Instalar la aplicación",
     description:
-      "Abre Sermon Tracker desde tu pantalla de inicio, el Dock o tu lista de aplicaciones, en su propia ventana y directo a tu espacio de trabajo. Aún necesita conexión; el trabajo sin conexión todavía no está disponible.",
+      "Abre Sermon Tracker desde tu pantalla de inicio, el Dock o tu lista de aplicaciones, en su propia ventana y directo a tu espacio de trabajo. Sin conexión también se abre, para leer tu Biblia descargada y capturar ideas.",
     installed: "Estás usando la aplicación instalada.",
     justInstalled:
       "Sermon Tracker está instalado. Ábrelo desde tu pantalla de inicio o tu lista de aplicaciones; se abre en tu inicio.",
@@ -64,5 +64,10 @@ export const pwa: Untranslated<typeof english> = {
     later: "Más tarde",
     unsaved:
       "Parte de tu trabajo aún no está guardado. Guárdalo o deja que termine de guardarse y luego actualiza.",
+  },
+  refresh: {
+    pull: "Desliza para actualizar",
+    release: "Suelta para actualizar",
+    refreshing: "Actualizando…",
   },
 };

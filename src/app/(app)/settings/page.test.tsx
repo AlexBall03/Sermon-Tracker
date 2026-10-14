@@ -52,7 +52,7 @@ describe("SettingsPage", () => {
     await expect(SettingsPage()).rejects.toThrow("redirect:/access-denied");
   });
 
-  it("has its five sections, in order", async () => {
+  it("has its six sections, in order", async () => {
     render(await SettingsPage());
     expect(
       screen.getAllByRole("region").map((region) => region.getAttribute("aria-labelledby")),
@@ -61,6 +61,7 @@ describe("SettingsPage", () => {
       "ministry-heading",
       "bible-language-heading",
       "appearance-heading",
+      "offline-heading",
       "account-heading",
     ]);
     for (const name of [
@@ -68,6 +69,7 @@ describe("SettingsPage", () => {
       "Church & Ministry",
       "Bible & Language",
       "Appearance & Experience",
+      "Offline Storage",
       "Account",
     ]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();

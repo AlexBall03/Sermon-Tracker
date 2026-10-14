@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  createContext,
+  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -120,6 +122,15 @@ export type InitialChapter = {
  * What the reader was opened from, as the server found it among the account's
  * own: an idea, or an outline (`outline`), whose title is then its sermon's.
  */
+/**
+ * True in the offline page's reader (features/pwa/components/offline-shell.tsx):
+ * the text is read from this device and nothing of an account is asked for or
+ * changed. There are no marks, favorites, highlights, or attaching to an idea,
+ * and choosing a translation is not saved; reading, comparing, and copying
+ * work as always.
+ */
+const LocalReading = createContext(false);
+
 export type ReaderOrigin = { id: string; title: string; outline?: boolean };
 
 /** True while the reading still goes on from where the reader was opened. */
@@ -209,10 +220,13 @@ export function ReaderSidebarScript() {
 export function BibleReader({
   initial,
   origin,
+  local = false,
 }: {
   initial?: InitialChapter;
   /** Given when the address names an idea of the account's: the way back to it is then offered. */
   origin?: ReaderOrigin;
+  /** Read without the server and without an account (see `LocalReading`). */
+  local?: boolean;
 }) {
   const t = useT("scripture").reader;
   const router = useRouter();
@@ -404,7 +418,7 @@ export function BibleReader({
     // The other text is seen to take the first one's place.
     setArrivals((sides) => ({ ...sides, [pane]: "swap" }));
     setAnnouncement(t.nowReading(allTranslations[id].short));
-    if (pane !== "primary" || !remember) return;
+    if (pane !== "primary" || !remember || local) return;
     void setBibleTranslation(id)
       .catch(() => ({ ok: false, message: t.translationNotSaved }))
       .then((result) => {
@@ -518,161 +532,163 @@ export function BibleReader({
   }, [locking, firstKey, secondKey, samePlace, active]);
 
   return (
-    <div className="flex min-h-[calc(100dvh-var(--bar-h))] flex-1">
-      <aside
-        id={sidebarId}
-        aria-label={t.navigation}
-        // Put away, its place closes to nothing while the panel itself slides off
-        // to the left and fades, so the text glides over to where it was. It keeps
-        // its width throughout, so nothing inside reflows, and once away it is
-        // hidden from the keyboard and from assistive technology.
-        className={cn(
-          "sticky top-bar h-[calc(100dvh-var(--bar-h))] w-72 shrink-0 overflow-hidden transition-[width,visibility] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] max-md:hidden lg:w-80 sidebar-closed:invisible sidebar-closed:w-0",
-          navigationOver && "hidden",
-        )}
-      >
-        <div className="flex h-full w-72 flex-col border-r transition-[translate,opacity] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] lg:w-80 sidebar-closed:-translate-x-10 sidebar-closed:opacity-0">
-          {/* As tall as the chapter bar beside it, so the two read as one line. */}
-          <p className="flex h-14 shrink-0 items-center px-4 font-display text-lg leading-snug font-medium tracking-[-0.01em]">
-            {t.bible}
-          </p>
-          <ReaderNavigator
-            location={current?.place ?? null}
-            translation={current?.translation ?? preferred.translation}
-            onGo={(to) => go(active, to)}
-            navigation={navigation}
-          />
-        </div>
-      </aside>
-
-      {/* The room the text has, which is what decides whether two panes fit side by side. */}
-      <div className="relative min-w-0 flex-1">
-        {/*
-         * The handle on the navigation's edge. It is one control in one place: it
-         * sits astride the line between the navigation and the text and travels
-         * with that line, so putting the navigation away carries it to the edge
-         * of the window, where the same click brings the navigation back. Its
-         * arrow says which way the navigation will go. It stands apart from the
-         * chapter bars, level with them, so it is the same with one pane or two.
-         */}
-        <div className={cn("sticky top-bar z-40 h-0 max-md:hidden", navigationOver && "hidden")}>
-          <button
-            type="button"
-            aria-label={sidebarOpen ? t.hideNavigation : t.showNavigation}
-            aria-expanded={sidebarOpen}
-            aria-controls={sidebarId}
-            onClick={() => storeSidebarOpen(!sidebarOpen)}
-            className="group/handle absolute top-7 left-0 z-10 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-input bg-surface-raised text-muted-foreground shadow-card transition-[translate,color,border-color,box-shadow] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] hover:border-primary/70 hover:text-primary hover:shadow-raised active:bg-accent pointer-coarse:size-9 sidebar-closed:translate-x-2.5"
-          >
-            <ChevronLeft
-              className="size-4 transition-transform duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] sidebar-closed:rotate-180"
-              aria-hidden
+    <LocalReading.Provider value={local}>
+      <div className="flex min-h-[calc(100dvh-var(--bar-h))] flex-1">
+        <aside
+          id={sidebarId}
+          aria-label={t.navigation}
+          // Put away, its place closes to nothing while the panel itself slides off
+          // to the left and fades, so the text glides over to where it was. It keeps
+          // its width throughout, so nothing inside reflows, and once away it is
+          // hidden from the keyboard and from assistive technology.
+          className={cn(
+            "sticky top-bar h-[calc(100dvh-var(--bar-h))] w-72 shrink-0 overflow-hidden transition-[width,visibility] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] max-md:hidden lg:w-80 sidebar-closed:invisible sidebar-closed:w-0",
+            navigationOver && "hidden",
+          )}
+        >
+          <div className="flex h-full w-72 flex-col border-r transition-[translate,opacity] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] lg:w-80 sidebar-closed:-translate-x-10 sidebar-closed:opacity-0">
+            {/* As tall as the chapter bar beside it, so the two read as one line. */}
+            <p className="flex h-14 shrink-0 items-center px-4 font-display text-lg leading-snug font-medium tracking-[-0.01em]">
+              {t.bible}
+            </p>
+            <ReaderNavigator
+              location={current?.place ?? null}
+              translation={current?.translation ?? preferred.translation}
+              onGo={(to) => go(active, to)}
+              navigation={navigation}
             />
-          </button>
-        </div>
+          </div>
+        </aside>
 
-        <p role="status" aria-live="polite" className="sr-only">
-          {announcement}
-        </p>
-
-        {!first ? (
-          <>
-            <ChapterBar name={t.bible} onBrowse={() => setSheetOpen(true)} sticky />
-            <div className="mx-auto max-w-[46rem] px-3 py-8 sm:px-5">
-              <PassageSkeleton lines={12} />
-            </div>
-          </>
-        ) : !second ? (
-          <ReaderPane
-            // A chapter of its own, in a translation of its own: nothing chosen in
-            // one is carried into the next.
-            key={`${first.translation}.${first.location.book}.${first.location.chapter}`}
-            {...first}
-            active
-            origin={cameFrom(first.location, origin) ? origin : undefined}
-            // Offered only where two panes fit, and not while one is waiting for room.
-            onCompare={roomForTwo && !location?.beside ? compare : undefined}
-          />
-        ) : (
-          // Two panes fill the window beneath the bar and scroll apart, each by itself.
-          <div
-            ref={panesBox}
-            data-comparing
-            className="relative flex h-[calc(100dvh-var(--bar-h))] flex-col max-md:h-[calc(100dvh-var(--bar-h)*2-var(--bar-lift))]"
-          >
-            <div className="grid min-h-0 flex-1 grid-cols-2 divide-x">
-              {[first, second].map((props) => (
-                <ReaderPane
-                  key={`${props.pane}.${props.translation}.${props.location.book}.${props.location.chapter}`}
-                  {...props}
-                  comparing
-                  browseAlways={navigationOver}
-                  active={active === props.pane}
-                  onActivate={() => setTouched(props.pane)}
-                  onClose={() => closePane(props.pane)}
-                  origin={
-                    props.pane === "primary" && cameFrom(props.location, origin)
-                      ? origin
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-            {/*
-             * The lock on the panes' scrolling: one control, astride the line between
-             * them and level with their bars, as the navigation's handle is on its own
-             * line. Emerald while they are locked together.
-             */}
+        {/* The room the text has, which is what decides whether two panes fit side by side. */}
+        <div className="relative min-w-0 flex-1">
+          {/*
+           * The handle on the navigation's edge. It is one control in one place: it
+           * sits astride the line between the navigation and the text and travels
+           * with that line, so putting the navigation away carries it to the edge
+           * of the window, where the same click brings the navigation back. Its
+           * arrow says which way the navigation will go. It stands apart from the
+           * chapter bars, level with them, so it is the same with one pane or two.
+           */}
+          <div className={cn("sticky top-bar z-40 h-0 max-md:hidden", navigationOver && "hidden")}>
             <button
               type="button"
-              aria-pressed={scrollLocked}
-              aria-label={scrollLocked ? t.unlockScrolling : t.lockScrolling}
-              title={scrollLocked ? t.unlockScrolling : t.lockScrolling}
-              onClick={() => {
-                storeScrollLocked(!scrollLocked);
-                setAnnouncement(scrollLocked ? t.scrollingUnlocked : t.scrollingLocked);
-              }}
-              className="absolute top-7 left-1/2 z-40 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-input bg-surface-raised text-muted-foreground shadow-card transition-[color,border-color,box-shadow] duration-200 hover:border-primary/70 hover:text-primary hover:shadow-raised active:bg-accent aria-pressed:border-primary/70 aria-pressed:text-primary pointer-coarse:size-9"
+              aria-label={sidebarOpen ? t.hideNavigation : t.showNavigation}
+              aria-expanded={sidebarOpen}
+              aria-controls={sidebarId}
+              onClick={() => storeSidebarOpen(!sidebarOpen)}
+              className="group/handle absolute top-7 left-0 z-10 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-input bg-surface-raised text-muted-foreground shadow-card transition-[translate,color,border-color,box-shadow] duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] hover:border-primary/70 hover:text-primary hover:shadow-raised active:bg-accent pointer-coarse:size-9 sidebar-closed:translate-x-2.5"
             >
-              {/* Keyed, so the change of state is seen: the new icon grows into place. */}
-              {scrollLocked ? (
-                <Link2
-                  key="locked"
-                  className="size-4 animate-in duration-300 zoom-in-50"
-                  aria-hidden
-                />
-              ) : (
-                <Link2Off
-                  key="free"
-                  className="size-4 animate-in duration-300 zoom-in-50"
-                  aria-hidden
-                />
-              )}
+              <ChevronLeft
+                className="size-4 transition-transform duration-[380ms] ease-[cubic-bezier(0.65,0,0.35,1)] sidebar-closed:rotate-180"
+                aria-hidden
+              />
             </button>
           </div>
-        )}
-      </div>
 
-      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
-        <DialogContent placement="full">
-          <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
-            <div className="min-w-0">
-              <DialogTitle>{t.bible}</DialogTitle>
-              <DialogDescription>
-                {allTranslations[current?.translation ?? preferred.translation].name}
-              </DialogDescription>
+          <p role="status" aria-live="polite" className="sr-only">
+            {announcement}
+          </p>
+
+          {!first ? (
+            <>
+              <ChapterBar name={t.bible} onBrowse={() => setSheetOpen(true)} sticky />
+              <div className="mx-auto max-w-[46rem] px-3 py-8 sm:px-5">
+                <PassageSkeleton lines={12} />
+              </div>
+            </>
+          ) : !second ? (
+            <ReaderPane
+              // A chapter of its own, in a translation of its own: nothing chosen in
+              // one is carried into the next.
+              key={`${first.translation}.${first.location.book}.${first.location.chapter}`}
+              {...first}
+              active
+              origin={cameFrom(first.location, origin) ? origin : undefined}
+              // Offered only where two panes fit, and not while one is waiting for room.
+              onCompare={roomForTwo && !location?.beside ? compare : undefined}
+            />
+          ) : (
+            // Two panes fill the window beneath the bar and scroll apart, each by itself.
+            <div
+              ref={panesBox}
+              data-comparing
+              className="relative flex h-[calc(100dvh-var(--bar-h))] flex-col max-md:h-[calc(100dvh-var(--bar-h)*2-var(--bar-lift))]"
+            >
+              <div className="grid min-h-0 flex-1 grid-cols-2 divide-x">
+                {[first, second].map((props) => (
+                  <ReaderPane
+                    key={`${props.pane}.${props.translation}.${props.location.book}.${props.location.chapter}`}
+                    {...props}
+                    comparing
+                    browseAlways={navigationOver}
+                    active={active === props.pane}
+                    onActivate={() => setTouched(props.pane)}
+                    onClose={() => closePane(props.pane)}
+                    origin={
+                      props.pane === "primary" && cameFrom(props.location, origin)
+                        ? origin
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+              {/*
+               * The lock on the panes' scrolling: one control, astride the line between
+               * them and level with their bars, as the navigation's handle is on its own
+               * line. Emerald while they are locked together.
+               */}
+              <button
+                type="button"
+                aria-pressed={scrollLocked}
+                aria-label={scrollLocked ? t.unlockScrolling : t.lockScrolling}
+                title={scrollLocked ? t.unlockScrolling : t.lockScrolling}
+                onClick={() => {
+                  storeScrollLocked(!scrollLocked);
+                  setAnnouncement(scrollLocked ? t.scrollingUnlocked : t.scrollingLocked);
+                }}
+                className="absolute top-7 left-1/2 z-40 grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-input bg-surface-raised text-muted-foreground shadow-card transition-[color,border-color,box-shadow] duration-200 hover:border-primary/70 hover:text-primary hover:shadow-raised active:bg-accent aria-pressed:border-primary/70 aria-pressed:text-primary pointer-coarse:size-9"
+              >
+                {/* Keyed, so the change of state is seen: the new icon grows into place. */}
+                {scrollLocked ? (
+                  <Link2
+                    key="locked"
+                    className="size-4 animate-in duration-300 zoom-in-50"
+                    aria-hidden
+                  />
+                ) : (
+                  <Link2Off
+                    key="free"
+                    className="size-4 animate-in duration-300 zoom-in-50"
+                    aria-hidden
+                  />
+                )}
+              </button>
             </div>
-            <DialogClose label={t.closeNavigation} />
-          </div>
-          <ReaderNavigator
-            location={current?.place ?? null}
-            translation={current?.translation ?? preferred.translation}
-            onGo={(to) => go(active, to)}
-            navigation={navigation}
-          />
-        </DialogContent>
-      </Dialog>
-    </div>
+          )}
+        </div>
+
+        <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+          <DialogContent placement="full">
+            <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
+              <div className="min-w-0">
+                <DialogTitle>{t.bible}</DialogTitle>
+                <DialogDescription>
+                  {allTranslations[current?.translation ?? preferred.translation].name}
+                </DialogDescription>
+              </div>
+              <DialogClose label={t.closeNavigation} />
+            </div>
+            <ReaderNavigator
+              location={current?.place ?? null}
+              translation={current?.translation ?? preferred.translation}
+              onGo={(to) => go(active, to)}
+              navigation={navigation}
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
+    </LocalReading.Provider>
   );
 }
 
@@ -1000,7 +1016,8 @@ function ChapterView({
   useEffect(() => {
     if (sentMarks) keepMarks(translation, book, chapter, sentMarks);
   }, [translation, book, chapter, sentMarks]);
-  const held = useChapterMarks(translation, book, chapter);
+  const local = useContext(LocalReading);
+  const held = useChapterMarks(translation, book, chapter, !local);
   const marks = held.ready ? held.marks : (sentMarks ?? noMarks);
   const favoriteVerses = useMemo(
     () =>
@@ -1418,26 +1435,30 @@ function ChapterView({
         onCopyLink={() => void copy("link")}
         onClear={() => change(noSelection)}
         footer={
-          <SelectionFavorites
+          local ? undefined : (
+            <SelectionFavorites
+              translation={translation}
+              book={book}
+              chapter={chapter}
+              verses={chosen}
+              marks={marks}
+              onManage={setManaging}
+            />
+          )
+        }
+      >
+        {!local && (
+          <SelectionActions
             translation={translation}
             book={book}
             chapter={chapter}
             verses={chosen}
             marks={marks}
+            onProblem={setProblem}
             onManage={setManaging}
+            onAttach={() => setAttaching(references)}
           />
-        }
-      >
-        <SelectionActions
-          translation={translation}
-          book={book}
-          chapter={chapter}
-          verses={chosen}
-          marks={marks}
-          onProblem={setProblem}
-          onManage={setManaging}
-          onAttach={() => setAttaching(references)}
-        />
+        )}
       </SelectionToolbar>
       <FavoriteEditor favorite={managing} onClose={() => setManaging(null)} />
       <AttachScripture references={attaching} onClose={() => setAttaching(null)} />

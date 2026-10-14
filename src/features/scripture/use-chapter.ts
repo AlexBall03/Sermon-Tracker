@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { readLocalChapter } from "@/features/offline/bible/local";
 import { translationParam } from "./reader-location";
 import type { TranslationId } from "./translations";
 
@@ -34,13 +35,14 @@ export function loadChapter(
 
   let request = pending.get(key);
   if (!request) {
-    request = fetch(`/api/bible/${book}/${chapter}?${translationParam}=${translation}`, {
-      headers: { Accept: "application/json" },
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Chapter request failed: ${response.status}`);
-        const body = (await response.json()) as { verses: string[]; title?: string | null };
-        const text = { verses: body.verses, title: body.title ?? null };
+    request = fetchChapter(translation, book, chapter)
+      .catch(async (error: unknown) => {
+        // No answer: a translation kept whole on this device is read from it instead.
+        const local = await readLocalChapter(translation, book, chapter);
+        if (local) return local;
+        throw error;
+      })
+      .then((text) => {
         loaded.set(key, text);
         return text;
       })
@@ -48,6 +50,15 @@ export function loadChapter(
     pending.set(key, request);
   }
   return request;
+}
+
+async function fetchChapter(translation: TranslationId, book: number, chapter: number) {
+  const response = await fetch(`/api/bible/${book}/${chapter}?${translationParam}=${translation}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`Chapter request failed: ${response.status}`);
+  const body = (await response.json()) as { verses: string[]; title?: string | null };
+  return { verses: body.verses, title: body.title ?? null };
 }
 
 /** Keeps a chapter that arrived another way (with the page), so it is not fetched again. */

@@ -573,7 +573,7 @@ function OccurrenceForm({
         <DialogClose label={t.close} className="-mr-2" disabled={working} />
       </div>
 
-      <div className="min-h-0 flex-1 scroll-quiet space-y-5 overflow-y-auto overscroll-contain px-5 pb-1">
+      <div className="min-h-0 flex-1 scroll-quiet space-y-5 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-1">
         {picking && (
           <SermonPicker
             value={sermon}
@@ -595,7 +595,8 @@ function OccurrenceForm({
               onChange={(event) => edited(setPreachedOn, "preachedOn")(event.target.value)}
               min={earliestPreachedOn}
               max={latestDateOnEarth()}
-              className="mt-2"
+              // Safari on a phone gives a date field a width of its own, wider than the column.
+              className="mt-2 min-w-0 appearance-none [&::-webkit-date-and-time-value]:text-left"
               {...invalid("preachedOn")}
             />
             {problem("preachedOn")}

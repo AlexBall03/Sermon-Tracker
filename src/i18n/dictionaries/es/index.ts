@@ -14,3 +14,4 @@ export { onboarding } from "./onboarding";
 export { marketing } from "./marketing";
 export { tour } from "./tour";
 export { pwa } from "./pwa";
+export { offline } from "./offline";

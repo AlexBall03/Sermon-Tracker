@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { DialogViewport } from "./dialog-viewport";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -17,18 +18,23 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
  * - `bottom`: a short sheet rising from the foot of a narrow screen
  * - `side`: a panel down the right edge, beside the page
  * - `full`: a sheet that takes the whole of a narrow screen
+ *
+ * `top` and `full` keep to the part of the screen that can be seen while a
+ * phone's keyboard is up, and a drag never scrolls the page behind any of
+ * them (`DialogViewport`).
  */
 const placements = {
-  top: "top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-xl data-closed:zoom-out-95 data-open:zoom-in-95 sm:top-[9vh] sm:max-h-[82vh]",
+  top: "top-[calc(var(--vv-top,0px)+max(0.75rem,env(safe-area-inset-top)))] left-1/2 max-h-[calc(var(--vv-h,100dvh)-1.5rem)] w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-xl data-closed:zoom-out-95 data-open:zoom-in-95 sm:top-[9vh] sm:max-h-[82vh]",
   bottom:
     "inset-x-0 bottom-0 max-h-[78dvh] rounded-t-2xl border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)] data-closed:slide-out-to-bottom-8 data-open:slide-in-from-bottom-8",
   side: "inset-y-0 right-0 w-[30rem] max-w-full rounded-none border-y-0 border-r-0 data-closed:slide-out-to-right-8 data-open:slide-in-from-right-8",
-  full: "inset-0 rounded-none border-0 pb-[env(safe-area-inset-bottom)] data-closed:slide-out-to-bottom-4 data-open:slide-in-from-bottom-4",
+  full: "inset-x-0 top-[var(--vv-top,0px)] h-[var(--vv-h,100dvh)] rounded-none border-0 pb-[env(safe-area-inset-bottom)] data-closed:slide-out-to-bottom-4 data-open:slide-in-from-bottom-4",
 } as const;
 
 function DialogContent({
   className,
   placement = "top",
+  children,
   ...props
 }: DialogPrimitive.Popup.Props & { placement?: keyof typeof placements }) {
   return (
@@ -47,7 +53,10 @@ function DialogContent({
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+        <DialogViewport />
+      </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );
 }

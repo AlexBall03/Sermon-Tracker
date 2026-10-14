@@ -26,7 +26,7 @@ describe("InstallNotice", () => {
     expect(title()).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "How to install" })).toHaveAttribute(
       "href",
-      "/settings#appearance",
+      "/settings#install",
     );
   });
 

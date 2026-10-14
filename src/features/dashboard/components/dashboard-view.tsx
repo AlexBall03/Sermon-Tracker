@@ -3,6 +3,7 @@ import { StatStrip } from "@/components/ui/stat-strip";
 import { CaptureButton } from "@/features/ideas/components/quick-capture";
 import type { IdeaRecord, WorkspaceCounts } from "@/features/ideas/ideas";
 import { RecordPreachingProvider } from "@/features/preaching/components/record-preaching";
+import { OfflineNotice } from "@/features/offline/components/offline-notice";
 import { InstallNotice } from "@/features/pwa/components/install-notice";
 import { TourInvitation } from "@/features/tour/components/tour-invitation";
 import type { ReferenceOption } from "@/features/preaching/components/reference-field";
@@ -97,6 +98,8 @@ export function DashboardView({
         {/* An invitation, in the page and not over it: nothing begins until it is taken up. */}
         {/* Installing waits until the tour has been answered: never two invitations at once. */}
         {offerTour ? <TourInvitation /> : <InstallNotice />}
+        {/* Captures waiting on this device, always; what works offline, once the tour is answered. */}
+        <OfflineNotice introduce={!offerTour} />
 
         {empty ? (
           <section

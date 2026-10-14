@@ -8,8 +8,10 @@ import { PageLoading } from "@/components/layout/page-loading";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireActiveUser } from "@/features/auth/access";
 import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture";
+import { OfflineAgent } from "@/features/offline/components/offline-account";
 import { PreachingClassProvider, ReadingProvider } from "@/features/preferences/client";
 import { getPreferences } from "@/features/preferences/current";
+import { PullToRefresh } from "@/features/pwa/components/pull-to-refresh";
 import { UpdateNotice } from "@/features/pwa/components/update-notice";
 import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
 import { TourProvider } from "@/features/tour/components/tour-provider";
@@ -45,30 +47,35 @@ async function Shell({ children }: { children: React.ReactNode }) {
         translations={preferences.translations}
       >
         <PreachingClassProvider attends={preferences.attendsPreachingClass}>
-          {/*
-           * One of each for the whole shell: confirmations, the Scripture Panel, and
-           * quick capture, which uses both. They hold no account data.
-           */}
-          <ToastProvider aboveTabBar>
-            <ScriptureProvider>
-              <QuickCaptureProvider>
-                {/* The product tour, over every page of the shell, so it carries on between them. */}
-                <TourProvider>
-                  <AppHeader isAdmin={user.role === "admin"} />
-                  {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
-                  <main
-                    id="main"
-                    className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
-                  >
-                    {children}
-                  </main>
-                  <BackToTop aboveTabBar />
-                  {/* A new version of the application, offered and never forced (features/pwa). */}
-                  <UpdateNotice />
-                </TourProvider>
-              </QuickCaptureProvider>
-            </ScriptureProvider>
-          </ToastProvider>
+          {/* What this device keeps for working offline, for this account (features/offline). */}
+          <OfflineAgent account={user.id}>
+            {/*
+             * One of each for the whole shell: confirmations, the Scripture Panel, and
+             * quick capture, which uses both. They hold no account data.
+             */}
+            <ToastProvider aboveTabBar>
+              <ScriptureProvider>
+                <QuickCaptureProvider>
+                  {/* The product tour, over every page of the shell, so it carries on between them. */}
+                  <TourProvider>
+                    <AppHeader isAdmin={user.role === "admin"} />
+                    {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+                    <main
+                      id="main"
+                      className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
+                    >
+                      {children}
+                    </main>
+                    <BackToTop aboveTabBar />
+                    {/* The installed app has no browser pull to refresh of its own. */}
+                    <PullToRefresh />
+                    {/* A new version of the application, offered and never forced (features/pwa). */}
+                    <UpdateNotice />
+                  </TourProvider>
+                </QuickCaptureProvider>
+              </ScriptureProvider>
+            </ToastProvider>
+          </OfflineAgent>
         </PreachingClassProvider>
       </ReadingProvider>
     </I18nProvider>

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
-import { Logo } from "@/components/brand/logo";
-import { OfflineMessage } from "@/features/pwa/components/offline-message";
+import { OfflineShell } from "@/features/offline/components/offline-shell";
 import { dictionary } from "@/i18n";
 
 export const metadata: Metadata = {
@@ -15,20 +14,9 @@ export const metadata: Metadata = {
  * (features/pwa/service-worker.ts). It is prerendered, reads nothing of a
  * request, and is fetched by the worker without credentials, so what is kept
  * is the same for everyone. Outside every shell, like the not-found page, with
- * its own bar. The logo is not a link: the installed application has no
- * public page to go to, and the way on is trying again.
+ * its own bar. Everything it offers (the Bible kept on this device, captures
+ * kept here) comes from the device, in the browser (features/offline).
  */
 export default function Offline() {
-  return (
-    <>
-      <header className="fixed inset-x-0 top-0 z-50 glass-settle border-b glass">
-        <div className="container-page flex h-bar items-center">
-          <Logo />
-        </div>
-      </header>
-      <main id="main" className="flex-1 pt-bar">
-        <OfflineMessage />
-      </main>
-    </>
-  );
+  return <OfflineShell />;
 }

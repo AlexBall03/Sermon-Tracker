@@ -13,6 +13,8 @@ import { BibleSettings } from "@/features/settings/components/bible-settings";
 import { ChurchMinistrySettings } from "@/features/settings/components/church-ministry-settings";
 import { LanguageSettings } from "@/features/settings/components/language-settings";
 import { SettingsBlock, SettingsSection } from "@/features/settings/components/settings-section";
+import { ScrollToHash } from "@/features/settings/components/scroll-to-hash";
+import { OfflineStorageSettings } from "@/features/offline/components/offline-storage-settings";
 import { InstallAppSettings } from "@/features/pwa/components/install-app-settings";
 import { RestartTourButton } from "@/features/tour/components/restart-tour-button";
 import { I18nProvider } from "@/i18n/client";
@@ -33,10 +35,11 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function SettingsPage() {
   const user = await requireActiveUser();
-  const [preferences, t, pwa] = await Promise.all([
+  const [preferences, t, pwa, offline] = await Promise.all([
     getPreferences(),
     getT("settings"),
     getT("pwa"),
+    getT("offline"),
   ]);
 
   return (
@@ -44,6 +47,8 @@ export default async function SettingsPage() {
     <I18nProvider locale={preferences.locale}>
       <div className="container-page py-10 lg:py-12">
         <PageHeader title={t.page.title} description={t.page.description} />
+        {/* The install notice sends people to `#install`. */}
+        <ScrollToHash />
 
         <SettingsSection id="personal" {...t.sections.personal}>
           <ProfileSettings />
@@ -82,9 +87,18 @@ export default async function SettingsPage() {
             <RestartTourButton />
           </SettingsBlock>
           {/* Installing is offered here and nowhere else (features/pwa). */}
-          <SettingsBlock title={pwa.install.title} description={pwa.install.description}>
+          <SettingsBlock id="install" title={pwa.install.title} description={pwa.install.description}>
             <InstallAppSettings />
           </SettingsBlock>
+        </SettingsSection>
+
+        {/* What this device keeps for working offline: the device's, never the account's. */}
+        <SettingsSection
+          id="offline"
+          title={offline.settings.title}
+          description={offline.settings.description}
+        >
+          <OfflineStorageSettings />
         </SettingsSection>
 
         <SettingsSection id="account" {...t.sections.account}>
