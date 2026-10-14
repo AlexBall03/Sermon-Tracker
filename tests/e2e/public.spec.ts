@@ -7,18 +7,24 @@ test.beforeEach(({ context, baseURL }) => asReturningVisitor(context, baseURL));
 
 /** On small viewports the primary navigation sits behind the menu button. */
 async function openMenuIfCollapsed(page: Page) {
+  // The bar arrives with the page's language, a moment after the document does.
+  await page.getByRole("banner").waitFor();
   const menu = page.getByRole("button", { name: "Open menu" });
   if (await menu.isVisible()) await menu.click();
 }
 
 test.describe("public landing page", () => {
-  test("renders the brand, tagline, and SEO metadata", async ({ page }) => {
+  test("renders the brand, headline, and SEO metadata", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Sermon Tracker/);
+    await expect(page).toHaveTitle("Sermon Tracker — Capture. Develop. Preach.");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Capture. Develop. Preach." }),
+      page.getByRole("heading", { level: 1, name: "From First Thought to Finished Sermon." }),
     ).toBeVisible();
-    await expect(page.getByText("Capture. Develop. Preach.").first()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      "content",
+      /outline them/,
+    );
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       "href",
       "https://sermontracker.com",
@@ -35,12 +41,93 @@ test.describe("public landing page", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test("shows the dashboard for the device: a window on a wide screen, a phone on a narrow one", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const wide = page.viewportSize()!.width >= 768;
+    await expect(page.locator('[data-hero="window"]')).toBeVisible({ visible: wide });
+    await expect(page.locator('[data-hero="phone"]')).toBeVisible({ visible: !wide });
+    // Whichever is shown is described once, and holds nothing to tab to.
+    await expect(page.locator("figure [aria-hidden] :is(a, button, input)")).toHaveCount(0);
+    await expect(page.getByText(/The Sermon Tracker dashboard on a/)).toHaveCount(2);
+  });
+
+  test("its screens stay inside the page down to the footer", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("contentinfo").scrollIntoViewIfNeeded();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("section links lead to their sections", async ({ page }) => {
+    await page.goto("/");
+    for (const [name, id] of [
+      ["Features", "features"],
+      ["How It Works", "how-it-works"],
+      ["Mobile App", "mobile-app"],
+    ]) {
+      await openMenuIfCollapsed(page);
+      await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name }).click();
+      await expect(page).toHaveURL(new RegExp(`#${id}$`));
+      await expect(page.locator(`#${id}`)).toBeInViewport();
+    }
+  });
+
+  test("sections arrive as they are scrolled to, and stay", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-reveal", "on");
+    const closing = page.locator("#access .reveal");
+    await expect(closing).not.toHaveAttribute("data-shown");
+    await page.locator("#access").scrollIntoViewIfNeeded();
+    await expect(closing).toHaveAttribute("data-shown");
+    await expect(closing).toHaveCSS("opacity", "1");
+  });
+
+  test("with reduced motion every section is simply there", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    const hidden = await page.evaluate(
+      () =>
+        Array.from(document.querySelectorAll(".reveal")).filter(
+          (element) => getComputedStyle(element).opacity !== "1",
+        ).length,
+    );
+    expect(hidden).toBe(0);
+    await expect(page.locator(".reveal")).not.toHaveCount(0);
+  });
+
+  test("is written in Spanish for a visitor who reads Spanish", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ locale: "es-MX" });
+    await asReturningVisitor(context, baseURL);
+    const page = await context.newPage();
+    await page.goto("/");
+    // Spanish is the administrator's switch, read from the database: with none, the page is English.
+    const spanish = await expect(page.locator("html"))
+      .toHaveAttribute("lang", "es", { timeout: 5000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    test.skip(!spanish, "Spanish is switched off or no database is configured");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Del primer pensamiento al sermón terminado." }),
+    ).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    await context.close();
+  });
+
   test("header sign-in leads to the sign-in page", async ({ page }) => {
     await page.goto("/");
     await openMenuIfCollapsed(page);
     await page
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: "Sign in" })
+      .getByRole("link", { name: "Sign In" })
       .click();
     await expect(page).toHaveURL(/\/sign-in$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
@@ -79,7 +166,7 @@ test.describe("public landing page", () => {
 
     await open.click();
     const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: "How it works" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "How It Works" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(nav).toHaveCount(0);
     await expect(open).toBeFocused();

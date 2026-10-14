@@ -1,26 +1,38 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
+import { dictionary } from "@/i18n";
+import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes, siteConfig } from "@/lib/site";
+import { GuestLanguage } from "./guest-language";
 
-// Resolved once per build, which keeps the footer fully static.
+// Resolved once per build, which keeps the year from changing between server and browser.
 const year = new Date().getFullYear();
-
-const links = [
-  { href: "/#capabilities", label: "How it works" },
-  { href: "/#preview", label: "Library" },
-  { href: "/#beta", label: "Beta access" },
-  { href: routes.signIn, label: "Sign in" },
-] as const;
 
 const linkClassName =
   "block rounded-md px-2.5 py-1.5 whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:py-3";
 
 /**
  * Two rows: the lockup with a line saying what the product is, beside the
- * page's links; then a hairline and the small print.
+ * page's links; then a hairline and the small print, with the choice of
+ * language where there is one to make.
  */
-export function SiteFooter() {
+export function SiteFooter({
+  locale = defaultLocale,
+  languageChoice = false,
+}: {
+  locale?: Locale;
+  /** Offer English and Spanish: not while Spanish is switched off. */
+  languageChoice?: boolean;
+}) {
+  const t = dictionary(locale, "marketing");
+  const links = [
+    { href: "/#how-it-works", label: t.nav.how },
+    { href: "/#features", label: t.nav.features },
+    { href: "/#mobile-app", label: t.nav.mobile },
+    { href: routes.signIn, label: t.nav.signIn },
+  ];
+
   return (
     <footer className="border-t">
       <div className="container-page pt-11 pb-8 lg:pt-14">
@@ -28,10 +40,10 @@ export function SiteFooter() {
           <div>
             <Logo markClassName="size-8" textClassName="text-[1.3125rem]" />
             <p className="mt-3.5 max-w-[19rem] text-sm leading-relaxed text-pretty text-muted-foreground">
-              {siteConfig.blurb}
+              {t.footer.blurb}
             </p>
           </div>
-          <nav aria-label="Footer">
+          <nav aria-label={t.nav.footer}>
             {/* Negative margins keep the first link's text on the container edge. */}
             <ul className="-mx-2.5 -my-1.5 flex flex-wrap gap-x-1 text-sm font-medium">
               {links.map((link) => (
@@ -52,14 +64,14 @@ export function SiteFooter() {
           </nav>
         </div>
 
-        <div className="mt-9 flex flex-col gap-2 border-t pt-6 text-[0.8125rem] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-9 flex flex-col gap-x-6 gap-y-3 border-t pt-6 text-[0.8125rem] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <p className="tabular-nums">
               {year} {siteConfig.name}
             </p>
             <span aria-hidden className="hidden h-3.5 w-px bg-border sm:block" />
             <p>
-              Developed by:{" "}
+              {t.footer.developedBy}{" "}
               <a
                 href={siteConfig.developer.url}
                 target="_blank"
@@ -70,10 +82,15 @@ export function SiteFooter() {
               </a>
             </p>
           </div>
-          <p className="flex items-center gap-2">
-            <span aria-hidden className="size-1.5 rounded-full bg-primary" />
-            Invitation-only beta
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            {languageChoice && (
+              <GuestLanguage current={locale} label={t.nav.language} className="-mx-2.5" />
+            )}
+            <p className="flex items-center gap-2">
+              <span aria-hidden className="size-1.5 rounded-full bg-primary" />
+              {t.footer.beta}
+            </p>
+          </div>
         </div>
       </div>
     </footer>

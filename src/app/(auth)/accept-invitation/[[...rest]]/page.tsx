@@ -1,16 +1,17 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { SignUp } from "@clerk/nextjs";
 
-import { getLocale, getT } from "@/i18n/server";
+import { getT } from "@/i18n/server";
 import { isAuthConfigured } from "@/lib/env";
-import { routes } from "@/lib/site";
 import { AuthFormFallback, AuthNotice } from "../../auth-notice";
+import { SignUpForm } from "../../clerk-forms";
 
-export const metadata: Metadata = {
-  title: "Accept invitation",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: (await getT("auth")).invitation.metaTitle,
+    robots: { index: false, follow: false },
+  };
+}
 
 type PageProps = {
   params: Promise<{ rest?: string[] }>;
@@ -37,14 +38,14 @@ async function AcceptInvitation({ params, searchParams }: PageProps) {
   const isContinuing = Boolean(rest?.length);
 
   if (!isAuthConfigured() || (!ticket && !isContinuing)) {
-    const [t, locale] = await Promise.all([getT("auth"), getLocale()]);
+    const t = await getT("auth");
     return (
-      <AuthNotice eyebrow={t.beta} title={t.invitation.requiredTitle} locale={locale}>
+      <AuthNotice eyebrow={t.beta} title={t.invitation.requiredTitle}>
         {t.invitation.required}
       </AuthNotice>
     );
   }
 
   // Clerk's form supplies the page's h1.
-  return <SignUp signInUrl={routes.signIn} fallbackRedirectUrl={routes.dashboard} />;
+  return <SignUpForm />;
 }

@@ -5,6 +5,13 @@ import { asReturningVisitor } from "./returning-visitor";
 // The loading screen has its own spec; here the page is tested without it.
 test.beforeEach(({ context, baseURL }) => asReturningVisitor(context, baseURL));
 
+/** Whether something comes true within a few seconds: for what depends on how the environment is set up. */
+const within = (check: Promise<void>) =>
+  check.then(
+    () => true,
+    () => false,
+  );
+
 /**
  * Guest behaviour only. These pass with or without Clerk keys in the build:
  * nothing here signs in, so they do not verify Clerk itself. Signed-in flows
@@ -38,7 +45,7 @@ test.describe("guests and application routes", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(
-      page.getByRole("heading", { level: 1, name: "Capture. Develop. Preach." }),
+      page.getByRole("heading", { level: 1, name: "From First Thought to Finished Sermon." }),
     ).toBeVisible();
   });
 });
@@ -49,6 +56,34 @@ test.describe("registration is by invitation", () => {
     await expect(page.getByRole("heading", { name: "An invitation is required" })).toBeVisible();
     await expect(page.locator("input")).toHaveCount(0);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+  });
+
+  test("the sign-in page says in words how to get back to the home page", async ({ page }) => {
+    await page.goto("/sign-in");
+    await page.getByRole("link", { name: "Back to home" }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("the sign-in form is in Spanish for a visitor who reads Spanish", async ({
+    browser,
+    baseURL,
+  }) => {
+    const context = await browser.newContext({ locale: "es-MX" });
+    await asReturningVisitor(context, baseURL);
+    const page = await context.newPage();
+    await page.goto("/sign-in");
+    await expect(page.getByRole("link", { name: /Back to home|Volver al inicio/ })).toBeVisible();
+    // Spanish is the administrator's switch, and the form is Clerk's: both need a configured environment.
+    const spanish = await within(
+      expect(page.locator("html")).toHaveAttribute("lang", "es", { timeout: 5000 }),
+    );
+    const form = page.locator(".cl-signIn-root");
+    const clerk = await within(expect(form).toBeVisible({ timeout: 10_000 }));
+    test.skip(!spanish || !clerk, "Spanish or Clerk is not available here");
+    await expect(page).toHaveTitle(/Iniciar sesión/);
+    await expect(form.getByRole("heading", { level: 1, name: "Iniciar sesión" })).toBeVisible();
+    await expect(form.getByRole("button", { name: /Continuar/ })).toBeVisible();
+    await context.close();
   });
 
   test("the sign-in page does not link to registration", async ({ page }) => {

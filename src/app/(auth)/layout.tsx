@@ -1,12 +1,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
+import { GuestLanguage } from "@/components/layout/guest-language";
 import { getPreferences } from "@/features/preferences/current";
 import { dictionary } from "@/i18n";
 import { I18nProvider } from "@/i18n/client";
 import { routes } from "@/lib/site";
-import { GuestLanguage } from "./guest-language";
 
 /**
  * Minimal centred shell for sign-in, invitation acceptance, and access
@@ -15,7 +16,10 @@ import { GuestLanguage } from "./guest-language";
  *
  * These pages have no account to read a language from, so they follow the
  * language cookie (features/preferences), and offer the choice beneath the
- * card. Clerk's own form is Clerk's, and is in English.
+ * card. Clerk's own form follows it too (components/layout/clerk-provider.tsx).
+ *
+ * The logo leads home, and so does a link in words under the card: a logo is
+ * not something everyone knows to press.
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -36,20 +40,37 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </main>
         {/* Decided per request, so it waits behind its own boundary and holds nothing else up. */}
         <Suspense fallback={null}>
-          <Language />
+          <Beneath />
         </Suspense>
       </div>
     </div>
   );
 }
 
-/** The language choice, where there is one to make: not while Spanish is switched off. */
-async function Language() {
+/**
+ * Under the card: the way back to the home page, and the language choice
+ * where there is one to make (not while Spanish is switched off).
+ */
+async function Beneath() {
   const { locale, spanishEnabled } = await getPreferences();
-  if (!spanishEnabled) return null;
+  const t = dictionary(locale, "auth");
   return (
     <I18nProvider locale={locale}>
-      <GuestLanguage current={locale} label={dictionary(locale, "auth").language} />
+      <div className="mt-6 flex flex-col items-center gap-2">
+        <Link
+          href={routes.home}
+          className="group/back inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground pointer-coarse:min-h-11"
+        >
+          <ArrowLeft
+            className="size-4 transition-transform duration-150 group-hover/back:-translate-x-0.5"
+            aria-hidden
+          />
+          {t.backHome}
+        </Link>
+        {spanishEnabled && (
+          <GuestLanguage current={locale} label={t.language} className="justify-center" />
+        )}
+      </div>
     </I18nProvider>
   );
 }

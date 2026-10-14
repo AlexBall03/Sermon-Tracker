@@ -10,13 +10,15 @@ import { row, useNavPanel } from "./use-nav-panel";
 
 type MobileNavProps = {
   links: readonly { href: string; label: string }[];
+  /** The panel's own words, in the page's language. */
+  labels: { primary: string; signIn: string; open: string; close: string };
 };
 
 /**
  * Small-screen navigation: a menu button and a sheet that unrolls below the
  * bar, set like a contents page, with the page dimmed behind it.
  */
-export function MobileNav({ links }: MobileNavProps) {
+export function MobileNav({ links, labels }: MobileNavProps) {
   const { open, mounted, buttonRef, toggle, close, panelProps, scrimProps } = useNavPanel();
 
   return (
@@ -27,7 +29,7 @@ export function MobileNav({ links }: MobileNavProps) {
         aria-expanded={open}
         aria-controls="mobile-nav"
         data-nav-toggle
-        aria-label={open ? "Close menu" : "Open menu"}
+        aria-label={open ? labels.close : labels.open}
         onClick={toggle}
         className="-mr-2 grid size-10 place-items-center rounded-lg text-foreground transition-colors duration-150 hover:bg-accent active:bg-foreground/12"
       >
@@ -49,7 +51,7 @@ export function MobileNav({ links }: MobileNavProps) {
             {...panelProps}
             className={`absolute inset-x-0 top-full max-h-[calc(100dvh-var(--bar-h))] overflow-y-auto overscroll-contain border-b bg-surface-raised shadow-raised ${panelProps.className}`}
           >
-            <nav aria-label="Primary" className="container-page pb-5">
+            <nav aria-label={labels.primary} className="container-page pb-5">
               <ul className="divide-y border-b">
                 {links.map((link, index) => (
                   <li key={link.href} style={row(index)} className="animate-menu-row">
@@ -74,7 +76,7 @@ export function MobileNav({ links }: MobileNavProps) {
                   onClick={close}
                   className={buttonVariants({ size: "lg", className: "flex-1" })}
                 >
-                  Sign in
+                  {labels.signIn}
                 </Link>
                 <ThemeToggle className="shrink-0" />
               </div>

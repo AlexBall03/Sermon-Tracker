@@ -1,12 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 
+import { AppClerkProvider } from "@/components/layout/clerk-provider";
 import { NavigationProgress } from "@/components/layout/navigation-progress";
 import { SplashScreen } from "@/components/layout/splash-screen";
 import { ThemeProvider } from "@/components/layout/theme-provider";
-import { clerkAppearance } from "@/lib/clerk-appearance";
 import { isAuthConfigured, isIndexable } from "@/lib/env";
-import { routes, siteConfig } from "@/lib/site";
+import { siteConfig } from "@/lib/site";
 import { fontVariables } from "./fonts";
 import "./globals.css";
 
@@ -45,22 +44,12 @@ export const viewport: Viewport = {
 /**
  * Clerk wraps the tree only when its keys are configured, so the public site
  * still builds and runs without credentials. It sits inside <body>, as Cache
- * Components requires.
+ * Components requires. The provider itself is `AppClerkProvider`, which also
+ * gives Clerk's own forms the page's language.
  */
 function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!isAuthConfigured()) return children;
-  return (
-    <ClerkProvider
-      appearance={clerkAppearance}
-      signInUrl={routes.signIn}
-      signUpUrl={routes.acceptInvitation}
-      signInFallbackRedirectUrl={routes.dashboard}
-      signUpFallbackRedirectUrl={routes.dashboard}
-      afterSignOutUrl={routes.home}
-    >
-      {children}
-    </ClerkProvider>
-  );
+  return <AppClerkProvider>{children}</AppClerkProvider>;
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

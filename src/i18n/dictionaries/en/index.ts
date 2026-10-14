@@ -12,3 +12,4 @@ export { preaching } from "./preaching";
 export { outlines } from "./outlines";
 export { auth } from "./auth";
 export { onboarding } from "./onboarding";
+export { marketing } from "./marketing";

@@ -5,13 +5,22 @@ import { useRouter } from "next/navigation";
 
 import { setGuestLocale } from "@/features/preferences/actions";
 import { localeNames, locales, type Locale } from "@/i18n/locales";
+import { cn } from "@/lib/utils";
 
 /**
  * The language of the pages shown before signing in, chosen by whoever is
  * looking at them: there is no account yet to have saved one. It sets the
  * language cookie and nothing else. Each language is named in itself.
  */
-export function GuestLanguage({ current, label }: { current: Locale; label: string }) {
+export function GuestLanguage({
+  current,
+  label,
+  className,
+}: {
+  current: Locale;
+  label: string;
+  className?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   return (
@@ -19,7 +28,7 @@ export function GuestLanguage({ current, label }: { current: Locale; label: stri
       role="group"
       aria-label={label}
       aria-busy={pending}
-      className="mt-6 flex justify-center gap-1 text-[0.8125rem]"
+      className={cn("flex gap-1 text-[0.8125rem]", className)}
     >
       {locales.map((locale) => (
         <button

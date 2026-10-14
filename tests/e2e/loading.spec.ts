@@ -62,7 +62,7 @@ test.describe("loading screen", () => {
 
     // The page is there beneath it.
     await expect(
-      page.getByRole("heading", { level: 1, name: "Capture. Develop. Preach." }),
+      page.getByRole("heading", { level: 1, name: "From First Thought to Finished Sermon." }),
     ).toBeVisible();
 
     // The signal was used once and is gone.
