@@ -85,6 +85,10 @@ export function FeedbackForm({
       }));
       if (outcome.ok && "id" in outcome && outcome.id) {
         guard.allowLeaving();
+        // The page can be kept and shown again; the next message is a new ticket.
+        id.current = null;
+        setValues(blank);
+        setPicked([]);
         router.push(`${routes.support}/${outcome.id}`);
         return;
       }
