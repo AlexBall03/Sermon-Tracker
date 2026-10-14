@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
 
 import { splashCookie } from "@/lib/splash";
 import { navigationStartEvent, NavigationProgress, progressTiming } from "./navigation-progress";
-import { SplashController, splashTiming } from "./splash-controller";
+import { holdSplash, SplashController, splashTiming } from "./splash-controller";
 
 const root = document.documentElement;
 const tick = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -39,14 +39,14 @@ describe("SplashController", () => {
 
   it("does nothing when no splash was raised", () => {
     render(<SplashController />);
-    tick(splashTiming.visibleMs * 2);
+    tick(splashTiming.introMs * 2);
     expect(root.dataset.splash).toBeUndefined();
   });
 
   it("keeps the splash up for its full time, fades it, then removes it", () => {
     raise();
     render(<SplashController />);
-    tick(splashTiming.visibleMs - 1);
+    tick(splashTiming.introMs - 1);
     expect(root.dataset.splash).toBe("on");
     tick(1);
     expect(root.dataset.splash).toBe("leaving");
@@ -58,27 +58,46 @@ describe("SplashController", () => {
 
   it("counts the time from when the splash went up, not from when the script arrived", () => {
     raise();
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(900);
     render(<SplashController />);
-    tick(splashTiming.visibleMs - 1500 - 1);
+    tick(splashTiming.introMs - 900 - 1);
     expect(root.dataset.splash).toBe("on");
     tick(1);
     expect(root.dataset.splash).toBe("leaving");
   });
 
-  it("goes at once when the page took longer than the minimum", () => {
+  it("keeps no one waiting once its opening has played: a page that took longer goes at once", () => {
     raise();
-    vi.advanceTimersByTime(splashTiming.visibleMs + 3000);
+    vi.advanceTimersByTime(splashTiming.introMs + 3000);
     render(<SplashController />);
     tick(0);
     expect(root.dataset.splash).toBe("leaving");
+  });
+
+  it("with reduced motion is shown briefly, whole, and goes in a short fade", () => {
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+    })) as typeof window.matchMedia;
+    try {
+      raise();
+      render(<SplashController />);
+      tick(splashTiming.reducedMs - 1);
+      expect(root.dataset.splash).toBe("on");
+      tick(1);
+      expect(root.dataset.splash).toBe("leaving");
+      tick(splashTiming.reducedFadeMs);
+      expect(root.dataset.splash).toBeUndefined();
+    } finally {
+      window.matchMedia = matchMedia;
+    }
   });
 
   it("waits for a page that is still loading, but not for ever", () => {
     setReadyState("loading");
     raise();
     render(<SplashController />);
-    tick(splashTiming.visibleMs + 1000);
+    tick(splashTiming.introMs + 1000);
     expect(root.dataset.splash).toBe("on");
 
     act(() => void window.dispatchEvent(new Event("load")));
@@ -103,7 +122,7 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBe("on");
     // ...and the next mount takes it from there, on the original clock.
     render(<SplashController />);
-    tick(splashTiming.visibleMs);
+    tick(splashTiming.introMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -120,7 +139,7 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBe("on");
     expect(document.cookie).not.toContain(splashCookie);
 
-    tick(splashTiming.visibleMs);
+    tick(splashTiming.introMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -131,10 +150,36 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBeUndefined();
   });
 
+  it("goes up the moment a sign-in succeeds, and stays until the next page arrives", () => {
+    const view = render(<SplashController />);
+    act(() => holdSplash());
+    expect(root.dataset.splash).toBe("on");
+    // However long the next page takes, short of giving up, the form is never seen again.
+    tick(splashTiming.introMs * 3);
+    expect(root.dataset.splash).toBe("on");
+
+    // The application's page arrives: its opening has long played, so it goes now.
+    state.pathname = "/dashboard";
+    view.rerender(<SplashController />);
+    tick(0);
+    expect(root.dataset.splash).toBe("leaving");
+    tick(splashTiming.fadeMs);
+    expect(root.dataset.splash).toBeUndefined();
+  });
+
+  it("lets a held splash go if the next page never arrives", () => {
+    render(<SplashController />);
+    act(() => holdSplash());
+    tick(splashTiming.giveUpMs - 1);
+    expect(root.dataset.splash).toBe("on");
+    tick(1);
+    expect(root.dataset.splash).toBe("leaving");
+  });
+
   it("starts over cleanly if it is raised again while leaving", () => {
     raise();
     const view = render(<SplashController />);
-    tick(splashTiming.visibleMs + 100);
+    tick(splashTiming.introMs + 100);
     expect(root.dataset.splash).toBe("leaving");
 
     document.cookie = `${splashCookie}=1; path=/`;
@@ -144,7 +189,7 @@ describe("SplashController", () => {
     // The earlier fade's removal no longer fires.
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBe("on");
-    tick(splashTiming.visibleMs - splashTiming.fadeMs);
+    tick(splashTiming.introMs - splashTiming.fadeMs);
     expect(root.dataset.splash).toBe("leaving");
   });
 });

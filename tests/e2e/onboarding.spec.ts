@@ -144,6 +144,18 @@ test.describe("account setup, signed in", () => {
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
+    // The dashboard invites the new account to take the tour, and starts nothing by itself.
+    const invitation = page.getByRole("region", { name: "Take a quick tour" });
+    await expect(invitation).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await fits(page);
+    // Maybe Later is kept: a reload does not ask again.
+    await invitation.getByRole("button", { name: "Maybe Later" }).click();
+    await expect(invitation).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Take a quick tour" })).toHaveCount(0);
+
     // The application is open, and what setup saved is in Settings.
     await page.goto("/library/sermon-ideas");
     await expect(page.getByRole("heading", { level: 1, name: "Sermon Ideas" })).toBeVisible();
@@ -177,5 +189,9 @@ test.describe("account setup, signed in", () => {
     await expect(page.getByText("Step 1 of 4")).toBeVisible();
     await page.goto("/library/sermon-ideas");
     await expect(page.getByRole("heading", { level: 1, name: "Sermon Ideas" })).toBeVisible();
+    // Going through setup again does not bring the tour's invitation back.
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Take a quick tour" })).toHaveCount(0);
   });
 });

@@ -15,14 +15,31 @@ declare global {
 }
 
 /**
- * Timings. The splash stays for at least `visibleMs` from the moment it went
- * up, and until the page has finished loading; then it fades for `fadeMs`.
- * `visibleMs` is the opening sequence (the last word of the tagline has
- * arrived by about 1.3s) and a short rest on the finished picture.
- * `giveUpMs` is how long it waits for a page that never finishes loading.
- * `fadeMs` must match the transition in globals.css.
+ * Timings. The splash goes as soon as the page has finished loading, but
+ * never before its opening sequence has played: `introMs` from the moment it
+ * went up, by when the last word of the tagline has arrived. There is no rest
+ * on the finished picture, so a page that is ready is not kept waiting for
+ * one. Then it lifts for `fadeMs`. `giveUpMs` is how long it waits for a page
+ * that never finishes loading.
+ *
+ * With reduced motion there is no sequence to wait for: the picture is whole
+ * at once, is shown for `reducedMs` so that it is seen and not a flash, and
+ * goes in `reducedFadeMs`.
+ *
+ * `introMs`, `fadeMs`, and `reducedFadeMs` must match globals.css ("Splash").
  */
-export const splashTiming = { visibleMs: 1800, fadeMs: 450, giveUpMs: 8000 } as const;
+export const splashTiming = {
+  introMs: 1200,
+  fadeMs: 480,
+  reducedMs: 500,
+  reducedFadeMs: 200,
+  giveUpMs: 8000,
+} as const;
+
+/** Asked each time the splash is taken down, so a preference changed meanwhile is the one obeyed. */
+const prefersReducedMotion = () =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /*
  * The whole state is one attribute on <html>: `data-splash="on"`, then
@@ -34,23 +51,26 @@ export const splashTiming = { visibleMs: 1800, fadeMs: 450, giveUpMs: 8000 } as 
  */
 let cancel = () => {};
 
-/** Schedules the splash's exit: after its minimum time, and once the page has loaded. */
+/** Schedules the splash's exit: after its opening sequence, and once the page has loaded. */
 function takeDown() {
   cancel();
   const root = document.documentElement;
   const timers: number[] = [];
   let settled = false;
+  const reduced = prefersReducedMotion();
+  const shownMs = reduced ? splashTiming.reducedMs : splashTiming.introMs;
+  const fadeMs = reduced ? splashTiming.reducedFadeMs : splashTiming.fadeMs;
 
   const leave = () => {
     root.dataset.splash = "leaving";
-    timers.push(window.setTimeout(() => delete root.dataset.splash, splashTiming.fadeMs));
+    timers.push(window.setTimeout(() => delete root.dataset.splash, fadeMs));
   };
-  // The page is ready (or we have stopped waiting for it): honour the minimum, then go.
+  // The page is ready (or we have stopped waiting for it): let the opening finish, then go.
   const ready = () => {
     if (settled) return;
     settled = true;
     const shownFor = performance.now() - (window.__splashAt ?? performance.now());
-    const remaining = splashTiming.visibleMs - shownFor;
+    const remaining = shownMs - shownFor;
     if (remaining <= 0) leave();
     else timers.push(window.setTimeout(leave, remaining));
   };
@@ -65,6 +85,32 @@ function takeDown() {
     window.removeEventListener("load", ready);
     timers.forEach((timer) => window.clearTimeout(timer));
   };
+}
+
+/** True while a sign-in has put the splash up and the next page has not arrived. */
+let held = false;
+
+/**
+ * Puts the splash up the moment a sign-in succeeds, and keeps it there until
+ * the next page arrives (a change of address takes it down as usual), so what
+ * is seen goes straight from the sign-in form to the loading screen, with
+ * nothing of the form folding away between. A next page that never comes is
+ * let go after `giveUpMs`, as a page that never loads is.
+ */
+export function holdSplash() {
+  if (held) return;
+  cancel();
+  held = true;
+  const root = document.documentElement;
+  if (root.dataset.splash !== "on") {
+    root.dataset.splash = "on";
+    window.__splashAt = performance.now();
+  }
+  const timer = window.setTimeout(() => {
+    held = false;
+    takeDown();
+  }, splashTiming.giveUpMs);
+  cancel = () => window.clearTimeout(timer);
 }
 
 const takeSignal = () => {
@@ -100,8 +146,9 @@ export function SplashController() {
 
 /**
  * A sign-in that moved to the next page without loading one: the proxy's
- * signal arrives with that navigation. A layout effect, so the splash is up
- * before the new page is painted.
+ * signal arrives with that navigation, and a splash held since the sign-in
+ * (`holdSplash`) is let go by it. A layout effect, so the splash is up before
+ * the new page is painted.
  */
 function SplashOnNavigation() {
   const pathname = usePathname();
@@ -112,9 +159,15 @@ function SplashOnNavigation() {
       first.current = false;
       return;
     }
-    if (!takeSignal()) return;
-    document.documentElement.dataset.splash = "on";
-    window.__splashAt = performance.now();
+    const signalled = takeSignal();
+    if (!signalled && !held) return;
+    held = false;
+    const root = document.documentElement;
+    // Already up since the sign-in: its opening has been playing, and is not started again.
+    if (root.dataset.splash !== "on") {
+      root.dataset.splash = "on";
+      window.__splashAt = performance.now();
+    }
     takeDown();
   }, [pathname]);
   return null;

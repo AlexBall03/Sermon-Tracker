@@ -25,7 +25,8 @@ export function AuthFormFallback() {
   return (
     <div
       role="status"
-      className="h-[23rem] animate-pulse rounded-xl border bg-surface shadow-raised"
+      // As tall as Clerk's card, which is taller on a narrow screen.
+      className="h-[25.0625rem] animate-pulse rounded-xl border bg-surface shadow-raised sm:h-[23rem]"
     >
       <span className="sr-only">Loading</span>
     </div>

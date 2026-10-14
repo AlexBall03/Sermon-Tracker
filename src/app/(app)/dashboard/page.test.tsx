@@ -30,6 +30,10 @@ const state = vi.hoisted(() => ({
   firstName: "Ada" as string | null,
   clerkDown: false,
   signedIn: true,
+  onboardingStatus: "grandfathered" as string,
+  tourState: "not_offered" as string,
+  markTourOffered: vi.fn(async () => ({ ok: true, message: "" })),
+  dismissProductTour: vi.fn(async () => ({ ok: true, message: "" })),
 }));
 
 vi.mock("@/features/auth/access", () => ({
@@ -40,6 +44,8 @@ vi.mock("@/features/auth/access", () => ({
       clerkUserId: "user_1",
       role: state.role,
       status: "active",
+      onboardingStatus: state.onboardingStatus,
+      tourState: state.tourState,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -98,6 +104,11 @@ vi.mock("@/features/preaching/actions", () => ({
   deleteOccurrence: vi.fn(),
   createVenue: vi.fn(),
   createContext: vi.fn(),
+}));
+vi.mock("@/features/tour/actions", () => ({
+  markTourOffered: state.markTourOffered,
+  dismissProductTour: state.dismissProductTour,
+  completeProductTour: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
@@ -171,6 +182,8 @@ beforeEach(() => {
     firstName: "Ada",
     clerkDown: false,
     signedIn: true,
+    onboardingStatus: "grandfathered",
+    tourState: "not_offered",
     working: [],
     outlines: new Map(),
     revisit: [],
@@ -234,6 +247,48 @@ describe("DashboardPage", () => {
     await show();
     expect(screen.queryByRole("link", { name: /settings/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Administration/ })).not.toBeInTheDocument();
+  });
+
+  describe("the product tour's invitation", () => {
+    const invitation = () => screen.queryByRole("region", { name: "Take a quick tour" });
+
+    it("is offered to an account that has just been through setup, above an empty workspace too", async () => {
+      state.onboardingStatus = "completed";
+      await show();
+      expect(invitation()).toBeInTheDocument();
+      // It is in the page, beside the one invitation to capture, and starts nothing by itself.
+      expect(screen.getByRole("region", { name: "Start with an idea" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(state.markTourOffered).toHaveBeenCalled();
+    });
+
+    it("stays offered until it is answered", async () => {
+      Object.assign(state, { onboardingStatus: "completed", tourState: "offered" });
+      populated();
+      await show();
+      expect(invitation()).toBeInTheDocument();
+    });
+
+    it("is not offered once answered, nor to an account from before setup", async () => {
+      for (const [onboardingStatus, tourState] of [
+        ["completed", "dismissed"],
+        ["completed", "completed"],
+        ["grandfathered", "not_offered"],
+      ]) {
+        Object.assign(state, { onboardingStatus, tourState });
+        const { unmount } = await show();
+        expect(invitation()).not.toBeInTheDocument();
+        unmount();
+      }
+      expect(state.markTourOffered).not.toHaveBeenCalled();
+    });
+
+    it("keeps Maybe Later", async () => {
+      state.onboardingStatus = "completed";
+      await show();
+      fireEvent.click(screen.getByRole("button", { name: "Maybe Later" }));
+      expect(state.dismissProductTour).toHaveBeenCalledOnce();
+    });
   });
 
   describe("an empty workspace", () => {

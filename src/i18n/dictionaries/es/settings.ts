@@ -43,6 +43,10 @@ export const settings: Untranslated<typeof english> = {
     setupDescription:
       "Repite los pasos de configuración cuando quieras: tu iglesia y ministerio, tu idioma y tu Biblia, y el tema. Nada cambia a menos que tú lo cambies.",
     runSetup: "Configurar la cuenta",
+    tour: "Recorrido por la aplicación",
+    tourDescription:
+      "Un recorrido breve por las páginas principales: el inicio, la captura, la biblioteca, la Biblia, los bosquejos y el registro de predicación. No cambia nada.",
+    restartTour: "Repetir el recorrido",
     access: "Tu acceso",
     picture: "Foto",
     name: "Nombre",

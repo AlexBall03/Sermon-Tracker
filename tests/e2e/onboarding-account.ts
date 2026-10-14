@@ -71,6 +71,31 @@ async function clerkUserId(email: string) {
 }
 
 /**
+ * Keeps where the product tour stands for the test account, and answers the
+ * function that puts it back. The tour's own spec finishes and skips the tour,
+ * which the account keeps; nothing else about the account is touched.
+ */
+export async function keepTourState(email: string): Promise<() => Promise<void>> {
+  const pool = await developmentPool();
+  try {
+    const id = await clerkUserId(email);
+    const found = await pool.query("select tour_state from users where clerk_user_id = $1", [id]);
+    if (found.rows.length !== 1) throw new Error("The test account has no application record.");
+    const was = found.rows[0].tour_state as string;
+    return async () => {
+      const restore = await developmentPool();
+      try {
+        await restore.query("update users set tour_state = $2 where clerk_user_id = $1", [id, was]);
+      } finally {
+        await restore.end();
+      }
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
  * Makes the test account one that has not been through setup, with nothing
  * said about itself. Answers the function that puts it back as it was.
  */
@@ -93,6 +118,7 @@ export async function asNewAccount(email: string): Promise<() => Promise<void>> 
     await pool.query(
       `update users
        set onboarding_status = 'pending', onboarding_step = 'welcome', onboarding_completed_at = null,
+           tour_state = 'not_offered',
            church_name = null, ministry_role = null, attends_preaching_class = false
        where clerk_user_id = $1`,
       [id],

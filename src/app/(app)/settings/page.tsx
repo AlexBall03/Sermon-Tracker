@@ -13,6 +13,7 @@ import { BibleSettings } from "@/features/settings/components/bible-settings";
 import { ChurchMinistrySettings } from "@/features/settings/components/church-ministry-settings";
 import { LanguageSettings } from "@/features/settings/components/language-settings";
 import { SettingsBlock, SettingsSection } from "@/features/settings/components/settings-section";
+import { RestartTourButton } from "@/features/tour/components/restart-tour-button";
 import { I18nProvider } from "@/i18n/client";
 import { getT } from "@/i18n/server";
 import { routes } from "@/lib/site";
@@ -70,6 +71,10 @@ export default async function SettingsPage() {
             <Link href={routes.onboarding} className={buttonVariants({ variant: "outline" })}>
               {t.blocks.runSetup}
             </Link>
+          </SettingsBlock>
+          {/* A replay of the tour: it goes to the dashboard and begins, and resets nothing. */}
+          <SettingsBlock title={t.blocks.tour} description={t.blocks.tourDescription}>
+            <RestartTourButton />
           </SettingsBlock>
         </SettingsSection>
 

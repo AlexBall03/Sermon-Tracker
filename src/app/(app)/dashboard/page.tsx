@@ -15,6 +15,7 @@ import { listContexts } from "@/features/preaching/contexts";
 import { searchHistory } from "@/features/preaching/occurrences";
 import { defaultHistoryQuery } from "@/features/preaching/schemas";
 import { listVenues } from "@/features/preaching/venues";
+import { shouldOfferTour } from "@/features/tour/model";
 import { getLocale, getT } from "@/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -77,6 +78,8 @@ export default async function DashboardPage() {
       venues={venues.map(({ id, name, locality }) => ({ id, name, locality }))}
       contexts={contexts.map(({ id, name }) => ({ id, name }))}
       locale={locale}
+      // Only an account that has just been through setup, until it answers.
+      offerTour={shouldOfferTour(user)}
     />
   );
 }

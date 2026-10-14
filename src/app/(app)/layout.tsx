@@ -11,6 +11,7 @@ import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture"
 import { PreachingClassProvider, ReadingProvider } from "@/features/preferences/client";
 import { getPreferences } from "@/features/preferences/current";
 import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
+import { TourProvider } from "@/features/tour/components/tour-provider";
 import { I18nProvider } from "@/i18n/client";
 
 export const metadata: Metadata = {
@@ -50,15 +51,18 @@ async function Shell({ children }: { children: React.ReactNode }) {
           <ToastProvider aboveTabBar>
             <ScriptureProvider>
               <QuickCaptureProvider>
-                <AppHeader isAdmin={user.role === "admin"} />
-                {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
-                <main
-                  id="main"
-                  className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
-                >
-                  {children}
-                </main>
-                <BackToTop aboveTabBar />
+                {/* The product tour, over every page of the shell, so it carries on between them. */}
+                <TourProvider>
+                  <AppHeader isAdmin={user.role === "admin"} />
+                  {/* Below `md` the tab bar is fixed over the foot of the page; leave it room. */}
+                  <main
+                    id="main"
+                    className="flex-1 pt-bar max-md:pb-[calc(var(--bar-h)+var(--bar-lift))]"
+                  >
+                    {children}
+                  </main>
+                  <BackToTop aboveTabBar />
+                </TourProvider>
               </QuickCaptureProvider>
             </ScriptureProvider>
           </ToastProvider>

@@ -41,6 +41,10 @@ export const settings = {
     setupDescription:
       "Go through the setup steps again at any time: your church and ministry, your language and Bible, and the theme. Nothing changes unless you change it.",
     runSetup: "Run Account Setup",
+    tour: "Product tour",
+    tourDescription:
+      "A short walk through the application's main pages: the dashboard, capture, the library, the Bible, outlines, and the Preaching Record. It changes nothing.",
+    restartTour: "Restart Product Tour",
     access: "Your access",
     picture: "Picture",
     name: "Name",

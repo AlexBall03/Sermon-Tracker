@@ -16,9 +16,17 @@ export const metadata: Metadata = {
   title: { default: title, template: `%s · ${siteConfig.name}` },
   description: siteConfig.description,
   applicationName: siteConfig.name,
+  /*
+   * One share card for the whole site, `opengraph-image.png` beside this file
+   * (made by `npm run brand:assets -- share`, from scripts/brand/share-card.mjs).
+   * Next adds its address, size, type, and alt text from the file, and gives the
+   * Twitter card the same image because `twitter` names none. A page that sets
+   * its own `openGraph` replaces all of this, the image included.
+   */
   openGraph: {
     type: "website",
     siteName: siteConfig.name,
+    url: "/",
     title,
     description: siteConfig.description,
     locale: "en_US",

@@ -579,6 +579,12 @@
  * signing in (components/layout/splash-screen.tsx). Its state is one attribute
  * on <html>, set before the first paint: "on", then "leaving" while it fades,
  * then absent. With no attribute it is never displayed at all.
+ *
+ * Its opening is one sequence, and every part of it starts counting when the
+ * screen is displayed: the light comes up, the mark settles with a sheen
+ * across it, the name rises beside that sheen, the tagline follows, and
+ * the hairline opens for the passing light. The last of it has arrived by
+ * `introMs` in splash-controller.tsx; keep the two in step.
  */
 [data-splash-screen] {
   display: none;
@@ -589,11 +595,11 @@ html[data-splash="leaving"] [data-splash-screen] {
   display: grid;
 }
 
-/* the fade; its duration is `fadeMs` in splash-controller.tsx */
+/* the lift: what is on the screen goes first, then the screen itself; `fadeMs` in splash-controller.tsx */
 html[data-splash="leaving"] [data-splash-screen] {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.45s ease;
+  transition: opacity 0.48s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /*
@@ -604,33 +610,75 @@ html[data-splash="on"] :is(main, header, footer, nav) * {
   animation-play-state: paused !important;
 }
 
-/* as the screen fades, what is on it lifts a little, as if making way */
+/*
+ * Nothing behind the screen can be reached while it covers the page: not by
+ * the Tab key and not by a screen reader. It is covered, so hiding it changes
+ * nothing that is seen, and it is back the moment the screen begins to lift.
+ */
+html[data-splash="on"] body > :not([data-splash-screen], script, style, [data-nav-progress]) {
+  visibility: hidden;
+}
+
+/* as the screen fades, what is on it lifts a little and goes first, as if making way */
 .splash-content {
-  transition: transform 0.45s ease;
+  transition:
+    transform 0.48s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.22s ease;
 }
 
 html[data-splash="leaving"] .splash-content {
-  transform: translateY(-0.75rem);
+  opacity: 0;
+  transform: translateY(-0.75rem) scale(1.02);
 }
 
-/* the one light: large and soft behind the mark, breathing for as long as the splash is up */
+/*
+ * the one light: large and soft behind the mark. It comes up, then breathes for as long as the
+ * splash is up. Several stops ease it out, so it fades instead of ending on a ring.
+ */
 .splash-glow {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(52rem, 150vw);
+  width: min(60rem, 170vw);
   aspect-ratio: 1;
   translate: -50% -50%;
-  background-image: radial-gradient(closest-side, var(--glow), transparent);
+  background-image: radial-gradient(
+    closest-side,
+    var(--glow),
+    color-mix(in oklab, var(--glow) 62%, transparent) 30%,
+    color-mix(in oklab, var(--glow) 28%, transparent) 58%,
+    color-mix(in oklab, var(--glow) 8%, transparent) 82%,
+    transparent
+  );
   pointer-events: none;
-  animation: splash-glow 3.6s ease-in-out infinite;
+  transition: transform 0.48s cubic-bezier(0.4, 0, 0.2, 1);
+  animation:
+    splash-bloom 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+    splash-glow 3.6s ease-in-out 1.1s infinite;
+}
+
+/* and widens as the screen lifts, so the light is the last thing to go */
+html[data-splash="leaving"] .splash-glow {
+  transform: scale(1.3);
+}
+
+/* ends where the breathing begins */
+@keyframes splash-bloom {
+  from {
+    opacity: 0;
+    scale: 0.7;
+  }
+  to {
+    opacity: 0.7;
+    scale: 0.95;
+  }
 }
 
 @keyframes splash-glow {
   0%,
   100% {
-    opacity: 0.55;
-    scale: 0.94;
+    opacity: 0.7;
+    scale: 0.95;
   }
   50% {
     opacity: 1;
@@ -638,10 +686,93 @@ html[data-splash="leaving"] .splash-content {
   }
 }
 
-/* a line of emerald light passing along the hairline, for as long as the splash is up */
+/*
+ * A fine grain over the light. A broad, faint gradient on a screen shows as steps; a grain
+ * this slight is not seen as texture, only as a smooth light.
+ */
+.splash-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* the mark comes into focus: a little small and soft at first, then exactly itself */
+.splash-mark {
+  animation: splash-mark 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 80ms both;
+}
+
+@keyframes splash-mark {
+  from {
+    opacity: 0;
+    scale: 0.92;
+    filter: blur(6px);
+  }
+}
+
+/* the tile rests on a soft emerald light of its own, under it rather than around it */
+.splash-tile {
+  box-shadow:
+    0 1px 0 0 rgb(255 255 255 / 0.12) inset,
+    0 18px 40px -14px color-mix(in oklab, var(--primary) 70%, transparent),
+    0 6px 16px -6px rgb(0 0 0 / 0.35);
+}
+
+/* one band of light crossing the tile, once */
+.splash-sheen {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    105deg,
+    transparent 36%,
+    rgb(255 255 255 / 0.3) 50%,
+    transparent 64%
+  );
+  transform: translateX(-120%);
+  animation: splash-sheen 0.8s cubic-bezier(0.45, 0, 0.2, 1) 0.45s both;
+}
+
+@keyframes splash-sheen {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* the name comes up after the mark, out of a slight blur, as the sheen crosses */
+.splash-name {
+  animation: splash-name 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both;
+}
+
+@keyframes splash-name {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+    filter: blur(4px);
+  }
+}
+
+/* the tagline's three words, in turn (`--i` is the word's place) */
+.splash-word {
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) calc(520ms + var(--i, 0) * 110ms) both;
+}
+
+/* the hairline opens from its centre, */
+.splash-rule {
+  animation: splash-rule 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s both;
+}
+
+@keyframes splash-rule {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+}
+
+/* and a line of emerald light passes along it, for as long as the splash is up */
 .splash-light {
   background-image: linear-gradient(to right, transparent, var(--lamp), transparent);
-  animation: splash-light 1.5s cubic-bezier(0.45, 0, 0.55, 1) 0.5s infinite both;
+  animation: splash-light 1.5s cubic-bezier(0.45, 0, 0.55, 1) 0.9s infinite both;
 }
 
 @keyframes splash-light {
@@ -696,6 +827,26 @@ html[data-splash="leaving"] .splash-content {
 /* nothing to scroll behind a full-screen splash; the bar returns as the fade begins */
 html[data-splash="on"] {
   overflow: hidden;
+}
+
+/*
+ * With reduced motion the splash is a still picture: everything on it is
+ * simply there (the rule that stills every animation leaves each at its end),
+ * the light rests in the middle of its hairline instead of having left it,
+ * and the screen goes in one short fade. In the base layer, so it can answer
+ * that rule. The fade is `reducedFadeMs` in splash-controller.tsx.
+ */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    .splash-light {
+      transform: translateX(50%);
+      animation: none !important;
+    }
+
+    html[data-splash="leaving"] [data-splash-screen] {
+      transition-duration: 0.2s !important;
+    }
+  }
 }
 
 /*

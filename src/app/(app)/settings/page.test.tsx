@@ -96,8 +96,15 @@ describe("SettingsPage", () => {
       "href",
       "/onboarding",
     );
-    // Nothing about the tour yet: that is Phase 4B.
-    expect(screen.queryByText(/tour/i)).not.toBeInTheDocument();
+  });
+
+  it("offers the product tour again beside it, as a replay that resets nothing", async () => {
+    render(await SettingsPage());
+    const appearance = within(screen.getByRole("region", { name: "Appearance & Experience" }));
+    expect(appearance.getByText("Product tour")).toBeInTheDocument();
+    // A button that starts the tour where it is shown; not a link, and not a form.
+    expect(appearance.getByRole("button", { name: "Restart Product Tour" })).toBeInTheDocument();
+    expect(appearance.queryByRole("link", { name: /tour/i })).not.toBeInTheDocument();
   });
 
   it("shows the church, the ministry role, and preaching class as the account saved them", async () => {

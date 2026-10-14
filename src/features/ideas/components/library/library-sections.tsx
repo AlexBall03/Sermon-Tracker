@@ -7,11 +7,19 @@ import { dictionary } from "@/i18n";
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { routes } from "@/lib/site";
 
-/** The library's sections, in the order they are always shown. */
+/**
+ * The library's sections, in the order they are always shown. `tour` is the
+ * name the product tour points a section's link out by (`data-tour`).
+ */
 export const librarySections = [
-  { key: "ideas", href: routes.sermonIdeas, icon: Lightbulb },
-  { key: "scripture", href: routes.savedScripture, icon: BookMarked },
-  { key: "history", href: routes.preachingRecord, icon: History },
+  { key: "ideas", href: routes.sermonIdeas, icon: Lightbulb, tour: "section-sermon-ideas" },
+  {
+    key: "scripture",
+    href: routes.savedScripture,
+    icon: BookMarked,
+    tour: "section-saved-scripture",
+  },
+  { key: "history", href: routes.preachingRecord, icon: History, tour: "section-preaching-record" },
 ] as const;
 
 export type LibrarySection = (typeof librarySections)[number]["key"];
@@ -34,11 +42,12 @@ export function LibrarySections({
   const t = dictionary(locale, "library").sections;
   return (
     <nav aria-label={t.label} className="mt-4 flex flex-wrap gap-1">
-      {librarySections.map(({ key, href, icon: Icon }) => (
+      {librarySections.map(({ key, href, icon: Icon, tour }) => (
         <Link
           key={key}
           href={href}
           aria-current={key === current ? "page" : undefined}
+          data-tour={tour}
           className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 aria-[current=page]:bg-primary-soft aria-[current=page]:font-semibold aria-[current=page]:text-primary pointer-coarse:h-11"
         >
           <Icon className="size-4" aria-hidden />

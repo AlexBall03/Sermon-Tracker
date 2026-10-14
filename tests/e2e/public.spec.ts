@@ -33,6 +33,41 @@ test.describe("public landing page", () => {
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index/);
   });
 
+  test("shares one card: a 1200 × 630 image, the same for Open Graph and X", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/");
+    const meta = (key: string) =>
+      page.locator(`meta[property="${key}"], meta[name="${key}"]`).first().getAttribute("content");
+
+    expect(await meta("og:type")).toBe("website");
+    expect(await meta("og:url")).toBe("https://sermontracker.com");
+    expect(await meta("og:site_name")).toBe("Sermon Tracker");
+    expect(await meta("og:title")).toBeTruthy();
+    expect(await meta("og:description")).toBeTruthy();
+    expect(await meta("og:image:width")).toBe("1200");
+    expect(await meta("og:image:height")).toBe("630");
+    expect(await meta("og:image:type")).toBe("image/png");
+    expect(await meta("og:image:alt")).toContain("Sermon Tracker");
+    expect(await meta("twitter:card")).toBe("summary_large_image");
+    expect(await meta("twitter:title")).toBeTruthy();
+    expect(await meta("twitter:description")).toBeTruthy();
+
+    // Absolute, on the production origin, and the same image for both.
+    const image = (await meta("og:image")) ?? "";
+    expect(image).toMatch(/^https:\/\/sermontracker\.com\/opengraph-image\.png/);
+    expect(await meta("twitter:image")).toBe(image);
+
+    // Served here as it will be there: a PNG, publicly, with no session.
+    const response = await request.get(new URL(image).pathname + new URL(image).search);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("image/png");
+    const bytes = await response.body();
+    // A PNG's own header gives its size: width and height at bytes 16 and 20.
+    expect([bytes.readUInt32BE(16), bytes.readUInt32BE(20)]).toEqual([1200, 630]);
+  });
+
   test("does not overflow horizontally", async ({ page }) => {
     await page.goto("/");
     const overflow = await page.evaluate(

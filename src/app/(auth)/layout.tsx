@@ -38,11 +38,25 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <main id="main" className="hero-glow lit-edge rounded-xl">
           {children}
         </main>
-        {/* Decided per request, so it waits behind its own boundary and holds nothing else up. */}
-        <Suspense fallback={null}>
+        {/*
+         * Decided per request, so it waits behind its own boundary and holds nothing else up.
+         * Its place is kept while it does: the column is centred, and a block arriving
+         * under the card would otherwise move the logo and the card up the screen.
+         */}
+        <Suspense fallback={<BeneathSpace />}>
           <Beneath />
         </Suspense>
       </div>
+    </div>
+  );
+}
+
+/** The room `Beneath` takes, row for row, held empty until it arrives. */
+function BeneathSpace() {
+  return (
+    <div aria-hidden className="mt-6 flex flex-col items-center gap-2">
+      <span className="min-h-8 pointer-coarse:min-h-11" />
+      <span className="min-h-[1.96875rem] pointer-coarse:min-h-11" />
     </div>
   );
 }

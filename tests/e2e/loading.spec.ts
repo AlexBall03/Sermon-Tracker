@@ -12,6 +12,7 @@ import { expect, test, type Page } from "@playwright/test";
  * the wall. What is checked is the order of events and the gaps between them,
  * measured inside the page, and the waits allow for a slow load up to the
  * point where the splash and the bar give up by design (8 and 15 seconds).
+ * The splash's own times are `splashTiming` in splash-controller.tsx.
  */
 const settles = { timeout: 20_000 };
 
@@ -102,14 +103,58 @@ test.describe("loading screen", () => {
     const leftAt = log[1][1];
     const goneAt = log[2][1];
 
-    // 1.8 seconds from the moment it went up; never cut short by a fast page.
-    expect(leftAt - raisedAt).toBeGreaterThanOrEqual(1750);
-    // It goes as soon as both that minimum and the page's load allow, not later.
+    // Its opening is 1.2 seconds from the moment it went up; never cut short by a fast page.
+    expect(leftAt - raisedAt).toBeGreaterThanOrEqual(1150);
+    // It goes as soon as both that opening and the page's load allow, not later.
     expect(loadedAt).toBeGreaterThan(0);
-    expect(leftAt - Math.max(raisedAt + 1800, loadedAt)).toBeLessThan(1500);
-    // The fade is 0.45 seconds.
-    expect(goneAt - leftAt).toBeGreaterThanOrEqual(400);
-    expect(goneAt - leftAt).toBeLessThan(1950);
+    expect(leftAt - Math.max(raisedAt + 1200, loadedAt)).toBeLessThan(1500);
+    // The lift is 0.48 seconds.
+    expect(goneAt - leftAt).toBeGreaterThanOrEqual(430);
+    expect(goneAt - leftAt).toBeLessThan(1980);
+  });
+
+  test("covers the page while it is up: nothing behind it can be reached", async ({ page }) => {
+    await page.goto("/", { waitUntil: "commit" });
+    const html = page.locator("html");
+    await expect(html).not.toHaveAttribute("data-splash", settles);
+
+    const main = page.locator("main");
+    await html.evaluate((root) => (root.dataset.splash = "on"));
+    await expect(main).toHaveCSS("visibility", "hidden");
+    // The page cannot be scrolled sideways by anything on the screen.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    // It is back as the screen begins to lift, not after.
+    await html.evaluate((root) => (root.dataset.splash = "leaving"));
+    await expect(main).toHaveCSS("visibility", "visible");
+    await html.evaluate((root) => delete root.dataset.splash);
+  });
+
+  test("with reduced motion it is a still picture, shown briefly", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await recordSplash(page);
+    await page.goto("/", { waitUntil: "commit" });
+    await expect
+      .poll(() => page.evaluate(() => window.__splashLog?.at(-1)?.[0]), settles)
+      .toBeNull();
+
+    const { log, raisedAt } = await page.evaluate(() => ({
+      log: window.__splashLog ?? [],
+      raisedAt: window.__splashAt ?? 0,
+    }));
+    expect(log.map(([state]) => state)).toEqual(["on", "leaving", null]);
+    // Half a second, so it is seen and is not a flash; no sequence is waited for.
+    expect(log[1][1] - raisedAt).toBeGreaterThanOrEqual(450);
+
+    // Put up again, everything on it is simply there, and the light rests on its hairline.
+    await page.locator("html").evaluate((root) => (root.dataset.splash = "on"));
+    const splash = page.getByRole("status", { name: "Loading Sermon Tracker" });
+    await expect(splash).toContainText("Sermon Tracker");
+    await expect(page.locator(".splash-name")).toHaveCSS("opacity", "1");
+    await expect(page.locator(".splash-light")).toHaveCSS("animation-name", "none");
+    await context.close();
   });
 });
 
