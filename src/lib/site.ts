@@ -37,6 +37,8 @@ export const routes = {
   outlines: "/outlines",
   settings: "/settings",
   admin: "/admin",
+  /** What the service worker shows for a page the network could not reach (features/pwa). */
+  offline: "/offline",
 } as const;
 
 /** Paths that must never be indexed, now or once they exist. */
@@ -54,6 +56,7 @@ export const privateRoutes = [
   routes.outlines,
   routes.settings,
   routes.admin,
+  routes.offline,
 ] as const;
 
 /**

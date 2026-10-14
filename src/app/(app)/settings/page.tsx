@@ -13,6 +13,7 @@ import { BibleSettings } from "@/features/settings/components/bible-settings";
 import { ChurchMinistrySettings } from "@/features/settings/components/church-ministry-settings";
 import { LanguageSettings } from "@/features/settings/components/language-settings";
 import { SettingsBlock, SettingsSection } from "@/features/settings/components/settings-section";
+import { InstallAppSettings } from "@/features/pwa/components/install-app-settings";
 import { RestartTourButton } from "@/features/tour/components/restart-tour-button";
 import { I18nProvider } from "@/i18n/client";
 import { getT } from "@/i18n/server";
@@ -32,7 +33,11 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function SettingsPage() {
   const user = await requireActiveUser();
-  const [preferences, t] = await Promise.all([getPreferences(), getT("settings")]);
+  const [preferences, t, pwa] = await Promise.all([
+    getPreferences(),
+    getT("settings"),
+    getT("pwa"),
+  ]);
 
   return (
     // The page says its language itself as well, so it reads right the moment it is changed here.
@@ -75,6 +80,10 @@ export default async function SettingsPage() {
           {/* A replay of the tour: it goes to the dashboard and begins, and resets nothing. */}
           <SettingsBlock title={t.blocks.tour} description={t.blocks.tourDescription}>
             <RestartTourButton />
+          </SettingsBlock>
+          {/* Installing is offered here and nowhere else (features/pwa). */}
+          <SettingsBlock title={pwa.install.title} description={pwa.install.description}>
+            <InstallAppSettings />
           </SettingsBlock>
         </SettingsSection>
 

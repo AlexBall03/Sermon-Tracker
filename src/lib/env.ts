@@ -14,6 +14,12 @@ export type DatabaseEnvironment = (typeof databaseEnvironments)[number];
  * `require…` helper at the point of use.
  */
 const envSchema = z.object({
+  /**
+   * This build's version, set in next.config.ts from the deployment (or the time
+   * of a local build). The service worker carries it, so each deployment is an
+   * update the browser can find (features/pwa).
+   */
+  APP_VERSION: z.string().optional(),
   /** Set by Vercel. Absent locally. */
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().startsWith("pk_").optional(),
@@ -48,6 +54,8 @@ export const env = parseEnv({
   ...process.env,
   // Referenced literally so the value is also available in browser bundles.
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  // Inlined at build by next.config.ts `env`.
+  APP_VERSION: process.env.APP_VERSION,
 });
 
 /** Only the production deployment may be indexed; previews never are. */

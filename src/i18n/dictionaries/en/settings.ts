@@ -23,7 +23,7 @@ export const settings = {
     appearance: {
       title: "Appearance & Experience",
       description:
-        "Light or dark, with the same control as the one in the bar, and a way back through account setup.",
+        "Light or dark, with the same control as the one in the bar, a way back through account setup, and installing the app.",
     },
     account: {
       title: "Account",

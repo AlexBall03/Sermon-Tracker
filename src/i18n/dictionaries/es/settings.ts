@@ -25,7 +25,7 @@ export const settings: Untranslated<typeof english> = {
     appearance: {
       title: "Apariencia y experiencia",
       description:
-        "Claro u oscuro, con el mismo control que el de la barra, y una forma de volver a la configuración de la cuenta.",
+        "Claro u oscuro, con el mismo control que el de la barra, una forma de volver a la configuración de la cuenta y la instalación de la aplicación.",
     },
     account: {
       title: "Cuenta",

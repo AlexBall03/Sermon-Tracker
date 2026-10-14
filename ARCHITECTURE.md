@@ -33,6 +33,9 @@ src/
     api/bible/              Route handlers: one chapter, and word search
     api/ideas/              Route handler: the account's ideas by name, for the picker
     icon.svg                Favicon (small-size mark)
+    manifest.ts             The web app manifest (Phase 5A)
+    sw.js/route.ts          The service worker, with the build's version written in
+    offline/                What the service worker shows when a page cannot be reached
     apple-icon.png          Generated
     opengraph-image.png     Generated share card (+ .alt.txt)
     robots.ts, sitemap.ts
@@ -59,6 +62,9 @@ src/
     scripture/              Books, references, chapter and search reads, and every Scripture component;
                             saved/ holds favorites and highlights (model, services, actions, URL query)
     settings/               Account management: schemas, server action, Clerk hooks, components
+    pwa/                    The installed application: the service worker's script, its registration,
+                            install and update state, the install guide, the offline message, and
+                            the update notice (Phase 5A)
     preferences/            The interface language and Bible translation: what is saved, what is
                             in force (with the Spanish switch applied), and the actions that save it
   i18n/                     Locales, the dictionaries by feature (en/, es/), getT and useT
@@ -77,8 +83,9 @@ src/
     env.ts                  Zod-validated environment access
     clerk-appearance.ts     Clerk components mapped to the design tokens
     use-media-query.ts      Whether a media query matches, for choosing a surface
+    unsaved-work.ts         Whether a reload now would lose anything (asked before an update)
     utils.ts                cn()
-public/brand/               mark.svg, icon-192.png, icon-512.png
+public/brand/               mark.svg, icon-192.png, icon-512.png, icon-maskable-192.png, icon-maskable-512.png
 scripts/                    generate-brand-assets.mjs, db/ (migration commands and the Bible
                             loader), bible/ (dataset reader and its builder)
 data/bible/                 kjv.json and rvg.json, each translation's text; their psalm titles; and
@@ -118,6 +125,9 @@ Conventions:
 | `/outlines/new?sermon=<id>` | Gives a sermon its outline, or opens it     | 3B    | No      |
 | `/api/bible/…`              | A chapter, its marks, or a word search      | 2A    | No      |
 | `/api/ideas/search`         | The account's own ideas, found by name      | 2C.1C | No      |
+| `/offline`                  | Kept by the service worker; offline notice  | 5A    | No      |
+| `/sw.js`                    | The service worker                          | 5A    | No      |
+| `/manifest.webmanifest`     | The web app manifest                        | 5A    | No      |
 | `/analytics`                | Statistics (not in the route map yet)       | Later | No      |
 
 Route groups separate the three shells without affecting URLs:
@@ -594,7 +604,35 @@ Both keep their whole state in one DOM attribute and their styles in `globals.cs
 
 ### Unsaved changes
 
+Whatever would be lost by a reload says so in `src/lib/unsaved-work.ts` while it would (`holdUnsavedWork` / `releaseUnsavedWork`; `hasUnsavedWork()` asks). `useLeaveGuard` holds while `dirty`; the outline store holds while its status is not `saved`, including after its page is gone. It is asked before the application reloads itself for an update (see "Installed application"), and by nothing else.
+
 `useLeaveGuard(dirty, description)` (`components/layout/leave-guard.tsx`) asks before unsaved work is left, by any route. The App Router cannot refuse a navigation, so the guard works around it: a click on a link to another page is caught in the capture phase and held behind a dialog; a Back or Forward move is reversed after the fact (it adds one same-page history entry so that Back is reversible, and stops the router's `popstate` listener from acting on the move); closing, reloading, or leaving the site uses `beforeunload`. Code that navigates on purpose clears `dirty` or calls `allowLeaving()` first. Its third argument, `onLeave`, runs when leaving is confirmed and must throw the unsaved work away: Next keeps a page it has left, state and all, and would otherwise show the abandoned edits again on return. Use the guard for anything that holds edits; the idea editor and quick capture do.
+
+### Installed application
+
+Phase 5A ([handoff](docs/HANDOFF-5A.md)). Sermon Tracker can be installed from the browser (iOS, Android, Windows, macOS) and opens in its own window. It is the same application: the same shells, navigation, sign-in, and loading screen. **It still needs a connection**; offline work is Phases 5B to 5E. `src/features/pwa`.
+
+**Only for people who are signed in.** The manifest (`app/manifest.ts`) opens on `/dashboard` (`id` and `start_url`), with `scope: "/"` and `display: "standalone"`. A guest is sent from there to `/sign-in` by the proxy, with the dashboard as the way back, and an account that owes setup on to `/onboarding` by the dashboard's own check: no code was added to access, and no loop is possible. The installed window never shows the public page: `LeavePublicPage` in the `(marketing)` layout sends it to sign-in (an inline script before paint, and a layout effect after a move inside the application), signing out from it ends on `/sign-in` (`useAccountActions`), and the auth shell hides its logo link and "Back to home" there (`standalone:`, a CSS variant in `globals.css`). Sign-up, when it exists, is to be reached from the sign-in page.
+
+**Icons.** `icon-192` and `icon-512` (purpose `any`), and `icon-maskable-192` and `-512`: the full-bleed tile with the book drawn at 80%, inside every mask's safe circle. All from `mark.svg` by `npm run brand:assets -- icons`. `appleWebApp` in the root layout gives iOS its title beside the existing `apple-icon.png`; the status bar is `default`, so nothing is drawn under it. `PwaRuntime` sets the `theme-color` metas to the page's own background once the theme in force is known, so a theme chosen by hand colors the window's bar too. The manifest's colors are the light canvas; its words are English (a manifest has one language).
+
+**The service worker** (`service-worker.ts`, served by `app/sw.js/route.ts`, prerendered, never cached by HTTP). The build's version (`APP_VERSION`, from `next.config.ts`: the Vercel deployment, the commit, or the time of a local build) is written into it, so each deployment is a different script and the browser finds the update by itself. It is an allowlist; what it does not name it does not touch:
+
+- **A page** (`mode: navigate`): the network, with navigation preload, and never stored. The kept `/offline` page only when the network cannot be reached at all. Any answer the server gives (a redirect to sign-in, a 404, a 500) is passed on as it came, so being offline never looks like being signed out.
+- **`/_next/static/…`**: cache first (hashed, public, never changed); a query string is ignored.
+- **`/brand/…`, `/icon.svg`, `/apple-icon.png`, `/manifest.webmanifest`**: the kept copy, refreshed behind.
+- **Not answered**, so as if there were no worker: anything with an `RSC`, `Next-Action`, or `Next-Router-*` header or an `_rsc` parameter; `/api`, `/__clerk`, `/_next/image`; another origin; anything but `GET`.
+- Only a whole same-origin success is stored. No account's page, payload, action, or API answer is ever stored, so nothing of one account can be shown to another from this cache.
+- Installing keeps `/offline`, fetched **without credentials** (it can hold nothing of an account and sets no cookie, so the splash's cookies are untouched), the static files its HTML names, the fonts its CSS names, and the icons. One cache per version, `st-<version>`; activating deletes the other `st-` caches and claims the open pages.
+- Registered by `startPwa()` (`pwa.ts`), from `PwaRuntime` in the root layout, in production builds only, after `load`. A window shown again asks for an update at most every 30 minutes, for an installed window left open for days.
+- Messages: `SKIP_WAITING` and `GET_VERSION`; later phases add theirs beside them. Account data offline belongs in IndexedDB (Phase 5B), never in this cache.
+- `experimental.useOffline` is not enabled: it changes what a Server Action does offline (it waits and is sent again), which is for Phase 5C to decide.
+
+**The offline page** (`app/offline`, outside every shell, `noindex`): its own bar with the logo (not a link), and `StatusPage` saying the page needs a connection, that nothing was lost, and that the person was not signed out. Its one action is Try again, and it tries again by itself on the `online` event. It is in the language last shown on the device (`st-locale` in `localStorage`, written by `I18nProvider`, so the administrator's switch is already applied), or else the browser's, and draws nothing until it knows which. It shows no account data and imitates no page.
+
+**Installing** is offered in Settings, Appearance & Experience ("Install the app", `InstallAppSettings`), and nowhere else: there is no banner. `installGuide` (`install.ts`) chooses between: installed (running in its own window: says so, offers nothing); just installed; the browser's own prompt (a real button over `beforeinstallprompt`, kept from the first page by `startPwa`); iOS and iPadOS (Share, Add to Home Screen; an iPad is told from a Mac by its touch points); Safari on a Mac (Add to Dock); Android; Chrome or Edge on a computer; unsupported (Firefox on a computer); and general directions. The browser is recognized only to choose which steps to show, and a missing prompt is never taken to mean anything.
+
+**Updates.** A new version installs and waits. `UpdateNotice` in the `(app)` shell says so above the tab bar (`role="status"`, never takes focus): Update or Later. Update is refused while `hasUnsavedWork()`, and says why; otherwise it sends `SKIP_WAITING` and reloads this tab once, when the new worker takes over. No other tab reloads, and a version left waiting takes over when every window is closed. The browser's own `beforeunload` warnings stay as a second barrier. Nothing is shown on the public, sign-in, or setup pages.
 
 ### Scripture
 
@@ -822,7 +860,7 @@ The page has five sections (Phase 2F.3, [handoff](docs/HANDOFF-2F.3.md)): **Pers
 
 ### Caching
 
-Cache Components is on. Nothing user-specific uses `use cache`; the cached functions are `getChapter`, which returns Bible text and knows nothing about the caller, and beside it `getPsalmTitles`, the same kind of read. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
+Cache Components is on. The service worker keeps only the offline page and public static files (see "Installed application"). Nothing user-specific uses `use cache`; the cached functions are `getChapter`, which returns Bible text and knows nothing about the caller, and beside it `getPsalmTitles`, the same kind of read. The `(app)` layout puts the shell behind `<Suspense>`, and Clerk's forms sit behind `<Suspense>` because they read the URL. `<ClerkProvider>` is inside `<body>` and is rendered only when Clerk keys are configured, so the public site builds and runs without credentials.
 
 ## Landing page
 
@@ -988,7 +1026,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - `Logo` is the lockup: mark plus the wordmark in live Playfair Display, raised slightly (`-translate-y-[0.065em]`) so the midpoint of its capitals sits on the mark's centre and its text lines up with the navigation beside it. Playfair's baseline sits low in a `leading-none` box; judge this by measuring the glyphs, not the element's box.
 - `Ribbon` (`components/brand/ribbon.tsx`) is the bookmark from the mark as a UI marker. It is currently unused and kept for the Phase 2 library.
 - `public/brand/mark.svg` is the standalone primary mark. `src/app/icon.svg` is a simplified small-size version for the favicon. Keep all three in step.
-- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`; `npm run brand:assets -- share` regenerates the share card alone. The share card is described under "SEO and metadata".
+- `npm run brand:assets` regenerates `apple-icon.png`, `icon-192.png`, `icon-512.png`, and `opengraph-image.png` from `mark.svg`; `npm run brand:assets -- share` regenerates the share card alone, and `-- icons` the icons alone (with the two maskable ones). The share card is described under "SEO and metadata".
 - If a designer-made vector is supplied, replace the paths in `LogoMark`, `mark.svg`, and `icon.svg`, then rerun the script.
 - Never substitute a generic icon or emoji for the logo.
 
@@ -999,7 +1037,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 - The landing page sets its canonical URL, and its title and description in the visitor's language (`generateMetadata`, from the `marketing` dictionary). Open Graph and the share image are the root layout's, in English. `/sign-in`, `/accept-invitation`, `/access-denied`, and everything under `(app)` are `noindex`.
 - `robots.ts` disallows every application path. On any Vercel deployment that is not production (`VERCEL_ENV`), the whole site is `noindex` and `robots.txt` disallows everything.
 - A page that sets its own `openGraph` object replaces the inherited one, including the share image. Extend it deliberately.
-- There is no web app manifest yet; it belongs to Phase 5 (PWA). The icons it will need already exist in `public/brand/`. **The landing page's Mobile App section already describes installing from the browser**, written ahead of Phase 5 at the owner's direction (`marketing.mobile` in the dictionaries): until the manifest exists, "Add to Home Screen" gives a browser shortcut and not an installed application. Nothing there claims offline use.
+- The web app manifest is `app/manifest.ts` (Phase 5A; see "Installed application"). The landing page's Mobile App section (`marketing.mobile`) describes installing as it now works: Share and Add to Home Screen on an iPhone or iPad, the browser's menu or address bar elsewhere, signing in once if asked, and the steps in Settings. It says the app needs a connection and claims no offline use.
 
 ## Domain decisions
 
@@ -1025,6 +1063,7 @@ These are settled and constrain later phases. The first and fourth are implement
 - **`onboarding.spec.ts` is run by itself** (`npx playwright test onboarding --workers=1`). The test account owes no setup, so the spec makes it one that does for as long as it runs and puts it back exactly as it was (`tests/e2e/onboarding-account.ts`, the one place a spec writes to the database, and only to one stamped development). Any other signed-in spec running beside it would be sent to setup.
 - **Timing in end-to-end tests is measured inside the page.** The splash and the progress bar wait for the page's `load` event, which takes as long as the machine is busy. `loading.spec.ts` records each change of the splash's state with a `MutationObserver` and checks the order and the gaps (never down before its 1.2 second opening, or 0.5 seconds with reduced motion; down within moments of the later of that and `load`), so the result does not depend on how many workers are running.
 - **`tour.spec.ts` is run by itself too** (`npx playwright test tour --workers=1`). It runs the product tour from Settings on the shared test account and puts back where the account's tour stood (`keepTourState` in `tests/e2e/onboarding-account.ts`). With `E2E_TOUR_SHOTS` set to a folder it saves a picture of every stop.
+- **`pwa.spec.ts`** runs on the production build, where the worker is registered: the manifest and icons, what the worker keeps, the offline page under `context.setOffline`, opening on sign-in, and (signed in, reading only) an update offered and taken. Chromium here cannot emulate the `display-mode` media query, so the installed window is emulated as iOS reports it (`navigator.standalone`), and what CSS alone hides there is checked by hand. `service-worker.test.ts` runs the worker's own script in `node:vm`.
 - Keep the suite proportionate. Test behaviour that matters, not markup.
 
 ### How much to verify
@@ -1059,7 +1098,7 @@ The rules that go with it:
 | Hex values taken from the written brief                | The brand board labels differ by a character in places; the brief is authoritative      |
 | Canonical origin is a constant, not an env variable    | Previews should still canonicalise to production                                        |
 | Static generated share image rather than `next/og`     | Uses the real fonts and mark with no build-time network dependency                      |
-| No manifest in Phase 1                                 | Installability is Phase 5 scope                                                         |
+| No manifest in Phase 1                                 | Installability is Phase 5 scope (built in 5A)                                           |
 | `@vitejs/plugin-react` not installed                   | Vitest transforms JSX itself; the plugin conflicted on peer dependencies                |
 | Playwright serves a production build on port 3100      | Tests what ships, and avoids a dev server on 3000                                       |
 | Neon WebSocket pool, not the HTTP driver               | The last-administrator check needs an interactive transaction                           |
@@ -1157,3 +1196,9 @@ The rules that go with it:
 | `/onboarding` in a shell beside `(app)`                | The `(app)` layout is closed to an unfinished account, and its navigation leads nowhere |
 | The stored step only moves forward                     | A stale tab or a repeated request cannot undo progress; Back is the browser's own       |
 | Running setup again writes nothing about setup         | An account that owes none cannot be reset or completed by looking at the steps          |
+| A hand-written service worker, no Serwist              | An allowlist this small is easier to audit than a plugin's defaults                     |
+| The worker never stores a page                         | A page is an account's; only the offline page, fetched without credentials, is kept     |
+| The worker's version is the deployment's               | Each deployment is a new script, so the browser finds the update by itself              |
+| An update waits to be asked, and never over edits      | A reload would end a save on its way or throw away what is typed                        |
+| The installed app opens on the dashboard               | It is for signed-in use; a guest goes to sign-in, never to the public page              |
+| Installing is offered only in Settings                 | No banner interrupts the work; the browser's prompt is kept until it is asked for       |

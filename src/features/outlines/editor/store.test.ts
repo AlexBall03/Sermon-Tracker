@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScriptureReference } from "@/features/scripture/reference";
+import { hasUnsavedWork } from "@/lib/unsaved-work";
 import type { OutlineActionResult } from "../actions";
 import { createOutlineStore, type OutlineSnapshot, type SnapshotEntry } from "./store";
 
@@ -201,6 +202,16 @@ describe("saving words", () => {
     expect(api.updateEntry).toHaveBeenCalledWith("a", { title: "One more", expectedRevision: 1 });
     expect(status()).toBe("saved");
     expect(row("a")?.revision).toBe(2);
+  });
+
+  it("holds unsaved work until it is acknowledged, so an update cannot reload over it", async () => {
+    const { store, status } = editor();
+    expect(hasUnsavedWork()).toBe(false);
+    store.setTitle("a", "Changed");
+    expect(hasUnsavedWork()).toBe(true);
+    await pause();
+    expect(status()).toBe("saved");
+    expect(hasUnsavedWork()).toBe(false);
   });
 
   it("saves at once when the field is left, and shows the text as it is kept", async () => {

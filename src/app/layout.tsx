@@ -4,6 +4,7 @@ import { AppClerkProvider } from "@/components/layout/clerk-provider";
 import { NavigationProgress } from "@/components/layout/navigation-progress";
 import { SplashScreen } from "@/components/layout/splash-screen";
 import { ThemeProvider } from "@/components/layout/theme-provider";
+import { PwaRuntime } from "@/features/pwa/pwa-runtime";
 import { isAuthConfigured, isIndexable } from "@/lib/env";
 import { siteConfig } from "@/lib/site";
 import { fontVariables } from "./fonts";
@@ -36,6 +37,12 @@ export const metadata: Metadata = {
     title,
     description: siteConfig.description,
   },
+  /*
+   * The installed application (features/pwa). The manifest is `manifest.ts`
+   * beside this file. On iOS the status bar keeps its own strip, so nothing is
+   * drawn under it and the bar needs no inset at the top.
+   */
+  appleWebApp: { capable: true, title: siteConfig.name, statusBarStyle: "default" },
   // Pages opt in to indexing; previews are never indexable.
   robots: isIndexable() ? { index: true, follow: true } : { index: false, follow: false },
 };
@@ -75,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* After the theme's own script, so both are painted in the right colors first time. */}
             <SplashScreen />
             <NavigationProgress />
+            <PwaRuntime />
             {children}
           </ThemeProvider>
         </AuthProvider>

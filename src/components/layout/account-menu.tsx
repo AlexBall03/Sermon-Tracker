@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isStandalone } from "@/features/pwa/standalone";
 import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { themeOptions, useThemeChoice } from "./theme-toggle";
@@ -41,11 +42,15 @@ export function useAccountIdentity() {
   return { name, email, initials: initialsOf(name), imageUrl };
 }
 
-/** Sign-out. Used by the desktop menu and the mobile panel. */
+/**
+ * Sign-out. Used by the desktop menu and the mobile panel. The installed
+ * application has no public page, so there it ends on sign-in, which is also
+ * where it opens for someone signed out (app/manifest.ts).
+ */
 export function useAccountActions() {
   const clerk = useClerk();
   return {
-    signOut: () => clerk.signOut({ redirectUrl: routes.home }),
+    signOut: () => clerk.signOut({ redirectUrl: isStandalone() ? routes.signIn : routes.home }),
   };
 }
 

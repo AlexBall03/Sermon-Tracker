@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ push: vi.fn(), discarded: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: state.push }) }));
 
+import { hasUnsavedWork } from "@/lib/unsaved-work";
 import { useLeaveGuard } from "./leave-guard";
 
 function Page({ startDirty = true }: { startDirty?: boolean }) {
@@ -64,6 +65,13 @@ describe("useLeaveGuard", () => {
     expect(unloadIsWarned()).toBe(false);
     expect(window.history.length).toBe(entries);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("tells an update of the application that work is unsaved, for as long as it is", () => {
+    render(<Page />);
+    expect(hasUnsavedWork()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+    expect(hasUnsavedWork()).toBe(false);
   });
 
   it("warns before the tab is closed or reloaded", () => {

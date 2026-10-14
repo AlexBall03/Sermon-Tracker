@@ -15,6 +15,18 @@
 @custom-variant card-view (&:where(:not([data-library-view="list"] *)));
 /* The Bible reader's navigation, put away (features/scripture/reader-sidebar.ts). */
 @custom-variant sidebar-closed (&:where([data-bible-sidebar="closed"] *));
+/*
+ * The installed application, in its own window (features/pwa/standalone.ts).
+ * CSS, so it is right before anything is painted. Only for what the installed
+ * application must not offer, such as the way to the public page.
+ */
+@custom-variant standalone {
+  @media (display-mode: standalone),
+    (display-mode: minimal-ui),
+    (display-mode: window-controls-overlay) {
+    @slot;
+  }
+}
 
 /*
  * Design tokens (Phase 1B.1)

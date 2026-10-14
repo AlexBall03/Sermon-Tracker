@@ -10,6 +10,7 @@ import { requireActiveUser } from "@/features/auth/access";
 import { QuickCaptureProvider } from "@/features/ideas/components/quick-capture";
 import { PreachingClassProvider, ReadingProvider } from "@/features/preferences/client";
 import { getPreferences } from "@/features/preferences/current";
+import { UpdateNotice } from "@/features/pwa/components/update-notice";
 import { ScriptureProvider } from "@/features/scripture/components/scripture-provider";
 import { TourProvider } from "@/features/tour/components/tour-provider";
 import { I18nProvider } from "@/i18n/client";
@@ -62,6 +63,8 @@ async function Shell({ children }: { children: React.ReactNode }) {
                     {children}
                   </main>
                   <BackToTop aboveTabBar />
+                  {/* A new version of the application, offered and never forced (features/pwa). */}
+                  <UpdateNotice />
                 </TourProvider>
               </QuickCaptureProvider>
             </ScriptureProvider>

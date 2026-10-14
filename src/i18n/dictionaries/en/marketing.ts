@@ -133,15 +133,15 @@ export const marketing = {
   },
   mobile: {
     title: "On your phone, like an app",
-    body: "Install Sermon Tracker from your browser and it opens from your home screen, full screen, straight into your workspace. Capture is one tap away at the foot of every page.",
+    body: "Install Sermon Tracker from your browser and it opens from your home screen, full screen, straight into your workspace. It installs on a computer too, in its own window. Capture is one tap away at the foot of every page.",
     stepsTitle: "Install it from your browser",
     steps: [
       "Sign in to Sermon Tracker in your phone's browser.",
-      "Open the browser's menu and choose Add to Home Screen or Install app.",
-      "Open Sermon Tracker from its icon. You stay signed in.",
+      "On an iPhone or iPad, tap Share, then Add to Home Screen. Elsewhere, open the browser's menu (or the install icon in the address bar) and choose Install app.",
+      "Open Sermon Tracker from its icon and sign in if it asks. It opens on your dashboard.",
     ],
     signedIn:
-      "The installed app is your own workspace. It needs an account, and it opens on your dashboard.",
+      "The installed app is your own workspace: it needs an account and a connection, and it opens on your dashboard. Once you are signed in, Settings shows the steps for your device.",
     alt: "A phone showing the Sermon Tracker dashboard scrolled to Revisit an Idea, Recent Preaching, and At a Glance, beside the Sermon Tracker icon as it appears on a home screen.",
     iconLabel: "Sermon Tracker",
   },

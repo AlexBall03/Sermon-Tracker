@@ -128,15 +128,15 @@ export const marketing: Untranslated<typeof english> = {
   },
   mobile: {
     title: "En tu teléfono, como una app",
-    body: "Instala Sermon Tracker desde tu navegador y se abrirá desde tu pantalla de inicio, a pantalla completa, directo en tu espacio de trabajo. Capturar queda a un toque, al pie de cada página.",
+    body: "Instala Sermon Tracker desde tu navegador y se abrirá desde tu pantalla de inicio, a pantalla completa, directo en tu espacio de trabajo. También se instala en una computadora, en su propia ventana. Capturar queda a un toque, al pie de cada página.",
     stepsTitle: "Instálala desde tu navegador",
     steps: [
       "Inicia sesión en Sermon Tracker en el navegador de tu teléfono.",
-      "Abre el menú del navegador y elige Agregar a pantalla de inicio o Instalar app.",
-      "Abre Sermon Tracker desde su icono. Tu sesión sigue iniciada.",
+      "En un iPhone o iPad, toca Compartir y luego Agregar a inicio. En otros dispositivos, abre el menú del navegador (o el icono de instalar en la barra de direcciones) y elige Instalar app.",
+      "Abre Sermon Tracker desde su icono e inicia sesión si te lo pide. Se abre en tu inicio.",
     ],
     signedIn:
-      "La app instalada es tu propio espacio de trabajo. Necesita una cuenta y se abre en tu inicio.",
+      "La app instalada es tu propio espacio de trabajo: necesita una cuenta y conexión, y se abre en tu inicio. Una vez que inicies sesión, Configuración muestra los pasos para tu dispositivo.",
     alt: "Un teléfono con el inicio de Sermon Tracker desplazado hasta Retoma una idea, Predicación reciente y De un vistazo, junto al icono de Sermon Tracker como aparece en una pantalla de inicio.",
     iconLabel: "Sermon Tracker",
   },

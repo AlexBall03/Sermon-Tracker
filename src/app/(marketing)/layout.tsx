@@ -4,6 +4,7 @@ import { BackToTop } from "@/components/layout/back-to-top";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { getPreferences } from "@/features/preferences/current";
+import { LeavePublicPage } from "@/features/pwa/components/leave-public-page";
 import { I18nProvider } from "@/i18n/client";
 
 /**
@@ -13,12 +14,19 @@ import { I18nProvider } from "@/i18n/client";
  * language cookie, or the browser's own language where there is none
  * (features/preferences). That is known only per request, so the shell waits
  * behind a boundary and the page beneath it is rendered with it.
+ *
+ * The installed application never shows these pages: it is sent to sign-in
+ * (`LeavePublicPage`, features/pwa).
  */
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={null}>
-      <Shell>{children}</Shell>
-    </Suspense>
+    <>
+      {/* Ahead of the boundary, so it runs before anything is painted. */}
+      <LeavePublicPage />
+      <Suspense fallback={null}>
+        <Shell>{children}</Shell>
+      </Suspense>
+    </>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useT } from "@/i18n/client";
+import { holdUnsavedWork, releaseUnsavedWork } from "@/lib/unsaved-work";
 
 type Pending = { to: "link"; href: string } | { to: "back" } | { to: "forward" };
 
@@ -60,6 +61,15 @@ export function useLeaveGuard(dirty: boolean, description: string, onLeave?: () 
   const allowLeaving = useCallback(() => {
     leaving.current = true;
   }, []);
+
+  // Said apart from the effect below, which also guards history: an update of the
+  // application asks this before it reloads (lib/unsaved-work.ts).
+  useEffect(() => {
+    if (!dirty) return;
+    const key = {};
+    holdUnsavedWork(key);
+    return () => releaseUnsavedWork(key);
+  }, [dirty]);
 
   useEffect(() => {
     if (!dirty) return;

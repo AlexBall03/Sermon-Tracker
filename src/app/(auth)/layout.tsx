@@ -19,7 +19,8 @@ import { routes } from "@/lib/site";
  * card. Clerk's own form follows it too (components/layout/clerk-provider.tsx).
  *
  * The logo leads home, and so does a link in words under the card: a logo is
- * not something everyone knows to press.
+ * not something everyone knows to press. The installed application shows
+ * neither (`standalone:`): it is for signed-in use only and has no public page.
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,10 +31,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <Link
             href={routes.home}
             aria-label="Sermon Tracker home"
-            className="flex items-center rounded-md transition-opacity duration-150 hover:opacity-80"
+            className="flex items-center rounded-md transition-opacity duration-150 hover:opacity-80 standalone:hidden"
           >
             <Logo />
           </Link>
+          {/* The installed application has no public page to lead to: the logo is only the logo. */}
+          <div className="hidden items-center standalone:flex">
+            <Logo />
+          </div>
         </div>
         <main id="main" className="hero-glow lit-edge rounded-xl">
           {children}
@@ -55,7 +60,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 function BeneathSpace() {
   return (
     <div aria-hidden className="mt-6 flex flex-col items-center gap-2">
-      <span className="min-h-8 pointer-coarse:min-h-11" />
+      <span className="min-h-8 pointer-coarse:min-h-11 standalone:hidden" />
       <span className="min-h-[1.96875rem] pointer-coarse:min-h-11" />
     </div>
   );
@@ -73,7 +78,7 @@ async function Beneath() {
       <div className="mt-6 flex flex-col items-center gap-2">
         <Link
           href={routes.home}
-          className="group/back inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground pointer-coarse:min-h-11"
+          className="group/back inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground active:text-foreground pointer-coarse:min-h-11 standalone:hidden"
         >
           <ArrowLeft
             className="size-4 transition-transform duration-150 group-hover/back:-translate-x-0.5"

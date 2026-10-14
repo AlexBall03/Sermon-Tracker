@@ -1,4 +1,5 @@
 import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
+import { holdUnsavedWork, releaseUnsavedWork } from "@/lib/unsaved-work";
 import type { OutlineActionResult } from "../actions";
 import { outlineLimits, type EntryType, type SectionType } from "../model";
 import type { NumberingConfig } from "../numbering";
@@ -214,6 +215,8 @@ export function createOutlineStore(
 
   const listeners = new Set<() => void>();
   let state: EditorState;
+  /** This store's hold on unsaved work (lib/unsaved-work.ts). */
+  const unsavedKey = {};
 
   const find = (id: string) => rows.find((row) => row.id === id);
 
@@ -252,6 +255,9 @@ export function createOutlineStore(
       lost,
       reloaded,
     };
+    // Held for as long as a reload would lose something, after the page is gone too.
+    if (state.status === "saved" || disposed) releaseUnsavedWork(unsavedKey);
+    else holdUnsavedWork(unsavedKey);
     listeners.forEach((notify) => notify());
   }
 
@@ -800,6 +806,7 @@ export function createOutlineStore(
       wordsTimer = clear(wordsTimer);
       retryTimer = clear(retryTimer);
       reloadTimer = clear(reloadTimer);
+      releaseUnsavedWork(unsavedKey);
     },
   };
 }
