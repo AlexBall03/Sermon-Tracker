@@ -92,7 +92,7 @@ describe("Settings", () => {
     }
   });
 
-  it("lists its seven categories on the overview, each leading to its page", async () => {
+  it("lists its seven categories on the overview, each leading to its page, then Help & Feedback", async () => {
     show(await SettingsPage());
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(
@@ -105,6 +105,7 @@ describe("Settings", () => {
       [expect.stringContaining("Offline Storage"), "/settings/offline"],
       [expect.stringContaining("Synchronization"), "/settings/sync"],
       [expect.stringContaining("Account & Security"), "/settings/account"],
+      [expect.stringContaining("Help & Feedback"), "/support"],
     ]);
   });
 

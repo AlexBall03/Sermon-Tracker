@@ -15,6 +15,7 @@ export const marketing: Untranslated<typeof english> = {
     how: "Cómo funciona",
     mobile: "App móvil",
     signIn: "Iniciar sesión",
+    contact: "Contacto",
     openMenu: "Abrir menú",
     closeMenu: "Cerrar menú",
     language: "Idioma",

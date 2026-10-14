@@ -25,6 +25,11 @@ Preview deployments are never indexed: when `VERCEL_ENV` is set and is not `prod
 | `INITIAL_ADMIN_CLERK_USER_ID`       | Server only | App                  | `user_…` of the first administrator, per Clerk instance |
 | `PRODUCTION_DATABASE_URL`           | Workstation | `db:*` prod commands | Never set in Vercel or `.env.local`                     |
 | `VERCEL_ENV`                        | Server only | App                  | Provided by Vercel                                      |
+| `RESEND_API_KEY`                    | Server only | Support mail (6A)    | `re_…`; without it nothing is mailed                    |
+| `CONTACT_EMAIL_FROM`                | Server only | Support mail (6A)    | `Sermon Tracker <support@your-verified-domain>`         |
+| `CONTACT_INBOX_EMAIL`               | Server only | Support mail (6A)    | Where new messages and replies are announced            |
+| `BLOB_READ_WRITE_TOKEN`             | Server only | Screenshots (6A)     | Added by connecting a **private** Blob store in Vercel  |
+| `BLOB_STORE_ID`                     | Server only | Screenshots (6A)     | Only when the store is reached through Vercel OIDC      |
 
 All are optional when the application is built: without Clerk keys the public site still works, `/sign-in` says authentication is not configured, and application routes redirect there. `npm run dev` does require the database variables; use `npm run dev:next` to work on the interface without them.
 

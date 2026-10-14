@@ -35,6 +35,15 @@ const envSchema = z.object({
     .string()
     .regex(/^user_\w+$/, "must be a Clerk user ID")
     .optional(),
+  /** Resend, for contact and feedback mail (features/support). Without it nothing is mailed. */
+  RESEND_API_KEY: z.string().startsWith("re_").optional(),
+  /** The sender, on a domain verified in Resend: `Sermon Tracker <support@example.com>`. */
+  CONTACT_EMAIL_FROM: z.string().min(3).optional(),
+  /** Where new contact messages and feedback are announced. */
+  CONTACT_INBOX_EMAIL: z.email().optional(),
+  /** Vercel Blob (private store), for feedback screenshots. Or OIDC with BLOB_STORE_ID. */
+  BLOB_READ_WRITE_TOKEN: z.string().startsWith("vercel_blob_rw_").optional(),
+  BLOB_STORE_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -66,6 +75,16 @@ export function isIndexable(vercelEnv = env.VERCEL_ENV) {
 /** True when both Clerk keys are present. Without them the app stays public-only. */
 export function isAuthConfigured(source: Env = env) {
   return Boolean(source.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && source.CLERK_SECRET_KEY);
+}
+
+/** True when mail can be sent: a Resend key and a sender. */
+export function isEmailConfigured(source: Env = env) {
+  return Boolean(source.RESEND_API_KEY && source.CONTACT_EMAIL_FROM);
+}
+
+/** True when screenshots can be stored: a Blob token, or a store reached through Vercel OIDC. */
+export function isBlobConfigured(source: Env = env) {
+  return Boolean(source.BLOB_READ_WRITE_TOKEN || source.BLOB_STORE_ID);
 }
 
 /**

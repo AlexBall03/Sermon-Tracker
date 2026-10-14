@@ -14,12 +14,13 @@ export function SectionLinks({ links }: { links: readonly { href: string; label:
 
   useEffect(() => {
     const sections = links
-      .map((link) => document.getElementById(link.href.slice(1)))
+      .map((link) => document.getElementById(link.href.slice(link.href.indexOf("#") + 1)))
       .filter((section) => section !== null);
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          const href = `#${entry.target.id}`;
+          const href = links.find((link) => link.href.endsWith(`#${entry.target.id}`))?.href;
+          if (!href) continue;
           if (entry.isIntersecting) setCurrent(href);
           else setCurrent((was) => (was === href ? null : was));
         }

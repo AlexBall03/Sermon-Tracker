@@ -14,6 +14,7 @@ export const navigation = {
   openAccountMenu: "Open account menu",
   closeAccountMenu: "Close account menu",
   settings: "Settings",
+  support: "Help & Feedback",
   administration: "Administration",
   signOut: "Sign out",
   colorTheme: "Color theme",

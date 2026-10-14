@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight, LifeBuoy } from "lucide-react";
 
 import { getDb } from "@/db";
 import { PageHeader } from "@/components/layout/page-header";
+import { buttonVariants } from "@/components/ui/button";
 import { StatStrip } from "@/components/ui/stat-strip";
 import { requireAdmin } from "@/features/auth/access";
 import {
@@ -13,8 +16,10 @@ import { InvitationsPanel } from "@/features/admin/components/invitations-panel"
 import { LanguageControl } from "@/features/admin/components/language-control";
 import { UsersTable } from "@/features/admin/components/users-table";
 import { getUserCounts, listUsers } from "@/features/admin/users";
+import { countActiveTickets } from "@/features/support/tickets";
 import { getAppSettings } from "@/features/preferences/settings";
 import { getT } from "@/i18n/server";
+import { routes } from "@/lib/site";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT("admin")).page.metaTitle };
@@ -25,13 +30,15 @@ export default async function AdminPage() {
   const admin = await requireAdmin();
   const db = getDb();
 
-  const [counts, rows, invitations, settings, t] = await Promise.all([
+  const [counts, rows, invitations, settings, t, support, openTickets] = await Promise.all([
     getUserCounts(db),
     listUsers(db),
     // Clerk being unreachable must not take the whole page down.
     listPendingInvitations().catch(() => null),
     getAppSettings(),
     getT("admin"),
+    getT("support"),
+    countActiveTickets(db).catch(() => null),
   ]);
   const identified = await withIdentities(rows).catch(() => null);
   const entries: DirectoryEntry[] =
@@ -49,6 +56,30 @@ export default async function AdminPage() {
       <PageHeader title={t.page.title} description={t.page.description} />
 
       <StatStrip stats={stats} className="mt-8" />
+
+      <section
+        aria-labelledby="feedback-heading"
+        className="mt-10 flex flex-col gap-4 rounded-xl border bg-surface p-5 shadow-card sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-3.5">
+          <LifeBuoy className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+          <div>
+            <h2 id="feedback-heading" className="text-lg font-semibold tracking-[-0.015em]">
+              {support.admin.cardTitle}
+              {openTickets !== null && (
+                <span className="ml-2.5 align-middle text-sm font-medium text-muted-foreground">
+                  {support.admin.cardOpen(openTickets)}
+                </span>
+              )}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{support.admin.cardDescription}</p>
+          </div>
+        </div>
+        <Link href={routes.adminFeedback} className={buttonVariants({ variant: "outline" })}>
+          {support.admin.cardLink}
+          <ArrowRight aria-hidden />
+        </Link>
+      </section>
 
       <section aria-labelledby="users-heading" className="mt-10">
         <h2 id="users-heading" className="text-lg font-semibold tracking-[-0.015em]">

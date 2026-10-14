@@ -19,6 +19,7 @@ export const marketing = {
     how: "How It Works",
     mobile: "Mobile App",
     signIn: "Sign In",
+    contact: "Contact",
     openMenu: "Open menu",
     closeMenu: "Close menu",
     language: "Language",

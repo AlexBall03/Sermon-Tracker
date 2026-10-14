@@ -30,6 +30,7 @@ export function SiteFooter({
     { href: "/#how-it-works", label: t.nav.how },
     { href: "/#features", label: t.nav.features },
     { href: "/#mobile-app", label: t.nav.mobile },
+    { href: routes.contact, label: t.nav.contact },
     { href: routes.signIn, label: t.nav.signIn },
   ];
 

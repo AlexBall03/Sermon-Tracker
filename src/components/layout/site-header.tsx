@@ -19,7 +19,7 @@ const sectionIds = { features: "features", how: "how-it-works", mobile: "mobile-
  */
 export function SiteHeader({ locale = defaultLocale }: { locale?: Locale }) {
   const t = dictionary(locale, "marketing").nav;
-  const links = siteSections.map((key) => ({ href: `#${sectionIds[key]}`, label: t[key] }));
+  const links = siteSections.map((key) => ({ href: `/#${sectionIds[key]}`, label: t[key] }));
   const labels = { primary: t.primary, signIn: t.signIn, open: t.openMenu, close: t.closeMenu };
 
   return (

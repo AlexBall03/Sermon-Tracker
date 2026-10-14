@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Plus, Settings, ShieldCheck } from "lucide-react";
+import { LifeBuoy, LogOut, Plus, Settings, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
@@ -169,6 +169,7 @@ function AccountSheet({ isAdmin, isCurrent }: { isAdmin: boolean; isCurrent: IsC
 
   const items = [
     { href: routes.settings, label: t.settings, icon: Settings },
+    { href: routes.support, label: t.support, icon: LifeBuoy },
     ...(isAdmin ? [{ href: routes.admin, label: t.administration, icon: ShieldCheck }] : []),
   ];
 

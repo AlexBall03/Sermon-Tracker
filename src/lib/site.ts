@@ -45,6 +45,13 @@ export const routes = {
   settingsSync: "/settings/sync",
   settingsAccount: "/settings/account",
   admin: "/admin",
+  /** The administrator's inbox of contact messages and feedback; one conversation at `/admin/feedback/<id>`. */
+  adminFeedback: "/admin/feedback",
+  /** The public contact form. */
+  contact: "/contact",
+  /** Help & Feedback: the account's messages; a new one at `/support/new`, one at `/support/<id>`. */
+  support: "/support",
+  supportNew: "/support/new",
   /** What the service worker shows for a page the network could not reach (features/pwa). */
   offline: "/offline",
 } as const;
@@ -71,6 +78,9 @@ export const privateRoutes = [
   routes.settingsSync,
   routes.settingsAccount,
   routes.admin,
+  routes.adminFeedback,
+  routes.support,
+  routes.supportNew,
   routes.offline,
 ] as const;
 
@@ -88,5 +98,6 @@ export const appRoutes = [
   routes.bible,
   routes.outlines,
   routes.settings,
+  routes.support,
   routes.admin,
 ] as const;

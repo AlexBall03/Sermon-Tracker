@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { LogOut, Settings, ShieldCheck } from "lucide-react";
+import { LifeBuoy, LogOut, Settings, ShieldCheck } from "lucide-react";
 
 import { Avatar } from "@/components/ui/avatar";
 import {
@@ -83,6 +83,10 @@ export function AccountMenu({ isAdmin }: { isAdmin: boolean }) {
         <DropdownMenuItem render={<Link href={routes.settings} />}>
           <Settings aria-hidden />
           {t.settings}
+        </DropdownMenuItem>
+        <DropdownMenuItem render={<Link href={routes.support} />}>
+          <LifeBuoy aria-hidden />
+          {t.support}
         </DropdownMenuItem>
         {isAdmin && (
           <DropdownMenuItem render={<Link href={routes.admin} />}>

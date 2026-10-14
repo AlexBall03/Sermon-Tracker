@@ -24,6 +24,13 @@ import type { NumberingConfig } from "../features/outlines/numbering";
 import { actualFormats, timesOfDay } from "../features/preaching/model";
 import { highlightColors } from "../features/scripture/saved/model";
 import { accentFold } from "../features/scripture/search-fold";
+import {
+  messageAuthors,
+  messageVisibilities,
+  ticketKinds,
+  ticketSources,
+  ticketStatuses,
+} from "../features/support/model";
 import { translationIds } from "../features/scripture/translations";
 import { locales } from "../i18n/locales";
 
@@ -1032,3 +1039,153 @@ export const syncOperations = pgTable(
   },
   (table) => [primaryKey({ columns: [table.ownerId, table.opId] })],
 );
+
+/**
+ * Contact and feedback (Phase 6A, features/support). A ticket is one
+ * conversation. One sent from the public contact form has no account and
+ * carries the sender's name and address; one sent from Help & Feedback has its
+ * account, taken from the session, and no address of its own (the address is
+ * Clerk's, asked for when mail is sent). `locale` is the sender's language
+ * when they wrote, so mail about the ticket is in it.
+ */
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    /** May be generated in the browser, so a repeated submission saves one ticket. */
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind", { enum: ticketKinds }).notNull(),
+    source: text("source", { enum: ticketSources }).notNull(),
+    status: text("status", { enum: ticketStatuses }).notNull().default("open"),
+    subject: text("subject").notNull(),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    /** A bug report's steps, what was expected, and where it happened. */
+    steps: text("steps"),
+    expected: text("expected"),
+    area: text("area"),
+    /** A feature request's reason: what it would let the person do. */
+    useCase: text("use_case"),
+    pageUrl: text("page_url"),
+    userAgent: text("user_agent"),
+    locale: text("locale", { enum: locales }).notNull().default("en"),
+    /** A one-way hash of the public sender's network address, for rate limiting only. */
+    ipHash: text("ip_hash"),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
+    /** When the requester last opened it; a later public message is unread for them. */
+    requesterReadAt: timestamp("requester_read_at", { withTimezone: true }),
+    /** When an administrator last opened it; a later message from the requester is unread. */
+    adminReadAt: timestamp("admin_read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check(
+      "support_tickets_kind_check",
+      sql`${table.kind} in ('contact', 'bug', 'feature', 'feedback')`,
+    ),
+    check(
+      "support_tickets_status_check",
+      sql`${table.status} in ('open', 'under_review', 'planned', 'in_progress', 'resolved', 'closed')`,
+    ),
+    // A public message has an address and no account; an account's has an account and no address.
+    check(
+      "support_tickets_source_check",
+      sql`(${table.source} = 'public' and ${table.userId} is null and ${table.contactEmail} is not null and ${table.kind} = 'contact') or (${table.source} = 'app' and ${table.userId} is not null and ${table.contactEmail} is null)`,
+    ),
+    check("support_tickets_subject_check", sql`char_length(${table.subject}) between 1 and 160`),
+    index("support_tickets_user_idx").on(table.userId, table.lastMessageAt.desc()),
+    index("support_tickets_status_idx").on(table.status, table.lastMessageAt.desc()),
+    index("support_tickets_ip_idx").on(table.ipHash, table.createdAt),
+    index("support_tickets_email_idx").on(table.contactEmail, table.createdAt),
+  ],
+);
+
+export type SupportTicket = typeof supportTickets.$inferSelect;
+
+/**
+ * What was said on a ticket, oldest first; the first is the submission
+ * itself. An `internal` message is a note between administrators and is never
+ * shown to, or mailed to, the requester.
+ */
+export const supportMessages = pgTable(
+  "support_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: "cascade" }),
+    /** Null for a public sender, who has no account. */
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "restrict" }),
+    author: text("author", { enum: messageAuthors }).notNull(),
+    visibility: text("visibility", { enum: messageVisibilities }).notNull().default("public"),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("support_messages_author_check", sql`${table.author} in ('requester', 'admin')`),
+    // Only an administrator writes an internal note.
+    check(
+      "support_messages_visibility_check",
+      sql`${table.visibility} = 'public' or (${table.visibility} = 'internal' and ${table.author} = 'admin')`,
+    ),
+    check("support_messages_body_check", sql`char_length(${table.body}) between 1 and 5000`),
+    index("support_messages_ticket_idx").on(table.ticketId, table.createdAt),
+    index("support_messages_author_idx").on(table.authorUserId, table.createdAt),
+  ],
+);
+
+export type SupportMessage = typeof supportMessages.$inferSelect;
+
+/** Every change of a ticket's status, by whom and when. */
+export const supportStatusEvents = pgTable(
+  "support_status_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: "cascade" }),
+    fromStatus: text("from_status", { enum: ticketStatuses }).notNull(),
+    toStatus: text("to_status", { enum: ticketStatuses }).notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("support_status_events_ticket_idx").on(table.ticketId, table.createdAt)],
+);
+
+export type SupportStatusEvent = typeof supportStatusEvents.$inferSelect;
+
+/**
+ * A screenshot in private Blob storage. It is uploaded before its ticket
+ * exists and belongs to its uploader until a ticket of theirs takes it; one
+ * still unattached after a day is deleted. It is only ever served through
+ * `/api/support/attachments/<id>`, to its owner or an administrator.
+ */
+export const supportAttachments = pgTable(
+  "support_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    ticketId: uuid("ticket_id").references(() => supportTickets.id, { onDelete: "cascade" }),
+    pathname: text("pathname").notNull().unique(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "support_attachments_type_check",
+      sql`${table.contentType} in ('image/png', 'image/jpeg', 'image/webp')`,
+    ),
+    check("support_attachments_size_check", sql`${table.size} between 1 and 4194304`),
+    index("support_attachments_owner_idx").on(table.ownerId, table.ticketId, table.createdAt),
+    index("support_attachments_ticket_idx").on(table.ticketId),
+  ],
+);
+
+export type SupportAttachment = typeof supportAttachments.$inferSelect;

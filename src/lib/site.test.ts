@@ -8,11 +8,11 @@ describe("site config", () => {
     expect(siteConfig.url).toBe("https://sermontracker.com");
   });
 
-  it("keeps every route except home out of search indexes", () => {
+  it("keeps every route except home and contact out of search indexes", () => {
     const publicRoutes = Object.values(routes).filter(
       (route) => !(privateRoutes as readonly string[]).includes(route),
     );
-    expect(publicRoutes).toEqual(["/"]);
+    expect(publicRoutes).toEqual(["/", "/contact"]);
   });
 });
 

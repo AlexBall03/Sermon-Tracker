@@ -16,6 +16,7 @@ export const navigation: Untranslated<typeof english> = {
   openAccountMenu: "Abrir el menú de la cuenta",
   closeAccountMenu: "Cerrar el menú de la cuenta",
   settings: "Configuración",
+  support: "Ayuda y comentarios",
   administration: "Administración",
   signOut: "Cerrar sesión",
   colorTheme: "Tema de color",
