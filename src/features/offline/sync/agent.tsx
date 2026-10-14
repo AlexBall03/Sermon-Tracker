@@ -12,7 +12,8 @@ import {
 
 import { syncMutation } from "@/features/sync/actions";
 import type { MutationRecord } from "../model";
-import { afterApplied } from "../ideas/sync";
+import { afterApplied as ideaApplied } from "../ideas/sync";
+import { afterApplied as outlineApplied } from "../outlines/sync";
 import {
   listMutations,
   onQueueChange,
@@ -119,7 +120,9 @@ export function SyncAgent({
               isCurrent: (owner) => current.current === owner,
               onApplied: (record, outcome) => {
                 applied = true;
-                return afterApplied(account, record, outcome);
+                return record.entityType === "outline"
+                  ? outlineApplied(account, record, outcome)
+                  : ideaApplied(account, record, outcome);
               },
             }).catch((): RunResult => "idle");
             setLast(result);

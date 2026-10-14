@@ -28,6 +28,10 @@ function settle(value: unknown): OfflineSettings {
       typeof stored.ideasOffline === "boolean"
         ? stored.ideasOffline
         : defaultOfflineSettings.ideasOffline,
+    outlinesOffline:
+      typeof stored.outlinesOffline === "boolean"
+        ? stored.outlinesOffline
+        : defaultOfflineSettings.outlinesOffline,
   };
 }
 

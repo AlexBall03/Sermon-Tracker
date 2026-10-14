@@ -144,6 +144,11 @@ export const outlines = {
       failed: "Save failed",
       conflict: "Needs your attention",
     },
+    /** In place of "Saved" while the outline's changes are kept on this device, not yet in the account. */
+    savedOnDevice: "Saved on this device",
+    /** Why a change could not be kept on this device (the offline page). */
+    notKept: "This change could not be kept on this device. It will be tried again.",
+    needsConnection: "Adding a saved point needs a connection.",
     retry: "Try again",
     offline:
       "That did not reach the server. Your changes are kept on this page and will be tried again.",

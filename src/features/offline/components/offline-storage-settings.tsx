@@ -27,6 +27,7 @@ import type { BibleDataset } from "../model";
 import { saveOfflineSettings, useOfflineSettings } from "../settings";
 import { estimateStorage, formatBytes, requestPersistence, type StorageEstimate } from "../storage";
 import { OfflineIdeasSettings } from "./offline-ideas-settings";
+import { OfflineOutlinesSettings } from "./offline-outlines-settings";
 import { PendingChanges } from "./pending-changes";
 
 /** Below this share of the quota left, the device is said to be nearly full. */
@@ -245,20 +246,7 @@ export function OfflineStorageSettings() {
       </SettingsBlock>
 
       <OfflineIdeasSettings unavailable={unavailable} />
-
-      <SettingsBlock title={t.moreTitle} description={t.moreDescription}>
-        <div className="space-y-3">
-          {[t.outlines].map((label) => (
-            <div key={label} className="flex items-start justify-between gap-3 opacity-70">
-              <Switch label={label} checked={false} disabled onChange={() => {}} />
-              {/* Centered on the switch's track, which sits at the top of its row. */}
-              <span className="mt-1 shrink-0">
-                <Badge tone="muted">{t.later}</Badge>
-              </span>
-            </div>
-          ))}
-        </div>
-      </SettingsBlock>
+      <OfflineOutlinesSettings unavailable={unavailable} />
 
       <SettingsBlock title={t.storageTitle}>
         <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">

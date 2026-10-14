@@ -18,6 +18,7 @@ import { Pagination } from "@/features/ideas/components/library/pagination";
 import { LibraryViewScript } from "@/features/ideas/components/library/view-switcher";
 import { IdeaEditor } from "@/features/ideas/components/idea-editor";
 import { IdeaOperationsProvider } from "@/features/ideas/components/idea-operations";
+import { OutlineLink } from "@/features/outlines/components/outline-link";
 import type { IdeaWithReferences } from "@/features/ideas/ideas";
 import {
   isFiltered,
@@ -40,6 +41,7 @@ import {
   shown,
   type IdeasState,
 } from "../ideas/store";
+import { keptOutlineIds, onOutlinesChange } from "../outlines/store";
 import { useOfflineSettings } from "../settings";
 
 /*
@@ -62,6 +64,8 @@ type Kept = {
   tags: IdeaTag[];
   state: IdeasState;
   waiting: number;
+  /** The outline kept on this device of each sermon that has one, by the sermon's ID. */
+  outlines: Map<string, string>;
 };
 
 /** The account's kept ideas, read again whenever they or the queue change, in any tab. */
@@ -70,11 +74,12 @@ function useKept(account: string): Kept | null {
   useEffect(() => {
     let current = true;
     const read = async () => {
-      const [ideas, tags, state, queued] = await Promise.all([
+      const [ideas, tags, state, queued, outlines] = await Promise.all([
         listLocalIdeas(account),
         readLocalTags(account),
         readIdeasState(account),
         listMutations(account),
+        keptOutlineIds(account).catch(() => new Map<string, string>()),
       ]);
       const byId = new Map(tags.map((tag) => [tag.id, tag]));
       if (!current) return;
@@ -84,17 +89,20 @@ function useKept(account: string): Kept | null {
           ideas: ideas.map((idea) => asLibraryIdea(idea, account, byId)),
           tags,
           state,
-          waiting: queued.length,
+          waiting: queued.filter((record) => record.entityType === "idea").length,
+          outlines,
         },
       });
     };
     const again = () => void read().catch(() => {});
     again();
     const stopIdeas = onIdeasChange(again);
+    const stopOutlines = onOutlinesChange(again);
     const stopQueue = onQueueChange(again);
     return () => {
       current = false;
       stopIdeas();
+      stopOutlines();
       stopQueue();
     };
   }, [account]);
@@ -262,6 +270,7 @@ export function OfflineLibrary({
                 query={{ ...query, page: result.page }}
                 locale={locale}
                 offline
+                outlines={kept.outlines}
               />
             </div>
             <Pagination
@@ -291,9 +300,12 @@ export function OfflineIdea({
 }) {
   const t = useT("offline").ideas;
   const words = useT("ideas");
+  const locale = useLocale();
   const [kept, setKept] = useState<{
     idea: ReturnType<typeof shown>;
     tags: IdeaTag[];
+    /** Its outline, when one is kept on this device. */
+    outlineId: string | null;
   } | null>(null);
   const back = libraryReturnHref(new URLSearchParams(search).get("from") ?? undefined);
 
@@ -301,15 +313,22 @@ export function OfflineIdea({
     if (!account) return;
     let current = true;
     const read = () =>
-      void Promise.all([getKeptIdea(account, id), readLocalTags(account)]).then(
-        ([copy, tags]) => current && setKept({ idea: shown(copy), tags }),
-        () => current && setKept({ idea: null, tags: [] }),
+      void Promise.all([
+        getKeptIdea(account, id),
+        readLocalTags(account),
+        keptOutlineIds(account).catch(() => new Map<string, string>()),
+      ]).then(
+        ([copy, tags, outlines]) =>
+          current && setKept({ idea: shown(copy), tags, outlineId: outlines.get(id) ?? null }),
+        () => current && setKept({ idea: null, tags: [], outlineId: null }),
       );
     read();
     const stop = onIdeasChange(read);
+    const stopOutlines = onOutlinesChange(read);
     return () => {
       current = false;
       stop();
+      stopOutlines();
     };
   }, [account, id]);
 
@@ -336,6 +355,15 @@ export function OfflineIdea({
       <BackLink href={back}>{words.page.back}</BackLink>
       <PageHeader title={words.kinds[idea.kind]} description={words.page.description} />
       <p className={`${notice} mt-5 max-w-2xl text-muted-foreground`}>{t.connection}</p>
+      {idea.kind === "sermon" && kept.outlineId && (
+        <div className="mt-4 flex">
+          <OutlineLink
+            sermon={{ id: idea.id, title: idea.title }}
+            outlineId={kept.outlineId}
+            locale={locale}
+          />
+        </div>
+      )}
       <IdeaOperationsProvider value={operations}>
         <IdeaEditor
           key={idea.id}

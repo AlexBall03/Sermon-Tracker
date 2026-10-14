@@ -11,7 +11,7 @@ export const offline: Untranslated<typeof english> = {
   pending: {
     title: "En espera en este dispositivo",
     description:
-      "Ideas capturadas o modificadas cuando no se podía conectar con el servidor. Solo están en este dispositivo hasta que se guarden en tu cuenta.",
+      "Ideas capturadas, e ideas y bosquejos modificados, cuando no se podía conectar con el servidor. Solo están en este dispositivo hasta que se guarden en tu cuenta.",
     empty: "No hay nada en espera. Todo lo que capturaste o modificaste está en tu cuenta.",
     badge: "Solo en este dispositivo",
     untitled: "Sin título",
@@ -23,7 +23,16 @@ export const offline: Untranslated<typeof english> = {
       "idea.archive": "Archivada",
       "idea.restore": "Restaurada",
       "idea.delete": "Eliminada",
+      "outline.entry.add": "Punto agregado",
+      "outline.entry.update": "Editado",
+      "outline.entry.references": "Pasajes cambiados",
+      "outline.entry.move": "Movido",
+      "outline.entry.remove": "Quitado",
+      "outline.numbering": "Numeración cambiada",
     },
+    outline: "Bosquejo",
+    outlineChanges: (count: number) =>
+      count === 1 ? "1 cambio en este bosquejo" : `${count} cambios en este bosquejo`,
     behind: "Espera al cambio anterior en esta idea.",
     conflicts: {
       stale: "Esta idea se modificó en tu cuenta después de que la cambiaras aquí.",
@@ -33,6 +42,12 @@ export const offline: Untranslated<typeof english> = {
       preached:
         "Ya se predicó, así que no se puede eliminar. Su registro de predicación se conserva.",
       outline: "Ahora tiene un bosquejo, que se eliminaría con ella.",
+      outlineStale:
+        "Los puntos de este bosquejo se modificaron en tu cuenta después de que los cambiaras aquí.",
+      entryStale: "Esta parte del bosquejo también se modificó en tu cuenta, de otra manera.",
+      entryMissing: "Esta parte del bosquejo se quitó en tu cuenta.",
+      placement: "El lugar donde iba ya no está en el bosquejo.",
+      missingOutline: "Este bosquejo se eliminó de tu cuenta.",
     },
     fields: {
       title: "título",
@@ -51,12 +66,18 @@ export const offline: Untranslated<typeof english> = {
       saveAsNew: "Guardar como idea nueva",
       archiveInstead: "Archivarla en su lugar",
       deleteWithOutline: "Eliminarla con su bosquejo",
+      applyMine: "Aplicar mis cambios",
+      addAsPoint: "Agregarlo como punto nuevo",
+      addAtEnd: "Agregarlo como punto al final",
     },
     discard: "Descartar",
     discardTitle: "¿Descartar este cambio?",
     discardBody:
       "No se ha guardado en tu cuenta. Al descartarlo, esta idea vuelve a estar como en tu cuenta, junto con cualquier otro cambio hecho aquí.",
     discardConfirm: "Descartar",
+    discardOutlineTitle: "¿Descartar los cambios de este bosquejo?",
+    discardOutlineBody:
+      "Ninguno se ha guardado en tu cuenta. Al descartarlos, este bosquejo vuelve a como se descargó por última vez en este dispositivo.",
     save: "Guardar ahora",
     saving: "Guardando…",
     retry: "Volver a intentar",
@@ -142,9 +163,6 @@ export const offline: Untranslated<typeof english> = {
       "Ya no se podrá leer sin conexión. Tus favoritos, resaltados e ideas no se ven afectados, y puedes volver a descargarla cuando quieras.",
     removeConfirm: "Quitar",
     cancel: "Cancelar",
-    moreTitle: "Más contenido sin conexión",
-    moreDescription:
-      "Llegará en una próxima actualización. Todavía no se guarda nada de esto en este dispositivo.",
     ideas: "Ideas de sermones y puntos",
     ideasDescription:
       "Una copia de tus ideas en este dispositivo, para leerlas, buscarlas y modificarlas sin conexión. Los cambios se guardan en tu cuenta cuando vuelve la conexión.",
@@ -167,7 +185,22 @@ export const offline: Untranslated<typeof english> = {
       "Se quita la copia de este dispositivo; tus ideas siguen en tu cuenta. Las ideas con cambios que esperan sincronizarse se conservan aquí hasta que se guarden.",
     ideasRemoveConfirm: "Quitar",
     outlines: "Bosquejos de sermones",
-    later: "Próximamente",
+    outlinesDescription:
+      "Una copia de tus bosquejos en este dispositivo, para leerlos y modificarlos sin conexión. Los cambios se guardan en tu cuenta cuando vuelve la conexión.",
+    outlinesSwitch: "Guardar mis bosquejos en este dispositivo",
+    outlinesOff: "Tus bosquejos no se guardan en este dispositivo.",
+    outlinesKept: (count: number, when: string) =>
+      `${count === 1 ? "1 bosquejo guardado" : `${count} bosquejos guardados`}, actualizado ${when}.`,
+    outlinesNever: "Todavía no se han descargado. Se descargan solos mientras estás conectado.",
+    outlinesDownloading: (have: number, total: number) =>
+      `Descargando… ${have} de ${total} bosquejos.`,
+    outlinesPartial: (have: number, total: number) =>
+      `Por ahora solo hay ${have} de ${total} bosquejos en este dispositivo.`,
+    outlinesAuth:
+      "Se rechazó la última actualización. Vuelve a iniciar sesión para mantener tus bosquejos al día.",
+    outlinesRemoveTitle: "¿Quitar tus bosquejos de este dispositivo?",
+    outlinesRemoveBody:
+      "Se quita la copia de este dispositivo; tus bosquejos siguen en tu cuenta. Los bosquejos con cambios que aún esperan sincronizarse se quedan aquí hasta que se guarden.",
     storageTitle: "Almacenamiento en este dispositivo",
     storageUsage: (used: string, total: string) =>
       `Unos ${used} usados de unos ${total} disponibles`,
@@ -199,6 +232,12 @@ export const offline: Untranslated<typeof english> = {
         ? "1 idea está guardada en este dispositivo. Léela, búscala y modifícala aquí."
         : `${count} ideas están guardadas en este dispositivo. Léelas, búscalas y modifícalas aquí.`,
     openIdeas: "Abrir tus ideas",
+    outlinesTitle: "Tus bosquejos",
+    outlinesBody: (count: number) =>
+      count === 1
+        ? "Hay 1 bosquejo guardado en este dispositivo. Léelo y modifícalo aquí."
+        : `Hay ${count} bosquejos guardados en este dispositivo. Léelos y modifícalos aquí.`,
+    openOutlines: "Abrir tus bosquejos",
   },
   ideas: {
     copy: (when: string) =>
@@ -219,8 +258,28 @@ export const offline: Untranslated<typeof english> = {
     missingBody:
       "Puede que se capturara o modificara después de la última descarga de tus ideas en este dispositivo. Sigue en tu cuenta.",
     back: "Volver a tus ideas",
-    connection:
-      "Las ideas relacionadas, los bosquejos y el registro de predicación necesitan conexión.",
+    connection: "Las ideas relacionadas y el registro de predicación necesitan conexión.",
+    waiting: (count: number) =>
+      count === 1 ? "1 cambio espera sincronizarse." : `${count} cambios esperan sincronizarse.`,
+  },
+  outlines: {
+    copy: (when: string) =>
+      `Esta es la copia guardada en este dispositivo, actualizada por última vez ${when}. Lo que cambies aquí se guarda en tu cuenta cuando vuelva la conexión.`,
+    copyNever:
+      "Esta es la copia guardada en este dispositivo. Lo que cambies aquí se guarda en tu cuenta cuando vuelva la conexión.",
+    partial: (have: number, total: number) =>
+      `Solo se habían descargado ${have} de ${total} bosquejos en este dispositivo, así que aquí faltan algunos. Siguen en tu cuenta.`,
+    notYet: "Tus bosquejos todavía no están en este dispositivo",
+    notYetBody:
+      "Se descargan solos mientras tienes la sesión iniciada y estás conectado. Abre Sermon Tracker cuando tengas conexión y la próxima vez estarán aquí.",
+    off: "Los bosquejos no se guardan en este dispositivo",
+    offBody:
+      "Guardar tus bosquejos aquí está desactivado en Configuración, en Almacenamiento sin conexión. Actívalo mientras estés conectado para usarlos sin conexión.",
+    signedOut: "Inicia sesión con conexión para guardar tus bosquejos en este dispositivo.",
+    missing: "Este bosquejo no está en este dispositivo",
+    missingBody:
+      "Puede que se creara después de la última descarga de tus bosquejos en este dispositivo, o que los bosquejos no se guarden aquí. Sigue en tu cuenta.",
+    back: "Volver a tus bosquejos",
     waiting: (count: number) =>
       count === 1 ? "1 cambio espera sincronizarse." : `${count} cambios esperan sincronizarse.`,
   },

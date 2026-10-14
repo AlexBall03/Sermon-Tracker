@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { OfflineIdea } from "./ideas";
+import { outlineSyncTypes, type ServerEntry } from "./outlines";
 
 /*
  * What a device sends to have one queued change applied, and what the server
@@ -24,6 +25,8 @@ export const syncTypes = [
   "idea.archive",
   "idea.restore",
   "idea.delete",
+  // Phase 5D.2: changes to an outline (outlines.ts).
+  ...outlineSyncTypes,
 ] as const;
 export type SyncType = (typeof syncTypes)[number];
 
@@ -47,19 +50,32 @@ export const ideaDeletePayloadSchema = z.object({ outline: z.boolean().default(f
  * Why the server would not apply a change as it stands:
  * - `missingTags`: tags it names were deleted.
  * - `stale`: the idea was changed since the change was made; `server` is it now.
- * - `missing`: the idea is no longer in the account.
+ * - `missing`: the idea, or the outline, is no longer in the account.
  * - `preached`: it has preaching history, so it is never deleted.
  * - `outline`: it has an outline the person was not told deleting would take.
+ * - `outlineStale`: the outline's shape was changed since; `revision` is it now.
+ * - `entryStale`: an entry's words or passages were changed since, in the
+ *   `fields` the device changed too, to something else; `entry` is it now.
+ * - `entryMissing`: the entry was removed from the outline since.
+ * - `placement`: where an entry was to go is no longer a place it can go.
  */
 export type SyncConflict =
   | { reason: "missingTags"; missingTagIds: string[] }
   | { reason: "stale"; server: OfflineIdea }
   | { reason: "missing" }
   | { reason: "preached" }
-  | { reason: "outline" };
+  | { reason: "outline" }
+  | { reason: "outlineStale"; revision: number }
+  | { reason: "entryStale"; entry: ServerEntry; fields: ("title" | "notes" | "references")[] }
+  | { reason: "entryMissing" }
+  | { reason: "placement" };
 
 export type SyncOutcome =
-  /** `revision` is the idea's revision after the change, when it has one. */
+  /**
+   * `revision` is the idea's revision after the change, when it has one; for
+   * an outline, the outline's after a change of shape, and the entry's after
+   * a change to its words or passages.
+   */
   | { status: "applied"; entityId: string; revision?: number }
   | { status: "duplicate"; entityId: string }
   | { status: "conflict"; conflict: SyncConflict }

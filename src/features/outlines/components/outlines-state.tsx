@@ -28,6 +28,13 @@ type OutlinesState = {
   create: () => void;
 };
 
+/**
+ * How the overview moves between queries where the router cannot be asked:
+ * the offline page (Phase 5D.2), which draws the device's outlines at their
+ * own addresses.
+ */
+export type OutlinesNavigation = Pick<OutlinesState, "query" | "pending" | "apply">;
+
 const OutlinesContext = createContext<OutlinesState | null>(null);
 
 /** The overview's state, for its controls. Only inside `OutlinesProvider`. */
@@ -42,17 +49,21 @@ export function useOutlines() {
  * is for the ideas. The URL is the state (features/outlines/outlines-query.ts),
  * and it moves through the same `useQueryNavigation` the library's sections
  * do. It also holds the page's one dialog, so the header's action and the
- * empty state open the same one.
+ * empty state open the same one. Given a `navigation` (the offline page), it
+ * moves through that instead, and offers no new outline.
  */
 export function OutlinesProvider({
   query,
+  navigation,
   children,
 }: {
   /** As parsed from the URL by the page. */
   query: OutlinesQuery;
+  navigation?: OutlinesNavigation;
   children: React.ReactNode;
 }) {
-  const { query: shown, pending, apply } = useQueryNavigation(query, outlinesHref);
+  const routed = useQueryNavigation(query, outlinesHref);
+  const { query: shown, pending, apply } = navigation ?? routed;
   const [creating, setCreating] = useState(false);
   // An outline worked on since would otherwise be listed with the date and the count it had before.
   useFreshOnReturn();
@@ -63,7 +74,7 @@ export function OutlinesProvider({
   return (
     <OutlinesContext.Provider value={value}>
       {children}
-      <CreateOutlineDialog open={creating} onClose={() => setCreating(false)} />
+      {!navigation && <CreateOutlineDialog open={creating} onClose={() => setCreating(false)} />}
     </OutlinesContext.Provider>
   );
 }

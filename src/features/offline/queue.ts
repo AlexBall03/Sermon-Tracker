@@ -273,7 +273,8 @@ export function retryMutation(owner: string, opId: string) {
 /** What a person's choice in a conflict makes of the change; what it leaves out stays. */
 export type Resolution = {
   payload?: unknown;
-  baseRevision?: number;
+  /** The revision it is now made against; null for none, made on what is there. */
+  baseRevision?: number | null;
   type?: MutationType;
   entityId?: string;
 };
@@ -291,7 +292,7 @@ export function resolveMutation(owner: string, opId: string, resolution: Resolut
           ...record,
           ...("payload" in resolution ? { payload: resolution.payload } : {}),
           ...(resolution.baseRevision !== undefined
-            ? { baseRevision: resolution.baseRevision }
+            ? { baseRevision: resolution.baseRevision ?? undefined }
             : {}),
           ...(resolution.type
             ? { type: resolution.type, schemaVersion: mutationSchemaVersions[resolution.type] }
@@ -311,8 +312,15 @@ export function resolveMutation(owner: string, opId: string, resolution: Resolut
  * After the server acknowledged a change to one thing at `revision`, the
  * changes queued behind it, which were made on top of it, are made against
  * that revision: the server then checks them against what they really follow.
+ * `which` narrows it to the changes counted by that revision (an outline's
+ * shape, or one of its entries: outlines/sync.ts).
  */
-export async function rebaseFollowing(owner: string, entityId: string, revision: number) {
+export async function rebaseFollowing(
+  owner: string,
+  entityId: string,
+  revision: number,
+  which: (record: MutationRecord) => boolean = () => true,
+) {
   const db = await openOfflineDb();
   const tx = db.transaction("mutations", "readwrite");
   const records = await tx.store.index("owner").getAll(owner);
@@ -320,6 +328,7 @@ export async function rebaseFollowing(owner: string, entityId: string, revision:
   for (const record of records) {
     if (record.entityId !== entityId || record.status === "sending") continue;
     if (record.type === "idea.create" || record.baseRevision === revision) continue;
+    if (!which(record)) continue;
     await tx.store.put({ ...record, baseRevision: revision });
     moved++;
   }

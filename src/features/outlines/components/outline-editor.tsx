@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 import { formatReferences, type ScriptureReference } from "@/features/scripture/reference";
+import { useOutlineSaving } from "@/features/offline/outlines/routing";
+import type { IdeaKind, IdeaStatus } from "@/features/ideas/model";
 import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
@@ -52,6 +54,7 @@ import {
   createOutlineStore,
   type Conflict,
   type EditorRow,
+  type OutlineApi,
   type OutlineSnapshot,
   type OutlineStore,
 } from "../editor/store";
@@ -68,10 +71,36 @@ import { useOutlineDrag } from "./use-outline-drag";
 type OutlineEditorProps = {
   /** The outline as the server held it when the page was rendered. */
   snapshot: OutlineSnapshot;
-  /** The sermon it is the outline of: where "back" and a deletion lead. */
-  sermon: { id: string; title: string };
+  /**
+   * The sermon it is the outline of: where "back" and a deletion lead. The
+   * rest describes it beside a copy of the outline kept on the device.
+   */
+  sermon: {
+    id: string;
+    title: string;
+    kind?: IdeaKind;
+    status?: IdeaStatus;
+    archivedAt?: string | null;
+  };
   /** The sermon's own passages, main text first, offered on each entry. */
   sermonReferences?: readonly ScriptureReference[];
+  /**
+   * On the offline page (Phase 5D.2): the outline is the device's copy, and
+   * every change is kept there (`createDeviceOutlineApi`) for the sync engine.
+   * Deleting the outline and adding a saved point need the server, and are not
+   * offered.
+   */
+  device?: { api: OutlineApi; reload: () => void };
+};
+
+/** The server actions the editor saves through on the application's page. */
+const serverApi: OutlineApi = {
+  addEntry,
+  updateEntry,
+  moveEntry,
+  removeEntry,
+  setEntryReferences,
+  setOutlineNumbering,
 };
 
 type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, number | null] };
@@ -92,23 +121,38 @@ type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, num
  * an entry's passages are changed through its `setReferences`: both go through
  * the same queue as everything else, and neither is saved from here.
  */
-export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEditorProps) {
+export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: OutlineEditorProps) {
   const t = useT("outlines").editor;
   const locale = useLocale();
   const router = useRouter();
   const toast = useToast();
   const sermonHref = `${routes.library}/${sermon.id}`;
 
-  const [store] = useState<OutlineStore>(() =>
-    createOutlineStore(
-      snapshot,
-      { addEntry, updateEntry, moveEntry, removeEntry, setEntryReferences, setOutlineNumbering },
-      {
-        reload: () => router.refresh(),
-        messages: { offline: t.offline, reloadFailed: t.reloadFailed },
+  // On the application's page: to the server, or kept on the device when the server gives no answer.
+  const { saving, onDevice } = useOutlineSaving(
+    snapshot.id,
+    serverApi,
+    {
+      sermon: {
+        id: sermon.id,
+        title: sermon.title,
+        kind: sermon.kind ?? "sermon",
+        status: sermon.status ?? "idea",
+        archivedAt: sermon.archivedAt ?? null,
       },
-    ),
+      sermonReferences: [...(sermonReferences ?? [])],
+    },
+    () => router.refresh(),
+    device === undefined,
   );
+  const [store] = useState<OutlineStore>(() => {
+    const made = createOutlineStore(snapshot, device?.api ?? saving.api, {
+      reload: device?.reload ?? (() => router.refresh()),
+      messages: { offline: device ? t.notKept : t.offline, reloadFailed: t.reloadFailed },
+    });
+    if (!device) saving.attach(made);
+    return made;
+  });
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
 
   // The page sent the outline again: the store takes what it should.
@@ -321,6 +365,10 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEdi
       setPassagesOpen((open) => new Set(open).add(id));
     },
     addSavedPoint(id: string) {
+      if (device) {
+        setResult({ ok: false, message: t.needsConnection });
+        return;
+      }
       const row = store.getState().rows.find((candidate) => candidate.id === id);
       if (!row) return;
       const name = [labels.get(id), row.title.trim() || t.untitled].filter(Boolean).join(" ");
@@ -415,7 +463,12 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEdi
   return (
     <>
       <div className="sticky top-(--bar-h) z-20 flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b bg-background py-2">
-        <SaveStatus status={state.status} problem={state.problem} onRetry={store.retry} />
+        <SaveStatus
+          status={state.status}
+          problem={state.problem}
+          onRetry={store.retry}
+          onDevice={device !== undefined || onDevice}
+        />
         <div className="flex items-center gap-1.5">
           <Button type="button" variant="outline" size="sm" onClick={() => setNumberingOpen(true)}>
             <ListOrdered aria-hidden />
@@ -448,11 +501,15 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEdi
                 <ChevronsDownUp aria-hidden />
                 {t.collapseAll}
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={askToDeleteOutline}>
-                <Trash2 aria-hidden />
-                {t.deleteOutline}
-              </DropdownMenuItem>
+              {!device && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={askToDeleteOutline}>
+                    <Trash2 aria-hidden />
+                    {t.deleteOutline}
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -605,8 +662,12 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences }: OutlineEdi
               variant="ghost"
               size="sm"
               disabled={full}
-              aria-haspopup="dialog"
-              onClick={() => setSavedPoint({ anchor: null })}
+              aria-haspopup={device ? undefined : "dialog"}
+              onClick={() =>
+                device
+                  ? setResult({ ok: false, message: t.needsConnection })
+                  : setSavedPoint({ anchor: null })
+              }
             >
               <BookmarkPlus aria-hidden />
               {t.addSavedPoint}

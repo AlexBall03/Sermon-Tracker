@@ -138,6 +138,7 @@ describe("the device's settings", () => {
       captureOffline: true,
       autoBible: true,
       ideasOffline: true,
+      outlinesOffline: false,
     });
     await saveOfflineSettings({ autoBible: false });
     resetOfflineSettingsMemory();
@@ -145,6 +146,7 @@ describe("the device's settings", () => {
       captureOffline: true,
       autoBible: false,
       ideasOffline: true,
+      outlinesOffline: false,
     });
   });
 
@@ -156,6 +158,7 @@ describe("the device's settings", () => {
       captureOffline: true,
       autoBible: true,
       ideasOffline: true,
+      outlinesOffline: false,
     });
     await expect(enqueue("owner-a", capture("op"))).rejects.toThrow(/unavailable/);
   });

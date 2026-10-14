@@ -108,6 +108,9 @@ export function choicesFor(record: MutationRecord): Choice[] {
       return ["archiveInstead", "discard"];
     case "outline":
       return ["deleteWithOutline", "discard"];
+    default:
+      // An outline's conflicts are settled by outlines/sync.ts.
+      return [];
   }
 }
 

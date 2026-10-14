@@ -197,6 +197,17 @@ export function createOutlineStore(
    * person's, and is kept.
    */
   const copies = new Map<string, Words>();
+  /**
+   * The outline as its saves were last acknowledged: the shape, the numbering,
+   * and each entry's words, worked out with the same `tree.ts` from each answer.
+   * A change kept on the device when the server gives no answer starts from it
+   * (offline/outlines). Null once an answer could not be placed in it.
+   */
+  let confirmed: { revision: number; numbering: NumberingConfig; rows: EditorRow[] } | null = {
+    revision,
+    numbering,
+    rows,
+  };
 
   let queue: Op[] = [];
   let current: Op | null = null;
@@ -395,6 +406,58 @@ export function createOutlineStore(
       passages: passagesKey(entry.references),
     });
     rows = rows.map((row) => (row.id === entry.id ? { ...row, revision: entry.revision } : row));
+    if (confirmed) {
+      const words = {
+        title: entry.title,
+        notes: entry.notes ?? "",
+        references: entry.references,
+        revision: entry.revision,
+      };
+      confirmed.rows = confirmed.rows.map((row) =>
+        row.id === entry.id ? { ...row, ...words } : row,
+      );
+    }
+  }
+
+  /** What an acknowledged change of shape or numbering did, in `confirmed`. */
+  function confirm(op: Op, result: OutlineActionResult) {
+    if (!confirmed) return;
+    let plan: ReturnType<typeof planMove> | null = null;
+    if (op.kind === "add" && result.entry && !confirmed.rows.some((row) => row.id === op.id)) {
+      const entry = result.entry;
+      const row: EditorRow = {
+        id: entry.id,
+        parentId: entry.parentId,
+        type: entry.type,
+        position: entry.position,
+        title: entry.title,
+        notes: entry.notes ?? "",
+        revision: entry.revision,
+        references: entry.references,
+        sourcePointId: entry.sourcePointId,
+      };
+      if (entry.type === "point") {
+        plan = planInsert(confirmed.rows, entry.parentId, entry.position);
+        if (plan.ok) confirmed.rows = [...applied(confirmed.rows, plan.placements), row];
+      } else confirmed.rows = [...confirmed.rows, row];
+    } else if (op.kind === "move") {
+      const moved = result.moved ?? op;
+      plan = planMove(confirmed.rows, op.id, moved.parentId, moved.position);
+      if (plan.ok) confirmed.rows = applied(confirmed.rows, plan.placements);
+    } else if (op.kind === "remove" && confirmed.rows.some((row) => row.id === op.id)) {
+      const gone = new Set(subtreeIds(confirmed.rows, op.id));
+      confirmed.rows = applied(
+        confirmed.rows.filter((row) => !gone.has(row.id)),
+        planRemove(confirmed.rows, op.id),
+      );
+    } else if (op.kind === "numbering") {
+      confirmed.numbering = op.config;
+    }
+    if (plan && !plan.ok) {
+      confirmed = null;
+      return;
+    }
+    if (result.revision !== undefined && !isEntryOp(op)) confirmed.revision = result.revision;
   }
 
   /**
@@ -466,6 +529,7 @@ export function createOutlineStore(
     if (result.ok) {
       attempts = 0;
       if (result.revision !== undefined && !isEntryOp(op)) revision = result.revision;
+      confirm(op, result);
       if (result.entry && find(result.entry.id)) {
         if (op.kind === "add") fill(result.entry);
         acknowledge(result.entry);
@@ -717,6 +781,11 @@ export function createOutlineStore(
     });
 
     revision = next.revision;
+    confirmed = {
+      revision: next.revision,
+      numbering: next.numbering,
+      rows: next.entries.map((entry) => ({ ...entry, notes: entry.notes ?? "" })),
+    };
     if (!queue.some((op) => op.kind === "numbering")) numbering = next.numbering;
     conflicts = Object.fromEntries(Object.entries(conflicts).filter(([key]) => arriving.has(key)));
     queue = queue.filter((op) => op === current || !isEntryOp(op) || arriving.has(op.id));
@@ -795,6 +864,19 @@ export function createOutlineStore(
     resolveConflict,
     restoreLost,
     discardLost,
+    /**
+     * The outline as its saves were last acknowledged, as the page sends one;
+     * null when that is not known.
+     */
+    confirmedSnapshot(): OutlineSnapshot | null {
+      if (!confirmed) return null;
+      return {
+        id: outlineId,
+        revision: confirmed.revision,
+        numbering: confirmed.numbering,
+        entries: confirmed.rows.map((row) => ({ ...row, notes: row.notes || null })),
+      };
+    },
     dismissReloaded() {
       reloaded = false;
       emit();

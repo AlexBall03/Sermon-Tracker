@@ -9,7 +9,7 @@ export const offline = {
   pending: {
     title: "Waiting on this device",
     description:
-      "Thoughts captured and ideas changed while the server could not be reached. They are only on this device until they are saved to your account.",
+      "Thoughts captured, and ideas and outlines changed, while the server could not be reached. They are only on this device until they are saved to your account.",
     empty: "Nothing is waiting. Everything you captured or changed is in your account.",
     badge: "On this device only",
     untitled: "Untitled",
@@ -21,7 +21,17 @@ export const offline = {
       "idea.archive": "Archived",
       "idea.restore": "Restored",
       "idea.delete": "Deleted",
+      "outline.entry.add": "Point added",
+      "outline.entry.update": "Edited",
+      "outline.entry.references": "Passages changed",
+      "outline.entry.move": "Moved",
+      "outline.entry.remove": "Removed",
+      "outline.numbering": "Numbering changed",
     },
+    /** One row for all of an outline's changes. */
+    outline: "Outline",
+    outlineChanges: (count: number) =>
+      count === 1 ? "1 change to this outline" : `${count} changes to this outline`,
     behind: "Waits for the earlier change to this idea.",
     conflicts: {
       stale: "This idea was changed in your account after you changed it here.",
@@ -30,6 +40,12 @@ export const offline = {
       missing: "This idea was deleted from your account.",
       preached: "It has been preached, so it cannot be deleted. Its preaching record is kept.",
       outline: "It now has an outline, which deleting it would delete too.",
+      outlineStale:
+        "The points of this outline were changed in your account after you changed them here.",
+      entryStale: "This part of the outline was changed in your account too, differently.",
+      entryMissing: "This part of the outline was removed in your account.",
+      placement: "Where it was to go is no longer in the outline.",
+      missingOutline: "This outline was deleted from your account.",
     },
     fields: {
       title: "title",
@@ -48,12 +64,18 @@ export const offline = {
       saveAsNew: "Save as a new idea",
       archiveInstead: "Archive it instead",
       deleteWithOutline: "Delete it and its outline",
+      applyMine: "Apply my changes to it",
+      addAsPoint: "Add it as a new point",
+      addAtEnd: "Add it as a point at the end",
     },
     discard: "Discard",
     discardTitle: "Discard this change?",
     discardBody:
       "It has not been saved to your account. Discarding it puts this idea back as your account has it, with any other change made to it here.",
     discardConfirm: "Discard",
+    discardOutlineTitle: "Discard the changes to this outline?",
+    discardOutlineBody:
+      "None of them has been saved to your account. Discarding them puts this outline back as this device last downloaded it.",
     save: "Save now",
     saving: "Saving…",
     retry: "Try again",
@@ -138,8 +160,6 @@ export const offline = {
       "It will no longer be readable offline. Your favorites, highlights, and ideas are not affected, and you can download it again at any time.",
     removeConfirm: "Remove",
     cancel: "Cancel",
-    moreTitle: "More offline content",
-    moreDescription: "Coming in a later update. Nothing here is kept on this device yet.",
     ideas: "Sermon ideas and points",
     ideasDescription:
       "A copy of your ideas on this device, to read, search, and change them with no connection. Changes are saved to your account when the connection returns.",
@@ -161,7 +181,21 @@ export const offline = {
       "The copy on this device is removed; your ideas stay in your account. Any idea with changes still waiting to sync is kept here until they are saved.",
     ideasRemoveConfirm: "Remove",
     outlines: "Sermon outlines",
-    later: "Coming later",
+    outlinesDescription:
+      "A copy of your outlines on this device, to read and change them with no connection. Changes are saved to your account when the connection returns.",
+    outlinesSwitch: "Keep my outlines on this device",
+    outlinesOff: "Your outlines are not kept on this device.",
+    outlinesKept: (count: number, when: string) =>
+      `${count === 1 ? "1 outline" : `${count} outlines`} kept, brought up to date ${when}.`,
+    outlinesNever: "Not downloaded yet. They are downloaded by themselves while you are online.",
+    outlinesDownloading: (have: number, total: number) =>
+      `Downloading… ${have} of ${total} outlines.`,
+    outlinesPartial: (have: number, total: number) =>
+      `Only ${have} of ${total} outlines are on this device so far.`,
+    outlinesAuth: "The last update was refused. Sign in again to keep your outlines current.",
+    outlinesRemoveTitle: "Remove your outlines from this device?",
+    outlinesRemoveBody:
+      "The copy on this device is removed; your outlines stay in your account. Any outline with changes still waiting to sync is kept here until they are saved.",
     storageTitle: "Storage on this device",
     storageUsage: (used: string, total: string) => `About ${used} used of about ${total} available`,
     storageUnknown: "This browser does not say how much space it has.",
@@ -191,6 +225,12 @@ export const offline = {
         ? "1 idea is kept on this device. Read, search, and change it here."
         : `${count} ideas are kept on this device. Read, search, and change them here.`,
     openIdeas: "Open your ideas",
+    outlinesTitle: "Your outlines",
+    outlinesBody: (count: number) =>
+      count === 1
+        ? "1 outline is kept on this device. Read and change it here."
+        : `${count} outlines are kept on this device. Read and change them here.`,
+    openOutlines: "Open your outlines",
   },
   ideas: {
     copy: (when: string) =>
@@ -211,7 +251,28 @@ export const offline = {
     missingBody:
       "It may have been captured or changed after this device last downloaded your ideas. It is still in your account.",
     back: "Back to your ideas",
-    connection: "Related ideas, outlines, and the preaching record need a connection.",
+    connection: "Related ideas and the preaching record need a connection.",
+    waiting: (count: number) =>
+      count === 1 ? "1 change is waiting to sync." : `${count} changes are waiting to sync.`,
+  },
+  outlines: {
+    copy: (when: string) =>
+      `This is the copy kept on this device, last brought up to date ${when}. What you change here is saved to your account when the connection returns.`,
+    copyNever:
+      "This is the copy kept on this device. What you change here is saved to your account when the connection returns.",
+    partial: (have: number, total: number) =>
+      `Only ${have} of ${total} outlines had been downloaded to this device, so some are missing here. They are still in your account.`,
+    notYet: "Your outlines are not on this device yet",
+    notYetBody:
+      "They are downloaded by themselves while you are signed in and online. Open Sermon Tracker once you are connected, and they will be here next time.",
+    off: "Outlines are not kept on this device",
+    offBody:
+      "Keeping your outlines here is turned off in Settings, under Offline Storage. Turn it on while you are online to use them without a connection.",
+    signedOut: "Sign in while online to keep your outlines on this device.",
+    missing: "This outline is not on this device",
+    missingBody:
+      "It may have been made after this device last downloaded your outlines, or outlines may not be kept here. It is still in your account.",
+    back: "Back to your outlines",
     waiting: (count: number) =>
       count === 1 ? "1 change is waiting to sync." : `${count} changes are waiting to sync.`,
   },
