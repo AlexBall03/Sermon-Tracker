@@ -1,37 +1,58 @@
-/** Settings: the page, its sections, and the preferences kept on the account or the device. */
+/** Settings: the overview, its categories, and the preferences kept on the account or the device. */
 export const settings = {
   page: {
     title: "Settings",
     description:
-      "Your profile, your church and ministry, your language and Bible, how Sermon Tracker looks, and how you sign in.",
+      "Your profile, your language and Bible, how Sermon Tracker looks and works on this device, and how you sign in.",
   },
-  sections: {
-    personal: {
-      title: "Personal Information",
-      description: "How you appear in Sermon Tracker, and the addresses on your account.",
+  nav: {
+    label: "Settings categories",
+    back: "Settings",
+    soon: "Soon",
+  },
+  /** The categories, in the order they are shown (features/settings/categories.ts). */
+  categories: {
+    profile: {
+      title: "Profile",
+      description: "Your name, picture, and email addresses, and your church and ministry.",
     },
-    ministry: {
-      title: "Church & Ministry",
-      description:
-        "Where you serve and what you do there. All of it is optional, private to your account, and changes nothing about your access.",
-    },
-    bibleLanguage: {
+    bible: {
       title: "Bible & Language",
       description:
         "The language Sermon Tracker is written in, the Bible you read, and how the Bible reader behaves.",
     },
     appearance: {
-      title: "Appearance & Experience",
+      title: "Appearance",
+      description: "Light or dark, or following your device.",
+    },
+    app: {
+      title: "App & Experience",
+      description: "Install Sermon Tracker, take the product tour again, or run account setup.",
+    },
+    offline: {
+      title: "Offline Storage",
       description:
-        "Light or dark, with the same control as the one in the bar, a way back through account setup, and installing the app.",
+        "What this device keeps for working without a connection: captures, Bible downloads, and the space they use.",
+    },
+    sync: {
+      title: "Synchronization",
+      description: "Keeping your work in step across devices.",
     },
     account: {
-      title: "Account",
+      title: "Account & Security",
       description:
-        "Your place in this workspace, your password, connected accounts, and the devices you are signed in on. Some changes ask you to confirm it is you first.",
+        "Your access, your password, connected accounts, and the devices you are signed in on. Some changes ask you to confirm it is you first.",
     },
   },
+  sync: {
+    title: "Coming in a later update",
+    body: "Synchronization will keep the work you do on this device in step with your account on every other one. There is nothing to set up yet.",
+  },
+  unsaved: "Your changes on this page have not been saved.",
   blocks: {
+    ministry: "Church & Ministry",
+    ministryDescription:
+      "Where you serve and what you do there. All of it is optional, private to your account, and changes nothing about your access.",
     language: "Language and translation",
     languageDescription: "Saved to your account, so they follow you to every device.",
     reader: "Bible reader",

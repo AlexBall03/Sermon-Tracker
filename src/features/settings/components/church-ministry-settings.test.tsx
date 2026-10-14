@@ -8,6 +8,7 @@ import type { Locale } from "@/i18n/locales";
 // The server action is mocked: this covers the form's own behavior.
 const state = vi.hoisted(() => ({ updateProfile: vi.fn() }));
 vi.mock("@/features/preferences/actions", () => ({ updateProfile: state.updateProfile }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { ChurchMinistrySettings } from "./church-ministry-settings";
 
@@ -147,5 +148,41 @@ describe("ChurchMinistrySettings", () => {
     expect(screen.getByLabelText("Función en el ministerio (opcional)")).toBeVisible();
     expect(screen.getByRole("switch", { name: "Asisto a la clase de predicación" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Guardar" })).toBeVisible();
+  });
+
+  it("asks before typed lines are left for another settings page, and keeps them if staying", async () => {
+    show({ churchName: "Grace Baptist Church" });
+    const link = document.body.appendChild(document.createElement("a"));
+    link.href = "/settings/bible";
+    const follow = () =>
+      !link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+    // Nothing typed: the link is not held.
+    link.addEventListener("click", (event) => event.preventDefault(), { once: true });
+    follow();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    fireEvent.change(church(), { target: { value: "Calvary Chapel" } });
+    expect(follow()).toBe(true);
+    expect(await screen.findByRole("alertdialog", {}, { timeout: 3000 })).toHaveTextContent(
+      "Your changes on this page have not been saved.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Stay on this page" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(church()).toHaveValue("Calvary Chapel");
+    link.remove();
+  });
+
+  it("lets the page go once the lines are saved", async () => {
+    show();
+    fireEvent.change(church(), { target: { value: "Calvary Chapel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved.", {}, { timeout: 3000 })).toBeInTheDocument();
+    const link = document.body.appendChild(document.createElement("a"));
+    link.href = "/settings/bible";
+    link.addEventListener("click", (event) => event.preventDefault());
+    link.click();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    link.remove();
   });
 });

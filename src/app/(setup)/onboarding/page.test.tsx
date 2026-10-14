@@ -93,7 +93,7 @@ describe("OnboardingPage", () => {
       state.user = { onboardingStatus, onboardingStep: "finish", ministryRole: "Pastor" };
       render(await OnboardingPage());
       expect(screen.getByText("Step 1 of 4")).toBeVisible();
-      expect(screen.getByRole("link", { name: "Exit setup" })).toHaveAttribute("href", "/settings");
+      expect(screen.getByRole("link", { name: "Exit setup" })).toHaveAttribute("href", "/settings/app");
       expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
       // Opening it wrote nothing.
       expect(state.advanceOnboarding).not.toHaveBeenCalled();

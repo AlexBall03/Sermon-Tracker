@@ -106,7 +106,7 @@ export function InstallNotice({ className }: { className?: string }) {
                   {t.install}
                 </Button>
               ) : (
-                <Link href={`${routes.settings}#install`} className={buttonVariants()}>
+                <Link href={`${routes.settingsApp}#install`} className={buttonVariants()}>
                   {t.howTo}
                 </Link>
               )}

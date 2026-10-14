@@ -216,7 +216,7 @@ test.describe("the installed application, signed in", () => {
     await expect(page).toHaveURL(/\/dashboard/);
 
     // Settings offers installing, and says how.
-    await page.goto("/settings");
+    await page.goto("/settings/app");
     await expect(page.getByRole("heading", { name: "Install the app" })).toBeVisible();
     if (shots) {
       await page.getByRole("heading", { name: "Install the app" }).scrollIntoViewIfNeeded();

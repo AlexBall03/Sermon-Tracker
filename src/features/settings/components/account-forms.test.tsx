@@ -20,6 +20,7 @@ vi.mock("@clerk/nextjs/errors", () => ({
   isReverificationCancelledError: () => false,
 }));
 vi.mock("../actions", () => ({ updateProfileName: state.updateProfileName }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { AvatarField } from "./avatar-field";
 import { ConnectedAccounts } from "./connected-accounts";

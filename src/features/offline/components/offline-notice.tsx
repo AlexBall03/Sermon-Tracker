@@ -99,7 +99,7 @@ export function OfflineNotice({
             </h2>
           </div>
           <Link
-            href={`${routes.settings}#offline-capture`}
+            href={`${routes.settingsOffline}#offline-capture`}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             {t.pending.review}
@@ -143,7 +143,7 @@ export function OfflineNotice({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-stretch">
-              <Link href={`${routes.settings}#offline`} className={buttonVariants()}>
+              <Link href={routes.settingsOffline} className={buttonVariants()}>
                 {t.notice.manage}
               </Link>
               <Button

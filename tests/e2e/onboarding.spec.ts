@@ -159,14 +159,14 @@ test.describe("account setup, signed in", () => {
     // The application is open, and what setup saved is in Settings.
     await page.goto("/library/sermon-ideas");
     await expect(page.getByRole("heading", { level: 1, name: "Sermon Ideas" })).toBeVisible();
-    await page.goto("/settings");
+    await page.goto("/settings/profile");
     await expect(field(page, "Church name (optional)")).toHaveValue(church);
     await expect(attendance(page)).toBeChecked();
   });
 
   test("an account that finished can go through the steps again and leave", async ({ page }) => {
     await signIn(page);
-    await page.goto("/settings");
+    await page.goto("/settings/app");
     await afterSplash(page);
     await page.getByRole("link", { name: "Run Account Setup" }).click();
     await expect(page).toHaveURL(/\/onboarding$/);
@@ -181,7 +181,8 @@ test.describe("account setup, signed in", () => {
 
     // Leaving part-way keeps what was deliberately saved, and takes nothing away.
     await page.getByRole("link", { name: "Exit setup" }).click();
-    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page).toHaveURL(/\/settings\/app$/);
+    await page.goto("/settings/profile");
     await expect(field(page, "Ministry role (optional)")).toHaveValue("Evangelist");
     await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/dashboard$/);

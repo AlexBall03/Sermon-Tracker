@@ -109,7 +109,7 @@ export function OfflineStorageSettings() {
             onChange={(captureOffline) => void saveOfflineSettings({ captureOffline })}
           />
           <div>
-            <h4 className="text-sm font-semibold">{pending.title}</h4>
+            <h3 className="text-sm font-semibold">{pending.title}</h3>
             <p className="mt-1 mb-3 text-sm leading-relaxed text-muted-foreground">
               {pending.description}
             </p>
@@ -259,12 +259,25 @@ export function OfflineStorageSettings() {
           {unavailable ? (
             <p role="alert">{t.storageUnavailable}</p>
           ) : estimate === undefined ? null : estimate ? (
-            <p>
-              {t.storageUsage(
-                formatBytes(estimate.usage, locale),
-                formatBytes(estimate.quota, locale),
+            <>
+              <p>
+                {t.storageUsage(
+                  formatBytes(estimate.usage, locale),
+                  formatBytes(estimate.quota, locale),
+                )}
+              </p>
+              {/* The sentence above says it; the bar only shows it at a glance. */}
+              {estimate.quota > 0 && (
+                <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className={`h-full rounded-full ${low ? "bg-destructive" : "bg-foreground/55"}`}
+                    style={{
+                      width: `${Math.max(1, Math.min(100, (estimate.usage / estimate.quota) * 100))}%`,
+                    }}
+                  />
+                </div>
               )}
-            </p>
+            </>
           ) : (
             <p>{t.storageUnknown}</p>
           )}

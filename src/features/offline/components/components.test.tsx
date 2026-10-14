@@ -128,7 +128,7 @@ describe("OfflineNotice", () => {
     expect(await screen.findByText("Sermon Tracker works offline now")).toBeVisible();
     expect(screen.getByRole("link", { name: "Manage offline storage" })).toHaveAttribute(
       "href",
-      "/settings#offline",
+      "/settings/offline",
     );
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(localStorage.getItem(offlineNoticeKey)).toBe("dismissed");
@@ -146,7 +146,7 @@ describe("OfflineNotice", () => {
     expect(await screen.findByText("1 thought is waiting on this device")).toBeVisible();
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
       "href",
-      "/settings#offline-capture",
+      "/settings/offline#offline-capture",
     );
   });
 });

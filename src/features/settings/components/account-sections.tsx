@@ -17,7 +17,7 @@ export function ProfileSettings() {
     <AccountGate>
       {(user) => (
         // Keyed by person so a different sign-in never inherits half-typed values.
-        <div key={user.id} className="space-y-9">
+        <div key={user.id} className="space-y-5">
           <SettingsBlock title={t.picture}>
             <AvatarField user={user} />
           </SettingsBlock>
@@ -39,7 +39,7 @@ export function SecuritySettings() {
   return (
     <AccountGate>
       {(user) => (
-        <div key={user.id} className="space-y-9">
+        <div key={user.id} className="space-y-5">
           <SettingsBlock title={t.password}>
             <PasswordForm user={user} />
           </SettingsBlock>

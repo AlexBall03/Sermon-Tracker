@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { LoaderCircle } from "lucide-react";
 
+import { useLeaveGuard } from "@/components/layout/leave-guard";
 import { ActionStatus } from "@/components/ui/action-status";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -25,7 +26,8 @@ import { TextField } from "./text-field";
  * moment it is pressed, shown at once, and put back if the server refuses it.
  */
 export function ChurchMinistrySettings({ profile }: { profile: StoredProfile }) {
-  const t = useT("settings").ministry;
+  const words = useT("settings");
+  const t = words.ministry;
   const locale = useLocale();
   const [churchName, setChurchName] = useState(profile.churchName ?? "");
   const [ministryRole, setMinistryRole] = useState(profile.ministryRole ?? "");
@@ -39,18 +41,33 @@ export function ChurchMinistrySettings({ profile }: { profile: StoredProfile }) 
   // The page is kept while another is open, and account setup saves the same three things.
   // A value that was saved from elsewhere replaces what this form holds of it, and only that.
   const [seen, setSeen] = useState(profile);
+  // The two lines as last saved, which unsaved typing is measured against.
+  const [baseline, setBaseline] = useState({
+    churchName: profile.churchName ?? "",
+    ministryRole: profile.ministryRole ?? "",
+  });
   if (
     profile.churchName !== seen.churchName ||
     profile.ministryRole !== seen.ministryRole ||
     profile.attendsPreachingClass !== seen.attendsPreachingClass
   ) {
     setSeen(profile);
+    setBaseline({ churchName: profile.churchName ?? "", ministryRole: profile.ministryRole ?? "" });
     if (profile.churchName !== seen.churchName) setChurchName(profile.churchName ?? "");
     if (profile.ministryRole !== seen.ministryRole) setMinistryRole(profile.ministryRole ?? "");
     if (profile.attendsPreachingClass !== seen.attendsPreachingClass) {
       setAttends(profile.attendsPreachingClass);
     }
   }
+
+  // Typed lines not yet saved are held: leaving for another settings page asks first.
+  const dirty =
+    churchName.trim() !== baseline.churchName || ministryRole.trim() !== baseline.ministryRole;
+  const guard = useLeaveGuard(dirty && !saving, words.unsaved, () => {
+    setChurchName(baseline.churchName);
+    setMinistryRole(baseline.ministryRole);
+    setErrors({});
+  });
 
   const offline: ActionResult = { ok: false, message: t.offline };
 
@@ -67,6 +84,10 @@ export function ChurchMinistrySettings({ profile }: { profile: StoredProfile }) 
     startSaving(async () => {
       const outcome = await updateProfile(parsed.data).catch(() => offline);
       if (outcome.ok) {
+        setBaseline({
+          churchName: parsed.data.churchName ?? "",
+          ministryRole: parsed.data.ministryRole ?? "",
+        });
         // As they were saved: tidied, and empty where they were cleared.
         setChurchName(parsed.data.churchName ?? "");
         setMinistryRole(parsed.data.ministryRole ?? "");
@@ -87,6 +108,7 @@ export function ChurchMinistrySettings({ profile }: { profile: StoredProfile }) 
 
   return (
     <>
+      {guard.dialog}
       <form onSubmit={onSubmit} noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField

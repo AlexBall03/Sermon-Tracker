@@ -105,7 +105,7 @@ test.describe("loading screen", () => {
 
     // Its opening is 1.2 seconds from the moment it went up; never cut short by a fast page.
     expect(leftAt - raisedAt).toBeGreaterThanOrEqual(1150);
-    // It goes as soon as both that opening and the page's load allow, not later.
+    // It goes as soon as both that opening and the page's load allow and its bar has run to the end, not later.
     expect(loadedAt).toBeGreaterThan(0);
     expect(leftAt - Math.max(raisedAt + 1200, loadedAt)).toBeLessThan(1500);
     // The lift is 0.48 seconds.

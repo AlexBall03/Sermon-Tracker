@@ -62,7 +62,7 @@ test.describe("the product tour, signed in", () => {
   async function start(page: Page) {
     await page.goto("/sign-in");
     await clerk.signIn({ page, emailAddress: email ?? "" });
-    await page.goto("/settings");
+    await page.goto("/settings/app");
     await expect(page.locator("html")).not.toHaveAttribute("data-splash", /.+/, {
       timeout: 15_000,
     });

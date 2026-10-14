@@ -61,7 +61,7 @@ export function SplashScreen() {
             aria-hidden
             className="splash-rule mt-10 h-px w-52 overflow-hidden rounded-full bg-border sm:w-64"
           >
-            <div className="splash-light h-full w-1/2" />
+            <div data-splash-bar className="splash-light h-full w-full" />
           </div>
         </div>
       </div>

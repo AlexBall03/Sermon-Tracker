@@ -31,7 +31,7 @@ export type PwaState = {
   justInstalled: boolean;
   /** The last install prompt was declined. */
   declined: boolean;
-  /** A new version of the service worker is installed and waiting. */
+  /** A version newer than this page is installed and waiting. */
   updateReady: boolean;
 };
 
@@ -54,6 +54,31 @@ function set(change: Partial<PwaState>) {
   listeners.forEach((notify) => notify());
 }
 
+/** The version this page was built as; the worker is served with the same one (app/sw.js). */
+const pageVersion = process.env.APP_VERSION ?? "development";
+
+/** How long a waiting worker is given to say which version it is. */
+export const versionReplyMs = 3000;
+
+/**
+ * Whether a waiting worker brings anything this page does not already have.
+ * Pages always come from the network, so a page opened after a deployment is
+ * already the new version while the worker that arrived with it still waits:
+ * that is not an update, and offering one would reload into the same thing.
+ * A worker that does not answer in time is taken to be an update.
+ */
+export function isNewVersion(worker: ServiceWorker): Promise<boolean> {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timer = window.setTimeout(() => resolve(true), versionReplyMs);
+    channel.port1.onmessage = (event: MessageEvent<{ version?: string }>) => {
+      window.clearTimeout(timer);
+      resolve(event.data?.version !== pageVersion);
+    };
+    worker.postMessage({ type: "GET_VERSION" }, [channel.port2]);
+  });
+}
+
 /** How often, at most, a window that is shown again asks whether there is a new version. */
 export const updateCheckMs = 30 * 60 * 1000;
 
@@ -63,16 +88,20 @@ async function register() {
     updateViaCache: "none",
   });
   registration = reg;
-  // A worker that installs while another controls the page is an update. The first
-  // worker a browser ever gets controls nothing yet, and is not one.
-  const watch = (worker: ServiceWorker | null) => {
-    worker?.addEventListener("statechange", () => {
-      if (worker.state === "installed" && navigator.serviceWorker.controller) {
-        set({ updateReady: true });
-      }
+  // A worker that installs while another controls the page may be an update. The first
+  // worker a browser ever gets controls nothing yet, and is not one; nor is one that is
+  // the version this page already is (`isNewVersion`).
+  const offer = (worker: ServiceWorker) => {
+    void isNewVersion(worker).then((newer) => {
+      if (newer && reg.waiting === worker) set({ updateReady: true });
     });
   };
-  if (reg.waiting && navigator.serviceWorker.controller) set({ updateReady: true });
+  const watch = (worker: ServiceWorker | null) => {
+    worker?.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) offer(worker);
+    });
+  };
+  if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
   watch(reg.installing);
   reg.addEventListener("updatefound", () => watch(reg.installing));
 

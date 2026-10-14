@@ -6,8 +6,8 @@ import { useEffect } from "react";
 const settleMs = 1500;
 
 /**
- * Brings the part of the page the address points at (`/settings#install`,
- * `/settings#offline`) into view on arrival, from a notice elsewhere. The page
+ * Brings the part of the page the address points at (`/settings/app#install`,
+ * `/settings/offline#offline-capture`) into view on arrival, from a notice elsewhere. The page
  * streams, and parts above the target fill in after it is drawn (the install
  * steps, what this device has downloaded), so the browser's own jump can land
  * before the target exists or be pushed away from it. So the target is

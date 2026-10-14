@@ -221,7 +221,7 @@ export function OnboardingWizard({
           signOut
         ) : (
           <Link
-            href={routes.settings}
+            href={routes.settingsApp}
             className={buttonVariants({ variant: "ghost", size: "sm", className: "-mr-3" })}
           >
             {t.exit}
@@ -372,7 +372,10 @@ export function OnboardingWizard({
                   </Button>
                 ) : (
                   <div className="flex flex-wrap justify-end gap-3">
-                    <Link href={routes.settings} className={buttonVariants({ variant: "outline" })}>
+                    <Link
+                      href={routes.settingsApp}
+                      className={buttonVariants({ variant: "outline" })}
+                    >
                       {t.finish.settings}
                     </Link>
                     <Link href={routes.dashboard} className={buttonVariants()}>

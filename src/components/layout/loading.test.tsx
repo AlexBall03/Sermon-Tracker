@@ -43,10 +43,10 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBeUndefined();
   });
 
-  it("keeps the splash up for its full time, fades it, then removes it", () => {
+  it("keeps the splash up for its full time, fills its bar, fades it, then removes it", () => {
     raise();
     render(<SplashController />);
-    tick(splashTiming.introMs - 1);
+    tick(splashTiming.introMs + splashTiming.finishMs - 1);
     expect(root.dataset.splash).toBe("on");
     tick(1);
     expect(root.dataset.splash).toBe("leaving");
@@ -60,17 +60,19 @@ describe("SplashController", () => {
     raise();
     vi.advanceTimersByTime(900);
     render(<SplashController />);
-    tick(splashTiming.introMs - 900 - 1);
+    tick(splashTiming.introMs + splashTiming.finishMs - 900 - 1);
     expect(root.dataset.splash).toBe("on");
     tick(1);
     expect(root.dataset.splash).toBe("leaving");
   });
 
-  it("keeps no one waiting once its opening has played: a page that took longer goes at once", () => {
+  it("finishes its bar at once for a page that took longer than its opening, then goes", () => {
     raise();
     vi.advanceTimersByTime(splashTiming.introMs + 3000);
     render(<SplashController />);
-    tick(0);
+    tick(splashTiming.finishMs - 1);
+    expect(root.dataset.splash).toBe("on");
+    tick(1);
     expect(root.dataset.splash).toBe("leaving");
   });
 
@@ -82,7 +84,7 @@ describe("SplashController", () => {
     try {
       raise();
       render(<SplashController />);
-      tick(splashTiming.reducedMs - 1);
+      tick(splashTiming.reducedMs + splashTiming.reducedFinishMs - 1);
       expect(root.dataset.splash).toBe("on");
       tick(1);
       expect(root.dataset.splash).toBe("leaving");
@@ -101,7 +103,7 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBe("on");
 
     act(() => void window.dispatchEvent(new Event("load")));
-    tick(0);
+    tick(splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -109,7 +111,7 @@ describe("SplashController", () => {
     // A page whose load never fires is given up on.
     raise();
     const view = render(<SplashController />);
-    tick(splashTiming.giveUpMs);
+    tick(splashTiming.giveUpMs + splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
     view.unmount();
   });
@@ -122,7 +124,7 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBe("on");
     // ...and the next mount takes it from there, on the original clock.
     render(<SplashController />);
-    tick(splashTiming.introMs);
+    tick(splashTiming.introMs + splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -139,7 +141,7 @@ describe("SplashController", () => {
     expect(root.dataset.splash).toBe("on");
     expect(document.cookie).not.toContain(splashCookie);
 
-    tick(splashTiming.introMs);
+    tick(splashTiming.introMs + splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -161,7 +163,7 @@ describe("SplashController", () => {
     // The application's page arrives: its opening has long played, so it goes now.
     state.pathname = "/dashboard";
     view.rerender(<SplashController />);
-    tick(0);
+    tick(splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBeUndefined();
@@ -172,14 +174,14 @@ describe("SplashController", () => {
     act(() => holdSplash());
     tick(splashTiming.giveUpMs - 1);
     expect(root.dataset.splash).toBe("on");
-    tick(1);
+    tick(1 + splashTiming.finishMs);
     expect(root.dataset.splash).toBe("leaving");
   });
 
   it("starts over cleanly if it is raised again while leaving", () => {
     raise();
     const view = render(<SplashController />);
-    tick(splashTiming.introMs + 100);
+    tick(splashTiming.introMs + splashTiming.finishMs + 100);
     expect(root.dataset.splash).toBe("leaving");
 
     document.cookie = `${splashCookie}=1; path=/`;
@@ -189,8 +191,35 @@ describe("SplashController", () => {
     // The earlier fade's removal no longer fires.
     tick(splashTiming.fadeMs);
     expect(root.dataset.splash).toBe("on");
-    tick(splashTiming.introMs - splashTiming.fadeMs);
+    tick(splashTiming.introMs + splashTiming.finishMs - splashTiming.fadeMs);
     expect(root.dataset.splash).toBe("leaving");
+  });
+
+  it("runs its bar to the end before the screen lifts, and fills from the start when raised again", () => {
+    const bar = document.body.appendChild(document.createElement("div"));
+    bar.dataset.splashBar = "";
+    try {
+      raise();
+      const view = render(<SplashController />);
+      tick(splashTiming.introMs - 1);
+      expect(bar.style.transform).toBe("");
+      tick(1);
+      // Full while the screen is still up, and for the rest of `finishMs`.
+      expect(bar.style.transform).toBe("scaleX(1)");
+      expect(root.dataset.splash).toBe("on");
+      tick(splashTiming.finishMs + splashTiming.fadeMs);
+      expect(root.dataset.splash).toBeUndefined();
+      // Handed back to the stylesheet, so the next splash starts empty.
+      expect(bar.style.transform).toBe("");
+
+      document.cookie = `${splashCookie}=1; path=/`;
+      state.pathname = "/dashboard";
+      view.rerender(<SplashController />);
+      expect(root.dataset.splash).toBe("on");
+      expect(bar.style.transform).toBe("");
+    } finally {
+      bar.remove();
+    }
   });
 });
 

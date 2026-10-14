@@ -595,8 +595,10 @@
  * Its opening is one sequence, and every part of it starts counting when the
  * screen is displayed: the light comes up, the mark settles with a sheen
  * across it, the name rises beside that sheen, the tagline follows, and
- * the hairline opens for the passing light. The last of it has arrived by
- * `introMs` in splash-controller.tsx; keep the two in step.
+ * the hairline opens and begins to fill. The last of it has arrived by
+ * `introMs` in splash-controller.tsx; keep the two in step. The fill never
+ * reaches the end by itself: the controller runs it to the end once the page
+ * has loaded, and only then lifts the screen (`finishMs`).
  */
 [data-splash-screen] {
   display: none;
@@ -781,18 +783,33 @@ html[data-splash="leaving"] .splash-glow {
   }
 }
 
-/* and a line of emerald light passes along it, for as long as the splash is up */
+/*
+ * and fills with emerald light as the page loads: quick at first, then ever slower, approaching
+ * the end without claiming it. The controller runs it the rest of the way (splash-controller.tsx).
+ */
 .splash-light {
-  background-image: linear-gradient(to right, transparent, var(--lamp), transparent);
-  animation: splash-light 1.5s cubic-bezier(0.45, 0, 0.55, 1) 0.9s infinite both;
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--lamp) 35%, transparent),
+    var(--lamp)
+  );
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: splash-fill 9s cubic-bezier(0.1, 0.7, 0.2, 1) 0.9s forwards;
 }
 
-@keyframes splash-light {
+@keyframes splash-fill {
   from {
-    transform: translateX(-110%);
+    transform: scaleX(0);
+  }
+  8% {
+    transform: scaleX(0.4);
+  }
+  40% {
+    transform: scaleX(0.72);
   }
   to {
-    transform: translateX(210%);
+    transform: scaleX(0.92);
   }
 }
 
@@ -844,14 +861,14 @@ html[data-splash="on"] {
 /*
  * With reduced motion the splash is a still picture: everything on it is
  * simply there (the rule that stills every animation leaves each at its end),
- * the light rests in the middle of its hairline instead of having left it,
- * and the screen goes in one short fade. In the base layer, so it can answer
+ * the hairline stays empty until the page is ready and is then shown full
+ * without moving, and the screen goes in one short fade. In the base layer, so it can answer
  * that rule. The fade is `reducedFadeMs` in splash-controller.tsx.
  */
 @layer base {
   @media (prefers-reduced-motion: reduce) {
     .splash-light {
-      transform: translateX(50%);
+      transform: scaleX(0);
       animation: none !important;
     }
 

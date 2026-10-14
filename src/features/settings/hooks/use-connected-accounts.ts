@@ -30,7 +30,7 @@ export function useConnectedAccounts(user: AccountUser) {
   const create = useReverification((strategy: ProviderStrategy) =>
     user.createExternalAccount({
       strategy,
-      redirectUrl: new URL(routes.settings, window.location.origin).toString(),
+      redirectUrl: new URL(routes.settingsAccount, window.location.origin).toString(),
     }),
   );
   const destroy = useReverification(async (id: string) => {

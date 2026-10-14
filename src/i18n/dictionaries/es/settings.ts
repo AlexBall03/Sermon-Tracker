@@ -5,35 +5,56 @@ export const settings: Untranslated<typeof english> = {
   page: {
     title: "Configuración",
     description:
-      "Tu perfil, tu iglesia y ministerio, tu idioma y tu Biblia, el aspecto de Sermon Tracker y cómo inicias sesión.",
+      "Tu perfil, tu idioma y tu Biblia, el aspecto y el funcionamiento de Sermon Tracker en este dispositivo, y cómo inicias sesión.",
   },
-  sections: {
-    personal: {
-      title: "Información personal",
-      description: "Cómo apareces en Sermon Tracker y las direcciones de tu cuenta.",
+  nav: {
+    label: "Categorías de configuración",
+    back: "Configuración",
+    soon: "Pronto",
+  },
+  categories: {
+    profile: {
+      title: "Perfil",
+      description: "Tu nombre, tu foto y tus correos, y tu iglesia y ministerio.",
     },
-    ministry: {
-      title: "Iglesia y ministerio",
-      description:
-        "Dónde sirves y qué haces allí. Todo es opcional, solo lo ves tú y no cambia en nada tu acceso.",
-    },
-    bibleLanguage: {
+    bible: {
       title: "Biblia e idioma",
       description:
         "El idioma en que está escrito Sermon Tracker, la Biblia que lees y cómo se comporta el lector de la Biblia.",
     },
     appearance: {
-      title: "Apariencia y experiencia",
+      title: "Apariencia",
+      description: "Claro u oscuro, o según tu dispositivo.",
+    },
+    app: {
+      title: "Aplicación y experiencia",
       description:
-        "Claro u oscuro, con el mismo control que el de la barra, una forma de volver a la configuración de la cuenta y la instalación de la aplicación.",
+        "Instala Sermon Tracker, repite el recorrido por la aplicación o vuelve a configurar la cuenta.",
+    },
+    offline: {
+      title: "Almacenamiento sin conexión",
+      description:
+        "Lo que este dispositivo guarda para trabajar sin conexión: capturas, descargas de la Biblia y el espacio que ocupan.",
+    },
+    sync: {
+      title: "Sincronización",
+      description: "Mantener tu trabajo al día entre dispositivos.",
     },
     account: {
-      title: "Cuenta",
+      title: "Cuenta y seguridad",
       description:
-        "Tu lugar en este espacio de trabajo, tu contraseña, las cuentas conectadas y los dispositivos donde tienes la sesión abierta. Algunos cambios te piden confirmar primero que eres tú.",
+        "Tu acceso, tu contraseña, las cuentas conectadas y los dispositivos donde tienes la sesión abierta. Algunos cambios te piden confirmar primero que eres tú.",
     },
   },
+  sync: {
+    title: "Llegará en una próxima actualización",
+    body: "La sincronización mantendrá lo que hagas en este dispositivo al día con tu cuenta en todos los demás. Todavía no hay nada que configurar.",
+  },
+  unsaved: "Los cambios de esta página no se han guardado.",
   blocks: {
+    ministry: "Iglesia y ministerio",
+    ministryDescription:
+      "Dónde sirves y qué haces allí. Todo es opcional, solo lo ves tú y no cambia en nada tu acceso.",
     language: "Idioma y traducción",
     languageDescription: "Se guardan en tu cuenta, así que te acompañan en todos tus dispositivos.",
     reader: "Lector de la Biblia",

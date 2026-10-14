@@ -23,9 +23,9 @@ describe("ScrollToHash", () => {
   it("brings the part named in the address into view, and keeps it there while the page settles", () => {
     vi.stubGlobal("ResizeObserver", Observer);
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/settings#offline");
+    window.history.replaceState(null, "", "/settings/offline#offline-capture");
     const target = document.createElement("section");
-    target.id = "offline";
+    target.id = "offline-capture";
     target.scrollIntoView = vi.fn();
     document.body.append(target);
 

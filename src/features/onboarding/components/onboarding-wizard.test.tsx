@@ -326,7 +326,7 @@ describe("a new account", () => {
 describe("an account that owes no setup", () => {
   it("goes through every step without anything about its setup being written", async () => {
     show({ mode: "review", profile: { churchName: "Grace", attendsPreachingClass: true } });
-    expect(screen.getByRole("link", { name: "Exit setup" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "Exit setup" })).toHaveAttribute("href", "/settings/app");
     expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
 
     press("Get Started");
@@ -344,7 +344,7 @@ describe("an account that owes no setup", () => {
     );
     expect(screen.getByRole("link", { name: "Back to Settings" })).toHaveAttribute(
       "href",
-      "/settings",
+      "/settings/app",
     );
     expect(state.advanceOnboarding).not.toHaveBeenCalled();
     expect(state.finishOnboarding).not.toHaveBeenCalled();

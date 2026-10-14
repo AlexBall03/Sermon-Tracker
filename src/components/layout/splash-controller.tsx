@@ -15,26 +15,66 @@ declare global {
 }
 
 /**
- * Timings. The splash goes as soon as the page has finished loading, but
- * never before its opening sequence has played: `introMs` from the moment it
- * went up, by when the last word of the tagline has arrived. There is no rest
- * on the finished picture, so a page that is ready is not kept waiting for
- * one. Then it lifts for `fadeMs`. `giveUpMs` is how long it waits for a page
- * that never finishes loading.
+ * Timings. The splash's bar fills while the page loads, quickly at first and
+ * then ever more slowly, never reaching the end by itself. Once the page has
+ * finished loading, and its opening sequence has played (`introMs` from the
+ * moment it went up, by when the last word of the tagline has arrived), the
+ * bar runs the rest of the way and is seen full: `finishMs` in all, the same
+ * whether the page came quickly or slowly. Only then does the screen lift, for
+ * `fadeMs`. A page that loads slowly keeps the bar short of the end for as
+ * long as it takes; `giveUpMs` is how long it waits for a page that never
+ * finishes loading.
  *
  * With reduced motion there is no sequence to wait for: the picture is whole
- * at once, is shown for `reducedMs` so that it is seen and not a flash, and
- * goes in `reducedFadeMs`.
+ * at once, is shown for `reducedMs` so that it is seen and not a flash, the
+ * bar is shown full without moving for `reducedFinishMs`, and it goes in
+ * `reducedFadeMs`.
  *
  * `introMs`, `fadeMs`, and `reducedFadeMs` must match globals.css ("Splash").
  */
 export const splashTiming = {
   introMs: 1200,
+  finishMs: 420,
   fadeMs: 480,
   reducedMs: 500,
+  reducedFinishMs: 150,
   reducedFadeMs: 200,
   giveUpMs: 8000,
 } as const;
+
+/** Of `finishMs`, the part the bar spends running to the end; the rest it is seen full. */
+const runMs = 300;
+
+const splashBar = () => document.querySelector<HTMLElement>("[data-splash-bar]");
+
+/** How far the bar has filled, 0 to 1, from its transform while it animates. */
+function filled(bar: HTMLElement) {
+  const match = /matrix\(([-\d.e]+)/.exec(getComputedStyle(bar).transform);
+  return match ? Number(match[1]) : 0;
+}
+
+/** Runs the bar from where it is to the end (at once, with reduced motion). */
+function fillBar(reduced: boolean) {
+  const bar = splashBar();
+  if (!bar) return;
+  const from = filled(bar);
+  bar.style.animation = "none";
+  bar.style.transform = `scaleX(${from})`;
+  if (!reduced) {
+    // Read the layout, so the starting point is drawn before the transition begins.
+    void bar.getBoundingClientRect();
+    bar.style.transition = `transform ${runMs}ms cubic-bezier(0.3, 0.6, 0.2, 1)`;
+  }
+  bar.style.transform = "scaleX(1)";
+}
+
+/** Gives the bar back to the stylesheet, so a splash raised again fills from the start. */
+function resetBar() {
+  const bar = splashBar();
+  bar?.style.removeProperty("animation");
+  bar?.style.removeProperty("transform");
+  bar?.style.removeProperty("transition");
+}
 
 /** Asked each time the splash is taken down, so a preference changed meanwhile is the one obeyed. */
 const prefersReducedMotion = () =>
@@ -59,20 +99,31 @@ function takeDown() {
   let settled = false;
   const reduced = prefersReducedMotion();
   const shownMs = reduced ? splashTiming.reducedMs : splashTiming.introMs;
+  const finishMs = reduced ? splashTiming.reducedFinishMs : splashTiming.finishMs;
   const fadeMs = reduced ? splashTiming.reducedFadeMs : splashTiming.fadeMs;
 
   const leave = () => {
     root.dataset.splash = "leaving";
-    timers.push(window.setTimeout(() => delete root.dataset.splash, fadeMs));
+    timers.push(
+      window.setTimeout(() => {
+        delete root.dataset.splash;
+        resetBar();
+      }, fadeMs),
+    );
   };
-  // The page is ready (or we have stopped waiting for it): let the opening finish, then go.
+  // The bar runs to the end and is seen full; then the screen goes.
+  const finish = () => {
+    fillBar(reduced);
+    timers.push(window.setTimeout(leave, finishMs));
+  };
+  // The page is ready (or we have stopped waiting for it): let the opening finish, then finish.
   const ready = () => {
     if (settled) return;
     settled = true;
     const shownFor = performance.now() - (window.__splashAt ?? performance.now());
     const remaining = shownMs - shownFor;
-    if (remaining <= 0) leave();
-    else timers.push(window.setTimeout(leave, remaining));
+    if (remaining <= 0) finish();
+    else timers.push(window.setTimeout(finish, remaining));
   };
 
   if (document.readyState === "complete") ready();
@@ -103,6 +154,7 @@ export function holdSplash() {
   held = true;
   const root = document.documentElement;
   if (root.dataset.splash !== "on") {
+    resetBar();
     root.dataset.splash = "on";
     window.__splashAt = performance.now();
   }
@@ -165,6 +217,7 @@ function SplashOnNavigation() {
     const root = document.documentElement;
     // Already up since the sign-in: its opening has been playing, and is not started again.
     if (root.dataset.splash !== "on") {
+      resetBar();
       root.dataset.splash = "on";
       window.__splashAt = performance.now();
     }
