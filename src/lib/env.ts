@@ -37,10 +37,19 @@ const envSchema = z.object({
     .optional(),
   /** Resend, for contact and feedback mail (features/support). Without it nothing is mailed. */
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
-  /** The sender, on a domain verified in Resend: `Sermon Tracker <support@example.com>`. */
+  /**
+   * Senders, on a domain verified in Resend: `Sermon Tracker <contact@example.com>`.
+   * CONTACT_EMAIL_FROM is required to mail at all; the other two fall back to it.
+   */
   CONTACT_EMAIL_FROM: z.string().min(3).optional(),
-  /** Where new contact messages and feedback are announced. */
+  /** Mail about bug reports, feature requests, and feedback. */
+  SUPPORT_EMAIL_FROM: z.string().min(3).optional(),
+  /** The team's own announcements, which nobody answers. */
+  NOTIFY_EMAIL_FROM: z.string().min(3).optional(),
+  /** Where new contact messages are announced (and everything, without SUPPORT_INBOX_EMAIL). */
   CONTACT_INBOX_EMAIL: z.email().optional(),
+  /** Where new bug reports, feature requests, and feedback are announced. */
+  SUPPORT_INBOX_EMAIL: z.email().optional(),
   /** Vercel Blob (private store), for feedback screenshots. Or OIDC with BLOB_STORE_ID. */
   BLOB_READ_WRITE_TOKEN: z.string().startsWith("vercel_blob_rw_").optional(),
   BLOB_STORE_ID: z.string().optional(),

@@ -38,7 +38,8 @@ vi.mock("@/features/auth/access", () => ({
     };
   },
 }));
-vi.mock("./email", () => ({
+vi.mock("./email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./email")>()),
   sendMail: async (mail: unknown) => {
     state.sendMail(mail);
     return state.delivery;
@@ -113,10 +114,12 @@ describe("submitFeedback", () => {
     await submitFeedback(report, id);
     await submitFeedback(report, id);
     await runLater();
-    expect(state.sendMail.mock.calls.map(([mail]) => mail.to)).toEqual([
-      "member@example.com",
-      "team@example.com",
+    expect(state.sendMail.mock.calls.map(([mail]) => [mail.to, mail.sender])).toEqual([
+      ["member@example.com", "support"],
+      ["team@example.com", "notify"],
     ]);
+    // The team's notice is answered to the requester, never to the no-reply sender.
+    expect(state.sendMail.mock.calls[1][0].replyTo).toBe("member@example.com");
   });
 
   it("stands when mail fails", async () => {
@@ -146,6 +149,7 @@ describe("submitContact", () => {
     await runLater();
     const [acknowledgment] = state.sendMail.mock.calls[0];
     expect(acknowledgment.to).toBe("ruth@example.com");
+    expect(acknowledgment.sender).toBe("contact");
     expect(acknowledgment.text).not.toContain("How do we join?");
     expect(acknowledgment.subject).not.toContain("Access");
   });

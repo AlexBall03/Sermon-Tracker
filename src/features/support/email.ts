@@ -2,7 +2,8 @@ import "server-only";
 
 import { Resend } from "resend";
 
-import { env, isEmailConfigured } from "@/lib/env";
+import { env, isEmailConfigured, type Env } from "@/lib/env";
+import type { TicketKind } from "./model";
 import type { RenderedMail } from "./templates";
 
 /*
@@ -11,31 +12,53 @@ import type { RenderedMail } from "./templates";
  * or fail them. Without Resend configured nothing is sent and nothing breaks.
  * Each mail names the event it is about (`idempotencyKey`), so Resend sends a
  * retried one once.
+ *
+ * Three senders: `contact` for contact messages (public or in the app),
+ * `support` for bug reports, feature requests, and feedback, and `notify` for
+ * the team's own announcements, which nobody answers (their Reply-To is the
+ * requester). Each falls back to CONTACT_EMAIL_FROM, and the support inbox to
+ * CONTACT_INBOX_EMAIL, so a deployment with only those two still mails.
  */
 
 export type Delivery = "sent" | "skipped" | "failed";
 
+export type MailSender = "contact" | "support" | "notify";
+
 export type Mail = RenderedMail & {
   to: string;
+  sender: MailSender;
   replyTo?: string;
   /** One per event: `ticket/<id>/received`, `message/<id>`, `status/<event id>`. */
   idempotencyKey: string;
 };
 
-type Sender = (mail: Mail & { from: string }) => Promise<{ error: unknown }>;
+type Transport = (mail: Omit<Mail, "sender"> & { from: string }) => Promise<{ error: unknown }>;
 
 let client: Resend | undefined;
 
-const resendSender: Sender = async (mail) => {
+const resendTransport: Transport = async (mail) => {
   client ??= new Resend(env.RESEND_API_KEY);
   const { idempotencyKey, ...message } = mail;
   return client.emails.send(message, { idempotencyKey });
 };
 
+/** Who mail to a requester about a ticket of this kind comes from. */
+export function senderFor(kind: TicketKind): MailSender {
+  return kind === "contact" ? "contact" : "support";
+}
+
+/** The From line for a sender. */
+export function fromAddress(sender: MailSender, source: Env = env) {
+  const fallback = source.CONTACT_EMAIL_FROM;
+  if (sender === "support") return source.SUPPORT_EMAIL_FROM ?? fallback;
+  if (sender === "notify") return source.NOTIFY_EMAIL_FROM ?? fallback;
+  return fallback;
+}
+
 let warned = false;
 
 /** Sends one mail. Never throws: it reports how it went, and the caller carries on either way. */
-export async function sendMail(mail: Mail, send: Sender = resendSender): Promise<Delivery> {
+export async function sendMail(mail: Mail, send: Transport = resendTransport): Promise<Delivery> {
   if (!isEmailConfigured()) {
     if (!warned) {
       warned = true;
@@ -46,7 +69,8 @@ export async function sendMail(mail: Mail, send: Sender = resendSender): Promise
     return "skipped";
   }
   try {
-    const { error } = await send({ ...mail, from: env.CONTACT_EMAIL_FROM! });
+    const { sender, ...message } = mail;
+    const { error } = await send({ ...message, from: fromAddress(sender)! });
     if (error) {
       console.error("Support email was refused:", describe(error));
       return "failed";
@@ -58,9 +82,10 @@ export async function sendMail(mail: Mail, send: Sender = resendSender): Promise
   }
 }
 
-/** The team's inbox, if one is set. */
-export function inboxAddress() {
-  return env.CONTACT_INBOX_EMAIL ?? null;
+/** The team's inbox for a ticket of this kind, if one is set. */
+export function inboxAddress(kind: TicketKind, source: Env = env) {
+  const contact = source.CONTACT_INBOX_EMAIL ?? null;
+  return kind === "contact" ? contact : (source.SUPPORT_INBOX_EMAIL ?? contact);
 }
 
 function describe(error: unknown) {

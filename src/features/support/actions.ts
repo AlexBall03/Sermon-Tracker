@@ -15,7 +15,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { env, isEmailConfigured } from "@/lib/env";
 import { routes, siteConfig } from "@/lib/site";
 import { deleteScreenshots } from "./blob";
-import { inboxAddress, sendMail } from "./email";
+import { inboxAddress, sendMail, senderFor } from "./email";
 import { requesterContact } from "./identity";
 import { notifiedStatuses } from "./model";
 import { attachmentIdSchema, forKind, supportSchemas, ticketIdSchema } from "./schemas";
@@ -125,17 +125,18 @@ export async function submitContact(input: unknown, id?: unknown): Promise<Submi
     after(async () => {
       await sendMail({
         to: ticket.contactEmail!,
+        sender: senderFor(ticket.kind),
         ...publicAcknowledgmentMail(locale, ticket.contactName ?? ""),
         idempotencyKey: `ticket/${ticket.id}/received`,
       });
-      const inbox = inboxAddress();
+      const inbox = inboxAddress(ticket.kind);
       if (inbox) {
         await sendMail({
           to: inbox,
+          sender: "notify",
           replyTo: ticket.contactEmail!,
           ...inboxMail({
-            kind: ticket.kind,
-            subject: ticket.subject,
+            ticket,
             message: message.body,
             from: `${ticket.contactName} <${ticket.contactEmail}>`,
             link: `${base}${routes.adminFeedback}/${ticket.id}`,
@@ -183,7 +184,9 @@ export async function submitFeedback(input: unknown, id?: unknown): Promise<Subm
       if (contact) {
         await sendMail({
           to: contact.email,
+          sender: senderFor(ticket.kind),
           ...acknowledgmentMail(locale, {
+            ticketId: ticket.id,
             name: contact.name,
             subject: ticket.subject,
             message: message.body,
@@ -192,13 +195,14 @@ export async function submitFeedback(input: unknown, id?: unknown): Promise<Subm
           idempotencyKey: `ticket/${ticket.id}/received`,
         });
       }
-      const inbox = inboxAddress();
+      const inbox = inboxAddress(ticket.kind);
       if (inbox) {
         await sendMail({
           to: inbox,
+          sender: "notify",
+          replyTo: contact?.email,
           ...inboxMail({
-            kind: ticket.kind,
-            subject: ticket.subject,
+            ticket,
             message: message.body,
             from: contact ? `${contact.name ?? ""} <${contact.email}>`.trim() : clerkUserId,
             link: `${base}${routes.adminFeedback}/${ticket.id}`,
@@ -233,23 +237,26 @@ export async function replyToTicket(ticketId: unknown, input: unknown): Promise<
   }
 
   const { ticket, message } = outcome;
-  const inbox = inboxAddress();
+  const inbox = inboxAddress(ticket.kind);
   if (inbox) {
     const base = await origin();
-    after(() =>
-      sendMail({
+    const clerkUserId = actor.user.clerkUserId;
+    after(async () => {
+      const contact = await requesterContact(clerkUserId);
+      await sendMail({
         to: inbox,
+        sender: "notify",
+        replyTo: contact?.email,
         ...inboxMail({
-          kind: ticket.kind,
-          subject: ticket.subject,
+          ticket,
           message: message.body,
-          from: actor.user.clerkUserId,
+          from: contact ? `${contact.name ?? ""} <${contact.email}>`.trim() : clerkUserId,
           link: `${base}${routes.adminFeedback}/${ticket.id}`,
           reply: true,
         }),
         idempotencyKey: `message/${message.id}`,
-      }),
-    );
+      });
+    });
   }
   refresh(ticket.id);
   return { ok: true, message: dictionary(locale, "support").thread.replied };
@@ -343,7 +350,9 @@ export async function adminReplyToTicket(ticketId: unknown, input: unknown): Pro
     return { ok: true, message: isEmailConfigured() ? words.emailNotSent : words.replied };
   const delivery = await sendMail({
     to: recipient.email,
+    sender: senderFor(ticket.kind),
     ...replyMail(ticket.locale, {
+      ticketId: ticket.id,
       name: recipient.name,
       subject: ticket.subject,
       body: message.body,
@@ -385,7 +394,9 @@ export async function setTicketStatus(ticketId: unknown, input: unknown): Promis
       if (!recipient) return;
       await sendMail({
         to: recipient.email,
+        sender: senderFor(ticket.kind),
         ...statusMail(ticket.locale, {
+          ticketId: ticket.id,
           name: recipient.name,
           subject: ticket.subject,
           status: event.toStatus,

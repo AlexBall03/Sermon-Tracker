@@ -203,21 +203,35 @@ export const support: Untranslated<typeof english> = {
     signature: "El equipo de Sermon Tracker",
     footer: "Recibe este correo porque se comunicó con Sermon Tracker.",
     view: "Ver la conversación",
-    receivedSubject: (subject: string) => `Recibimos su mensaje: ${subject}`,
+    reference: (reference: string) => `Referencia ${reference}`,
+    referenceLabel: "Referencia",
+    receivedSubject: (subject: string, reference: string) =>
+      `Recibimos su mensaje (${reference}): ${subject}`,
     receivedPublicSubject: "Recibimos su mensaje",
     receivedPublic:
       "Gracias por escribir a Sermon Tracker. Recibimos su mensaje y le responderemos a esta dirección lo antes posible. Si usted no nos escribió, puede ignorar este correo.",
     received:
       "Gracias por escribir. Recibimos su mensaje y le responderemos lo antes posible. Esto es lo que envió:",
     receivedInApp: "Puede seguirlo, y responder, en Ayuda y comentarios.",
-    replySubject: (subject: string) => `Re: ${subject}`,
-    reply: "El equipo de Sermon Tracker respondió:",
-    statusSubject: (subject: string, status: string) => `${status}: ${subject}`,
+    replySubject: (subject: string, reference: string) => `Re: ${subject} (${reference})`,
+    reply: "El equipo de Sermon Tracker respondió a su conversación.",
+    teamReply: "Nuestra respuesta",
+    statusSubject: (subject: string, status: string, reference: string) =>
+      `${status}: ${subject} (${reference})`,
     status: (status: string) => `Su conversación ahora está: ${status}.`,
-    inboxSubject: (kind: string, subject: string) => `[${kind}] ${subject}`,
-    inbox: (kind: string) => `Nuevo mensaje (${kind.toLowerCase()}) en Sermon Tracker.`,
-    inboxReplySubject: (subject: string) => `Respuesta: ${subject}`,
-    inboxReply: "Quien escribió respondió.",
+    inboxSubject: (kind: string, reference: string, subject: string) =>
+      `${kind} ${reference} · ${subject}`,
+    inbox: {
+      contact: "Se envió un nuevo mensaje de contacto a Sermon Tracker.",
+      bug: "Se envió un nuevo reporte de error a Sermon Tracker.",
+      feature: "Se envió una nueva solicitud de función a Sermon Tracker.",
+      feedback: "Se enviaron nuevos comentarios a Sermon Tracker.",
+    },
+    inboxReplySubject: (kind: string, reference: string, subject: string) =>
+      `Respuesta · ${kind} ${reference} · ${subject}`,
+    inboxReply: "Quien escribió respondió a esta conversación.",
+    requesterReply: "Su respuesta",
+    inboxFooter: "Enviado a la bandeja del equipo de Sermon Tracker.",
     from: "De",
     open: "Abrir en Comentarios",
   },
