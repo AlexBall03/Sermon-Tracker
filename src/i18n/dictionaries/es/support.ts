@@ -220,7 +220,7 @@ export const support: Untranslated<typeof english> = {
       `${status}: ${subject} (${reference})`,
     status: (status: string) => `Su conversación ahora está: ${status}.`,
     inboxSubject: (kind: string, reference: string, subject: string) =>
-      `${kind} ${reference} · ${subject}`,
+      `[${kind} ${reference}] ${subject}`,
     inbox: {
       contact: "Se envió un nuevo mensaje de contacto a Sermon Tracker.",
       bug: "Se envió un nuevo reporte de error a Sermon Tracker.",
@@ -228,7 +228,7 @@ export const support: Untranslated<typeof english> = {
       feedback: "Se enviaron nuevos comentarios a Sermon Tracker.",
     },
     inboxReplySubject: (kind: string, reference: string, subject: string) =>
-      `Respuesta · ${kind} ${reference} · ${subject}`,
+      `Respuesta: [${kind} ${reference}] ${subject}`,
     inboxReply: "Quien escribió respondió a esta conversación.",
     requesterReply: "Su respuesta",
     inboxFooter: "Enviado a la bandeja del equipo de Sermon Tracker.",

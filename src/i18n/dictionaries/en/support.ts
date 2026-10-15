@@ -217,7 +217,7 @@ export const support = {
       `${status}: ${subject} (${reference})`,
     status: (status: string) => `Your conversation is now ${status}.`,
     inboxSubject: (kind: string, reference: string, subject: string) =>
-      `${kind} ${reference} · ${subject}`,
+      `[${kind} ${reference}] ${subject}`,
     inbox: {
       contact: "A new contact message was sent to Sermon Tracker.",
       bug: "A new bug report was submitted to Sermon Tracker.",
@@ -225,7 +225,7 @@ export const support = {
       feedback: "New feedback was submitted to Sermon Tracker.",
     },
     inboxReplySubject: (kind: string, reference: string, subject: string) =>
-      `Reply · ${kind} ${reference} · ${subject}`,
+      `Reply: [${kind} ${reference}] ${subject}`,
     inboxReply: "The requester replied to this conversation.",
     requesterReply: "Their reply",
     inboxFooter: "Sent to the Sermon Tracker team inbox.",

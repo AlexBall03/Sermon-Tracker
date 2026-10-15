@@ -131,13 +131,13 @@ describe("templates", () => {
 
   it("label the team's mail with its kind and its reference", () => {
     const rendered = inboxMail({ ticket: bug, message: "It broke", from: "Ann", link: "x" });
-    expect(rendered.subject).toBe("Bug Report #3F9A1C · Test");
+    expect(rendered.subject).toBe("[Bug Report #3F9A1C] Test");
     expect(rendered.text).toContain("A new bug report was submitted");
     expect(rendered.text).toContain("1. Open Bible\n2. Tap a verse");
     expect(rendered.html).toContain("Steps to reproduce");
     expect(
       inboxMail({ ticket: bug, message: "More", from: "Ann", link: "x", reply: true }).subject,
-    ).toBe("Reply · Bug Report #3F9A1C · Test");
+    ).toBe("Reply: [Bug Report #3F9A1C] Test");
   });
 
   it("never give two conversations the same subject", () => {
@@ -148,7 +148,7 @@ describe("templates", () => {
     };
     const first = inboxMail({ ticket: contact, message: "Hi", from: "Ann", link: "x" });
     const second = inboxMail({ ticket: bug, message: "Hi", from: "Ann", link: "x" });
-    expect(first.subject).toBe("Contact #A1B2C3 · Test");
+    expect(first.subject).toBe("[Contact #A1B2C3] Test");
     expect(first.subject).not.toBe(second.subject);
   });
 

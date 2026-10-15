@@ -127,15 +127,36 @@ describe("an account's tickets", () => {
     expect((await listOwnTickets(db, me))[0].unread).toBe(true);
   });
 
-  it("are one ticket when the same ID or the same words arrive twice", async () => {
+  it("are one ticket when the same ID arrives twice", async () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const first = await createTicket(db, me, feedback(), "en", id);
     const again = await createTicket(db, me, feedback(), "en", id);
-    const repeated = await createTicket(db, me, feedback(), "en");
-    expect(again.ok && !again.created && again.ticket.id === id).toBe(true);
-    expect(repeated.ok && !repeated.created && repeated.ticket.id === id).toBe(true);
     expect(first.ok && first.created).toBe(true);
+    expect(again.ok && !again.created && again.ticket.id === id).toBe(true);
     expect(await db.select().from(supportTickets)).toHaveLength(1);
+  });
+
+  it("are a new ticket when the same words are sent again as a new message", async () => {
+    const words = { subject: "Test", message: "Test" };
+    const first = await createTicket(
+      db,
+      me,
+      feedback({ ...words, kind: "contact" }),
+      "en",
+      "33333333-3333-4333-8333-333333333333",
+    );
+    const second = await createTicket(
+      db,
+      me,
+      feedback({ ...words, kind: "bug" }),
+      "en",
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const third = await createTicket(db, me, feedback(words), "en");
+    expect(first.ok && first.created).toBe(true);
+    expect(second.ok && second.created && second.ticket.kind === "bug").toBe(true);
+    expect(third.ok && third.created).toBe(true);
+    expect(await db.select().from(supportTickets)).toHaveLength(3);
   });
 
   it("do not take another account's ID as their own", async () => {

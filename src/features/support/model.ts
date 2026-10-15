@@ -91,7 +91,7 @@ export const rateLimits = {
   ticketsPerHour: 10,
   /** Replies an account sends per hour. */
   repliesPerHour: 30,
-  /** The same words from the same sender within this window are the same submission. */
+  /** On the public form, the same words from the same address within this window are the same submission. */
   duplicateWindowMs: 10 * 60 * 1000,
 } as const;
 

@@ -253,7 +253,11 @@ export type FeedbackInput = {
 /**
  * A ticket from an account, which is the session's and never the input's.
  * Screenshots are taken only from the account's own uploads that no ticket
- * has yet; any other ID is ignored. Idempotent like the public form.
+ * has yet; any other ID is ignored. The same ID twice is the first ticket
+ * again (`created: false`); the form keeps its ID across a retry, so a double
+ * click or a lost answer is one ticket. The same words under a new ID are a
+ * new message, never folded into an earlier one: only the hourly limit stops
+ * them.
  */
 export async function createTicket(
   db: Database,
@@ -268,25 +272,6 @@ export async function createTicket(
     const existing = await ticketById(db, id, mine);
     if (existing)
       return { ok: true, ticket: existing, message: await firstMessage(db, id), created: false };
-  }
-
-  const since = new Date(now.getTime() - rateLimits.duplicateWindowMs);
-  const [duplicate] = await db
-    .select({ id: supportTickets.id })
-    .from(supportTickets)
-    .innerJoin(supportMessages, eq(supportMessages.ticketId, supportTickets.id))
-    .where(
-      and(
-        mine,
-        eq(supportTickets.subject, input.subject),
-        eq(supportMessages.body, input.message),
-        gte(supportTickets.createdAt, since),
-      ),
-    )
-    .limit(1);
-  if (duplicate) {
-    const ticket = (await ticketById(db, duplicate.id, mine))!;
-    return { ok: true, ticket, message: await firstMessage(db, duplicate.id), created: false };
   }
 
   const [{ recent }] = await db
