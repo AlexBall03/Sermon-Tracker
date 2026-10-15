@@ -14,6 +14,8 @@ export const pullThreshold = 72;
 const pullMax = 112;
 /** The finger travels twice as far as the indicator: a pull that feels held back. */
 const resistance = 0.5;
+/** How long the page takes to glide back, as `html[data-pull="settling"] #main` in globals.css. */
+const settleMs = 300;
 
 /** How far the indicator has come for a finger that has moved `distance` down. */
 export function pullDistance(distance: number) {
@@ -42,7 +44,9 @@ const layerOpen = () =>
  * out from under the bar, its ring filling as it comes. The installed app has
  * no vibration to say the pull has gone far enough, so it is shown instead: the
  * ring turns emerald, the arrow turns over, the indicator grows a little, and
- * the words change. Letting go then asks the server for the page again
+ * the words change. The page comes down with it (the window's own bounce is
+ * off in the installed app) and stays under it until the refresh is done.
+ * Letting go then asks the server for the page again
  * (`router.refresh`), which keeps everything in the page as it is, half-typed
  * words included; letting go short of it puts the indicator away.
  */
@@ -107,6 +111,33 @@ export function PullToRefresh() {
   const shown = refreshing || pull > 0;
   // Where the indicator rests while the page is fetched again.
   const offset = refreshing ? pullThreshold * 0.75 : pull;
+
+  // The page follows the indicator down, is held there while it is fetched
+  // again, and glides back (`html[data-pull]` in globals.css).
+  useEffect(() => {
+    const root = document.documentElement;
+    if (shown) {
+      root.dataset.pull = dragging ? "dragging" : "settling";
+      root.style.setProperty("--pull", `${offset}px`);
+      return;
+    }
+    if (!root.dataset.pull) return;
+    root.dataset.pull = "settling";
+    root.style.setProperty("--pull", "0px");
+    const done = window.setTimeout(() => {
+      delete root.dataset.pull;
+      root.style.removeProperty("--pull");
+    }, settleMs);
+    return () => window.clearTimeout(done);
+  }, [shown, dragging, offset]);
+
+  useEffect(
+    () => () => {
+      delete document.documentElement.dataset.pull;
+      document.documentElement.style.removeProperty("--pull");
+    },
+    [],
+  );
   const progress = refreshing ? 1 : Math.min(1, pull / pullThreshold);
   const label = refreshing ? t.refreshing : armed ? t.release : t.pull;
   const ring = 2 * Math.PI * 17;

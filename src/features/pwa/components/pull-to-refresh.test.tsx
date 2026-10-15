@@ -59,6 +59,25 @@ describe("PullToRefresh", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("brings the page down with the pull and lets it back up", () => {
+    vi.useFakeTimers();
+    try {
+      const root = document.documentElement;
+      view();
+      pull(60);
+      expect(root.dataset.pull).toBe("dragging");
+      expect(root.style.getPropertyValue("--pull")).toBe(`${pullDistance(60)}px`);
+      touch("touchend", 0);
+      expect(root.dataset.pull).toBe("settling");
+      expect(root.style.getPropertyValue("--pull")).toBe("0px");
+      act(() => void vi.advanceTimersByTime(300));
+      expect(root.dataset.pull).toBeUndefined();
+      expect(root.style.getPropertyValue("--pull")).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does nothing below the top of the page or in a browser tab", () => {
     Object.defineProperty(window, "scrollY", { value: 300, configurable: true });
     view();

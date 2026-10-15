@@ -906,3 +906,26 @@ html[data-splash="on"] {
     }
   }
 }
+
+/*
+ * Pull to refresh (features/pwa/components/pull-to-refresh.tsx). The installed
+ * application draws its own, so the window's bounce at the top is turned off
+ * there: left on, it dragged the page down and sprang it back while the page
+ * was still being fetched. The page follows the pull instead and is held under
+ * the indicator until the refresh is done. `#main` is moved only while a pull
+ * is shown, so it is never the containing block of anything fixed otherwise.
+ */
+@media (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+html[data-pull] #main {
+  translate: 0 var(--pull, 0px);
+}
+
+html[data-pull="settling"] #main {
+  transition: translate 300ms ease-out;
+}

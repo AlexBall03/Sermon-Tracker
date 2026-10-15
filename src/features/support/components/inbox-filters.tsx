@@ -32,10 +32,10 @@ export function InboxFilters({ query }: { query: InboxQuery }) {
   const pick = (value: string) => (value === any ? null : value);
 
   return (
-    <div className="grid gap-4 rounded-xl border bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))] lg:items-end">
+    <div className="grid grid-cols-2 gap-4 rounded-xl border bg-surface p-4 shadow-card lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))] lg:items-end">
       <form
         role="search"
-        className="sm:col-span-2 lg:col-span-1"
+        className="col-span-2 lg:col-span-1"
         onSubmit={(event) => {
           event.preventDefault();
           apply({ q: q.trim() });
@@ -57,6 +57,7 @@ export function InboxFilters({ query }: { query: InboxQuery }) {
       </form>
       <Filter label={t.admin.kind}>
         <Select
+          className="w-full"
           label={t.admin.kind}
           value={query.kind ?? any}
           onChange={(value) => apply({ kind: pick(value) as InboxQuery["kind"] })}
@@ -68,6 +69,7 @@ export function InboxFilters({ query }: { query: InboxQuery }) {
       </Filter>
       <Filter label={t.admin.status}>
         <Select
+          className="w-full"
           label={t.admin.status}
           value={query.status ?? any}
           onChange={(value) => apply({ status: pick(value) as InboxQuery["status"] })}
@@ -80,6 +82,7 @@ export function InboxFilters({ query }: { query: InboxQuery }) {
       </Filter>
       <Filter label={t.admin.source}>
         <Select
+          className="w-full"
           label={t.admin.source}
           value={query.source ?? any}
           onChange={(value) => apply({ source: pick(value) as InboxQuery["source"] })}
@@ -91,6 +94,7 @@ export function InboxFilters({ query }: { query: InboxQuery }) {
       </Filter>
       <Filter label={t.admin.sort}>
         <Select
+          className="w-full"
           label={t.admin.sort}
           value={query.sort}
           onChange={(value) => apply({ sort: value as InboxQuery["sort"] })}
