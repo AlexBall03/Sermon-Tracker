@@ -9,7 +9,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useReading } from "@/features/preferences/client";
 import { useT } from "@/i18n/client";
 import { useMediaQuery, wideEnough } from "@/lib/use-media-query";
 import type { ScriptureReference } from "../reference";
@@ -62,7 +61,6 @@ export function ScriptureProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const value = useMemo(() => ({ openPanel, inline: false }), [openPanel]);
   const t = useT("scripture").panel;
-  const { translation } = useReading();
   const close = () => setOpen(false);
 
   return (
@@ -78,7 +76,7 @@ export function ScriptureProvider({ children }: { children: React.ReactNode }) {
               // As a side panel the page is still in view beside it; as a full sheet it is not.
               besideIdea={wide}
               onDone={close}
-              header={
+              header={(translation) => (
                 <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
                   <div className="min-w-0">
                     <DialogTitle>{t.title}</DialogTitle>
@@ -86,7 +84,7 @@ export function ScriptureProvider({ children }: { children: React.ReactNode }) {
                   </div>
                   <DialogClose label={t.close} />
                 </div>
-              }
+              )}
             />
           )}
         </DialogContent>

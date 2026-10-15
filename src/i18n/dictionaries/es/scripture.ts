@@ -94,8 +94,6 @@ export const scripture: Untranslated<typeof english> = {
     translation: "Traducción de la Biblia",
     nowReading: (translation) => `Ahora lees la ${translation}.`,
     loadingTranslation: (translation) => `Cargando la ${translation}…`,
-    translationNotSaved:
-      "No se pudo guardar tu traducción. Revisa tu conexión e inténtalo de nuevo.",
     compare: "Comparar",
     compareLabel: "Comparar con otra traducción u otro pasaje",
     closePane: (place) => `Cerrar ${place}`,
@@ -180,6 +178,7 @@ export const scripture: Untranslated<typeof english> = {
   panel: {
     title: "Escritura",
     close: "Cerrar Escritura",
+    translation: "Traducción de la Biblia",
     searchLabel: "Buscar en la Biblia",
     placeholder: "Buscar palabras en el texto",
     optionsNote:

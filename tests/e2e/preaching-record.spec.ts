@@ -64,11 +64,8 @@ test.describe("library and preaching record, signed in", () => {
       await expect(page).toHaveURL(new RegExp(`${section.href}$`));
       await expect(page.getByRole("heading", { level: 1, name: section.name })).toBeVisible();
 
-      // Its own place among the three, and one way back up.
-      const nav = main.getByRole("navigation", { name: "Library sections" });
-      await expect(nav.getByRole("link")).toHaveCount(3);
-      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-      await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", section.href);
+      // No way across to the other sections: one way back up, to choose again there.
+      await expect(main.getByRole("navigation", { name: "Library sections" })).toHaveCount(0);
       const back = main.getByRole("link", { name: "Back to Library" });
       await expect(back).toHaveCount(1);
       expect(

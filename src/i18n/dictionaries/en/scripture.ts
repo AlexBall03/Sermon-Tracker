@@ -95,8 +95,6 @@ export const scripture = {
     translation: "Bible translation",
     nowReading: (translation: string) => `Now reading the ${translation}.`,
     loadingTranslation: (translation: string) => `Loading the ${translation}…`,
-    translationNotSaved:
-      "Your translation could not be saved. Check your connection and try again.",
     compare: "Compare",
     compareLabel: "Compare with another translation or passage",
     closePane: (place: string) => `Close ${place}`,
@@ -181,6 +179,7 @@ export const scripture = {
   panel: {
     title: "Scripture",
     close: "Close Scripture",
+    translation: "Bible translation",
     searchLabel: "Search the Bible",
     placeholder: "Search the text for words",
     optionsNote:

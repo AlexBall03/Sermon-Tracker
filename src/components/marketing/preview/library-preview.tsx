@@ -1,10 +1,7 @@
 import {
   ArrowLeft,
   ArrowUpDown,
-  BookMarked,
   CalendarPlus,
-  History,
-  Lightbulb,
   List,
   Plus,
   Search,
@@ -26,15 +23,11 @@ import { place, WindowFrame } from "./frames";
 export const chip =
   "inline-flex h-8 max-w-full items-center rounded-md border bg-surface px-2.5 font-serif text-[0.875rem] leading-none font-medium whitespace-nowrap text-foreground italic shadow-card";
 
-const sections = [
-  { key: "ideas", icon: Lightbulb },
-  { key: "scripture", icon: BookMarked },
-  { key: "history", icon: History },
-] as const;
+type Section = "ideas" | "scripture" | "history";
 
 /**
  * The head of a library section, as `LibrarySectionHeader` draws it: the way
- * back, the section's title and purpose, its action, and the three sections.
+ * back, the section's title and purpose, and its action.
  */
 export function SectionHead({
   locale,
@@ -43,7 +36,7 @@ export function SectionHead({
   phone = false,
 }: {
   locale: Locale;
-  section: (typeof sections)[number]["key"];
+  section: Section;
   action: React.ReactNode;
   phone?: boolean;
 }) {
@@ -69,22 +62,6 @@ export function SectionHead({
           </p>
         </div>
         {action}
-      </div>
-      <div className="mt-4 flex flex-wrap gap-1">
-        {sections.map(({ key, icon: Icon }) => (
-          <span
-            key={key}
-            className={cn(
-              "flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium",
-              key === section
-                ? "bg-primary-soft font-semibold text-primary"
-                : "text-muted-foreground",
-            )}
-          >
-            <Icon className="size-4" />
-            {t.sections[key]}
-          </span>
-        ))}
       </div>
     </>
   );

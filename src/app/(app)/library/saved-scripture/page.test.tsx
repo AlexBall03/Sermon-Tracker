@@ -179,17 +179,8 @@ describe("the saved Scripture section", () => {
     expect(screen.getAllByRole("link", { name: "Back to Library" })).toHaveLength(1);
     // Nothing is made here, so the header offers nothing to make.
     expect(screen.queryByRole("button", { name: "Capture an idea" })).not.toBeInTheDocument();
-    const sections = within(screen.getByRole("navigation", { name: "Library sections" }));
-    expect(sections.getByRole("link", { name: "Sermon Ideas" })).toHaveAttribute(
-      "href",
-      "/library/sermon-ideas",
-    );
-    const here = sections.getByRole("link", { name: "Saved Scripture" });
-    expect(here).toHaveAttribute("href", "/library/saved-scripture");
-    expect(here).toHaveAttribute("aria-current", "page");
-    expect(sections.getByRole("link", { name: "Sermon Ideas" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    // The other sections are chosen on the overview, not from here.
+    expect(screen.queryByRole("navigation", { name: "Library sections" })).not.toBeInTheDocument();
   });
 
   it("lists each passage with its text, notes, colors, and the way to it in the Bible", async () => {
@@ -259,8 +250,8 @@ describe("the saved Scripture section", () => {
     expect(screen.getByRole("heading", { name: "No Scripture saved yet" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open the Bible" })).toHaveAttribute("href", "/bible");
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-    // The sections are still there, so the ideas are one click away.
-    expect(screen.getByRole("navigation", { name: "Library sections" })).toBeInTheDocument();
+    // The way back to the library is still there, so the other sections are near.
+    expect(screen.getByRole("link", { name: "Back to Library" })).toBeInTheDocument();
     expect(state.countFavorites).not.toHaveBeenCalled();
   });
 

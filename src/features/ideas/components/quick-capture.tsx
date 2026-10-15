@@ -28,7 +28,6 @@ import { useToast } from "@/components/ui/toast";
 import { useOfflineAccount } from "@/features/offline/components/offline-account";
 import { createIdeaOffline } from "@/features/offline/ideas/operations";
 import { useOfflineSettings } from "@/features/offline/settings";
-import { useReading } from "@/features/preferences/client";
 import { ScriptureBrowser } from "@/features/scripture/components/scripture-browser";
 import {
   ScriptureHost,
@@ -141,7 +140,6 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
   const account = useOfflineAccount();
   const offlineSettings = useOfflineSettings();
   const locale = useLocale();
-  const reading = useReading();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<IdeaDraft>(emptyDraft);
   // What the capture was opened with. Only what is written beyond it is the person's to lose.
@@ -429,7 +427,7 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                   besideIdea={sideBySide}
                   onDone={() => setPanel(null)}
                   className={sideBySide ? "w-[27rem] flex-none border-l" : undefined}
-                  header={
+                  header={(translation) => (
                     <div className="flex items-center gap-1 px-2 pt-3 pb-2 sm:px-3">
                       <Button
                         type="button"
@@ -442,10 +440,10 @@ export function QuickCaptureProvider({ children }: { children: React.ReactNode }
                         {sideBySide ? t.closeScripture : t.backToIdea}
                       </Button>
                       <span className="ml-auto pr-2 text-xs text-muted-foreground">
-                        {translations[reading.translation].name}
+                        {translations[translation].name}
                       </span>
                     </div>
-                  }
+                  )}
                 />
               )}
             </div>

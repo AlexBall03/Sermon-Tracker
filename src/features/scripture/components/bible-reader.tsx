@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -37,7 +38,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { AttachScripture } from "@/features/ideas/components/attach-scripture";
-import { setBibleTranslation } from "@/features/preferences/actions";
 import { useReading } from "@/features/preferences/client";
 import { useT } from "@/i18n/client";
 import type { Locale } from "@/i18n/locales";
@@ -59,9 +59,12 @@ import {
   parseReaderLocation,
   readerHref,
   readSavedLocation,
+  readSessionTranslation,
   sameChapter,
   saveLocation,
+  saveSessionTranslation,
   stepChapter,
+  subscribeSessionTranslation,
   type ReaderLocation,
 } from "../reader-location";
 import {
@@ -230,8 +233,16 @@ export function BibleReader({
 }) {
   const t = useT("scripture").reader;
   const router = useRouter();
-  const toast = useToast();
   const preferred = useReading();
+  // The translation an address that names none is read in: the one last read in this
+  // visit, or the account's own. The reader never changes the account's: Settings does.
+  const readVisit = useCallback(
+    () => readSessionTranslation(preferred.translations),
+    [preferred.translations],
+  );
+  const own =
+    useSyncExternalStore(subscribeSessionTranslation, readVisit, () => null) ??
+    preferred.translation;
   const params = useSearchParams();
   const query = params.toString();
   // A translation that is not on offer is read as the reader's own, and a pane in it is closed.
@@ -261,7 +272,7 @@ export function BibleReader({
 
   // A translation just chosen in a pane, until the address says the same. The address
   // is changed through the router, which may hold the change back while it is busy
-  // (saving the choice refreshes the page behind it); the pane must not wait for that.
+  // (a page refreshing behind it); the pane must not wait for that.
   // So the choice is shown from here at once, with its loading lines if the text is
   // still on its way, and the address catches up.
   const [chosen, setChosen] = useState<Partial<Record<PaneId, TranslationId>>>({});
@@ -292,9 +303,9 @@ export function BibleReader({
   useEffect(() => {
     if (location) return;
     const saved = readSavedLocation() ?? firstLocation;
-    void loadChapter(preferred.translation, saved.book, saved.chapter).catch(() => {});
+    void loadChapter(own, saved.book, saved.chapter).catch(() => {});
     router.replace(readerHref(saved), { scroll: false });
-  }, [location, router, preferred.translation]);
+  }, [location, router, own]);
 
   // One place has one address: an address that says it another way is rewritten.
   const canonical = location ? readerHref(location).split("?")[1] : null;
@@ -316,7 +327,7 @@ export function BibleReader({
     const secondPlace = second ? `${second.book}.${second.chapter}` : "";
     return {
       primary: {
-        translation: chosen.primary ?? location.translation ?? preferred.translation,
+        translation: chosen.primary ?? location.translation ?? own,
         place: location,
       },
       beside:
@@ -331,7 +342,7 @@ export function BibleReader({
             }
           : null,
     };
-  }, [location, preferred.translation, besideVerse, roomForTwo, chosen]);
+  }, [location, own, besideVerse, roomForTwo, chosen]);
   const current = panes ? (panes[active] ?? panes.primary) : null;
   const language = (id: TranslationId) => allTranslations[id].language;
 
@@ -397,19 +408,19 @@ export function BibleReader({
 
   /**
    * Reads a pane in another translation: the same book, chapter, and verse,
-   * with no request for the page. Chosen in the first pane it is also saved as
-   * the account's own translation, and taken back here if the server will not
-   * have it. Nothing marked in either translation is touched.
+   * with no request for the page. It is a view: the first pane's choice is
+   * remembered for this visit (`saveSessionTranslation`), and the account's
+   * own translation, chosen in Settings, is never written. Nothing marked in
+   * either translation is touched.
    */
-  function changeTranslation(pane: PaneId, id: TranslationId, remember = true) {
+  function changeTranslation(pane: PaneId, id: TranslationId) {
     if (!location || !panes) return;
-    const before = readerHref(location);
     const next: ReaderLocation =
       pane === "beside" && location.beside
         ? { ...location, beside: { ...location.beside, translation: id } }
         : { ...location, translation: id };
     const after = readerHref(next);
-    if (after === before) return;
+    if (after === readerHref(location)) return;
     // Shown at once, from the reader's own state; the address follows.
     setChosen((current) => ({ ...current, [pane]: id }));
     // With no state of its own, as the moves are: handed the router's state back, the
@@ -418,18 +429,7 @@ export function BibleReader({
     // The other text is seen to take the first one's place.
     setArrivals((sides) => ({ ...sides, [pane]: "swap" }));
     setAnnouncement(t.nowReading(allTranslations[id].short));
-    if (pane !== "primary" || !remember || local) return;
-    void setBibleTranslation(id)
-      .catch(() => ({ ok: false, message: t.translationNotSaved }))
-      .then((result) => {
-        if (result.ok) return;
-        // Refused: the text goes back to what it was, if nothing has moved since.
-        setChosen(({ beside }) => (beside ? { beside } : {}));
-        if (window.location.pathname + window.location.search === after) {
-          window.history.replaceState(null, "", before);
-        }
-        toast({ message: result.message });
-      });
+    if (pane === "primary") saveSessionTranslation(id);
   }
 
   /** Opens a second pane on the chapter being read, in the other translation where there is one. */
@@ -478,8 +478,7 @@ export function BibleReader({
       arrival: arrivals[pane],
       moves: moves[pane],
       onGo: (to: ReaderLocation, how?: Arrival) => go(pane, to, how),
-      onTranslation: (id: TranslationId, remember?: boolean) =>
-        changeTranslation(pane, id, remember),
+      onTranslation: (id: TranslationId) => changeTranslation(pane, id),
       onBrowse: () => {
         setTouched(pane);
         setSheetOpen(true);
@@ -533,7 +532,8 @@ export function BibleReader({
 
   return (
     <LocalReading.Provider value={local}>
-      <div className="flex min-h-[calc(100dvh-var(--bar-h))] flex-1">
+      {/* Never under the notch or the island when the phone is on its side. */}
+      <div className="flex min-h-[calc(100dvh-var(--bar-h))] flex-1 pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
         <aside
           id={sidebarId}
           aria-label={t.navigation}
@@ -553,7 +553,7 @@ export function BibleReader({
             </p>
             <ReaderNavigator
               location={current?.place ?? null}
-              translation={current?.translation ?? preferred.translation}
+              translation={current?.translation ?? own}
               onGo={(to) => go(active, to)}
               navigation={navigation}
             />
@@ -674,14 +674,14 @@ export function BibleReader({
               <div className="min-w-0">
                 <DialogTitle>{t.bible}</DialogTitle>
                 <DialogDescription>
-                  {allTranslations[current?.translation ?? preferred.translation].name}
+                  {allTranslations[current?.translation ?? own].name}
                 </DialogDescription>
               </div>
               <DialogClose label={t.closeNavigation} />
             </div>
             <ReaderNavigator
               location={current?.place ?? null}
-              translation={current?.translation ?? preferred.translation}
+              translation={current?.translation ?? own}
               onGo={(to) => go(active, to)}
               navigation={navigation}
             />
@@ -835,8 +835,8 @@ type ReaderPaneProps = {
   /** Changes when the verse already shown is gone to again. */
   moves: number;
   onGo: (location: ReaderLocation, how?: Arrival) => void;
-  /** Reads this pane in another translation. `remember` false leaves the account's own as it is. */
-  onTranslation: (translation: TranslationId, remember?: boolean) => void;
+  /** Reads this pane in another translation. */
+  onTranslation: (translation: TranslationId) => void;
   onBrowse: () => void;
   origin?: ReaderOrigin;
   /** True beside another pane: this one fills its column and scrolls by itself. */
@@ -1318,7 +1318,7 @@ function ChapterView({
             <button
               key={other.translation}
               type="button"
-              onClick={() => onTranslation(other.translation, false)}
+              onClick={() => onTranslation(other.translation)}
               className="rounded-sm font-medium link-underline hover:text-foreground"
             >
               {t.elsewhere(

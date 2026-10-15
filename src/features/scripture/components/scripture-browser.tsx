@@ -20,7 +20,8 @@ import {
   type ScriptureReference,
 } from "../reference";
 import { searchTips, type SearchScope } from "../search";
-import { translations } from "../translations";
+import { readSessionTranslation, saveSessionTranslation } from "../reader-location";
+import { translations, type TranslationId } from "../translations";
 import { useBibleSearch } from "../use-bible-search";
 import { useChapter } from "../use-chapter";
 import { PassageError, PassageSkeleton, PassageText } from "./passage-text";
@@ -49,8 +50,11 @@ type ScriptureBrowserProps = {
    * idea, attaching always returns to it.
    */
   besideIdea?: boolean;
-  /** The header: the surface supplies its own title and close or back control. */
-  header: React.ReactNode;
+  /**
+   * The header: the surface supplies its own title and close or back control,
+   * given the translation being read.
+   */
+  header: (translation: TranslationId) => React.ReactNode;
   onDone: () => void;
   className?: string;
 };
@@ -74,8 +78,9 @@ const range = (from: number, to: number) =>
  * one again to unselect it; with none chosen the selection is the whole
  * chapter.
  *
- * The text is read in the account's own translation. What is chosen is a
- * reference, which is numbers, so it is the same passage in any translation.
+ * The text is read in the translation last read in this visit, or the
+ * account's own, and another can be chosen here to read in. What is chosen is
+ * a reference, which is numbers, so it is the same passage in any translation.
  */
 export function ScriptureBrowser({
   initial,
@@ -89,7 +94,12 @@ export function ScriptureBrowser({
   const t = useT("scripture").panel;
   const n = useT("scripture").navigator;
   const locale = useLocale();
-  const { translation } = useReading();
+  const reading = useReading();
+  // A view, as in the reader: it opens in the translation last read in this visit, or
+  // the account's own, and a choice here is remembered for the visit and nothing more.
+  const [translation, setTranslation] = useState<TranslationId>(
+    () => readSessionTranslation(reading.translations) ?? reading.translation,
+  );
   const textLanguage = translations[translation].language;
   const bookGroups: SelectGroup[] = useMemo(() => {
     const books = booksIn(locale).map((book) => ({ value: String(book.id), label: book.name }));
@@ -196,7 +206,17 @@ export function ScriptureBrowser({
   }
 
   function search(query: string, scope: SearchScope, offset = 0) {
-    if (runSearch(query, scope, offset)) setView("results");
+    // A further page comes from the translation the first did; a new search, from the one being read.
+    const within = offset > 0 ? results?.translation : translation;
+    if (runSearch(query, scope, offset, within)) setView("results");
+  }
+
+  function chooseTranslation(next: TranslationId) {
+    if (next === translation) return;
+    setTranslation(next);
+    saveSessionTranslation(next);
+    // Results quote the text they were found in; a new search looks in this one.
+    setView("read");
   }
 
   const atStart = book === 1 && chapter === 1;
@@ -216,7 +236,7 @@ export function ScriptureBrowser({
   return (
     // `min-w-0`: beside the idea it is a flex item, and must narrow with the dialog.
     <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)}>
-      {header}
+      {header(translation)}
 
       <div className="space-y-3 border-b px-4 pb-4 sm:px-5">
         <form
@@ -427,6 +447,19 @@ export function ScriptureBrowser({
           <>
             <div className="mb-3 flex items-center justify-between gap-3 px-2">
               <h3 className="font-display text-lg leading-snug font-medium">{place}</h3>
+              {reading.translations.length > 1 && (
+                // The translation this is read in. Choosing another keeps the place and the verses chosen.
+                <Select
+                  label={t.translation}
+                  value={translation}
+                  onChange={(id) => chooseTranslation(id as TranslationId)}
+                  options={reading.translations.map((id) => ({
+                    value: id,
+                    label: translations[id].short,
+                  }))}
+                  className="ml-auto h-8 w-[5.25rem] text-xs font-medium pointer-coarse:h-11"
+                />
+              )}
               {results && (
                 <Button
                   type="button"

@@ -246,3 +246,42 @@ export function saveLocation({ book, chapter }: ReaderLocation) {
     // Private browsing, or storage refused: the place lasts for this page.
   }
 }
+
+/**
+ * The translation last read in this visit, in the reader or the Scripture
+ * Panel. It is a view, never the account's translation, which is chosen only
+ * in Settings: kept in `sessionStorage`, so it lasts while the tab or the
+ * installed window is open and is gone when it closes, and an address that
+ * names a translation always wins over it.
+ */
+export const sessionTranslationKey = "bible-translation";
+
+const sessionListeners = new Set<() => void>();
+
+/** The visit's translation when it is one on offer, or null. */
+export function readSessionTranslation(offered: readonly TranslationId[]): TranslationId | null {
+  try {
+    const stored = window.sessionStorage.getItem(sessionTranslationKey);
+    return isTranslationId(stored) && offered.includes(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers the translation being read, for the rest of the visit. */
+export function saveSessionTranslation(translation: TranslationId) {
+  try {
+    window.sessionStorage.setItem(sessionTranslationKey, translation);
+  } catch {
+    // Private browsing, or storage refused: the choice lasts for this page.
+  }
+  sessionListeners.forEach((notify) => notify());
+}
+
+/** For `useSyncExternalStore`: a choice made in this tab. */
+export function subscribeSessionTranslation(notify: () => void) {
+  sessionListeners.add(notify);
+  return () => {
+    sessionListeners.delete(notify);
+  };
+}

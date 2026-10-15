@@ -176,7 +176,7 @@ vi.mock("../saved/actions", async () => {
   };
 });
 
-// Saving the translation chosen in the reader: stood in for, recording what it was sent.
+// The account's translation, which the reader must never save: stood in for, to show it is not.
 const preference = vi.hoisted(() => ({
   setBibleTranslation: vi.fn(async (): Promise<{ ok: boolean; message: string }> => ({
     ok: true,
@@ -334,6 +334,7 @@ beforeEach(() => {
     });
   }
   preference.setBibleTranslation.mockReset();
+  window.sessionStorage.clear();
   preference.setBibleTranslation.mockResolvedValue({ ok: true, message: "Saved." });
   vi.stubGlobal("fetch", async (address: string) => {
     // Every request names its translation. The King James is recorded as it always
@@ -2040,7 +2041,7 @@ describe("the translation being read", () => {
     expect(await verse(1)).toBeInTheDocument();
   });
 
-  it("changes in place, keeping the book, the chapter, and the verse, and is saved", async () => {
+  it("changes in place, keeping the book, the chapter, and the verse, for the visit only", async () => {
     showBilingual("/bible?book=43&chapter=3&verse=16");
     await verse(16);
     const pages = requests.length;
@@ -2055,14 +2056,38 @@ describe("the translation being read", () => {
     // The page was not asked for again: only text and marks.
     expect(requests.slice(pages).every((url) => url.startsWith("/api/bible/"))).toBe(true);
     expect(address.replaced).toEqual([]);
-    // It is the account's translation from now on.
-    expect(preference.setBibleTranslation).toHaveBeenCalledExactlyOnceWith("rvg");
+    // A view: remembered for the visit, and the account's own is left to Settings.
+    expect(window.sessionStorage.getItem("bible-translation")).toBe("rvg");
+    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
 
     // And back again, to the same place.
     await chooseTranslation("KJV");
     expect(await verse(16)).toBeInTheDocument();
     expect(here()).toBe("/bible?book=43&chapter=3&verse=16&t=kjv");
-    expect(preference.setBibleTranslation).toHaveBeenLastCalledWith("kjv");
+    expect(window.sessionStorage.getItem("bible-translation")).toBe("kjv");
+    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
+  });
+
+  it("comes back in the translation last read in this visit, until the address names one", async () => {
+    const first = showBilingual("/bible?book=43&chapter=3");
+    await verse(1);
+    await chooseTranslation("RVG");
+    await spanishVerse(1);
+    first.unmount();
+
+    // Left and come back to: the address names no translation.
+    const again = showBilingual("/bible?book=43&chapter=3");
+    expect(await spanishVerse(1)).toBeInTheDocument();
+    again.unmount();
+    // An address that names one wins.
+    const named = showBilingual("/bible?book=43&chapter=3&t=kjv");
+    expect(await verse(1)).toBeInTheDocument();
+    named.unmount();
+
+    // A new visit: nothing remembered, and the account's own again.
+    window.sessionStorage.clear();
+    showBilingual("/bible?book=43&chapter=3", { translation: "kjv" });
+    expect(await verse(1)).toBeInTheDocument();
   });
 
   it("says it is loading at once, before the other text has come", async () => {
@@ -2100,19 +2125,6 @@ describe("the translation being read", () => {
     expect(await spanishVerse(1, 43, 4)).toBeInTheDocument();
     expect(here()).toBe("/bible?book=43&chapter=4&t=rvg");
     expect(heading()).toHaveTextContent("Juan 4");
-  });
-
-  it("goes back to what it was when the choice cannot be saved, and says why", async () => {
-    preference.setBibleTranslation.mockResolvedValue({
-      ok: false,
-      message: "That translation is not available right now.",
-    });
-    showBilingual("/bible?book=43&chapter=3");
-    await verse(1);
-    await chooseTranslation("RVG");
-    expect(await screen.findByText("That translation is not available right now.")).toBeVisible();
-    expect(await verse(1)).toBeInTheDocument();
-    expect(here()).toBe("/bible?book=43&chapter=3");
   });
 
   it("names the books in the navigation as the text being read names them", async () => {
@@ -2314,20 +2326,21 @@ describe("reading two side by side", () => {
     expect(here()).toBe("/bible?book=43&chapter=2&beside=rvg.43.4");
   });
 
-  it("changes each pane's translation by itself, and saves only the first pane's", async () => {
+  it("changes each pane's translation by itself, and remembers only the first pane's", async () => {
     showBilingual("/bible?book=43&chapter=3&beside=rvg.43.3");
     await pane("beside").findByText(spanishText(43, 3, 1));
 
     await chooseTranslation("KJV", pane("beside"));
     expect(await pane("beside").findByText(verseText(43, 3, 1))).toBeInTheDocument();
     expect(here()).toBe("/bible?book=43&chapter=3&beside=kjv.43.3");
-    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("bible-translation")).toBeNull();
 
     await chooseTranslation("RVG", pane("primary"));
     expect(await pane("primary").findByText(spanishText(43, 3, 1))).toBeInTheDocument();
     expect(pane("beside").getByText(verseText(43, 3, 1))).toBeInTheDocument();
     expect(here()).toBe("/bible?book=43&chapter=3&t=rvg&beside=kjv.43.3");
-    expect(preference.setBibleTranslation).toHaveBeenCalledExactlyOnceWith("rvg");
+    expect(window.sessionStorage.getItem("bible-translation")).toBe("rvg");
+    expect(preference.setBibleTranslation).not.toHaveBeenCalled();
   });
 
   it("selects and marks in each pane by itself", async () => {

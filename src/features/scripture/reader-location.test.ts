@@ -6,10 +6,14 @@ import {
   parseReaderLocation,
   readerHref,
   readSavedLocation,
+  readSessionTranslation,
   referenceLocation,
   sameChapter,
   savedLocationKey,
   saveLocation,
+  saveSessionTranslation,
+  sessionTranslationKey,
+  subscribeSessionTranslation,
   stepChapter,
 } from "./reader-location";
 import { parseReference } from "./reference";
@@ -303,5 +307,35 @@ describe("a passage and where it was opened from", () => {
     const href = readerHref(referenceLocation(read("Ephesians 2:8-9"), idea));
     expect(href).toBe(`/bible?book=49&chapter=2&verse=8&through=9&idea=${idea}`);
     expect(href).not.toMatch(/kjv|translation|version/i);
+  });
+});
+
+describe("the translation read in this visit", () => {
+  beforeEach(() => window.sessionStorage.clear());
+
+  it("is nothing until one is chosen, and then the one chosen", () => {
+    expect(readSessionTranslation(["kjv", "rvg"])).toBeNull();
+    saveSessionTranslation("rvg");
+    expect(window.sessionStorage.getItem(sessionTranslationKey)).toBe("rvg");
+    expect(readSessionTranslation(["kjv", "rvg"])).toBe("rvg");
+    // Never kept beyond the visit.
+    expect(window.localStorage.getItem(sessionTranslationKey)).toBeNull();
+  });
+
+  it("is not read when it is not on offer or not a translation", () => {
+    saveSessionTranslation("rvg");
+    expect(readSessionTranslation(["kjv"])).toBeNull();
+    window.sessionStorage.setItem(sessionTranslationKey, "niv");
+    expect(readSessionTranslation(["kjv", "rvg"])).toBeNull();
+  });
+
+  it("tells whoever is listening when it changes", () => {
+    const notify = vi.fn();
+    const stop = subscribeSessionTranslation(notify);
+    saveSessionTranslation("kjv");
+    expect(notify).toHaveBeenCalledOnce();
+    stop();
+    saveSessionTranslation("rvg");
+    expect(notify).toHaveBeenCalledOnce();
   });
 });

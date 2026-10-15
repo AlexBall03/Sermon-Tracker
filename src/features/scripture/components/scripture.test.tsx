@@ -2,6 +2,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ReadingProvider } from "@/features/preferences/client";
 import { versesIn } from "../books";
 import { parseReference, type ScriptureReference } from "../reference";
 import { clearChapterCache } from "../use-chapter";
@@ -28,6 +29,7 @@ const hits = [
 
 beforeEach(() => {
   clearChapterCache();
+  window.sessionStorage.clear();
   requests.length = 0;
   failNext = false;
   vi.stubGlobal("fetch", async (address: string) => {
@@ -50,7 +52,7 @@ beforeEach(() => {
         json: async () => ({ total: 2, hits: hits.slice(offset, offset + 1) }),
       };
     }
-    const [book, chapter] = url.split("/").slice(-2).map(Number);
+    const [book, chapter] = url.split("?")[0].split("/").slice(-2).map(Number);
     const verses = Array.from(
       { length: versesIn(book, chapter) },
       (_, index) => `Text of ${book}.${chapter}.${index + 1}`,
@@ -102,7 +104,7 @@ describe("ScriptureBrowser", () => {
         initial={initial}
         attach={{ label: "Add to idea", onAttach }}
         onDone={onDone}
-        header={<h2>Scripture</h2>}
+        header={() => <h2>Scripture</h2>}
       />,
     );
     return { onAttach, onDone, page: within(view.container) };
@@ -119,6 +121,42 @@ describe("ScriptureBrowser", () => {
     expect(requests).toEqual(["/api/bible/43/3"]);
     expect(selection()).toHaveTextContent("John 3:16–18");
     expect(pressed()).toEqual(["16", "17", "18"]);
+  });
+
+  it("reads in another translation for the visit, keeping the place and the verses", async () => {
+    const panel = (
+      <ReadingProvider translation="kjv" translations={["kjv", "rvg"]}>
+        <ScriptureBrowser
+          initial={ref("John 3:16-18")}
+          attach={{ label: "Add to idea", onAttach: vi.fn() }}
+          onDone={vi.fn()}
+          header={(translation) => <h2>{translation}</h2>}
+        />
+      </ReadingProvider>
+    );
+    const view = render(panel);
+    await screen.findByText("Text of 43.3.16");
+    expect(screen.getByRole("heading", { name: "kjv" })).toBeInTheDocument();
+
+    await choose(within(view.container), "Bible translation", "RVG");
+    await waitFor(() => expect(requests).toContain("/api/bible/43/3?t=rvg"));
+    expect(screen.getByRole("heading", { name: "rvg" })).toBeInTheDocument();
+    expect(selection()).toHaveTextContent("John 3:16–18");
+    expect(pressed()).toEqual(["16", "17", "18"]);
+    // Remembered for the visit, so the next panel opens in it.
+    expect(window.sessionStorage.getItem("bible-translation")).toBe("rvg");
+    view.unmount();
+    render(panel);
+    expect(await screen.findByRole("heading", { name: "rvg" })).toBeInTheDocument();
+  });
+
+  it("offers no translation where only one is on offer", async () => {
+    window.sessionStorage.setItem("bible-translation", "rvg");
+    browse(ref("John 3:16"));
+    await screen.findByText("Text of 43.3.16");
+    expect(screen.queryByRole("combobox", { name: "Bible translation" })).not.toBeInTheDocument();
+    // A visit's choice that is not on offer is not read.
+    expect(requests).toEqual(["/api/bible/43/3"]);
   });
 
   it("selects any number of verses, and unselects one that is tapped again", async () => {
@@ -172,7 +210,7 @@ describe("ScriptureBrowser", () => {
         attach={{ label: "Add to idea", onAttach, repeatable }}
         besideIdea={besideIdea}
         onDone={onDone}
-        header={<h2>Scripture</h2>}
+        header={() => <h2>Scripture</h2>}
       />
     );
     const add = () => fireEvent.click(screen.getByRole("button", { name: "Add to idea" }));

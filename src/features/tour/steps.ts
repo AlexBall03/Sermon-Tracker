@@ -21,7 +21,7 @@ export const tourSteps: readonly TourStep[] = [
   {
     id: "preaching",
     href: routes.preachingRecord,
-    // The library's own link to the section; the library's destination if it is not there.
+    // The section's own heading; the library's destination if it is not there.
     wide: ["section-preaching-record", "nav-library"],
     narrow: ["section-preaching-record", "tab-library"],
   },

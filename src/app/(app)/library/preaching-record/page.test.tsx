@@ -198,14 +198,8 @@ describe("the preaching history section", () => {
       "/library",
     );
     expect(screen.getAllByRole("link", { name: "Back to Library" })).toHaveLength(1);
-    const sections = within(screen.getByRole("navigation", { name: "Library sections" }));
-    expect(sections.getByRole("link", { name: "Sermon Ideas" })).toHaveAttribute(
-      "href",
-      "/library/sermon-ideas",
-    );
-    const here = sections.getByRole("link", { name: "Preaching Record" });
-    expect(here).toHaveAttribute("href", "/library/preaching-record");
-    expect(here).toHaveAttribute("aria-current", "page");
+    // The other sections are chosen on the overview, not from here.
+    expect(screen.queryByRole("navigation", { name: "Library sections" })).not.toBeInTheDocument();
   });
 
   it("lists each occasion with what was recorded, and nothing where nothing was", async () => {
@@ -463,10 +457,6 @@ describe("the preaching history section", () => {
     expect(screen.getByRole("link", { name: "Volver a la biblioteca" })).toHaveAttribute(
       "href",
       "/library",
-    );
-    expect(screen.getByRole("link", { name: "Registro de predicación" })).toHaveAttribute(
-      "aria-current",
-      "page",
     );
     expect(screen.getByRole("button", { name: "Registrar predicación" })).toBeVisible();
     expect(screen.getByRole("list", { name: "Tu registro de predicación" })).toBeVisible();

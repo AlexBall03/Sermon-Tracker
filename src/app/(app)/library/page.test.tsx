@@ -256,11 +256,8 @@ describe("SermonIdeasPage", () => {
       "/library",
     );
     expect(screen.getAllByRole("link", { name: "Back to Library" })).toHaveLength(1);
-    expect(
-      within(screen.getByRole("navigation", { name: "Library sections" })).getByRole("link", {
-        name: "Sermon Ideas",
-      }),
-    ).toHaveAttribute("aria-current", "page");
+    // The other sections are chosen on the overview, not from here.
+    expect(screen.queryByRole("navigation", { name: "Library sections" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Nothing here yet" })).toBeVisible();
     expect(screen.getAllByRole("button", { name: "Capture an idea" })[0]).toBeVisible();
     // Nothing to search or filter yet.
