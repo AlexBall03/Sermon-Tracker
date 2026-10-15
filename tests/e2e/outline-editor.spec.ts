@@ -68,11 +68,6 @@ test.describe("outline editor, signed in", () => {
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         ),
       ).toBeLessThanOrEqual(0);
-    const menu = async (name: string, item: string) => {
-      await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: new RegExp(`^${item}`) }).click();
-      await page.keyboard.press("Escape");
-    };
 
     await signIn(page);
 
@@ -162,8 +157,12 @@ test.describe("outline editor, signed in", () => {
       );
       await noOverflow();
 
-      // Moved with the menu: a point with what is under it, renumbered.
-      await menu("I. Grace", "Move down");
+      // Moved from its bar: a point with what is under it, renumbered.
+      await heading("I.").click();
+      await page
+        .getByRole("toolbar", { name: "Options for I. Grace" })
+        .getByRole("button", { name: "Move down" })
+        .click();
       await expect.poll(drawn).toEqual(["I. Peace", "II. Grace", "  A. Unearned", "III. Hope"]);
       // And from the keyboard: Hope goes in under Grace, then back out.
       await heading("III.").focus();

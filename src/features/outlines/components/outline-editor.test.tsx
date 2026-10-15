@@ -128,6 +128,17 @@ async function menu(name: string, item: string) {
   fireEvent.click(await screen.findByRole("menuitem", { name: new RegExp(`^${item}`) }));
 }
 
+/** Selects an entry by its heading, as a click in it does, and gives the bar of options it opens. */
+function select(field: HTMLElement, name: string) {
+  act(() => field.focus());
+  return screen.getByRole("toolbar", { name: `Options for ${name}` });
+}
+
+/** Presses one of the options a point offers once it is selected. */
+function press(label: string, name: string, option: string) {
+  fireEvent.click(within(select(heading(label), name)).getByRole("button", { name: option }));
+}
+
 let revision: number;
 
 beforeEach(() => {
@@ -294,7 +305,11 @@ describe("the outline editor", () => {
       within(introduction).getByRole("textbox", { name: "Introduction: Heading" }),
     ).toHaveFocus();
     expect(introduction.querySelector("[data-grip]")).toBeNull();
-    expect(within(introduction).queryByRole("button", { name: /Actions for/ })).toBeNull();
+    // Selected, it offers notes and a passage, but neither a subpoint nor a move.
+    const options = screen.getByRole("toolbar", { name: "Options for Introduction" });
+    expect(within(options).getByRole("button", { name: "Add notes" })).toBeInTheDocument();
+    expect(within(options).queryByRole("button", { name: "Add subpoint" })).toBeNull();
+    expect(within(options).queryByRole("button", { name: "Move up" })).toBeNull();
     // The points are numbered as before: a section is not counted.
     expect(drawn()[0]).toBe("I. Grace");
 
@@ -305,16 +320,16 @@ describe("the outline editor", () => {
       "conclusion",
     ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete: Introduction" }));
+    await menu("Introduction", "Delete");
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await pause(0);
     expect(screen.getByRole("button", { name: "Add introduction" })).toBeInTheDocument();
     expect(state.removeEntry).toHaveBeenCalledTimes(1);
   });
 
-  it("moves a point with the menu, taking what is under it, and renumbers", async () => {
+  it("moves a point from its bar, taking what is under it, and renumbers", async () => {
     open();
-    await menu("II. Peace", "Move up");
+    press("II.", "II. Peace", "Move up");
     expect(drawn()).toEqual([
       "I. Peace",
       "II. Grace",
@@ -367,24 +382,27 @@ describe("the outline editor", () => {
 
   it("does not offer a move that cannot be made", async () => {
     open();
+    const options = select(heading("I."), "I. Grace");
+    expect(within(options).getByRole("button", { name: "Move up" })).toBeDisabled();
+    expect(within(options).getByRole("button", { name: "Indent" })).toBeDisabled();
+    expect(within(options).getByRole("button", { name: "Outdent" })).toBeDisabled();
+    expect(within(options).getByRole("button", { name: "Move down" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Actions for I. Grace" }));
-    expect(await screen.findByRole("menuitem", { name: /^Move up/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: /^Indent/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: /^Outdent/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: /^Move down/ })).not.toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(await screen.findByRole("menuitem", { name: /^Add point below/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Move to top level" })).not.toBeInTheDocument();
+  });
+
+  it("brings a deep point back to the top level from its menu", async () => {
+    open();
+    await menu("1. By faith", "Move to top level");
+    // Straight after the main point it was under.
+    expect(drawn()).toEqual([
+      "I. Grace",
+      "  A. Unearned",
+      "  B. Unending",
+      "II. By faith",
+      "III. Peace",
+    ]);
   });
 
   it("asks before deleting a point, and says how many go with it", async () => {
@@ -436,6 +454,20 @@ describe("the outline editor", () => {
     expect(drawn()).toEqual(["I. Grace", "II. Peace"]);
     fireEvent.click(screen.getByRole("button", { name: "Expand I. Grace" }));
     expect(drawn()).toHaveLength(5);
+  });
+
+  it("offers to fold everything only once some point has points under it", async () => {
+    open(outline([entry("grace", "point", "Grace", 0), entry("peace", "point", "Peace", 1)]));
+    fireEvent.click(screen.getByRole("button", { name: "More outline actions" }));
+    expect(await screen.findByRole("menuitem", { name: "Delete outline" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Collapse all" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Expand all" })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+
+    fireEvent.keyDown(heading("I."), { key: "Enter", ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "More outline actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Collapse all" }));
+    expect(drawn()).toEqual(["I. Grace", "II. Peace"]);
   });
 
   it("opens a folded point when something is added under it", () => {
@@ -520,7 +552,7 @@ describe("the outline editor", () => {
       message: "Changed elsewhere.",
       revision: 9,
     });
-    await menu("II. Peace", "Move up");
+    press("II.", "II. Peace", "Move up");
     await pause(0);
     expect(state.refresh).toHaveBeenCalledTimes(1);
     expect(state.moveEntry).toHaveBeenCalledTimes(1);
@@ -606,6 +638,12 @@ describe("the outline editor", () => {
       ]),
     );
     const grace = document.querySelector<HTMLElement>('[data-entry-id="grace"]')!;
+    // At rest the passages are tags; selected, they open for change and for reading.
+    expect(within(grace).getByRole("list", { name: "Passages for I. Grace" })).toHaveTextContent(
+      "John 3:16",
+    );
+    expect(within(grace).queryByRole("textbox", { name: "Passages" })).not.toBeInTheDocument();
+    select(heading("I."), "I. Grace");
     expect(within(grace).getByRole("list", { name: "References" })).toHaveTextContent("John 3:16");
     // It leads to the Bible with the way back to this outline, not to an idea.
     expect(
@@ -614,7 +652,7 @@ describe("the outline editor", () => {
 
     const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
     expect(within(peace).queryByRole("list", { name: "References" })).not.toBeInTheDocument();
-    await menu("II. Peace", "Add passage");
+    press("II.", "II. Peace", "Add passage");
     expect(within(peace).getByRole("textbox", { name: "Passages" })).toBeInTheDocument();
     // Showing the field has changed nothing.
     expect(state.setEntryReferences).not.toHaveBeenCalled();
@@ -633,7 +671,7 @@ describe("the outline editor", () => {
         </ToastProvider>
       </I18nProvider>,
     );
-    await menu("II. Peace", "Add passage");
+    press("II.", "II. Peace", "Add passage");
     const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
     expect(within(peace).getByText("From the sermon")).toBeInTheDocument();
     fireEvent.click(within(peace).getByRole("button", { name: "Add John 3:16" }));
@@ -646,7 +684,7 @@ describe("the outline editor", () => {
 
   it("adds a typed passage through the store, saved at once with the entry's revision", async () => {
     open();
-    await menu("II. Peace", "Add passage");
+    press("II.", "II. Peace", "Add passage");
     const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
     const box = within(peace).getByRole("textbox", { name: "Passages" });
     fireEvent.change(box, { target: { value: "John 3:16" } });
@@ -670,6 +708,7 @@ describe("the outline editor", () => {
   it("removes a passage, and says a save of passages failed without losing them", async () => {
     open(outline([{ ...entry("grace", "point", "Grace", 0), references: [john316, psalm23] }]));
     state.setEntryReferences.mockRejectedValueOnce(new Error("network"));
+    select(heading("I."), "I. Grace");
     fireEvent.click(screen.getByRole("button", { name: "Remove John 3:16" }));
     await pause(0);
     expect(screen.getByText("Save failed")).toBeInTheDocument();
@@ -689,6 +728,7 @@ describe("the outline editor", () => {
       chapterStart: index + 1,
     }));
     open(outline([{ ...entry("grace", "point", "Grace", 0), references: many }]));
+    select(heading("I."), "I. Grace");
     const box = screen.getByRole("textbox", { name: "Passages" });
     fireEvent.change(box, { target: { value: "John 3:16" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -705,6 +745,7 @@ describe("the outline editor", () => {
       message: "Changed elsewhere.",
       entry: { id: "grace", title: "Grace", notes: null, revision: 2, references: [psalm23] },
     });
+    select(heading("I."), "I. Grace");
     fireEvent.click(screen.getByRole("button", { name: "Remove John 3:16" }));
     await pause(0);
     expect(screen.getByText("Needs your attention")).toBeInTheDocument();
@@ -719,7 +760,11 @@ describe("the outline editor", () => {
 
   it("lets the introduction hold passages too", async () => {
     open(outline([entry("intro", "introduction", "Opening")]));
-    fireEvent.click(screen.getByRole("button", { name: "Add passage" }));
+    const options = select(
+      screen.getByRole("textbox", { name: "Introduction: Heading" }),
+      "Introduction",
+    );
+    fireEvent.click(within(options).getByRole("button", { name: "Add passage" }));
     const box = screen.getByRole("textbox", { name: "Passages" });
     fireEvent.change(box, { target: { value: "Psalm 23" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -757,7 +802,9 @@ describe("the outline editor", () => {
     expect(drawn().at(-1)).toBe("III. Pray without ceasing");
     const made = document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`)!;
     expect(within(made).getByRole("textbox", { name: /^Notes for/ })).toHaveValue("Its own notes");
-    expect(within(made).getByRole("list", { name: "References" })).toHaveTextContent("John 3:16");
+    expect(
+      within(made).getByRole("list", { name: "Passages for III. Pray without ceasing" }),
+    ).toHaveTextContent("John 3:16");
     // It says where it came from, and leads there. Nothing was sent to change the point.
     expect(
       within(made).getByRole("link", {
@@ -819,6 +866,108 @@ describe("the outline editor", () => {
     expect(state.addEntry).not.toHaveBeenCalled();
   });
 
+  it("selects a point with a tap, without typing, and puts its options beneath it", () => {
+    open();
+    const row = (id: string) => document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`)!;
+    // On a touch screen the heading of a point that is not selected is covered.
+    const cover = (id: string) =>
+      row(id).querySelector<HTMLElement>('[data-field="title"]')!.nextElementSibling as HTMLElement;
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+
+    fireEvent.click(cover("peace"));
+    expect(screen.getByRole("toolbar", { name: "Options for II. Peace" })).toBeInTheDocument();
+    expect(heading("II.")).not.toHaveFocus();
+    // Selected, its heading is uncovered: the next tap types.
+    expect(row("peace").querySelector('[data-field="title"]')!.nextElementSibling).toBeNull();
+
+    // One at a time.
+    fireEvent.click(cover("grace"));
+    expect(screen.getAllByRole("toolbar")).toHaveLength(1);
+    expect(screen.getByRole("toolbar", { name: "Options for I. Grace" })).toBeInTheDocument();
+
+    // With a mouse, the click selects and puts the caret in what was clicked, at its end.
+    const peaceCover = cover("peace");
+    fireEvent.pointerDown(peaceCover, { pointerType: "mouse" });
+    fireEvent.click(peaceCover);
+    expect(screen.getByRole("toolbar", { name: "Options for II. Peace" })).toBeInTheDocument();
+    expect(heading("II.")).toHaveFocus();
+    expect((heading("II.") as HTMLInputElement).selectionStart).toBe("Peace".length);
+
+    // A press elsewhere puts the options away.
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+  });
+
+  it("selects the point being typed in, and adds its notes from the bar without taking the caret", () => {
+    open();
+    act(() => heading("II.").focus());
+    const bar = screen.getByRole("toolbar", { name: "Options for II. Peace" });
+    const add = within(bar).getByRole("button", { name: "Add notes" });
+    // Pressed without taking the focus, so a phone's keyboard stays up.
+    expect(fireEvent.mouseDown(add)).toBe(false);
+    expect(heading("II.")).toHaveFocus();
+    fireEvent.click(add);
+    expect(screen.getByRole("textbox", { name: "Notes for II. Peace" })).toHaveFocus();
+    // Once there are notes the bar no longer offers them.
+    expect(within(bar).queryByRole("button", { name: "Add notes" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Add passage" }));
+    const peace = document.querySelector<HTMLElement>('[data-entry-id="peace"]')!;
+    expect(within(peace).getByRole("textbox", { name: "Passages" })).toBeInTheDocument();
+    expect(state.setEntryReferences).not.toHaveBeenCalled();
+  });
+
+  it("moves a point from its bar, keeps it selected, and offers only the moves it can make", async () => {
+    open();
+    act(() => heading("II.").focus());
+    const bar = () => screen.getByRole("toolbar");
+    expect(within(bar()).getByRole("button", { name: "Move down" })).toBeDisabled();
+    expect(within(bar()).getByRole("button", { name: "Outdent" })).toBeDisabled();
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Move up" }));
+    expect(drawn()[0]).toBe("I. Peace");
+    expect(bar()).toHaveAccessibleName("Options for I. Peace");
+    expect(within(bar()).getByRole("button", { name: "Move up" })).toBeDisabled();
+    await pause(0);
+    expect(state.moveEntry).toHaveBeenCalledWith("peace", {
+      parentId: null,
+      position: 0,
+      expectedRevision: 7,
+    });
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Add subpoint" }));
+    expect(drawn().slice(0, 2)).toEqual(["I. Peace", "  A."]);
+    const made = document.querySelectorAll<HTMLElement>("li[data-entry-id]")[1];
+    expect(made.querySelector('[data-field="title"]')).toHaveFocus();
+    // The new point is the one being worked on now.
+    expect(within(made).getByRole("toolbar")).toBeInTheDocument();
+  });
+
+  it("is one stop for Tab, moved along with the arrows, and Escape goes back to the heading", () => {
+    open();
+    act(() => heading("A.").focus());
+    const bar = screen.getByRole("toolbar", { name: "Options for A. Unearned" });
+    const reachable = within(bar)
+      .getAllByRole("button")
+      .filter((button) => button.tabIndex === 0);
+    expect(reachable).toHaveLength(1);
+    // A. already has notes: the first offer is its passage.
+    expect(reachable[0]).toHaveAccessibleName("Add passage");
+
+    act(() => reachable[0].focus());
+    fireEvent.keyDown(reachable[0], { key: "ArrowRight" });
+    expect(within(bar).getByRole("button", { name: "Add subpoint" })).toHaveFocus();
+    // "Move up" cannot be pressed (A. is first), so the arrow passes over it.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(within(bar).getByRole("button", { name: "Move down" })).toHaveFocus();
+    expect(within(bar).getByRole("button", { name: "Move down" })).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(heading("A.")).toHaveFocus();
+    fireEvent.keyDown(heading("A."), { key: "Escape" });
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+  });
+
   it("reads in Spanish", async () => {
     open(outline(), "es");
     expect(screen.getByText("Guardado")).toBeInTheDocument();
@@ -827,8 +976,9 @@ describe("the outline editor", () => {
     expect(screen.getByRole("textbox", { name: "Encabezado, II." })).toHaveValue("Peace");
     fireEvent.click(screen.getByRole("button", { name: "Contraer I. Grace" }));
     expect(screen.getByText("3 puntos plegados")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Acciones de II. Peace" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /^Subir/ }));
+    act(() => screen.getByRole("textbox", { name: "Encabezado, II." }).focus());
+    const options = screen.getByRole("toolbar", { name: "Opciones de II. Peace" });
+    fireEvent.click(within(options).getByRole("button", { name: "Subir" }));
     expect(screen.getByText("Peace se movió. Ahora es I.")).toBeInTheDocument();
   });
 });

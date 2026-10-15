@@ -62,9 +62,8 @@ import { outlineLimits, type SectionType } from "../model";
 import { numberOutline } from "../numbering";
 import { orderEntries, subtreeIds } from "../tree";
 import { AddSavedPoint, type SavedPointPlace, type SavedPointTarget } from "./add-saved-point";
-import { EntryPassages } from "./entry-passages";
 import { NumberingDialog } from "./numbering-dialog";
-import { ConflictPanel, OutlineRow, type RowActions } from "./outline-row";
+import { OutlineRow, type RowActions } from "./outline-row";
 import { SaveStatus } from "./save-status";
 import { useOutlineDrag } from "./use-outline-drag";
 
@@ -114,8 +113,9 @@ type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, num
  * The page may send the outline again (after a change of shape, or when the
  * store asks for it). The store decides what to take from it.
  *
- * Points are moved three ways that all end in the store's `move`: dragging by
- * the grip, the row menu, and Alt+Shift with an arrow in a heading.
+ * Points are moved four ways that all end in the store's `move`: dragging by
+ * the grip, the row menu, the selected point's bar, and Alt+Shift with an arrow
+ * in a heading.
  *
  * A saved point idea is placed through the store's `addPoint`, as a copy, and
  * an entry's passages are changed through its `setReferences`: both go through
@@ -204,6 +204,8 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
   const [deleting, setDeleting] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  // The point whose options are shown under it. Only the screen's; nothing is saved.
+  const [selected, setSelected] = useState<string | null>(null);
 
   const placed = useMemo(() => orderEntries(state.rows), [state.rows]);
   const labels = useMemo(() => numberOutline(placed, state.numbering), [placed, state.numbering]);
@@ -242,6 +244,39 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
     () => shown(points, collapsed, drag.dragging?.id ?? null),
     [points, collapsed, drag.dragging?.id],
   );
+  // An entry that was removed or folded away is selected no longer.
+  const current =
+    selected &&
+    (visible.some((point) => point.id === selected) ||
+      selected === introduction?.id ||
+      selected === conclusion?.id)
+      ? selected
+      : null;
+
+  // A press anywhere but the selected point, or Escape with nothing focused, puts its options away.
+  useEffect(() => {
+    if (!current) return;
+    const onPress = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest(
+          `[data-entry-id="${current}"], [role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]`,
+        )
+      ) {
+        return;
+      }
+      setSelected(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && document.activeElement === document.body) setSelected(null);
+    };
+    document.addEventListener("pointerdown", onPress, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPress, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [current]);
 
   // Focus goes where the last action asked, once that row is on the page.
   const focus = useRef<Focus | null>(null);
@@ -312,6 +347,14 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
       if (target.parentId) expand(target.parentId);
       if (within) {
         focus.current = { id, field: "title", caret: [active.selectionStart, active.selectionEnd] };
+      } else {
+        // Pressed again and again from its bar or menu, a point is followed and never lost from sight.
+        requestAnimationFrame(() => {
+          const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+          container.current
+            ?.querySelector(`[data-entry-id="${id}"]`)
+            ?.scrollIntoView?.({ block: "nearest", behavior: smooth ? "smooth" : "auto" });
+        });
       }
       announceMove(id);
     },
@@ -358,10 +401,12 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
       });
     },
     openNotes(id: string) {
+      setSelected(id);
       setNotesOpen((open) => new Set(open).add(id));
       focus.current = { id, field: "notes" };
     },
     openPassages(id: string) {
+      setSelected(id);
       setPassagesOpen((open) => new Set(open).add(id));
     },
     addSavedPoint(id: string) {
@@ -402,6 +447,7 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
       openPassages: (id) => latest.current.openPassages(id),
       addSavedPoint: (id) => latest.current.addSavedPoint(id),
       toggle: (id) => latest.current.toggle(id),
+      select: setSelected,
     }),
     [store, startDrag],
   );
@@ -458,6 +504,7 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
   }
 
   const parents = points.filter((point) => (nested.get(point.id) ?? 0) > 0);
+  const folding = parents.length > 0;
   const full = state.rows.length >= outlineLimits.entries;
 
   return (
@@ -474,44 +521,51 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
             <ListOrdered aria-hidden />
             {t.numbering}
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label={t.more}
-              className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 data-popup-open:bg-accent data-popup-open:text-foreground pointer-coarse:size-11"
-            >
-              <MoreHorizontal className="size-4" aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                disabled={parents.every((point) => !collapsed.has(point.id))}
-                onClick={() => storeCollapsed(snapshot.id, [])}
+          {(folding || !device) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={t.more}
+                className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 data-popup-open:bg-accent data-popup-open:text-foreground pointer-coarse:size-11"
               >
-                <ChevronsUpDown aria-hidden />
-                {t.expandAll}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={parents.every((point) => collapsed.has(point.id))}
-                onClick={() =>
-                  storeCollapsed(
-                    snapshot.id,
-                    parents.map((point) => point.id),
-                  )
-                }
-              >
-                <ChevronsDownUp aria-hidden />
-                {t.collapseAll}
-              </DropdownMenuItem>
-              {!device && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={askToDeleteOutline}>
-                    <Trash2 aria-hidden />
-                    {t.deleteOutline}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <MoreHorizontal className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {/* Folding is offered only once some point has points under it to fold. */}
+                {folding && (
+                  <>
+                    <DropdownMenuItem
+                      disabled={parents.every((point) => !collapsed.has(point.id))}
+                      onClick={() => storeCollapsed(snapshot.id, [])}
+                    >
+                      <ChevronsUpDown aria-hidden />
+                      {t.expandAll}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={parents.every((point) => collapsed.has(point.id))}
+                      onClick={() =>
+                        storeCollapsed(
+                          snapshot.id,
+                          parents.map((point) => point.id),
+                        )
+                      }
+                    >
+                      <ChevronsDownUp aria-hidden />
+                      {t.collapseAll}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {!device && (
+                  <>
+                    {folding && <DropdownMenuSeparator />}
+                    <DropdownMenuItem variant="destructive" onClick={askToDeleteOutline}>
+                      <Trash2 aria-hidden />
+                      {t.deleteOutline}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -584,32 +638,33 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
 
       <div
         ref={container}
-        className="mt-6 max-w-4xl [--outline-cap:45%] [--outline-step:1rem] sm:[--outline-step:1.75rem]"
+        className="mt-5 max-w-3xl [--outline-cap:45%] [--outline-step:1rem] sm:[--outline-step:1.75rem]"
       >
         <SectionBlock
           type="introduction"
           row={introduction}
+          selected={introduction !== undefined && current === introduction.id}
+          notesOpen={introduction !== undefined && notesOpen.has(introduction.id)}
+          passagesOpen={introduction !== undefined && passagesOpen.has(introduction.id)}
           conflict={introduction && state.conflicts[introduction.id]}
           outlineId={snapshot.id}
           sermonReferences={sermonReferences}
-          passagesOpen={introduction !== undefined && passagesOpen.has(introduction.id)}
-          onOpenPassages={handlers.openPassages}
-          store={store}
+          actions={actions}
           disabled={full}
           onAdd={() => added(store.addSection("introduction"))}
-          onRemove={handlers.remove}
         />
 
-        <section aria-labelledby="outline-points" className="mt-6 border-t pt-5">
-          <h2 id="outline-points" className="text-lg font-semibold">
+        {/* The points read as the outline does: numbered, under no heading of their own on the page. */}
+        <section aria-labelledby="outline-points" className="mt-3 border-t pt-3">
+          <h2 id="outline-points" className="sr-only">
             {t.sections.points}
           </h2>
           {points.length === 0 ? (
-            <p className="mt-3 rounded-xl border border-dashed border-input px-4 py-6 text-center text-sm text-muted-foreground">
+            <p className="mt-1 rounded-xl border border-dashed border-input px-4 py-6 text-center text-sm text-muted-foreground">
               {t.empty}
             </p>
           ) : (
-            <div ref={list} className="relative mt-2">
+            <div ref={list} className="relative">
               <ol>
                 {visible.map((point) => (
                   <OutlineRow
@@ -629,6 +684,7 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
                     sermonReferences={sermonReferences}
                     moves={possibleMoves(point, beside.get(point.parentId) ?? 1)}
                     dragging={drag.dragging?.id === point.id}
+                    selected={current === point.id}
                     conflict={state.conflicts[point.id]}
                     actions={actions}
                   />
@@ -646,10 +702,10 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
               )}
             </div>
           )}
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-1 pl-10 pointer-coarse:pl-6">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={full}
               onClick={() => added(store.addPoint(null))}
@@ -678,15 +734,15 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
         <SectionBlock
           type="conclusion"
           row={conclusion}
+          selected={conclusion !== undefined && current === conclusion.id}
+          notesOpen={conclusion !== undefined && notesOpen.has(conclusion.id)}
+          passagesOpen={conclusion !== undefined && passagesOpen.has(conclusion.id)}
           conflict={conclusion && state.conflicts[conclusion.id]}
           outlineId={snapshot.id}
           sermonReferences={sermonReferences}
-          passagesOpen={conclusion !== undefined && passagesOpen.has(conclusion.id)}
-          onOpenPassages={handlers.openPassages}
-          store={store}
+          actions={actions}
           disabled={full}
           onAdd={() => added(store.addSection("conclusion"))}
-          onRemove={handlers.remove}
         />
       </div>
 
@@ -740,46 +796,65 @@ function possibleMoves(point: Point, beside: number) {
     .join(",");
 }
 
-const sectionField =
-  "w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 transition-[border-color,background-color,box-shadow] duration-150 outline-none placeholder:text-muted-foreground/70 hover:border-input focus-visible:border-ring focus-visible:bg-surface focus-visible:shadow-focus";
-
 /**
  * The introduction or the conclusion: a section of the sermon and not a
  * point, so it has a name and no number, and it can be added or removed but
- * never moved. Where there is none, the way to add one.
+ * never moved. It is drawn as a point is, and selected as one is. Where there
+ * is none, the way to add one.
  */
 function SectionBlock({
   type,
   row,
+  selected,
+  notesOpen,
+  passagesOpen,
   conflict,
   outlineId,
   sermonReferences,
-  passagesOpen,
-  onOpenPassages,
-  store,
+  actions,
   disabled,
   onAdd,
-  onRemove,
 }: {
   type: SectionType;
   row: EditorRow | undefined;
+  selected: boolean;
+  notesOpen: boolean;
+  passagesOpen: boolean;
   conflict: Conflict | undefined;
   outlineId: string;
   sermonReferences?: readonly ScriptureReference[];
-  passagesOpen: boolean;
-  onOpenPassages: (id: string) => void;
-  store: OutlineStore;
+  actions: RowActions;
   disabled: boolean;
   onAdd: () => void;
-  onRemove: (id: string) => void;
 }) {
   const t = useT("outlines").editor;
-  const name = t.sections[type];
   const first = type === "introduction";
 
-  if (!row) {
-    return (
-      <div className={cn(!first && "mt-6 border-t pt-5")}>
+  return (
+    <div className={cn(!first && "mt-3 border-t pt-3")}>
+      {row ? (
+        <OutlineRow
+          id={row.id}
+          title={row.title}
+          notes={row.notes}
+          section={type}
+          depth={0}
+          label=""
+          nested={0}
+          collapsed={false}
+          notesOpen={notesOpen}
+          references={row.references}
+          passagesOpen={passagesOpen}
+          sourcePointId={null}
+          outlineId={outlineId}
+          sermonReferences={sermonReferences}
+          moves=""
+          dragging={false}
+          selected={selected}
+          conflict={conflict}
+          actions={actions}
+        />
+      ) : (
         <button
           type="button"
           disabled={disabled}
@@ -789,91 +864,7 @@ function SectionBlock({
           <Plus className="size-4" aria-hidden />
           {first ? t.addIntroduction : t.addConclusion}
         </button>
-      </div>
-    );
-  }
-
-  const left = outlineLimits.notes - [...row.notes].length;
-  return (
-    <section
-      data-entry-id={row.id}
-      aria-labelledby={`outline-${type}`}
-      className={cn(!first && "mt-6 border-t pt-5")}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h2 id={`outline-${type}`} className="text-lg font-semibold">
-          {name}
-        </h2>
-        <button
-          type="button"
-          aria-label={`${t.row.delete}: ${name}`}
-          onClick={() => onRemove(row.id)}
-          className="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:size-11"
-        >
-          <Trash2 className="size-4" aria-hidden />
-        </button>
-      </div>
-      <div className="mt-1 -ml-2">
-        <input
-          data-field="title"
-          value={row.title}
-          onChange={(event) => store.setTitle(row.id, event.target.value)}
-          onBlur={() => store.blur(row.id)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            event.currentTarget.parentElement
-              ?.querySelector<HTMLElement>('[data-field="notes"]')
-              ?.focus();
-          }}
-          placeholder={t.placeholders[type]}
-          aria-label={`${name}: ${t.heading}`}
-          maxLength={outlineLimits.title}
-          autoComplete="off"
-          className={cn(sectionField, "h-9 font-serif text-[1.0625rem] pointer-coarse:h-11")}
-        />
-        <textarea
-          data-field="notes"
-          value={row.notes}
-          onChange={(event) => store.setNotes(row.id, event.target.value)}
-          onBlur={() => store.blur(row.id)}
-          placeholder={t.placeholders.notes}
-          aria-label={`${name}: ${t.notes}`}
-          maxLength={outlineLimits.notes}
-          rows={1}
-          className={cn(
-            sectionField,
-            "mt-0.5 block field-sizing-content min-h-8 resize-none py-1.5 text-base leading-relaxed text-muted-foreground focus-visible:text-foreground md:text-sm md:leading-relaxed",
-          )}
-        />
-        {left <= 200 && (
-          <p className="px-2 text-right text-xs text-muted-foreground tabular-nums">
-            {t.remaining(left)}
-          </p>
-        )}
-        {passagesOpen || row.references.length > 0 ? (
-          <EntryPassages
-            entryId={row.id}
-            outlineId={outlineId}
-            references={row.references}
-            suggested={sermonReferences}
-            setReferences={store.setReferences}
-            className="mt-1 mb-2 ml-2 animate-menu"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => onOpenPassages(row.id)}
-            className="mb-1 ml-2 inline-flex min-h-7 items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-9"
-          >
-            <Plus className="size-3.5" aria-hidden />
-            {t.addPassage}
-          </button>
-        )}
-        {conflict && (
-          <ConflictPanel id={row.id} conflict={conflict} resolve={store.resolveConflict} />
-        )}
-      </div>
-    </section>
+      )}
+    </div>
   );
 }

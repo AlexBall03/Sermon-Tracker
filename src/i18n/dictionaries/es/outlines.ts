@@ -186,6 +186,7 @@ export const outlines: Untranslated<typeof english> = {
     addNotes: "Añadir notas",
     headingOf: (label: string) => `Encabezado, ${label}`,
     notesOf: (name: string) => `Notas de ${name}`,
+    passagesOf: (name: string) => `Pasajes de ${name}`,
     placeholders: {
       point: "Encabezado",
       introduction: "Cómo empieza",
@@ -212,6 +213,12 @@ export const outlines: Untranslated<typeof english> = {
       addPassage: "Añadir pasaje",
       addSavedPoint: "Añadir desde un punto guardado",
       delete: "Eliminar",
+      bar: {
+        label: (name: string) => `Opciones de ${name}`,
+        notes: "Notas",
+        passage: "Pasaje",
+        subpoint: "Subpunto",
+      },
     },
     savedPoint: {
       title: "Añadir desde un punto guardado",

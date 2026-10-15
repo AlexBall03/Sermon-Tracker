@@ -64,9 +64,10 @@ test.describe("outlines with sermons, the library, and the Bible, signed in", ()
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         ),
       ).toBeLessThanOrEqual(0);
-    const menu = async (name: string, item: string) => {
-      await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: new RegExp(`^${item}`) }).click();
+    /** An entry selected, as a click in its heading does: open in its card, with its options. */
+    const select = async (label: string) => {
+      await heading(label).click();
+      return entry(label).getByRole("toolbar");
     };
     const capture = page.getByRole("dialog", { name: "Capture an idea" });
     /**
@@ -175,7 +176,7 @@ test.describe("outlines with sermons, the library, and the Bible, signed in", ()
       await expect(entry("I.").getByRole("textbox", { name: /^Notes for/ })).toHaveValue(
         "The point's own notes.",
       );
-      await expect(entry("I.").getByRole("list", { name: "References" })).toContainText(
+      await expect(entry("I.").getByRole("list", { name: /^Passages for/ })).toContainText(
         "John 3:16",
       );
       await expect(entry("I.").getByRole("link", { name: /open the saved point/ })).toBeVisible();
@@ -190,7 +191,7 @@ test.describe("outlines with sermons, the library, and the Bible, signed in", ()
       await page.getByRole("button", { name: "Add point", exact: true }).click();
       await expect(heading("II.")).toBeFocused();
       await page.keyboard.type("The shepherd");
-      await menu("II. The shepherd", "Add passage");
+      await (await select("II.")).getByRole("button", { name: "Add passage" }).click();
       const passages = entry("II.").getByRole("textbox", { name: "Passages" });
       await passages.fill("Psalm 23");
       await passages.press("Enter");
@@ -227,12 +228,13 @@ test.describe("outlines with sermons, the library, and the Bible, signed in", ()
       await page.reload();
       await expect(heading("I.")).toHaveValue("Reworded in the outline");
       await expect(heading("II.")).toHaveValue("The shepherd");
-      await expect(entry("II.").getByRole("list", { name: "References" })).toContainText(
+      await expect(entry("II.").getByRole("list", { name: /^Passages for/ })).toContainText(
         "Psalm 23",
       );
       await expect(entry("I.").getByRole("link", { name: /open the saved point/ })).toBeVisible();
 
       // Removing a passage is saved like any other change.
+      await select("II.");
       await entry("II.").getByRole("button", { name: "Remove Psalm 119" }).click();
       await saved();
 
@@ -276,7 +278,7 @@ test.describe("outlines with sermons, the library, and the Bible, signed in", ()
       await remove(point);
       await page.goto(outlineAddress);
       await expect(heading("I.")).toHaveValue("Reworded in the outline");
-      await expect(entry("I.").getByRole("list", { name: "References" })).toContainText(
+      await expect(entry("I.").getByRole("list", { name: /^Passages for/ })).toContainText(
         "John 3:16",
       );
       await expect(entry("I.").getByRole("link", { name: /open the saved point/ })).toHaveCount(0);

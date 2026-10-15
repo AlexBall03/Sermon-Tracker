@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -34,7 +34,7 @@ import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import type { MoveDirection } from "../editor/moves";
 import type { Conflict } from "../editor/store";
-import { outlineLimits } from "../model";
+import { outlineLimits, type SectionType } from "../model";
 import { EntryPassages, type SetReferences } from "./entry-passages";
 
 /** What a row asks of the editor. One object for every row, so a row is drawn again only when it changes. */
@@ -54,6 +54,8 @@ export type RowActions = {
   /** Opens the picker that places a saved point beside this one. */
   addSavedPoint: (id: string) => void;
   toggle: (id: string) => void;
+  /** Makes this the selected entry, open for work with its options beneath; null selects none. */
+  select: (id: string | null) => void;
   resolve: (id: string, keep: "mine" | "theirs") => void;
   startDrag: (id: string, event: React.PointerEvent<HTMLElement>) => void;
 };
@@ -62,6 +64,11 @@ type OutlineRowProps = {
   id: string;
   title: string;
   notes: string;
+  /**
+   * The introduction or the conclusion, drawn as a point is but named instead
+   * of numbered, one of each, and never moved. Left out for a point.
+   */
+  section?: SectionType;
   /** 0 for a main point. */
   depth: number;
   /** Its number, worked out and never stored: "II.", "1.2.". Empty where the style has none. */
@@ -82,6 +89,8 @@ type OutlineRowProps = {
   /** The ways it can move, joined by commas: "up,down,indent". */
   moves: string;
   dragging: boolean;
+  /** The entry being worked on: open in a card, with its options beneath. One at a time. */
+  selected: boolean;
   conflict?: Conflict;
   actions: RowActions;
 };
@@ -89,22 +98,37 @@ type OutlineRowProps = {
 /** Past this many levels the indentation stops growing and a small marker says the level instead. */
 export const markedFromDepth = 6;
 
-const field =
-  "w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 transition-[border-color,background-color,box-shadow] duration-150 outline-none placeholder:text-muted-foreground/70 hover:border-input focus-visible:border-ring focus-visible:bg-surface focus-visible:shadow-focus";
+/** A heading or notes field: plain text until its entry is selected, a field once it is. */
+const field = (selected: boolean) =>
+  cn(
+    "w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 transition-[border-color,background-color,box-shadow] duration-150 outline-none focus-visible:border-ring focus-visible:shadow-focus",
+    selected
+      ? "placeholder:text-muted-foreground/70 hover:border-input"
+      : "placeholder:text-muted-foreground placeholder:italic",
+  );
 
 /** A character count is shown once the notes are within this many of the limit. */
 const countFrom = 200;
 
 /**
- * One point of the outline: its grip, its fold, its number, its heading, its
- * notes, its passages, and its menu. The heading and notes are edited in
- * place. It holds no state of its own; everything it shows is given, and
- * everything it does is asked of the editor.
+ * One entry of the outline: a point, or the introduction or the conclusion.
+ * At rest it reads as the outline does: its number, its heading, its notes,
+ * and its passages as small tags. Selected, it opens into a card where the
+ * heading and notes are fields, its passages can be changed, and its options
+ * are in a bar beneath. It holds no state of its own beyond its bar's;
+ * everything it shows is given, and everything it does is asked of the editor.
+ *
+ * At rest its words are not yet fields (`SelectCover`): a click with a mouse
+ * selects the entry and puts the caret in what was clicked; on a touch screen
+ * the first tap only selects it, without the keyboard, and a tap on the
+ * heading of the selected entry starts typing. The keyboard reaches the fields
+ * directly, and focusing one selects its entry.
  */
 export const OutlineRow = memo(function OutlineRow({
   id,
   title,
   notes,
+  section,
   depth,
   label,
   nested,
@@ -117,18 +141,44 @@ export const OutlineRow = memo(function OutlineRow({
   sermonReferences,
   moves,
   dragging,
+  selected,
   conflict,
   actions,
 }: OutlineRowProps) {
   const t = useT("outlines").editor;
   const can = new Set(moves ? moves.split(",") : []);
-  const name = [label, title.trim() || t.untitled].filter(Boolean).join(" ");
-  const showNotes = notesOpen || notes !== "";
-  const showPassages = passagesOpen || references.length > 0;
+  const name = section
+    ? t.sections[section]
+    : [label, title.trim() || t.untitled].filter(Boolean).join(" ");
+  // Opened and left empty, notes and passages fold away with the card.
+  const showNotes = notes !== "" || (selected && notesOpen);
+  const showPassages = references.length > 0 || (selected && passagesOpen);
   const left = outlineLimits.notes - [...notes].length;
+  // The bar is drawn from the first time the entry is selected, and stays, so it can fold away.
+  const [barDrawn, setBarDrawn] = useState(selected);
+  if (selected && !barDrawn) setBarDrawn(true);
+
+  /** A tap on an entry that is not selected: it selects it, and leaves typing elsewhere. */
+  function selectHere() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !active.closest(`[data-entry-id="${id}"]`)) active.blur();
+    actions.select(id);
+  }
 
   function onTitleKey(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.nativeEvent.isComposing) return;
+    if (event.key === "Escape") {
+      actions.select(null);
+      return;
+    }
+    if (section) {
+      // A section has nothing below it to add: Enter goes on to its notes.
+      if (event.key === "Enter") {
+        event.preventDefault();
+        actions.openNotes(id);
+      }
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) actions.addSubpoint(id);
@@ -158,47 +208,68 @@ export const OutlineRow = memo(function OutlineRow({
     }
   }
 
-  return (
-    <li
-      data-entry-id={id}
-      data-depth={depth}
-      style={{ "--depth": depth } as React.CSSProperties}
+  const card = (
+    <div
+      data-selected={selected || undefined}
       className={cn(
-        "pl-[min(calc(var(--depth)*var(--outline-step)),var(--outline-cap))] transition-opacity duration-150",
-        dragging && "opacity-50",
+        "group/card rounded-xl border transition-[background-color,border-color,box-shadow] duration-200 ease-in-out",
+        selected
+          ? "border-border bg-surface shadow-card"
+          : "cursor-pointer border-transparent pointer-fine:hover:bg-muted/60",
       )}
     >
       <div
         data-row
         role="group"
-        aria-label={`${name}, ${t.row.level(depth + 1)}`}
-        className="group/row flex items-start gap-0.5 rounded-lg py-0.5 transition-colors duration-150 focus-within:bg-muted/60"
+        aria-label={section ? name : `${name}, ${t.row.level(depth + 1)}`}
+        onFocus={() => {
+          if (!selected) actions.select(id);
+        }}
+        onClick={(event) => {
+          // The row's own ground (its number, its margins) selects it too.
+          if (selected || (event.target as HTMLElement).closest("button, a, input, textarea"))
+            return;
+          selectHere();
+        }}
+        className="flex items-start gap-0.5 py-1 pr-1"
       >
-        {/* For a pointer or a finger. The menu and the keyboard move a point without it. */}
-        <span
-          aria-hidden
-          title={t.row.drag}
-          data-grip
-          onPointerDown={(event) => actions.startDrag(id, event)}
-          className="grid h-9 w-6 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground/60 transition-colors duration-150 select-none hover:bg-accent hover:text-foreground active:cursor-grabbing active:bg-foreground/10 pointer-coarse:h-11 pointer-coarse:w-8"
-        >
-          <GripVertical className="size-4" />
-        </span>
-        {nested > 0 ? (
-          <button
-            type="button"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? t.row.expand(name) : t.row.collapse(name)}
-            onClick={() => actions.toggle(id)}
-            className="grid h-9 w-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:h-11 pointer-coarse:w-8"
-          >
-            <ChevronRight
-              className={cn("size-4 transition-transform duration-150", !collapsed && "rotate-90")}
+        {!section && (
+          <>
+            {/* For a pointer or a finger, in sight on the entry being worked on. The bar and the keyboard move a point without it. */}
+            <span
               aria-hidden
-            />
-          </button>
-        ) : (
-          <span className="w-6 shrink-0 pointer-coarse:w-8" aria-hidden />
+              title={t.row.drag}
+              data-grip
+              onPointerDown={(event) => actions.startDrag(id, event)}
+              className={cn(
+                "grid h-9 w-6 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground/60 transition-[color,background-color,opacity] duration-150 select-none hover:bg-accent hover:text-foreground active:cursor-grabbing active:bg-foreground/10 pointer-coarse:order-last pointer-coarse:h-11 pointer-coarse:w-8",
+                selected
+                  ? "pointer-coarse:grid"
+                  : "pointer-coarse:hidden pointer-fine:opacity-0 pointer-fine:group-hover/card:opacity-100",
+              )}
+            >
+              <GripVertical className="size-4" />
+            </span>
+            {nested > 0 ? (
+              <button
+                type="button"
+                aria-expanded={!collapsed}
+                aria-label={collapsed ? t.row.expand(name) : t.row.collapse(name)}
+                onClick={() => actions.toggle(id)}
+                className="grid h-9 w-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 pointer-coarse:h-11 pointer-coarse:w-8"
+              >
+                <ChevronRight
+                  className={cn(
+                    "size-4 transition-transform duration-150",
+                    !collapsed && "rotate-90",
+                  )}
+                  aria-hidden
+                />
+              </button>
+            ) : (
+              <span className="w-6 shrink-0 pointer-coarse:w-8" aria-hidden />
+            )}
+          </>
         )}
         {depth >= markedFromDepth && (
           <span
@@ -222,24 +293,40 @@ export const OutlineRow = memo(function OutlineRow({
           </span>
         )}
 
-        <div className="min-w-0 flex-1">
-          <input
-            data-field="title"
-            value={title}
-            onChange={(event) => actions.setTitle(id, event.target.value)}
-            onBlur={() => actions.blur(id)}
-            onKeyDown={onTitleKey}
-            placeholder={t.placeholders.point}
-            aria-label={label ? t.headingOf(label) : t.heading}
-            maxLength={outlineLimits.title}
-            autoComplete="off"
-            enterKeyHint="enter"
-            className={cn(
-              field,
-              "h-9 font-serif text-[1.0625rem] pointer-coarse:h-11",
-              depth === 0 && "font-medium",
-            )}
-          />
+        {/* A section lines up with the points' numbers, where its own name stands instead of one. */}
+        <div className={cn("min-w-0 flex-1", section && "pl-11 pointer-coarse:pl-7")}>
+          {section && (
+            <p
+              aria-hidden
+              className="px-2 pt-1 text-[0.6875rem] font-bold tracking-[0.09em] text-muted-foreground uppercase"
+            >
+              {name}
+            </p>
+          )}
+          <div className="relative">
+            <input
+              data-field="title"
+              value={title}
+              onChange={(event) => actions.setTitle(id, event.target.value)}
+              onBlur={() => actions.blur(id)}
+              onKeyDown={onTitleKey}
+              placeholder={
+                section ? t.placeholders[section] : selected ? t.placeholders.point : t.untitled
+              }
+              aria-label={
+                section ? `${name}: ${t.heading}` : label ? t.headingOf(label) : t.heading
+              }
+              maxLength={outlineLimits.title}
+              autoComplete="off"
+              enterKeyHint={section ? "next" : "enter"}
+              className={cn(
+                field(selected),
+                "h-9 font-serif text-[1.0625rem] pointer-coarse:h-11",
+                depth === 0 && "font-medium",
+              )}
+            />
+            {!selected && <SelectCover onSelect={selectHere} />}
+          </div>
           {showNotes ? (
             <div className="relative">
               <textarea
@@ -256,12 +343,12 @@ export const OutlineRow = memo(function OutlineRow({
                     ?.focus();
                 }}
                 placeholder={t.placeholders.notes}
-                aria-label={t.notesOf(name)}
+                aria-label={section ? `${name}: ${t.notes}` : t.notesOf(name)}
                 maxLength={outlineLimits.notes}
                 rows={1}
                 className={cn(
-                  field,
-                  "mt-0.5 block field-sizing-content min-h-8 resize-none py-1.5 text-base leading-relaxed text-muted-foreground focus-visible:text-foreground md:text-sm md:leading-relaxed",
+                  field(selected),
+                  "block field-sizing-content min-h-7 resize-none py-1 text-base leading-relaxed text-muted-foreground focus-visible:text-foreground md:text-sm md:leading-relaxed",
                 )}
               />
               {left <= countFrom && (
@@ -269,35 +356,21 @@ export const OutlineRow = memo(function OutlineRow({
                   {t.remaining(left)}
                 </p>
               )}
+              {!selected && <SelectCover onSelect={selectHere} />}
             </div>
           ) : null}
-          {(!showNotes || !showPassages) && (
-            // Offered while the row is being worked in, so a finished outline stays quiet.
-            <div className="mb-1 ml-2 hidden flex-wrap gap-x-4 group-focus-within/row:flex">
-              {!showNotes && (
-                <button type="button" onClick={() => actions.openNotes(id)} className={quietAdd}>
-                  <Plus className="size-3.5" aria-hidden />
-                  {t.addNotes}
-                </button>
-              )}
-              {!showPassages && (
-                <button type="button" onClick={() => actions.openPassages(id)} className={quietAdd}>
-                  <Plus className="size-3.5" aria-hidden />
-                  {t.addPassage}
-                </button>
-              )}
-            </div>
-          )}
-          {showPassages && (
+          {selected && showPassages ? (
             <EntryPassages
               entryId={id}
               outlineId={outlineId}
               references={references}
               suggested={sermonReferences}
               setReferences={actions.setReferences}
-              className="mt-1 mb-2 ml-2 animate-menu"
+              className="mt-2 mb-1 ml-2 animate-menu"
             />
-          )}
+          ) : references.length > 0 ? (
+            <PassageTags references={references} name={name} />
+          ) : null}
           {sourcePointId && <SourceLink pointId={sourcePointId} name={name} />}
           {conflict && <ConflictPanel id={id} conflict={conflict} resolve={actions.resolve} />}
         </div>
@@ -311,82 +384,36 @@ export const OutlineRow = memo(function OutlineRow({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={t.row.actions(name)}
-            className="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 data-popup-open:bg-accent data-popup-open:text-foreground pointer-coarse:size-11"
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition-[color,background-color,opacity] duration-150 hover:bg-accent hover:text-foreground active:bg-foreground/10 data-popup-open:bg-accent data-popup-open:text-foreground pointer-coarse:size-11",
+              // At rest it waits for the pointer, the keyboard, or the entry being selected.
+              !selected &&
+                "pointer-coarse:hidden pointer-fine:opacity-0 pointer-fine:group-hover/card:opacity-100 pointer-fine:focus-visible:opacity-100 pointer-fine:data-popup-open:opacity-100",
+            )}
           >
             <MoreHorizontal className="size-4" aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem onClick={() => actions.addSubpoint(id)}>
-              <CornerDownRight aria-hidden />
-              {t.row.addSubpoint}
-              <DropdownMenuShortcut>{t.shortcuts.addSubpoint}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => actions.addBelow(id)}>
-              <Plus aria-hidden />
-              {t.row.addBelow}
-              <DropdownMenuShortcut>{t.shortcuts.addBelow}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            {!showNotes && (
-              <DropdownMenuItem onClick={() => actions.openNotes(id)}>
-                <NotebookPen aria-hidden />
-                {t.row.addNotes}
-              </DropdownMenuItem>
+            {!section && (
+              <>
+                <DropdownMenuItem onClick={() => actions.addBelow(id)}>
+                  <Plus aria-hidden />
+                  {t.row.addBelow}
+                  <DropdownMenuShortcut>{t.shortcuts.addBelow}</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => actions.addSavedPoint(id)}>
+                  <BookmarkPlus aria-hidden />
+                  {t.row.addSavedPoint}
+                </DropdownMenuItem>
+                {can.has("top") && (
+                  <DropdownMenuItem onClick={() => actions.move(id, "top")}>
+                    <ChevronsLeft aria-hidden />
+                    {t.row.toTop}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+              </>
             )}
-            {!showPassages && (
-              <DropdownMenuItem onClick={() => actions.openPassages(id)}>
-                <BookOpen aria-hidden />
-                {t.row.addPassage}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => actions.addSavedPoint(id)}>
-              <BookmarkPlus aria-hidden />
-              {t.row.addSavedPoint}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {/* These stay open, so a point can be walked several places with one finger. */}
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={!can.has("up")}
-              onClick={() => actions.move(id, "up")}
-            >
-              <ArrowUp aria-hidden />
-              {t.row.moveUp}
-              <DropdownMenuShortcut>{t.shortcuts.moveUp}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={!can.has("down")}
-              onClick={() => actions.move(id, "down")}
-            >
-              <ArrowDown aria-hidden />
-              {t.row.moveDown}
-              <DropdownMenuShortcut>{t.shortcuts.moveDown}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={!can.has("indent")}
-              onClick={() => actions.move(id, "indent")}
-            >
-              <IndentIncrease aria-hidden />
-              {t.row.indent}
-              <DropdownMenuShortcut>{t.shortcuts.indent}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              closeOnClick={false}
-              disabled={!can.has("outdent")}
-              onClick={() => actions.move(id, "outdent")}
-            >
-              <IndentDecrease aria-hidden />
-              {t.row.outdent}
-              <DropdownMenuShortcut>{t.shortcuts.outdent}</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            {can.has("top") && (
-              <DropdownMenuItem onClick={() => actions.move(id, "top")}>
-                <ChevronsLeft aria-hidden />
-                {t.row.toTop}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => actions.remove(id)}>
               <Trash2 aria-hidden />
               {t.row.delete}
@@ -394,12 +421,276 @@ export const OutlineRow = memo(function OutlineRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {barDrawn && (
+        <PointBar
+          id={id}
+          name={name}
+          section={section !== undefined}
+          open={selected}
+          showNotes={showNotes}
+          showPassages={showPassages}
+          can={can}
+          actions={actions}
+        />
+      )}
+    </div>
+  );
+
+  if (section) {
+    return (
+      <section data-entry-id={id} aria-label={name} className="scroll-mt-32 scroll-mb-28">
+        {card}
+      </section>
+    );
+  }
+  return (
+    <li
+      data-entry-id={id}
+      data-depth={depth}
+      style={{ "--depth": depth } as React.CSSProperties}
+      className={cn(
+        // Clear of the sticky bars when a move brings it back into view.
+        "scroll-mt-32 scroll-mb-28 pl-[min(calc(var(--depth)*var(--outline-step)),var(--outline-cap))] transition-opacity duration-150",
+        dragging && "opacity-50",
+      )}
+    >
+      {card}
     </li>
   );
 });
 
-const quietAdd =
-  "inline-flex min-h-7 items-center gap-1.5 rounded-md text-[0.8125rem] font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground pointer-coarse:min-h-9";
+/**
+ * An entry's passages at rest: small tags that read as the outline does. They
+ * are not buttons; selecting the entry opens them for change, for their text,
+ * and for the way to the Bible.
+ */
+function PassageTags({ references, name }: { references: ScriptureReference[]; name: string }) {
+  const t = useT("outlines").editor;
+  const locale = useLocale();
+  return (
+    <ul aria-label={t.passagesOf(name)} className="mt-1 mb-1 ml-2 flex flex-wrap gap-1.5">
+      {references.map((reference, index) => (
+        <li
+          key={index}
+          className="inline-flex h-6 items-center gap-1.5 rounded-full border bg-surface px-2.5 font-serif text-sm italic pointer-coarse:h-7"
+        >
+          <BookOpen className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+          {formatReferences([reference], locale)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Laid over a heading or the notes of an entry that is not selected, so the
+ * entry at rest reads as text and is not yet a field. A click with a mouse or
+ * a pen selects the entry and puts the caret in the field beneath, at its end;
+ * a tap on a touch screen only selects it, without bringing up the keyboard.
+ */
+function SelectCover({ onSelect }: { onSelect: () => void }) {
+  const pointer = useRef("");
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden
+      onPointerDown={(event) => {
+        pointer.current = event.pointerType;
+      }}
+      onClick={(event) => {
+        const typing = pointer.current === "mouse" || pointer.current === "pen";
+        const target = event.currentTarget.parentElement?.querySelector<
+          HTMLInputElement | HTMLTextAreaElement
+        >("[data-field]");
+        onSelect();
+        if (!typing || !target) return;
+        target.focus();
+        target.setSelectionRange(target.value.length, target.value.length);
+      }}
+      className="absolute inset-0 cursor-pointer rounded-md [-webkit-tap-highlight-color:transparent]"
+    />
+  );
+}
+
+const barButton =
+  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg text-[0.8125rem] font-medium text-muted-foreground transition-[color,background-color,scale,opacity] duration-150 outline-none [-webkit-tap-highlight-color:transparent] hover:bg-accent hover:text-foreground focus-visible:shadow-focus active:scale-95 active:bg-foreground/10 disabled:pointer-events-none disabled:opacity-35 pointer-coarse:h-11 [&_svg]:size-4 [&_svg]:shrink-0";
+
+type BarItem = {
+  key: string;
+  label: string;
+  /** Shown beside the icon; the move arrows have only their icon. */
+  short?: string;
+  title: string;
+  icon: React.ReactNode;
+  disabled?: boolean;
+  run: () => void;
+};
+
+/**
+ * The selected entry's options, along the foot of its card. Pressing one never
+ * takes the focus, so a heading being typed keeps its caret and a phone keeps
+ * its keyboard. It is one stop for Tab, and the arrow keys move along it, as a
+ * toolbar does. It unfolds and folds on its own height, so the entries beneath
+ * glide rather than jump. A section has no subpoint and no moves.
+ */
+function PointBar({
+  id,
+  name,
+  section,
+  open,
+  showNotes,
+  showPassages,
+  can,
+  actions,
+}: {
+  id: string;
+  name: string;
+  section: boolean;
+  open: boolean;
+  showNotes: boolean;
+  showPassages: boolean;
+  can: ReadonlySet<string>;
+  actions: RowActions;
+}) {
+  const t = useT("outlines").editor;
+  const bar = useRef<HTMLDivElement>(null);
+  const [stop, setStop] = useState<string | null>(null);
+  const withShortcut = (label: string, shortcut: string) => `${label} · ${shortcut}`;
+
+  const adds = (
+    [
+      !showNotes && {
+        key: "notes",
+        label: t.row.addNotes,
+        short: t.row.bar.notes,
+        title: t.row.addNotes,
+        icon: <NotebookPen aria-hidden />,
+        run: () => actions.openNotes(id),
+      },
+      !showPassages && {
+        key: "passage",
+        label: t.row.addPassage,
+        short: t.row.bar.passage,
+        title: t.row.addPassage,
+        icon: <BookOpen aria-hidden />,
+        run: () => actions.openPassages(id),
+      },
+      !section && {
+        key: "subpoint",
+        label: t.row.addSubpoint,
+        short: t.row.bar.subpoint,
+        title: withShortcut(t.row.addSubpoint, t.shortcuts.addSubpoint),
+        icon: <CornerDownRight aria-hidden />,
+        run: () => actions.addSubpoint(id),
+      },
+    ] as (BarItem | false)[]
+  ).filter((item): item is BarItem => item !== false);
+  const moves: BarItem[] = section
+    ? []
+    : (
+        [
+          ["up", t.row.moveUp, t.shortcuts.moveUp, <ArrowUp key="up" aria-hidden />],
+          ["down", t.row.moveDown, t.shortcuts.moveDown, <ArrowDown key="down" aria-hidden />],
+          ["outdent", t.row.outdent, t.shortcuts.outdent, <IndentDecrease key="out" aria-hidden />],
+          ["indent", t.row.indent, t.shortcuts.indent, <IndentIncrease key="in" aria-hidden />],
+        ] as const
+      ).map(([direction, label, shortcut, icon]) => ({
+        key: direction,
+        label,
+        title: withShortcut(label, shortcut),
+        icon,
+        disabled: !can.has(direction),
+        run: () => actions.move(id, direction),
+      }));
+
+  // The one button Tab lands on: the last one used, while it can still be pressed.
+  const enabled = [...adds, ...moves].filter((item) => !item.disabled);
+  const tabStop = enabled.find((item) => item.key === stop)?.key ?? enabled[0]?.key;
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      bar.current
+        ?.closest("[data-entry-id]")
+        ?.querySelector<HTMLElement>('[data-field="title"]')
+        ?.focus();
+      return;
+    }
+    const buttons = [
+      ...(bar.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []),
+    ];
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next = {
+      ArrowRight: at + 1,
+      ArrowDown: at + 1,
+      ArrowLeft: at - 1,
+      ArrowUp: at - 1,
+      Home: 0,
+      End: buttons.length - 1,
+    }[event.key];
+    if (next === undefined || buttons.length === 0) return;
+    event.preventDefault();
+    buttons[(next + buttons.length) % buttons.length].focus();
+  }
+
+  const button = (item: BarItem) => (
+    <button
+      key={item.key}
+      type="button"
+      aria-label={item.label}
+      title={item.title}
+      disabled={item.disabled}
+      tabIndex={item.key === tabStop ? 0 : -1}
+      // Pressed without taking the focus: the caret, and a phone's keyboard, stay where they are.
+      onMouseDown={(event) => event.preventDefault()}
+      onFocus={() => setStop(item.key)}
+      onClick={item.run}
+      className={cn(
+        barButton,
+        item.short ? "px-2.5 pointer-coarse:px-3" : "w-8 pointer-coarse:w-11",
+      )}
+    >
+      {item.icon}
+      {item.short && <span aria-hidden>{item.short}</span>}
+    </button>
+  );
+
+  return (
+    <div
+      inert={!open}
+      aria-hidden={open ? undefined : true}
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-200 ease-in-out",
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div
+          ref={bar}
+          role="toolbar"
+          aria-label={t.row.bar.label(name)}
+          onKeyDown={onKeyDown}
+          className={cn(
+            // In line with the heading where there is room; nearer the edge on a phone.
+            "mt-1 flex flex-wrap items-center gap-1 border-t py-1.5 pr-1.5 transition-transform duration-200 ease-in-out",
+            section ? "pl-2" : "pl-11 pointer-coarse:pl-1.5",
+            open ? "translate-y-0" : "-translate-y-1.5",
+          )}
+        >
+          {adds.map(button)}
+          {moves.length > 0 && (
+            <div className="ml-auto flex items-center gap-0.5">
+              <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+              {moves.map(button)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Says an entry was made from a saved point idea, and leads to that idea. The

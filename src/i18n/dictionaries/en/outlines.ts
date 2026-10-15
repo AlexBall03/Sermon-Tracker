@@ -188,6 +188,8 @@ export const outlines = {
     /** Read out for a heading: "Heading, I.A." */
     headingOf: (label: string) => `Heading, ${label}`,
     notesOf: (name: string) => `Notes for ${name}`,
+    /** The passages of an entry at rest, read out as a list. */
+    passagesOf: (name: string) => `Passages for ${name}`,
     placeholders: {
       point: "Heading",
       introduction: "How it opens",
@@ -215,6 +217,13 @@ export const outlines = {
       addPassage: "Add passage",
       addSavedPoint: "Add from saved point",
       delete: "Delete",
+      /** The bar of options under the point that is selected. */
+      bar: {
+        label: (name: string) => `Options for ${name}`,
+        notes: "Notes",
+        passage: "Passage",
+        subpoint: "Subpoint",
+      },
     },
     /** Placing a saved point idea in the outline. */
     savedPoint: {
