@@ -41,7 +41,8 @@ import { locales } from "../i18n/locales";
 export const userRoles = ["admin", "user"] as const;
 export type UserRole = (typeof userRoles)[number];
 
-export const userStatuses = ["active", "disabled"] as const;
+/** `deleting`: locked for good while the account is removed (features/account/deletion.ts). Never moves back. */
+export const userStatuses = ["active", "disabled", "deleting"] as const;
 export type UserStatus = (typeof userStatuses)[number];
 
 /** One row per person allowed into the application. Clerk owns the identity. */
@@ -95,7 +96,7 @@ export const users = pgTable(
   },
   (table) => [
     check("users_role_check", sql`${table.role} in ('admin', 'user')`),
-    check("users_status_check", sql`${table.status} in ('active', 'disabled')`),
+    check("users_status_check", sql`${table.status} in ('active', 'disabled', 'deleting')`),
     check("users_locale_check", sql`${table.locale} in ('en', 'es')`),
     check(
       "users_bible_translation_check",

@@ -71,3 +71,23 @@ export function resetAccountMemory() {
   known = undefined;
   listeners.clear();
 }
+
+/**
+ * Removes everything this device keeps for one account (its queued changes
+ * and its copies of ideas and outlines), when that account has been deleted
+ * at its owner's request. Bible text is shared and stays.
+ */
+export async function forgetAccount(owner: string) {
+  const db = await openOfflineDb();
+  const tx = db.transaction(["mutations", "accountData", "meta"], "readwrite");
+  const mutations = tx.objectStore("mutations");
+  const accountData = tx.objectStore("accountData");
+  for (const key of await mutations.index("owner").getAllKeys(owner)) await mutations.delete(key);
+  for (const key of await accountData.index("owner").getAllKeys(owner)) {
+    await accountData.delete(key);
+  }
+  const active = await tx.objectStore("meta").get(activeKey);
+  if (active === owner) await tx.objectStore("meta").delete(activeKey);
+  await tx.done;
+  if (active === owner) announce(null);
+}

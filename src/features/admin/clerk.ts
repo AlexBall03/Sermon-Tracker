@@ -128,3 +128,17 @@ export function describeClerkError(error: unknown, fallback: string) {
   const code = error.errors[0]?.code ?? "";
   return messages[code] ?? fallback;
 }
+
+/**
+ * Deletes a Clerk identity, which ends its sessions. One already gone counts
+ * as deleted, so a retried account deletion can finish.
+ */
+export async function deleteIdentity(clerkUserId: string) {
+  try {
+    const client = await clerkClient();
+    await client.users.deleteUser(clerkUserId);
+  } catch (error) {
+    if (isClerkAPIResponseError(error) && error.status === 404) return;
+    throw error;
+  }
+}

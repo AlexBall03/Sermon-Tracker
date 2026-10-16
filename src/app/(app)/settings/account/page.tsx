@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { requireActiveUser } from "@/features/auth/access";
 import { getPreferences } from "@/features/preferences/current";
 import { AccountInformation } from "@/features/settings/components/account-information";
+import { DeleteAccount } from "@/features/settings/components/delete-account";
 import { SecuritySettings } from "@/features/settings/components/account-sections";
 import { SettingsPageHeader } from "@/features/settings/components/settings-layout";
 import { SettingsBlock, SettingsStack } from "@/features/settings/components/settings-section";
@@ -12,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getT("settings")).categories.account.title };
 }
 
-/** The account's access, read only, and its sign-in security, through Clerk. */
+/** The account's access, read only, its sign-in security through Clerk, and deleting it. */
 export default async function AccountSettingsPage() {
   const user = await requireActiveUser();
   const [preferences, t] = await Promise.all([getPreferences(), getT("settings")]);
@@ -24,6 +25,9 @@ export default async function AccountSettingsPage() {
           <AccountInformation user={user} labels={t.account} locale={preferences.locale} />
         </SettingsBlock>
         <SecuritySettings />
+        <SettingsBlock id="delete-account" title={t.blocks.danger}>
+          <DeleteAccount userId={user.id} />
+        </SettingsBlock>
       </SettingsStack>
     </>
   );

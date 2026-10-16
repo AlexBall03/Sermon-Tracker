@@ -47,6 +47,7 @@ export const settings: Untranslated<typeof english> = {
   },
   unsaved: "Los cambios de esta página no se han guardado.",
   blocks: {
+    danger: "Zona de peligro",
     ministry: "Iglesia y ministerio",
     ministryDescription:
       "Dónde sirves y qué haces allí. Todo es opcional, solo lo ves tú y no cambia en nada tu acceso.",
@@ -139,6 +140,22 @@ export const settings: Untranslated<typeof english> = {
     copyKinds: { text: "Texto del versículo", reference: "Referencia", link: "Enlace" },
     copyHelp:
       "Lo que copia Ctrl+C (Comando+C en una Mac) cuando hay versículos seleccionados en la Biblia. La selección se quita una vez copiada. Los botones junto a una selección copian el texto, la referencia o un enlace, sea cual sea la opción elegida aquí.",
+  },
+  deleteAccount: {
+    title: "Eliminar cuenta",
+    description:
+      "Elimina para siempre tu cuenta y todo su contenido: ideas, bosquejos, registro de predicación, Escritura guardada y conversaciones de soporte. También se elimina tu inicio de sesión.",
+    button: "Eliminar cuenta",
+    confirmTitle: "¿Eliminar tu cuenta para siempre?",
+    confirmBody:
+      "Esto no se puede deshacer. Se elimina todo lo de tu cuenta, y se pierden los cambios de este dispositivo que aún no se han sincronizado. Puede que primero se te pida confirmar que eres tú.",
+    confirm: "Eliminar mi cuenta",
+    deleted: "Tu cuenta ha sido eliminada.",
+    pending:
+      "Tu cuenta está bloqueada y su eliminación comenzó. Un paso no terminó; se reintenta automáticamente.",
+    lastAdmin:
+      "Eres el único administrador activo. Haz administrador a otra persona antes de eliminar tu cuenta.",
+    failed: "No se pudo eliminar tu cuenta. Inténtalo de nuevo.",
   },
   account: {
     role: "Rol",

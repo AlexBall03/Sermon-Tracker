@@ -21,9 +21,9 @@ export async function listUsers(db: Database): Promise<AppUser[]> {
   return db.select().from(users).orderBy(asc(users.createdAt));
 }
 
-export type UserChange = { role?: UserRole; status?: UserStatus };
+export type UserChange = { role?: UserRole; status?: Exclude<UserStatus, "deleting"> };
 export type UserChangeResult =
-  { ok: true; user: AppUser } | { ok: false; reason: "not-found" | "last-admin" };
+  { ok: true; user: AppUser } | { ok: false; reason: "not-found" | "last-admin" | "deleting" };
 
 /**
  * Changes a user's role or status. The application must always keep at least
@@ -40,6 +40,8 @@ export async function updateUser(
 
     const [target] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!target) return { ok: false, reason: "not-found" };
+    // An account being deleted never moves back.
+    if (target.status === "deleting") return { ok: false, reason: "deleting" };
 
     const role = change.role ?? target.role;
     const status = change.status ?? target.status;

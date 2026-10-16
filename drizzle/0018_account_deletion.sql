@@ -1,0 +1,2 @@
+ALTER TABLE "users" DROP CONSTRAINT "users_status_check";--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_status_check" CHECK ("users"."status" in ('active', 'disabled', 'deleting'));

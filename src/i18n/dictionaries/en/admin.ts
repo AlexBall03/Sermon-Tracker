@@ -32,6 +32,7 @@ export const admin = {
     user: "User",
     active: "Active",
     disabled: "Disabled",
+    deleting: "Deleting",
     unknown: "Unknown",
     thisPerson: "This person",
     you: " (you)",
@@ -59,6 +60,18 @@ export const admin = {
       title: "Re-enable this account?",
       description: (name: string) => `${name} will be able to use Sermon Tracker again.`,
       confirm: "Re-enable account",
+    },
+    remove: {
+      title: "Delete this account?",
+      description: (name: string) =>
+        `${name}'s account and everything in it will be deleted permanently: ideas, outlines, preaching record, saved Scripture, and support conversations. Their sign-in is removed too. This cannot be undone.`,
+      confirm: "Delete user",
+    },
+    retryRemove: {
+      title: "Finish deleting this account?",
+      description: (name: string) =>
+        `Deleting ${name}'s account did not finish. Try the remaining steps again now.`,
+      confirm: "Retry deletion",
     },
   },
   invitations: {
@@ -101,6 +114,10 @@ export const admin = {
     ownAccount: "You cannot change your own account. Ask another administrator.",
     lastAdmin: "There must always be at least one active administrator.",
     userMissing: "That user no longer exists.",
+    beingDeleted: "That account is being deleted.",
+    deleted: "Account deleted.",
+    deletionPending:
+      "The account is locked and its deletion has started. A step did not finish; it is retried automatically.",
     notSaved: "The change could not be saved. Try again.",
     nowAdmin: "User is now an administrator.",
     nowUser: "User is now a standard user.",

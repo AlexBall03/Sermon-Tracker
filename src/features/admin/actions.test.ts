@@ -10,6 +10,7 @@ import type { Authorization } from "@/features/auth/access";
 const state = vi.hoisted(() => ({
   db: undefined as unknown,
   access: { ok: false, message: "signed out" } as unknown,
+  deleteIdentity: vi.fn(async () => {}),
   clerk: {
     createInvitation: vi.fn(),
     revokeInvitation: vi.fn(),
@@ -24,6 +25,9 @@ vi.mock("next/headers", () => ({
   headers: async () => new Headers({ origin: "http://localhost" }),
 }));
 vi.mock("./clerk", () => state.clerk);
+vi.mock("@/features/account/live", () => ({
+  liveDeletionDeps: { deleteBlobs: async () => true, deleteIdentity: state.deleteIdentity },
+}));
 vi.mock("@/features/auth/access", () => ({
   // Mirrors the real helper's rule: admin actions need an active administrator.
   authorize: async (requirement: "active" | "admin"): Promise<Authorization> => {
@@ -36,7 +40,13 @@ vi.mock("@/features/auth/access", () => ({
   },
 }));
 
-import { inviteUser, revokeUserInvitation, setUserRole, setUserStatus } from "./actions";
+import {
+  deleteUserAccount,
+  inviteUser,
+  revokeUserInvitation,
+  setUserRole,
+  setUserStatus,
+} from "./actions";
 
 let db: Database;
 
@@ -129,6 +139,46 @@ describe("administrative actions", () => {
     expect((await setUserStatus(target.id, "banned")).ok).toBe(false);
     expect((await setUserRole("not-a-uuid", "admin")).ok).toBe(false);
     expect((await revokeUserInvitation("'; drop table users; --")).ok).toBe(false);
+  });
+});
+
+describe("deleting a user", () => {
+  it("is refused to a standard user and to the administrator's own account", async () => {
+    const admin = await add("user_admin", "admin");
+    const member = await add("user_member");
+    signInAs(member);
+    expect(await deleteUserAccount(admin.id)).toMatchObject({ ok: false });
+    signInAs(admin);
+    expect(await deleteUserAccount(admin.id)).toMatchObject({ ok: false });
+    expect(await db.select().from(users)).toHaveLength(2);
+    expect(state.deleteIdentity).not.toHaveBeenCalled();
+  });
+
+  it("deletes another account, identity and all", async () => {
+    const admin = await add("user_admin", "admin");
+    const member = await add("user_member");
+    signInAs(admin);
+    expect(await deleteUserAccount(member.id)).toMatchObject({ ok: true });
+    expect(state.deleteIdentity).toHaveBeenCalledWith("user_member");
+    expect((await db.select().from(users)).map((row) => row.id)).toEqual([admin.id]);
+  });
+
+  it("reports an unfinished deletion honestly and finishes it when run again", async () => {
+    const admin = await add("user_admin", "admin");
+    const member = await add("user_member");
+    signInAs(admin);
+    state.deleteIdentity.mockRejectedValueOnce(new Error("Clerk is down"));
+    expect(await deleteUserAccount(member.id)).toMatchObject({ ok: false });
+    expect(await setUserStatus(member.id, "active")).toMatchObject({ ok: false });
+    expect(await deleteUserAccount(member.id)).toMatchObject({ ok: true });
+    expect(await db.select().from(users)).toHaveLength(1);
+  });
+
+  it("never accepts the deleting status as a choice", async () => {
+    const admin = await add("user_admin", "admin");
+    const member = await add("user_member");
+    signInAs(admin);
+    expect(await setUserStatus(member.id, "deleting")).toMatchObject({ ok: false });
   });
 });
 

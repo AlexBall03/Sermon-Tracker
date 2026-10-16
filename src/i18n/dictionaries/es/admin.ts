@@ -34,6 +34,7 @@ export const admin: Untranslated<typeof english> = {
     user: "Usuario",
     active: "Activa",
     disabled: "Desactivada",
+    deleting: "Eliminándose",
     unknown: "Desconocido",
     thisPerson: "Esta persona",
     you: " (tú)",
@@ -60,6 +61,18 @@ export const admin: Untranslated<typeof english> = {
       title: "¿Reactivar esta cuenta?",
       description: (name) => `${name} podrá volver a usar Sermon Tracker.`,
       confirm: "Reactivar cuenta",
+    },
+    remove: {
+      title: "¿Eliminar esta cuenta?",
+      description: (name) =>
+        `La cuenta de ${name} y todo su contenido se eliminarán para siempre: ideas, bosquejos, registro de predicación, Escritura guardada y conversaciones de soporte. También se elimina su inicio de sesión. Esto no se puede deshacer.`,
+      confirm: "Eliminar usuario",
+    },
+    retryRemove: {
+      title: "¿Terminar de eliminar esta cuenta?",
+      description: (name) =>
+        `La eliminación de la cuenta de ${name} no terminó. Intenta ahora los pasos que faltan.`,
+      confirm: "Reintentar eliminación",
     },
   },
   invitations: {
@@ -102,6 +115,10 @@ export const admin: Untranslated<typeof english> = {
     ownAccount: "No puedes cambiar tu propia cuenta. Pídeselo a otro administrador.",
     lastAdmin: "Siempre debe haber al menos un administrador activo.",
     userMissing: "Ese usuario ya no existe.",
+    beingDeleted: "Esa cuenta se está eliminando.",
+    deleted: "Cuenta eliminada.",
+    deletionPending:
+      "La cuenta está bloqueada y su eliminación comenzó. Un paso no terminó; se reintenta automáticamente.",
     notSaved: "No se pudo guardar el cambio. Inténtalo de nuevo.",
     nowAdmin: "El usuario ahora es administrador.",
     nowUser: "El usuario ahora es un usuario estándar.",

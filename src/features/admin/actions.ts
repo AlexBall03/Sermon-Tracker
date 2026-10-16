@@ -5,8 +5,10 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import { getDb } from "@/db";
-import { userRoles, userStatuses } from "@/db/schema";
+import { userRoles } from "@/db/schema";
 import { describeDatabaseError } from "@/db/types";
+import { processDeletion, requestDeletion } from "@/features/account/deletion";
+import { liveDeletionDeps } from "@/features/account/live";
 import { authorize } from "@/features/auth/access";
 import { writeSpanishEnabled } from "@/features/preferences/settings";
 import { dictionary } from "@/i18n";
@@ -18,7 +20,7 @@ import { updateUser, type UserChange } from "./users";
 
 const userIdSchema = z.uuid();
 const roleSchema = z.enum(userRoles);
-const statusSchema = z.enum(userStatuses);
+const statusSchema = z.enum(["active", "disabled"]);
 const emailSchema = z.email().max(254);
 const invitationIdSchema = z.string().regex(/^inv_\w+$/);
 
@@ -52,7 +54,12 @@ async function changeUser(
     if (!result.ok) {
       return {
         ok: false,
-        message: result.reason === "last-admin" ? t.lastAdmin : t.userMissing,
+        message:
+          result.reason === "last-admin"
+            ? t.lastAdmin
+            : result.reason === "deleting"
+              ? t.beingDeleted
+              : t.userMissing,
       };
     }
   } catch (error) {
@@ -78,6 +85,38 @@ export async function setUserStatus(userId: string, status: string): Promise<Act
   return changeUser(userId, { status: parsed.data }, (t) =>
     parsed.data === "active" ? t.enabled : t.disabled,
   );
+}
+
+/**
+ * Deletes another person's account through the same service as self-service
+ * deletion. Run again on an account still being deleted, it finishes the rest.
+ */
+export async function deleteUserAccount(userId: string): Promise<ActionResult> {
+  const actor = await authorize("admin");
+  if (!actor.ok) return actor;
+  const t = (await getT("admin")).actions;
+
+  const id = userIdSchema.safeParse(userId);
+  if (!id.success) return { ok: false, message: t.invalid };
+  if (id.data === actor.user.id) return { ok: false, message: t.ownAccount };
+
+  const db = getDb();
+  let outcome;
+  try {
+    const request = await requestDeletion(db, id.data);
+    if (!request.ok) {
+      return { ok: false, message: request.reason === "last-admin" ? t.lastAdmin : t.userMissing };
+    }
+    outcome = await processDeletion(db, id.data, liveDeletionDeps);
+  } catch (error) {
+    console.error("User deletion failed:", describeDatabaseError(error));
+    outcome = "retry" as const;
+  }
+
+  revalidatePath(routes.admin);
+  return outcome === "retry"
+    ? { ok: false, message: t.deletionPending }
+    : { ok: true, message: t.deleted };
 }
 
 async function invitationAction(

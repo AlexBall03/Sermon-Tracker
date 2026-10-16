@@ -127,6 +127,13 @@
       "when": 1792014094982,
       "tag": "0017_support_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792185979837,
+      "tag": "0018_account_deletion",
+      "breakpoints": true
     }
   ]
 }

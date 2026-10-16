@@ -53,6 +53,8 @@ const envSchema = z.object({
   /** Vercel Blob (private store), for feedback screenshots. Or OIDC with BLOB_STORE_ID. */
   BLOB_READ_WRITE_TOKEN: z.string().startsWith("vercel_blob_rw_").optional(),
   BLOB_STORE_ID: z.string().optional(),
+  /** Vercel Cron sends it as a bearer token; the retry of account deletions answers nothing without it. */
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

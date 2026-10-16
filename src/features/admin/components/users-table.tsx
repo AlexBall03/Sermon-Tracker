@@ -16,7 +16,7 @@ import type { Dictionaries } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { formatDate } from "@/lib/format";
-import { setUserRole, setUserStatus } from "../actions";
+import { deleteUserAccount, setUserRole, setUserStatus } from "../actions";
 import type { DirectoryEntry } from "../clerk";
 
 function confirmationsFor(
@@ -35,6 +35,10 @@ function confirmationsFor(
     destructive,
     run,
   });
+  // An account being deleted only finishes; nothing else about it changes.
+  if (entry.status === "deleting") {
+    return [ask(t.retryRemove, () => deleteUserAccount(entry.id), true)];
+  }
   return [
     entry.role === "admin"
       ? ask(t.removeAdmin, () => setUserRole(entry.id, "user"))
@@ -42,6 +46,7 @@ function confirmationsFor(
     entry.status === "active"
       ? ask(t.disable, () => setUserStatus(entry.id, "disabled"), true)
       : ask(t.enable, () => setUserStatus(entry.id, "active")),
+    ask(t.remove, () => deleteUserAccount(entry.id), true),
   ];
 }
 
@@ -101,7 +106,7 @@ export function UsersTable({ entries, currentUserId }: UsersTableProps) {
               );
               const status = (
                 <Badge tone={entry.status === "active" ? "muted" : "danger"}>
-                  {entry.status === "active" ? t.active : t.disabled}
+                  {t[entry.status]}
                 </Badge>
               );
               return (

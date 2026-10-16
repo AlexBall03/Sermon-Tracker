@@ -45,6 +45,7 @@ export const settings = {
   },
   unsaved: "Your changes on this page have not been saved.",
   blocks: {
+    danger: "Danger Zone",
     ministry: "Church & Ministry",
     ministryDescription:
       "Where you serve and what you do there. All of it is optional, private to your account, and changes nothing about your access.",
@@ -137,6 +138,22 @@ export const settings = {
     copyKinds: { text: "Verse text", reference: "Reference", link: "Link" },
     copyHelp:
       "What Ctrl+C (Command+C on a Mac) copies when verses are selected in the Bible. The selection is cleared once it has been copied. The buttons beside a selection copy the text, the reference, or a link whatever is chosen here.",
+  },
+  deleteAccount: {
+    title: "Delete account",
+    description:
+      "Permanently delete your account and everything in it: ideas, outlines, preaching record, saved Scripture, and support conversations. Your sign-in is removed too.",
+    button: "Delete Account",
+    confirmTitle: "Delete your account permanently?",
+    confirmBody:
+      "This cannot be undone. Everything in your account is deleted, and changes on this device that have not synced yet are lost. You may be asked to confirm it is you first.",
+    confirm: "Delete my account",
+    deleted: "Your account has been deleted.",
+    pending:
+      "Your account is locked and its deletion has started. One step did not finish; it is retried automatically.",
+    lastAdmin:
+      "You are the only active administrator. Make someone else an administrator before deleting your account.",
+    failed: "Your account could not be deleted. Try again.",
   },
   account: {
     role: "Role",
