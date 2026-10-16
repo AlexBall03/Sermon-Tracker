@@ -19,6 +19,7 @@ export const marketing = {
     how: "How It Works",
     mobile: "Mobile App",
     signIn: "Sign In",
+    getStarted: "Get Started",
     contact: "Contact",
     openMenu: "Open menu",
     closeMenu: "Close menu",
@@ -28,8 +29,8 @@ export const marketing = {
     eyebrow: "For preachers, from the first note to the pulpit",
     title: "From First Thought to Finished Sermon.",
     body: "Sermon Tracker keeps every sermon idea, reusable point, outline, and preaching record in one place, so nothing worth preaching is lost between the moment it comes to you and the day you preach it.",
+    getStarted: "Get Started",
     signIn: "Sign In",
-    how: "See how it works",
     desktopAlt:
       "The Sermon Tracker dashboard on a computer: a greeting with actions to capture an idea, start or open an outline, and record preaching, then the sermons being worked on, ideas to revisit, recent ideas, recent preaching, and four figures at a glance.",
     mobileAlt:
@@ -148,13 +149,14 @@ export const marketing = {
   },
   closing: {
     title: "Ready when the next idea comes",
-    body: "Accounts are created by invitation for now. If you have been invited, sign in and your workspace is waiting.",
+    body: "Create your account and your workspace is ready: capture the first idea today and find it again on the day you preach it.",
+    getStarted: "Get Started",
     signIn: "Sign In",
   },
   footer: {
     blurb: "One place for sermon ideas, outlines, Scripture, and your preaching record.",
     developedBy: "Developed by:",
-    beta: "Invitation-only beta",
+    status: "Open for new accounts",
   },
   /** The reconstructions' own chrome, where the application has no string for it. */
   preview: {

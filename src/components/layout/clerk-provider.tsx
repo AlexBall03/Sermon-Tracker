@@ -18,7 +18,7 @@ const inSpanish = () => document.documentElement.lang === "es";
 
 /**
  * Clerk for the whole application, with its own forms (sign-in, and creating
- * an account from an invitation) in the page's language.
+ * an account, openly or from an invitation) in the page's language.
  *
  * Clerk takes its language here and nowhere else: a second provider around
  * one form is ignored. The root layout is static and cannot know the
@@ -48,7 +48,7 @@ export function AppClerkProvider({ children }: { children: React.ReactNode }) {
       appearance={clerkAppearance}
       localization={spanish ? es : undefined}
       signInUrl={routes.signIn}
-      signUpUrl={routes.acceptInvitation}
+      signUpUrl={routes.signUp}
       signInFallbackRedirectUrl={routes.dashboard}
       signUpFallbackRedirectUrl={routes.dashboard}
       afterSignOutUrl={routes.home}

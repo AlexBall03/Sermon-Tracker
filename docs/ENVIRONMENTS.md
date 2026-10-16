@@ -55,7 +55,8 @@ Create one Clerk application. It starts with a **Development** instance; create 
 In **each** instance:
 
 - **Email address**: enabled, with password sign-in.
-- **Paths**: sign-in URL `/sign-in`, sign-up URL `/accept-invitation`. (The application also sets these itself.)
+- **Paths**: sign-in URL `/sign-in`, sign-up URL `/sign-up`. (The application also sets these itself; invitation emails still link to `/accept-invitation`.)
+- **Verify at sign-up** on for email addresses (Clerk's default). The application admits a new identity only when its primary email is verified or it came from an invitation.
 
 The `/settings` page also depends on these, in each instance:
 
@@ -65,13 +66,11 @@ The `/settings` page also depends on these, in each instance:
 - **First and last name**: not required for saving (names are written through the Backend API), but enable it so invitations collect a name at sign-up.
 - **Reverification** left on (Clerk's default for sensitive changes). Settings relies on it and shows Clerk's own confirmation dialog when it is demanded.
 
-### 2. Invitation-only registration (dashboard)
+### 2. Open registration (dashboard)
 
-In each instance: **Configure → Restrictions → Sign-up mode → Restricted**.
+In each instance: **Configure → Restrictions → Sign-up mode → Public**.
 
-This is what actually prevents registration. In Restricted mode Clerk rejects any sign-up, by password or by Google, that does not come from an invitation. The application adds a second check of its own: it admits only identities carrying the metadata its invitations attach (see "Authentication and authorization" in ARCHITECTURE.md).
-
-Do not rely on the absence of a sign-up link. Confirm the mode is set in both instances.
+Registration is open at `/sign-up`. In Restricted mode Clerk refuses every sign-up that does not come from an invitation, so `/sign-up` shows Clerk's refusal until the mode is Public; switch it back to Restricted to close registration again without a deployment. The application adds its own check: a new identity gets an account only if its primary email is verified or it carries the invitation metadata, and it is always an ordinary `user` (see "Authentication and authorization" in ARCHITECTURE.md).
 
 ### 3. Google sign-in (dashboard)
 
@@ -80,7 +79,7 @@ Do not rely on the absence of a sign-up link. Confirm the mode is set in both in
 - Development: Clerk's shared credentials work as they are.
 - Production: Clerk requires your own Google OAuth client. Create it in Google Cloud Console (OAuth consent screen, then an OAuth client ID of type Web application), add the redirect URI Clerk displays, and paste the client ID and secret into Clerk.
 
-With Restricted mode on, a Google account that has not been invited cannot create an account.
+With Public mode on, anyone can create an account with Google; Google addresses arrive verified.
 
 One account can be opened with more than one Google account. Clerk links a Google sign-in to the account that holds the same verified email address, so a person adds the second address under Settings → Email addresses and then signs in with that Google account. The bar shows the account's primary email whichever way they signed in.
 
@@ -139,7 +138,7 @@ See [DATABASE.md](DATABASE.md) for the safeguards, the by-hand commands, and dep
 
 - [ ] `/` loads signed out; `/dashboard` and `/admin` redirect to `/sign-in`.
 - [ ] `/accept-invitation` without a link shows "An invitation is required".
-- [ ] Signing up with an uninvited email, and with an uninvited Google account, is rejected by Clerk.
+- [ ] `/sign-up` with a new email asks for the verification code, then lands on `/onboarding` as a standard user; the same with a new Google account.
 - [ ] The initial administrator signs in, lands on `/dashboard`, and can open `/admin`.
 - [ ] Inviting an address from `/admin` sends an email; the link opens `/accept-invitation` and completes sign-up; the new person appears in the user list as a standard user.
 - [ ] A standard user visiting `/admin` sees "You do not have access".

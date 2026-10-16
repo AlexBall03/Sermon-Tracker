@@ -8,8 +8,8 @@ import type { Database } from "@/db/types";
 import { updateUser } from "@/features/admin/users";
 import { provisionUser } from "./provisioning";
 
-const invited = { isInvited: async () => true };
-const uninvited = { isInvited: async () => false };
+const invited = { mayJoin: async () => true };
+const uninvited = { mayJoin: async () => false };
 
 let db: Database;
 beforeEach(async () => {
@@ -87,16 +87,16 @@ describe("provisionUser", () => {
   it("creates nothing for an identity that was not invited", async () => {
     expect(await provisionUser(db, "user_stranger", uninvited)).toEqual({
       ok: false,
-      reason: "not-invited",
+      reason: "unverified",
     });
     expect(await db.select().from(users)).toHaveLength(0);
   });
 
   it("does not ask Clerk again once the user exists", async () => {
     await provisionUser(db, "user_a", invited);
-    const isInvited = vi.fn(async () => false);
-    expect((await provisionUser(db, "user_a", { isInvited })).ok).toBe(true);
-    expect(isInvited).not.toHaveBeenCalled();
+    const mayJoin = vi.fn(async () => false);
+    expect((await provisionUser(db, "user_a", { mayJoin })).ok).toBe(true);
+    expect(mayJoin).not.toHaveBeenCalled();
   });
 
   it("never re-enables a disabled account", async () => {

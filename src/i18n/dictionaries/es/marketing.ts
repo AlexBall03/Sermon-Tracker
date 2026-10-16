@@ -15,6 +15,7 @@ export const marketing: Untranslated<typeof english> = {
     how: "Cómo funciona",
     mobile: "App móvil",
     signIn: "Iniciar sesión",
+    getStarted: "Comenzar",
     contact: "Contacto",
     openMenu: "Abrir menú",
     closeMenu: "Cerrar menú",
@@ -24,8 +25,8 @@ export const marketing: Untranslated<typeof english> = {
     eyebrow: "Para predicadores, de la primera nota al púlpito",
     title: "Del primer pensamiento al sermón terminado.",
     body: "Sermon Tracker guarda cada idea de sermón, punto reutilizable, bosquejo y registro de predicación en un solo lugar, para que nada digno de predicarse se pierda entre el momento en que llega y el día en que lo predicas.",
+    getStarted: "Comenzar",
     signIn: "Iniciar sesión",
-    how: "Ver cómo funciona",
     desktopAlt:
       "El inicio de Sermon Tracker en una computadora: un saludo con acciones para capturar una idea, iniciar o abrir un bosquejo y registrar una predicación; después, los sermones en los que se trabaja, las ideas por retomar, las ideas recientes, la predicación reciente y cuatro cifras de un vistazo.",
     mobileAlt:
@@ -143,13 +144,14 @@ export const marketing: Untranslated<typeof english> = {
   },
   closing: {
     title: "Listo para cuando llegue la próxima idea",
-    body: "Por ahora las cuentas se crean por invitación. Si recibiste una, inicia sesión y tu espacio de trabajo te espera.",
+    body: "Crea tu cuenta y tu espacio de trabajo estará listo: captura hoy la primera idea y encuéntrala de nuevo el día que la prediques.",
+    getStarted: "Comenzar",
     signIn: "Iniciar sesión",
   },
   footer: {
     blurb: "Un solo lugar para ideas de sermón, bosquejos, Escritura y tu registro de predicación.",
     developedBy: "Desarrollado por:",
-    beta: "Beta solo por invitación",
+    status: "Abierto a nuevas cuentas",
   },
   preview: {
     translation: { en: "KJV", es: "RVG" },

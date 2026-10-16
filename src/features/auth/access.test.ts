@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   db: undefined as unknown,
   userId: null as string | null,
   metadata: {} as Record<string, unknown>,
+  email: "unverified" as "verified" | "unverified",
   configured: true,
   /** What the browser sends: its language cookie, and the languages it asks for. */
   localeCookie: undefined as string | undefined,
@@ -28,7 +29,13 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@clerk/nextjs/server", () => ({
   auth: async () => ({ userId: state.userId }),
   clerkClient: async () => ({
-    users: { getUser: async () => ({ publicMetadata: state.metadata }) },
+    users: {
+      getUser: async () => ({
+        publicMetadata: state.metadata,
+        primaryEmailAddressId: "email_1",
+        emailAddresses: [{ id: "email_1", verification: { status: state.email } }],
+      }),
+    },
   }),
 }));
 vi.mock("next/server", () => ({ connection: async () => {} }));
@@ -57,7 +64,7 @@ const settle = (status: "completed" | "grandfathered" = "grandfathered") =>
 let db: Database;
 beforeEach(async () => {
   db = await createTestDatabase();
-  Object.assign(state, { db, userId: null, metadata: {}, configured: true });
+  Object.assign(state, { db, userId: null, metadata: {}, email: "unverified", configured: true });
   Object.assign(state, { localeCookie: undefined, acceptLanguage: null });
 });
 
@@ -72,11 +79,21 @@ describe("getAccess", () => {
     expect(await getAccess()).toEqual({ state: "signed-out" });
   });
 
-  it("denies a Clerk identity that was never invited", async () => {
+  it("denies a new identity whose email is not verified", async () => {
     state.userId = "user_stranger";
-    expect(await getAccess()).toEqual({ state: "denied", reason: "not-invited" });
+    expect(await getAccess()).toEqual({ state: "denied", reason: "unverified" });
     expect(await db.select().from(users)).toHaveLength(0);
     await expect(requireActiveUser()).rejects.toThrow("redirect:/access-denied");
+  });
+
+  it("admits a public sign-up with a verified email as a standard user", async () => {
+    Object.assign(state, { userId: "user_public", email: "verified" });
+    expect(await getAccess()).toMatchObject({
+      state: "active",
+      user: { role: "user", status: "active", onboardingStatus: "pending" },
+    });
+    await settle();
+    expect(await authorize("admin")).toMatchObject({ ok: false });
   });
 
   it("admits an invited identity as a standard user", async () => {

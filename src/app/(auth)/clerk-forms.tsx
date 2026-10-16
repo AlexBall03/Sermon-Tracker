@@ -74,16 +74,16 @@ function Held({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Sign-in only: the sign-up half of Clerk's combined flow is switched off. */
+/** Signing in, with Clerk's own link across to creating an account. */
 export function SignInForm() {
   return (
     <Held>
-      <SignIn withSignUp={false} fallbackRedirectUrl={routes.dashboard} />
+      <SignIn signUpUrl={routes.signUp} fallbackRedirectUrl={routes.dashboard} />
     </Held>
   );
 }
 
-/** Creating an account from an invitation. */
+/** Creating an account: openly at `/sign-up`, or from an invitation. */
 export function SignUpForm() {
   return (
     <Held>

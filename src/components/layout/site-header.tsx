@@ -20,7 +20,13 @@ const sectionIds = { features: "features", how: "how-it-works", mobile: "mobile-
 export function SiteHeader({ locale = defaultLocale }: { locale?: Locale }) {
   const t = dictionary(locale, "marketing").nav;
   const links = siteSections.map((key) => ({ href: `/#${sectionIds[key]}`, label: t[key] }));
-  const labels = { primary: t.primary, signIn: t.signIn, open: t.openMenu, close: t.closeMenu };
+  const labels = {
+    primary: t.primary,
+    signIn: t.signIn,
+    getStarted: t.getStarted,
+    open: t.openMenu,
+    close: t.closeMenu,
+  };
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 glass-settle border-b glass has-[[data-nav-panel]]:animate-none has-[[data-nav-panel]]:bg-surface-raised">
@@ -34,8 +40,11 @@ export function SiteHeader({ locale = defaultLocale }: { locale?: Locale }) {
           <SectionLinks links={links} />
           <div className="flex items-center gap-2.5">
             <ThemeToggle />
-            <Link href={routes.signIn} className={buttonVariants({ size: "sm" })}>
+            <Link href={routes.signIn} className={buttonVariants({ variant: "ghost", size: "sm" })}>
               {t.signIn}
+            </Link>
+            <Link href={routes.signUp} className={buttonVariants({ size: "sm" })}>
+              {t.getStarted}
             </Link>
           </div>
         </nav>

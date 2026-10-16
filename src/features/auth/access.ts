@@ -15,7 +15,7 @@ import { appAccessMetadataKey, provisionUser } from "./provisioning";
 
 export type Access =
   | { state: "signed-out" }
-  | { state: "denied"; reason: "not-invited" | "disabled" }
+  | { state: "denied"; reason: "unverified" | "disabled" }
   | { state: "active"; user: AppUser };
 
 /**
@@ -32,10 +32,15 @@ export const getAccess = cache(async (): Promise<Access> => {
 
   const result = await provisionUser(getDb(), userId, {
     initialAdminId: env.INITIAL_ADMIN_CLERK_USER_ID,
-    isInvited: async () => {
+    // Registration is open: an invited identity, or one whose email Clerk has verified.
+    mayJoin: async () => {
       const client = await clerkClient();
       const identity = await client.users.getUser(userId);
-      return identity.publicMetadata[appAccessMetadataKey] === true;
+      if (identity.publicMetadata[appAccessMetadataKey] === true) return true;
+      const primary = identity.emailAddresses.find(
+        (address) => address.id === identity.primaryEmailAddressId,
+      );
+      return primary?.verification?.status === "verified";
     },
     locale: deviceLocale,
   });

@@ -21,13 +21,15 @@ export function Closing({ locale }: { locale: Locale }) {
           </h2>
           <p className={sectionLead}>{t.body}</p>
         </div>
-        <Link
-          href={routes.signIn}
-          className={buttonVariants({ size: "lg", className: "justify-self-start" })}
-        >
-          {t.signIn}
-          <ArrowRight data-trailing aria-hidden />
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 justify-self-start">
+          <Link href={routes.signUp} className={buttonVariants({ size: "lg" })}>
+            {t.getStarted}
+            <ArrowRight data-trailing aria-hidden />
+          </Link>
+          <Link href={routes.signIn} className={buttonVariants({ variant: "outline", size: "lg" })}>
+            {t.signIn}
+          </Link>
+        </div>
       </div>
     </section>
   );

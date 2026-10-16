@@ -23,6 +23,8 @@ export const siteConfig = {
 export const routes = {
   home: "/",
   signIn: "/sign-in",
+  /** Open registration. Invitation emails still land on `acceptInvitation`. */
+  signUp: "/sign-up",
   acceptInvitation: "/accept-invitation",
   accessDenied: "/access-denied",
   /** First-time setup, and the same steps again from Settings. Outside the application shell. */
@@ -59,6 +61,7 @@ export const routes = {
 /** Paths that must never be indexed, now or once they exist. */
 export const privateRoutes = [
   routes.signIn,
+  routes.signUp,
   routes.acceptInvitation,
   routes.accessDenied,
   routes.onboarding,

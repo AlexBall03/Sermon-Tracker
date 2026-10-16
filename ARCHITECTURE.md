@@ -13,7 +13,7 @@ One full-stack Next.js application deployed to Vercel. No separate backend, queu
 | Styling       | Tailwind CSS v4, semantic CSS-variable tokens                  |
 | UI primitives | shadcn/ui (`base-nova` style on Base UI), added only as needed |
 | Validation    | Zod                                                            |
-| Auth          | Clerk (`@clerk/nextjs`), invitation-only                       |
+| Auth          | Clerk (`@clerk/nextjs`), open sign-up and invitations          |
 | Database      | Neon PostgreSQL with Drizzle ORM                               |
 | Tests         | Vitest + Testing Library, Playwright                           |
 | Hosting       | Vercel                                                         |
@@ -27,7 +27,7 @@ src/
     globals.css             Design tokens and base styles
     (marketing)/            Public, indexable pages (header + footer shell)
       page.tsx              Landing page  /
-    (auth)/                 Centred shell: sign-in, accept-invitation, access-denied
+    (auth)/                 Centred shell: sign-in, sign-up, accept-invitation, access-denied
     (app)/                  Authenticated shell: dashboard, library, bible, settings, admin
     (setup)/                The bar and nothing else: first-time account setup  /onboarding
     api/bible/              Route handlers: one chapter, and word search
@@ -108,6 +108,7 @@ Conventions:
 | --------------------------- | ------------------------------------------- | ----- | ------- |
 | `/`                         | Public landing page                         | 1A    | Yes     |
 | `/sign-in`                  | Clerk sign-in                               | 1B    | No      |
+| `/sign-up`                  | Open account creation (Clerk sign-up)       | Launch | No     |
 | `/accept-invitation`        | Account creation from an invitation link    | 1B    | No      |
 | `/access-denied`            | Shown to disabled or unauthorised accounts  | 1B    | No      |
 | `/onboarding`               | Account setup: first time, or from Settings | 4A    | No      |
@@ -141,11 +142,11 @@ The paths above are defined once in `src/lib/site.ts` (`routes`, `privateRoutes`
 
 ## Authentication and authorization
 
-**Clerk** verifies identity: passwords, Google sign-in, sessions, recovery, invitations. **The `users` table** decides what a person may do: role (`admin`, `user`) and status (`active`, `disabled`). Nothing about authorization is stored in Clerk or trusted from the browser.
+**Clerk** verifies identity: passwords, Google sign-in, sessions, recovery, invitations, and the email address of a new account. Registration is open: `provisionUser` creates a row for a new identity that carries the invitation metadata or whose primary email Clerk has verified (`mayJoin` in `access.ts`), always as `user` (only `INITIAL_ADMIN_CLERK_USER_ID` starts as `admin`); any other new identity is denied as `unverified` and gets no row. **The `users` table** decides what a person may do: role (`admin`, `user`) and status (`active`, `disabled`). Nothing about authorization is stored in Clerk or trusted from the browser.
 
 ### Request flow
 
-1. `src/proxy.ts` runs Clerk and handles routing only: a guest on an application path goes to sign-in (Clerk builds the return URL and only honours same-origin targets), and a signed-in visitor on `/`, `/sign-in`, or `/accept-invitation` goes to `/dashboard`.
+1. `src/proxy.ts` runs Clerk and handles routing only: a guest on an application path goes to sign-in (Clerk builds the return URL and only honours same-origin targets), and a signed-in visitor on `/`, `/sign-in`, `/sign-up`, or `/accept-invitation` goes to `/dashboard`.
 2. `getAccess()` in `src/features/auth/access.ts` resolves the caller once per request: Clerk user ID, then `provisionUser`, then the status check. It calls `connection()` first so the decision is never prerendered or cached.
 3. Pages and layouts call `requireActiveUser()` or `requireAdmin()`, which redirect to `/sign-in` or `/access-denied`. Server actions and route handlers call `authorize("active" | "admin")`, which returns a failure value instead.
 4. The same helpers then ask whether the account has finished first-time setup (see "First-time setup"): `requireActiveUser()` sends one that has not to `/onboarding`, and `authorize("active" | "admin")` refuses it. `requireAccount()` and `authorize("account")` leave that question out, and are used only by setup itself.
@@ -158,7 +159,7 @@ The proxy is never the only check. Every page under `(app)` and every server act
 | Guest visits `/dashboard` or `/admin`       | Redirect to `/sign-in`       |
 | Signed-in visitor on `/` or `/sign-in`      | Redirect to `/dashboard`     |
 | Standard user visits `/admin`               | Redirect to `/access-denied` |
-| Disabled or uninvited account, any app path | Redirect to `/access-denied` |
+| Disabled or unverified account, any app path | Redirect to `/access-denied` |
 | Administrator visits `/admin`               | Administration               |
 | New account, setup unfinished, any app path | Redirect to `/onboarding`    |
 | New account, setup unfinished, an action    | Refused, nothing written     |
@@ -200,7 +201,7 @@ Phase 4A ([handoff](docs/HANDOFF-4A.md)). A new account goes through four steps 
 - `requireActiveUser()` redirects a `pending` account to `/onboarding`. `requireAdmin()` goes through it, so a new administrator is held to setup too.
 - `authorize("active" | "admin")` answers a `pending` account with a refusal, so an action or an API route called directly writes and returns nothing.
 - `requireAccount()` and `authorize("account")` admit an active account whatever its setup. They are used by the setup page, by setup's two actions, and by the three actions it saves through (`setLocale`, `setBibleTranslation`, `updateProfile`). Nothing else may use them.
-- A disabled or uninvited account is denied before setup is considered, exactly as before.
+- A disabled or unverified account is denied before setup is considered, exactly as before.
 - The proxy is still routing only. `/onboarding` is in `appRoutes`, so a guest there is sent to sign-in; a new account signing in is sent by the proxy to `/dashboard` and by the dashboard's own check to `/onboarding`. The setup page asks for an account and not for a finished one, so there is no loop. A layout is not the check: the `(app)` layout does call `requireActiveUser()`, but so does every page beneath it.
 
 **Progress** (`onboarding.ts`, behind `advanceOnboarding` and `finishOnboarding` in `actions.ts`). Each write is one statement on the caller's own row with its conditions in the WHERE clause, so two tabs, two devices, or one request sent twice cannot disagree:
@@ -1132,7 +1133,7 @@ shadcn/ui is configured in `components.json`. Add a primitive with `npx shadcn@l
 
 - Base metadata is in the root layout: title template, description, Open Graph (with `url`), Twitter card, `metadataBase` of `https://sermontracker.com`.
 - **One share card for the whole site**, `src/app/opengraph-image.png` (1200 × 630, PNG, committed; [handoff](docs/HANDOFF-SOCIAL-CARD.md)). Next's file convention adds `og:image` with its absolute address, size, type, and alt text (`opengraph-image.alt.txt`), and fills `twitter:image` with the same image because the layout's `twitter` names none: do not add a `twitter-image` file or `twitter.images`. It is always dark: the mark and the wordmark, "Every Great Sermon Starts Somewhere." and "Capture ideas. Build outlines. Keep your preaching record." on the left; the dashboard as a window with the lit edge, and a phone, on the right, in the dark tokens. It is drawn by `scripts/brand/share-card.mjs`, which imports `demoWorkspace` and the dictionaries directly (Node strips their types; a small resolve hook maps `@/`), so its titles and figures are the landing page's fictional account and cannot disagree with it. When the dashboard or the demo changes, run `npm run brand:assets -- share` and commit the image. It is not generated at build or request time.
-- The landing page sets its canonical URL, and its title and description in the visitor's language (`generateMetadata`, from the `marketing` dictionary). Open Graph and the share image are the root layout's, in English. `/sign-in`, `/accept-invitation`, `/access-denied`, and everything under `(app)` are `noindex`.
+- The landing page sets its canonical URL, and its title and description in the visitor's language (`generateMetadata`, from the `marketing` dictionary). Open Graph and the share image are the root layout's, in English. `/sign-in`, `/sign-up`, `/accept-invitation`, `/access-denied`, and everything under `(app)` are `noindex`.
 - `robots.ts` disallows every application path. On any Vercel deployment that is not production (`VERCEL_ENV`), the whole site is `noindex` and `robots.txt` disallows everything.
 - A page that sets its own `openGraph` object replaces the inherited one, including the share image. Extend it deliberately.
 - The web app manifest is `app/manifest.ts` (Phase 5A; see "Installed application"). The landing page's Mobile App section (`marketing.mobile`) describes installing as it now works: Share and Add to Home Screen on an iPhone or iPad, the browser's menu or address bar elsewhere, signing in once if asked, and the steps in Settings. It says the app needs a connection and claims no offline use.

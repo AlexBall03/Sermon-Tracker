@@ -4,12 +4,15 @@ export const auth = {
   backHome: "Back to home",
   loading: "Loading",
   language: "Language",
-  beta: "Invitation-only beta",
+  beta: "Sermon Tracker",
   signIn: {
     metaTitle: "Sign in",
     unavailableTitle: "Sign-in is not available here",
     unavailable:
       "Authentication has not been configured for this environment, so nobody can sign in yet.",
+  },
+  signUp: {
+    metaTitle: "Create account",
   },
   invitation: {
     metaTitle: "Accept invitation",

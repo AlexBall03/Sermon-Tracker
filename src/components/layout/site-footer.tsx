@@ -32,6 +32,7 @@ export function SiteFooter({
     { href: "/#mobile-app", label: t.nav.mobile },
     { href: routes.contact, label: t.nav.contact },
     { href: routes.signIn, label: t.nav.signIn },
+    { href: routes.signUp, label: t.nav.getStarted },
   ];
 
   return (
@@ -89,7 +90,7 @@ export function SiteFooter({
             )}
             <p className="flex items-center gap-2">
               <span aria-hidden className="size-1.5 rounded-full bg-primary" />
-              {t.footer.beta}
+              {t.footer.status}
             </p>
           </div>
         </div>

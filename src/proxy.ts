@@ -19,6 +19,7 @@ function isGuestRoute(request: NextRequest) {
   return (
     pathname === routes.home ||
     under(pathname, routes.signIn) ||
+    under(pathname, routes.signUp) ||
     under(pathname, routes.acceptInvitation)
   );
 }

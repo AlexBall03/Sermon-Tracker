@@ -33,14 +33,13 @@ export function Hero({ locale }: { locale: Locale }) {
             {t.body}
           </p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <Link href={routes.signIn} className={buttonVariants({ size: "lg" })}>
-              {t.signIn}
+            <Link href={routes.signUp} className={buttonVariants({ size: "lg" })}>
+              {t.getStarted}
               <ArrowRight data-trailing aria-hidden />
             </Link>
-            {/* A plain anchor: next/link does not scroll again to a hash already in the URL. */}
-            <a href="#how-it-works" className={buttonVariants({ variant: "outline", size: "lg" })}>
-              {t.how}
-            </a>
+            <Link href={routes.signIn} className={buttonVariants({ variant: "outline", size: "lg" })}>
+              {t.signIn}
+            </Link>
           </div>
         </div>
 

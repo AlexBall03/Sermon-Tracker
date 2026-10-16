@@ -15,15 +15,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Sign-in only. Accounts are created by accepting an invitation, so the
- * sign-up half of Clerk's combined flow is switched off here and registration
- * is restricted in the Clerk dashboard (see docs/ENVIRONMENTS.md).
+ * Signing in. Clerk's form links across to `/sign-up` for a visitor without an
+ * account (see docs/ENVIRONMENTS.md for the Clerk instance's sign-up mode).
  */
-export default function SignInPage() {
+export default async function SignInPage() {
   if (!isAuthConfigured()) {
+    const t = await getT("auth");
     return (
-      <AuthNotice eyebrow="Invitation-only beta" title="Sign-in is not available here">
-        Authentication has not been configured for this environment, so nobody can sign in yet.
+      <AuthNotice eyebrow={t.beta} title={t.signIn.unavailableTitle}>
+        {t.signIn.unavailable}
       </AuthNotice>
     );
   }

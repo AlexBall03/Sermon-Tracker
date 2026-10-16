@@ -11,7 +11,7 @@ import { row, useNavPanel } from "./use-nav-panel";
 type MobileNavProps = {
   links: readonly { href: string; label: string }[];
   /** The panel's own words, in the page's language. */
-  labels: { primary: string; signIn: string; open: string; close: string };
+  labels: { primary: string; signIn: string; getStarted: string; open: string; close: string };
 };
 
 /**
@@ -66,15 +66,22 @@ export function MobileNav({ links, labels }: MobileNavProps) {
                   </li>
                 ))}
               </ul>
-              {/* The theme control needs no label: it sits beside the one action, sun and moon showing. */}
+              {/* The theme control needs no label: it sits beside the actions, sun and moon showing. */}
               <div
                 style={row(links.length)}
                 className="flex animate-menu-row items-center gap-3 pt-5"
               >
                 <Link
-                  href={routes.signIn}
+                  href={routes.signUp}
                   onClick={close}
                   className={buttonVariants({ size: "lg", className: "flex-1" })}
+                >
+                  {labels.getStarted}
+                </Link>
+                <Link
+                  href={routes.signIn}
+                  onClick={close}
+                  className={buttonVariants({ variant: "outline", size: "lg", className: "flex-1" })}
                 >
                   {labels.signIn}
                 </Link>

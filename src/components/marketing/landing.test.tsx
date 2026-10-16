@@ -95,11 +95,13 @@ describe("the landing page", () => {
     for (const id of ["how-it-works", "features", "mobile-app"]) {
       expect(document.getElementById(id)).not.toBeNull();
     }
-    // Sign in, from the hero and from the closing band, and nothing that asks for an account.
+    // Get Started and Sign In, from the hero and from the closing band.
+    const getStarted = screen.getAllByRole("link", { name: t.hero.getStarted });
+    expect(getStarted).toHaveLength(2);
+    for (const link of getStarted) expect(link).toHaveAttribute("href", "/sign-up");
     const signIn = screen.getAllByRole("link", { name: t.hero.signIn });
     expect(signIn).toHaveLength(2);
     for (const link of signIn) expect(link).toHaveAttribute("href", "/sign-in");
-    expect(screen.getByRole("link", { name: t.hero.how })).toHaveAttribute("href", "#how-it-works");
   });
 
   it("says something different in Spanish", () => {
@@ -125,7 +127,7 @@ describe("the landing page", () => {
     }
     expect(screen.getByText(t.hero.desktopAlt)).toBeInTheDocument();
     expect(screen.getByText(t.hero.mobileAlt)).toBeInTheDocument();
-    // The only links on the page are the two ways in and the one way down it.
-    expect(screen.getAllByRole("link")).toHaveLength(3);
+    // The only links on the page are Get Started and Sign In, in the hero and the closing band.
+    expect(screen.getAllByRole("link")).toHaveLength(4);
   });
 });

@@ -21,7 +21,7 @@ type PageProps = {
 /**
  * Where an invitation email lands. Clerk's form appears only for a visitor
  * arriving with an invitation ticket (or continuing a flow that started with
- * one); there is no open registration page. Clerk itself rejects a ticket that
+ * one); open registration is `/sign-up`. Clerk itself rejects a ticket that
  * is expired, revoked, or already used.
  */
 export default function AcceptInvitationPage(props: PageProps) {

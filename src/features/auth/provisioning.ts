@@ -13,13 +13,16 @@ export const lockAdministration = sql`select pg_advisory_xact_lock(712001)`;
 /** Key set in Clerk public metadata by invitations this application sends. */
 export const appAccessMetadataKey = "appAccess";
 
-export type ProvisionResult = { ok: true; user: AppUser } | { ok: false; reason: "not-invited" };
+export type ProvisionResult = { ok: true; user: AppUser } | { ok: false; reason: "unverified" };
 
 type ProvisionOptions = {
   /** INITIAL_ADMIN_CLERK_USER_ID, when configured. */
   initialAdminId?: string;
-  /** Whether Clerk records this identity as invited. Only called for new identities. */
-  isInvited: () => Promise<boolean>;
+  /**
+   * Whether this identity may have an account: Clerk records it as invited,
+   * or its email address is verified. Only called for new identities.
+   */
+  mayJoin: () => Promise<boolean>;
   /**
    * The interface language a new account starts in, which is the browser's.
    * Only called for new identities; an existing account keeps what it saved.
@@ -43,13 +46,15 @@ async function findByClerkId(db: Database, clerkUserId: string) {
 export async function provisionUser(
   db: Database,
   clerkUserId: string,
-  { initialAdminId, isInvited, locale }: ProvisionOptions,
+  { initialAdminId, mayJoin, locale }: ProvisionOptions,
 ): Promise<ProvisionResult> {
   const isInitialAdmin = Boolean(initialAdminId) && clerkUserId === initialAdminId;
 
   let user = await findByClerkId(db, clerkUserId);
   if (!user) {
-    if (!isInitialAdmin && !(await isInvited())) return { ok: false, reason: "not-invited" };
+    // Every new account is an ordinary user, whoever asks: only the configured
+    // initial administrator starts as anything else.
+    if (!isInitialAdmin && !(await mayJoin())) return { ok: false, reason: "unverified" };
     await db
       .insert(users)
       .values({

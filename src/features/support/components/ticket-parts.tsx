@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, Lock } from "lucide-react";
 
@@ -321,7 +321,10 @@ export function CloseTicketButton({ ticketId }: { ticketId: string }) {
   );
 }
 
-/** An administrator's choice of status, from those the ticket's kind has. */
+/**
+ * An administrator's choice of status, from those the ticket's kind has.
+ * Choosing only changes the draft; nothing is saved until Save Changes.
+ */
 export function StatusControl({
   ticketId,
   kind,
@@ -333,45 +336,68 @@ export function StatusControl({
 }) {
   const words = useT("support");
   const router = useRouter();
-  const [value, setValue] = useState<TicketStatus>(status);
+  const [draft, setDraft] = useState<TicketStatus>(status);
+  const [saved, setSaved] = useState<TicketStatus>(status);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [saving, startSaving] = useTransition();
+  // Set before the first await, so a second press in the same frame sends nothing.
+  const inFlight = useRef(false);
+  const dirty = draft !== saved;
 
-  // A status saved from elsewhere replaces what is shown.
+  // A status saved from elsewhere becomes the saved one. It replaces the draft
+  // only when nothing unsaved was chosen, so a choice is never lost silently.
   const [seen, setSeen] = useState(status);
   if (status !== seen) {
     setSeen(status);
-    setValue(status);
+    setSaved(status);
+    if (!dirty) setDraft(status);
   }
 
-  function change(next: string) {
-    const chosen = next as TicketStatus;
-    const was = value;
-    setValue(chosen);
+  const guard = useLeaveGuard(dirty && !saving, words.admin.statusUnsaved, () => setDraft(saved));
+
+  function save() {
+    if (!dirty || inFlight.current) return;
+    inFlight.current = true;
+    const chosen = draft;
     setResult(null);
     startSaving(async () => {
-      const outcome = await setTicketStatus(ticketId, { status: chosen }).catch(
-        (): ActionResult => ({ ok: false, message: words.actions.offline }),
-      );
-      if (!outcome.ok) setValue(was);
+      const outcome = await setTicketStatus(ticketId, { status: chosen })
+        .catch((): ActionResult => ({ ok: false, message: words.actions.offline }))
+        .finally(() => {
+          inFlight.current = false;
+        });
       setResult(outcome);
-      if (outcome.ok) router.refresh();
+      if (outcome.ok) {
+        setSaved(chosen);
+        router.refresh();
+      }
     });
   }
 
   return (
     <div aria-busy={saving}>
+      {guard.dialog}
       <p className="mb-2 text-sm font-medium">{words.admin.changeStatus}</p>
-      <Select
-        label={words.admin.changeStatus}
-        value={value}
-        onChange={change}
-        disabled={saving}
-        options={statusesFor(kind).map((option) => ({
-          value: option,
-          label: words.statuses[option],
-        }))}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <Select
+          label={words.admin.changeStatus}
+          value={draft}
+          onChange={(next) => {
+            setDraft(next as TicketStatus);
+            setResult(null);
+          }}
+          disabled={saving}
+          options={statusesFor(kind).map((option) => ({
+            value: option,
+            label: words.statuses[option],
+          }))}
+          className="min-w-0 flex-1"
+        />
+        <Button type="button" onClick={save} disabled={!dirty || saving} aria-busy={saving}>
+          {saving && <LoaderCircle className="animate-spin" aria-hidden />}
+          {saving ? words.admin.savingStatus : words.admin.saveStatus}
+        </Button>
+      </div>
       <ActionStatus result={result} />
     </div>
   );

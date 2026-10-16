@@ -6,12 +6,15 @@ export const auth: Untranslated<typeof english> = {
   backHome: "Volver al inicio",
   loading: "Cargando",
   language: "Idioma",
-  beta: "Beta solo por invitación",
+  beta: "Sermon Tracker",
   signIn: {
     metaTitle: "Iniciar sesión",
     unavailableTitle: "El inicio de sesión no está disponible aquí",
     unavailable:
       "La autenticación no se ha configurado para este entorno, así que nadie puede iniciar sesión todavía.",
+  },
+  signUp: {
+    metaTitle: "Crear cuenta",
   },
   invitation: {
     metaTitle: "Aceptar invitación",
