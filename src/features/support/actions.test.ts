@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { supportMessages, supportTickets, users } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+import { notifications, supportMessages, supportTickets, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
@@ -223,5 +225,53 @@ describe("replies and statuses", () => {
     const id = await ticket();
     state.user = { id: admin, role: "admin" };
     expect((await setTicketStatus(id, { status: "planned" })).ok).toBe(false);
+  });
+});
+
+describe("notifications", () => {
+  async function ticket() {
+    state.user = { id: me, role: "user" };
+    const result = await submitFeedback(report);
+    await runLater();
+    state.sendMail.mockClear();
+    return result.id!;
+  }
+  const notificationsOf = (recipient: string) =>
+    db.select().from(notifications).where(eq(notifications.recipientId, recipient));
+
+  it("tells administrators about new feedback and replies, never the one who wrote", async () => {
+    const id = await ticket();
+    expect(await notificationsOf(admin)).toMatchObject([{ kind: "new_ticket", ticketId: id }]);
+    expect(await notificationsOf(me)).toEqual([]);
+    await replyToTicket(id, { body: "Still spinning." });
+    await runLater();
+    expect((await notificationsOf(admin)).map((row) => row.kind).sort()).toEqual([
+      "new_ticket",
+      "user_reply",
+    ]);
+  });
+
+  it("tells the requester about a public reply and a status, never an internal note", async () => {
+    const id = await ticket();
+    state.user = { id: admin, role: "admin" };
+    await adminReplyToTicket(id, { body: "Duplicate of #4", visibility: "internal" });
+    await runLater();
+    expect(await notificationsOf(me)).toEqual([]);
+
+    await adminReplyToTicket(id, { body: "Fixed now." });
+    await setTicketStatus(id, { status: "resolved" });
+    await runLater();
+    expect((await notificationsOf(me)).map((row) => row.kind).sort()).toEqual(["reply", "status"]);
+  });
+
+  it("sends no optional email to an account that turned it off", async () => {
+    const id = await ticket();
+    await db.update(users).set({ emailReplies: false, emailStatus: false }).where(eq(users.id, me));
+    state.user = { id: admin, role: "admin" };
+    await adminReplyToTicket(id, { body: "Fixed now." });
+    await setTicketStatus(id, { status: "resolved" });
+    await runLater();
+    expect(state.sendMail).not.toHaveBeenCalled();
+    expect(await notificationsOf(me)).toHaveLength(2);
   });
 });

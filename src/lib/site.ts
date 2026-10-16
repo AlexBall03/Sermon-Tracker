@@ -45,7 +45,10 @@ export const routes = {
   settingsApp: "/settings/app",
   settingsOffline: "/settings/offline",
   settingsSync: "/settings/sync",
+  settingsNotifications: "/settings/notifications",
   settingsAccount: "/settings/account",
+  /** Every notification of the account, newest first; the bell shows the latest. */
+  notifications: "/notifications",
   admin: "/admin",
   /** The administrator's inbox of contact messages and feedback; one conversation at `/admin/feedback/<id>`. */
   adminFeedback: "/admin/feedback",
@@ -79,7 +82,9 @@ export const privateRoutes = [
   routes.settingsApp,
   routes.settingsOffline,
   routes.settingsSync,
+  routes.settingsNotifications,
   routes.settingsAccount,
+  routes.notifications,
   routes.admin,
   routes.adminFeedback,
   routes.support,
@@ -102,5 +107,6 @@ export const appRoutes = [
   routes.outlines,
   routes.settings,
   routes.support,
+  routes.notifications,
   routes.admin,
 ] as const;

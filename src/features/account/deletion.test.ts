@@ -7,9 +7,11 @@ import {
   bibleFavorites,
   bibleHighlights,
   ideas,
+  notifications,
   preachingContexts,
   preachingOccurrences,
   preachingVenues,
+  pushSubscriptions,
   sermonOutlines,
   supportAttachments,
   supportMessages,
@@ -80,16 +82,14 @@ async function seed(clerkUserId: string, role: "admin" | "user" = "user") {
     firstChapter: 3,
     firstVerse: 16,
   });
-  await db
-    .insert(bibleHighlights)
-    .values({
-      ownerId: owner,
-      translation: "kjv",
-      book: 43,
-      chapter: 3,
-      verse: 16,
-      color: "yellow",
-    });
+  await db.insert(bibleHighlights).values({
+    ownerId: owner,
+    translation: "kjv",
+    book: 43,
+    chapter: 3,
+    verse: 16,
+    color: "yellow",
+  });
   const [ticket] = await db
     .insert(supportTickets)
     .values({ userId: owner, kind: "bug", source: "app", subject: "Broken" })
@@ -107,6 +107,19 @@ async function seed(clerkUserId: string, role: "admin" | "user" = "user") {
     contentType: "image/png",
     size: 10,
   });
+  await db.insert(notifications).values({
+    recipientId: owner,
+    kind: "reply",
+    ticketId: ticket.id,
+    eventKey: `message/${clerkUserId}`,
+  });
+  await db.insert(pushSubscriptions).values({
+    ownerId: owner,
+    endpoint: `https://push.example/${clerkUserId}`,
+    p256dh: "key",
+    auth: "auth",
+    label: "Chrome on macOS",
+  });
   return { user, ticket };
 }
 
@@ -114,6 +127,10 @@ const rowsOf = async (owner: string) => ({
   ideas: (await db.select().from(ideas).where(eq(ideas.ownerId, owner))).length,
   tickets: (await db.select().from(supportTickets).where(eq(supportTickets.userId, owner))).length,
   highlights: (await db.select().from(bibleHighlights).where(eq(bibleHighlights.ownerId, owner)))
+    .length,
+  notifications: (await db.select().from(notifications).where(eq(notifications.recipientId, owner)))
+    .length,
+  devices: (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.ownerId, owner)))
     .length,
 });
 
@@ -147,9 +164,21 @@ describe("account deletion", () => {
     expect(services.blobs).toEqual([["support/user_gone.png"]]);
     expect(services.identities).toEqual(["user_gone"]);
     expect(await db.select().from(users).where(eq(users.id, gone.user.id))).toHaveLength(0);
-    expect(await rowsOf(gone.user.id)).toEqual({ ideas: 0, tickets: 0, highlights: 0 });
+    expect(await rowsOf(gone.user.id)).toEqual({
+      ideas: 0,
+      tickets: 0,
+      highlights: 0,
+      notifications: 0,
+      devices: 0,
+    });
 
-    expect(await rowsOf(admin.user.id)).toEqual({ ideas: 1, tickets: 1, highlights: 1 });
+    expect(await rowsOf(admin.user.id)).toEqual({
+      ideas: 1,
+      tickets: 1,
+      highlights: 1,
+      notifications: 1,
+      devices: 1,
+    });
     const reply = await db
       .select()
       .from(supportMessages)
@@ -190,7 +219,13 @@ describe("account deletion", () => {
       },
     };
     expect(await processDeletion(db, user.id, failing)).toBe("retry");
-    expect(await rowsOf(user.id)).toEqual({ ideas: 0, tickets: 0, highlights: 0 });
+    expect(await rowsOf(user.id)).toEqual({
+      ideas: 0,
+      tickets: 0,
+      highlights: 0,
+      notifications: 0,
+      devices: 0,
+    });
 
     // The identity still signs in: it finds its locked row, never a new account.
     const mayJoin = vi.fn(async () => true);

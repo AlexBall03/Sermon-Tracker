@@ -314,3 +314,54 @@ describe("versions", () => {
     expect(serviceWorkerSource('a"b')).toContain('var VERSION = "a\\"b";');
   });
 });
+
+describe("push notifications", () => {
+  it("shows what was sent and keeps only an address inside the application", async () => {
+    const showNotification = vi.fn(async () => {});
+    sandbox.self.registration.showNotification = showNotification;
+    let done: Promise<unknown> = Promise.resolve();
+    const push = (payload: object) =>
+      listeners.push({
+        data: { json: () => payload },
+        waitUntil: (value: Promise<unknown>) => (done = value),
+      });
+
+    push({ title: "Sermon Tracker", body: "New reply.", url: "/support/1", tag: "t" });
+    await done;
+    expect(showNotification).toHaveBeenLastCalledWith(
+      "Sermon Tracker",
+      expect.objectContaining({ body: "New reply.", data: { url: "/support/1" } }),
+    );
+
+    push({ title: "x", body: "y", url: "https://evil.example/phish" });
+    await done;
+    expect(showNotification).toHaveBeenLastCalledWith(
+      "x",
+      expect.objectContaining({ data: { url: "/dashboard" } }),
+    );
+  });
+
+  it("focuses an open window on a click, or opens one", async () => {
+    const navigate = vi.fn(async () => undefined);
+    const focus = vi.fn(async () => undefined);
+    const openWindow = vi.fn(async () => undefined);
+    sandbox.self.clients.openWindow = openWindow;
+    let done: Promise<unknown> = Promise.resolve();
+    const click = (url: string) =>
+      listeners.notificationclick({
+        notification: { close: vi.fn(), data: { url } },
+        waitUntil: (value: Promise<unknown>) => (done = value),
+      });
+
+    sandbox.self.clients.matchAll = async () => [{ url: `${origin}/library`, focus, navigate }];
+    click("/admin/feedback/2");
+    await done;
+    expect(focus).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith("/admin/feedback/2");
+
+    sandbox.self.clients.matchAll = async () => [];
+    click("//evil.example");
+    await done;
+    expect(openWindow).toHaveBeenCalledWith("/dashboard");
+  });
+});

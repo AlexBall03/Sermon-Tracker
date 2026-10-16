@@ -29,6 +29,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => state.pathname,
   useRouter: () => ({ replace: state.replace, push: vi.fn(), refresh: vi.fn() }),
 }));
+vi.mock("@/features/settings/components/delete-account", () => ({
+  DeleteAccount: () => null,
+}));
 vi.mock("@/features/settings/components/account-sections", () => ({
   ProfileSettings: () => <div>profile controls</div>,
   SecuritySettings: () => <div>security controls</div>,
@@ -92,7 +95,7 @@ describe("Settings", () => {
     }
   });
 
-  it("lists its seven categories on the overview, each leading to its page, then Help & Feedback", async () => {
+  it("lists its eight categories on the overview, each leading to its page, then Help & Feedback", async () => {
     show(await SettingsPage());
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(
@@ -104,6 +107,7 @@ describe("Settings", () => {
       [expect.stringContaining("App & Experience"), "/settings/app"],
       [expect.stringContaining("Offline Storage"), "/settings/offline"],
       [expect.stringContaining("Synchronization"), "/settings/sync"],
+      [expect.stringContaining("Notifications"), "/settings/notifications"],
       [expect.stringContaining("Account & Security"), "/settings/account"],
       [expect.stringContaining("Help & Feedback"), "/support"],
     ]);

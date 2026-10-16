@@ -16,3 +16,4 @@ export { tour } from "./tour";
 export { pwa } from "./pwa";
 export { offline } from "./offline";
 export { support } from "./support";
+export { notifications } from "./notifications";

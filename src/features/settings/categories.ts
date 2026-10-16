@@ -1,5 +1,6 @@
 import {
   AppWindow,
+  Bell,
   BookOpen,
   HardDriveDownload,
   Palette,
@@ -23,6 +24,7 @@ export const settingsCategories = [
   { key: "app", href: routes.settingsApp, icon: AppWindow },
   { key: "offline", href: routes.settingsOffline, icon: HardDriveDownload },
   { key: "sync", href: routes.settingsSync, icon: RefreshCw },
+  { key: "notifications", href: routes.settingsNotifications, icon: Bell },
   { key: "account", href: routes.settingsAccount, icon: ShieldCheck },
 ] as const;
 

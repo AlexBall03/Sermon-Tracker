@@ -12,6 +12,11 @@ export const settings: Untranslated<typeof english> = {
     back: "Configuración",
   },
   categories: {
+    notifications: {
+      title: "Notificaciones",
+      description:
+        "Notificaciones por correo y push sobre tus comentarios, y los dispositivos que las reciben.",
+    },
     profile: {
       title: "Perfil",
       description: "Tu nombre, tu foto y tus correos, y tu iglesia y ministerio.",

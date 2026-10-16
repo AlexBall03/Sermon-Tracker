@@ -832,3 +832,17 @@ export async function clerkIdFor(db: Database, userId: string) {
     .limit(1);
   return row?.clerkUserId ?? null;
 }
+
+/** Whether an account still wants one kind of optional support email (Settings, Notifications). */
+export async function wantsSupportEmail(
+  db: Database,
+  userId: string,
+  preference: "emailReplies" | "emailStatus",
+) {
+  const [row] = await db
+    .select({ wants: users[preference] })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.wants ?? false;
+}

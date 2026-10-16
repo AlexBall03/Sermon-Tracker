@@ -205,6 +205,55 @@ self.addEventListener("message", function (event) {
     event.ports[0].postMessage({ version: VERSION });
   }
 });
+
+// Web Push (features/notifications): show what the server sent, which is never
+// anything a person wrote, and open only an address inside the application.
+function safePath(value) {
+  try {
+    var url = new URL(typeof value === "string" ? value : "/dashboard", self.location.origin);
+    if (url.origin !== self.location.origin) return "/dashboard";
+    return url.pathname + url.search;
+  } catch (e) {
+    return "/dashboard";
+  }
+}
+
+self.addEventListener("push", function (event) {
+  var data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = {};
+  }
+  event.waitUntil(
+    self.registration.showNotification(String(data.title || "Sermon Tracker"), {
+      body: typeof data.body === "string" ? data.body : "",
+      tag: typeof data.tag === "string" ? data.tag : undefined,
+      icon: "/brand/icon-192.png",
+      badge: "/brand/icon-192.png",
+      data: { url: safePath(data.url) },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var path = safePath(event.notification.data && event.notification.data.url);
+  event.waitUntil(
+    (async function () {
+      var windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (var i = 0; i < windows.length; i++) {
+        var client = windows[i];
+        if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(path).catch(function () {});
+          return;
+        }
+      }
+      await self.clients.openWindow(path);
+    })(),
+  );
+});
 `;
 
 /** The worker's script for one version of the application. */

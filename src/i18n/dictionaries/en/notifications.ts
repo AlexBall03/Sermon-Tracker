@@ -1,0 +1,62 @@
+/** Notifications: the bell, its page, push on a device, and their settings. */
+export const notifications = {
+  metaTitle: "Notifications",
+  title: "Notifications",
+  description: "Replies, status changes, and new feedback, newest first.",
+  bell: "Notifications",
+  bellUnread: (count: number) => `Notifications, ${count} unread`,
+  markAllRead: "Mark all as read",
+  viewAll: "View all notifications",
+  empty: "Nothing new. You will be told here when someone answers your feedback.",
+  error: "Notifications could not be loaded. Try again in a moment.",
+  unread: "Unread",
+  kinds: {
+    reply: (subject: string) => `New reply to “${subject}”`,
+    status: (subject: string, status: string) => `“${subject}” is now ${status}`,
+    new_ticket: (subject: string) => `New feedback: “${subject}”`,
+    user_reply: (subject: string) => `New reply from the requester on “${subject}”`,
+    contact: (subject: string) => `New contact message: “${subject}”`,
+  },
+  /** What a device shows. Never a subject or a message: a lock screen is not private. */
+  push: {
+    title: "Sermon Tracker",
+    reply: "You have a new reply to your feedback.",
+    status: "The status of your feedback has changed.",
+    new_ticket: "New feedback has arrived.",
+    user_reply: "A requester replied to their feedback.",
+    contact: "A new contact message has arrived.",
+    test: "Push notifications are working on this device.",
+  },
+  settings: {
+    email: "Email",
+    emailDescription:
+      "Optional emails about your feedback. Messages about signing in and your account's security are always sent.",
+    emailReplies: "Replies to my feedback",
+    emailStatus: "Status changes on my feedback",
+    push: "Push notifications",
+    pushDescription:
+      "Alerts on the devices where you turn them on. They never show what anyone wrote.",
+    pushSupport: "Send support notifications to my devices",
+    devices: "Devices",
+    noDevices: "Push notifications are not on for any device yet.",
+    thisDevice: "This device",
+    enable: "Turn On for This Device",
+    disable: "Turn Off for This Device",
+    removeFrom: (label: string) => `Remove ${label}`,
+    test: "Send Test Notification",
+    testSent: "Test notification sent.",
+    testNone: "No device received it. Turn push on for this device first.",
+    enabled: "Push notifications are on for this device.",
+    disabled: "Push notifications are off for this device.",
+    removed: "Device removed.",
+    saved: "Saved.",
+    failed: "That could not be saved. Try again.",
+    denied:
+      "Notifications are blocked for this site. Allow them in your browser's site settings, then try again.",
+    unsupported: "This browser cannot receive push notifications.",
+    notConfigured: "Push notifications are not available yet.",
+    iosInstall:
+      "On iPhone and iPad, add Sermon Tracker to your Home Screen first (Share, then Add to Home Screen), and turn notifications on from the installed app.",
+    addedOn: (date: string) => `Added ${date}`,
+  },
+};

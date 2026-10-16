@@ -4,9 +4,11 @@ import {
   bibleFavorites,
   bibleHighlights,
   ideas,
+  notifications,
   preachingContexts,
   preachingOccurrences,
   preachingVenues,
+  pushSubscriptions,
   supportAttachments,
   supportMessages,
   supportStatusEvents,
@@ -111,6 +113,8 @@ export async function processDeletion(
       await tx.delete(bibleFavorites).where(eq(bibleFavorites.ownerId, userId));
       await tx.delete(bibleHighlights).where(eq(bibleHighlights.ownerId, userId));
       await tx.delete(syncOperations).where(eq(syncOperations.ownerId, userId));
+      await tx.delete(notifications).where(eq(notifications.recipientId, userId));
+      await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, userId));
     });
   } catch (error) {
     console.error("Account data deletion failed:", error instanceof Error ? error.message : error);

@@ -55,6 +55,14 @@ const envSchema = z.object({
   BLOB_STORE_ID: z.string().optional(),
   /** Vercel Cron sends it as a bearer token; the retry of account deletions answers nothing without it. */
   CRON_SECRET: z.string().min(16).optional(),
+  /** Web Push (VAPID). The public key also reaches the browser, to subscribe a device. */
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(20).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(20).optional(),
+  /** A contact for push services: `mailto:` or an https address. */
+  VAPID_SUBJECT: z
+    .string()
+    .regex(/^(mailto:|https:\/\/)/)
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -74,6 +82,7 @@ export const env = parseEnv({
   ...process.env,
   // Referenced literally so the value is also available in browser bundles.
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
   // Inlined at build by next.config.ts `env`.
   APP_VERSION: process.env.APP_VERSION,
 });
@@ -91,6 +100,13 @@ export function isAuthConfigured(source: Env = env) {
 /** True when mail can be sent: a Resend key and a sender. */
 export function isEmailConfigured(source: Env = env) {
   return Boolean(source.RESEND_API_KEY && source.CONTACT_EMAIL_FROM);
+}
+
+/** True when push notifications can be sent: a key pair and a contact. */
+export function isPushConfigured(source: Env = env) {
+  return Boolean(
+    source.NEXT_PUBLIC_VAPID_PUBLIC_KEY && source.VAPID_PRIVATE_KEY && source.VAPID_SUBJECT,
+  );
 }
 
 /** True when screenshots can be stored: a Blob token, or a store reached through Vercel OIDC. */

@@ -134,6 +134,13 @@
       "when": 1792185979837,
       "tag": "0018_account_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792189091340,
+      "tag": "0019_notifications",
+      "breakpoints": true
     }
   ]
 }

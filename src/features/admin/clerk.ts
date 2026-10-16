@@ -24,6 +24,9 @@ export type DirectoryEntry = Omit<
   | "onboardingStep"
   | "onboardingCompletedAt"
   | "tourState"
+  | "emailReplies"
+  | "emailStatus"
+  | "pushSupport"
 > & {
   name: string | null;
   email: string | null;

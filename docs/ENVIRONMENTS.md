@@ -34,6 +34,9 @@ Preview deployments are never indexed: when `VERCEL_ENV` is set and is not `prod
 | `BLOB_READ_WRITE_TOKEN`             | Server only | Screenshots (6A)     | Added by connecting a **private** Blob store in Vercel                                                 |
 | `BLOB_STORE_ID`                     | Server only | Screenshots (6A)     | Only when the store is reached through Vercel OIDC                                                     |
 | `CRON_SECRET`                       | Server only | Account deletion     | Production. Vercel Cron sends it to `/api/cron/account-deletions` (daily retry); 16+ random characters |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY`      | Browser     | Web Push             | VAPID public key (`npx web-push generate-vapid-keys`)                                                  |
+| `VAPID_PRIVATE_KEY`                 | Server only | Web Push             | VAPID private key; never in the browser                                                                |
+| `VAPID_SUBJECT`                     | Server only | Web Push             | `mailto:` contact for push services                                                                    |
 
 All are optional when the application is built: without Clerk keys the public site still works, `/sign-in` says authentication is not configured, and application routes redirect there. `npm run dev` does require the database variables; use `npm run dev:next` to work on the interface without them.
 

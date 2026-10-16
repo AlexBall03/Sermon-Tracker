@@ -11,6 +11,11 @@ export const settings = {
   },
   /** The categories, in the order they are shown (features/settings/categories.ts). */
   categories: {
+    notifications: {
+      title: "Notifications",
+      description:
+        "Email and push notifications about your feedback, and the devices that receive them.",
+    },
     profile: {
       title: "Profile",
       description: "Your name, picture, and email addresses, and your church and ministry.",

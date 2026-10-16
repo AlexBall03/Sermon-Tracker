@@ -18,6 +18,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
+import { notificationKinds } from "../features/notifications/model";
 import { onboardingStatuses, onboardingSteps, tourStates } from "../features/onboarding/model";
 import { entryTypes } from "../features/outlines/model";
 import type { NumberingConfig } from "../features/outlines/numbering";
@@ -88,6 +89,11 @@ export const users = pgTable(
     onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
     /** Where the product tour stands. Kept for Phase 4B; nothing writes it yet. */
     tourState: text("tour_state", { enum: tourStates }).notNull().default("not_offered"),
+    /** Optional support email: replies to the account's feedback, and its status changes. */
+    emailReplies: boolean("email_replies").notNull().default(true),
+    emailStatus: boolean("email_status").notNull().default(true),
+    /** Whether support notifications go to the devices this account turned push on for. */
+    pushSupport: boolean("push_support").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -1190,3 +1196,55 @@ export const supportAttachments = pgTable(
 );
 
 export type SupportAttachment = typeof supportAttachments.$inferSelect;
+
+/**
+ * What an account is told about (features/notifications). One row per
+ * recipient and event: the same event never makes a second. It names its
+ * ticket and kind, never what anyone wrote.
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipientId: uuid("recipient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: notificationKinds }).notNull(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ticketStatuses }),
+    eventKey: text("event_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "notifications_kind_check",
+      sql`${table.kind} in ('reply', 'status', 'new_ticket', 'user_reply', 'contact')`,
+    ),
+    unique("notifications_recipient_event_key").on(table.recipientId, table.eventKey),
+    index("notifications_recipient_created_idx").on(table.recipientId, table.createdAt.desc()),
+  ],
+);
+
+export type Notification = typeof notifications.$inferSelect;
+
+/** A device an account turned push notifications on for. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("push_subscriptions_owner_idx").on(table.ownerId)],
+);
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

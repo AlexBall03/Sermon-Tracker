@@ -8,6 +8,7 @@ import { Logo } from "@/components/brand/logo";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useQuickCapture } from "@/features/ideas/components/quick-capture";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { AccountMenu, useAccountActions, useAccountIdentity } from "./account-menu";
@@ -82,11 +83,16 @@ export function AppHeader({ isAdmin }: { isAdmin: boolean }) {
                 />
                 {t.capture}
               </button>
+              <NotificationBell />
               <AccountMenu isAdmin={isAdmin} />
             </div>
           </nav>
 
-          <AccountSheet isAdmin={isAdmin} isCurrent={isCurrent} />
+          {/* Below md the bell sits beside the account button, the bar's only other control. */}
+          <div className="flex items-center gap-2 md:hidden">
+            <NotificationBell />
+            <AccountSheet isAdmin={isAdmin} isCurrent={isCurrent} />
+          </div>
         </div>
       </header>
 

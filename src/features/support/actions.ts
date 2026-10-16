@@ -9,6 +9,7 @@ import { after } from "next/server";
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
 import { authorize } from "@/features/auth/access";
+import { notifyAdmins, notifyRequester } from "@/features/notifications/dispatch";
 import { dictionary } from "@/i18n";
 import { getLocale } from "@/i18n/server";
 import type { ActionResult } from "@/lib/action-result";
@@ -144,6 +145,7 @@ export async function submitContact(input: unknown, id?: unknown): Promise<Submi
           idempotencyKey: `ticket/${ticket.id}/inbox`,
         });
       }
+      await notifyAdmins({ kind: "contact", ticketId: ticket.id, eventKey: `ticket/${ticket.id}` });
     });
     revalidatePath(routes.adminFeedback);
   }
@@ -210,6 +212,10 @@ export async function submitFeedback(input: unknown, id?: unknown): Promise<Subm
           idempotencyKey: `ticket/${ticket.id}/inbox`,
         });
       }
+      await notifyAdmins(
+        { kind: "new_ticket", ticketId: ticket.id, eventKey: `ticket/${ticket.id}` },
+        actor.user.id,
+      );
     });
     refresh(ticket.id);
   }
@@ -237,6 +243,13 @@ export async function replyToTicket(ticketId: unknown, input: unknown): Promise<
   }
 
   const { ticket, message } = outcome;
+  const actorId = actor.user.id;
+  after(() =>
+    notifyAdmins(
+      { kind: "user_reply", ticketId: ticket.id, eventKey: `message/${message.id}` },
+      actorId,
+    ),
+  );
   const inbox = inboxAddress(ticket.kind);
   if (inbox) {
     const base = await origin();
@@ -344,6 +357,18 @@ export async function adminReplyToTicket(ticketId: unknown, input: unknown): Pro
   const { ticket, message } = outcome;
   if (message.visibility === "internal") return { ok: true, message: words.noted };
 
+  if (ticket.source === "app" && ticket.userId !== actor.user.id) {
+    after(() =>
+      notifyRequester(ticket.userId, {
+        kind: "reply",
+        ticketId: ticket.id,
+        eventKey: `message/${message.id}`,
+      }),
+    );
+  }
+  // An account may turn reply email off; a public sender has no other way to hear.
+  if (!(await wantsEmail(ticket, "emailReplies"))) return { ok: true, message: words.replied };
+
   const base = await origin();
   const recipient = await recipientFor(ticket);
   if (!recipient)
@@ -389,7 +414,17 @@ export async function setTicketStatus(ticketId: unknown, input: unknown): Promis
   const { ticket, event } = outcome;
   if (notifiedStatuses.includes(event.toStatus)) {
     const base = await origin();
+    const actorId = actor.user.id;
     after(async () => {
+      if (ticket.source === "app" && ticket.userId !== actorId) {
+        await notifyRequester(ticket.userId, {
+          kind: "status",
+          ticketId: ticket.id,
+          eventKey: `status/${event.id}`,
+          status: event.toStatus,
+        });
+      }
+      if (!(await wantsEmail(ticket, "emailStatus"))) return;
       const recipient = await recipientFor(ticket);
       if (!recipient) return;
       await sendMail({
@@ -407,6 +442,12 @@ export async function setTicketStatus(ticketId: unknown, input: unknown): Promis
     });
   }
   return { ok: true, message: words.statusSaved };
+}
+
+/** Whether optional support mail may go: always to a public sender, to an account unless it turned it off. */
+async function wantsEmail(ticket: tickets.TicketView, preference: "emailReplies" | "emailStatus") {
+  if (ticket.source !== "app" || !ticket.userId) return true;
+  return tickets.wantsSupportEmail(getDb(), ticket.userId, preference);
 }
 
 /** Who mail about a ticket goes to: the public sender's address, or the account's, from Clerk. */
