@@ -47,7 +47,7 @@ The central document for the controlled evolution of Sermon Tracker into **Preac
 
 ### 3.1 Unified sermon document
 
-**Approved as the preferred direction; not a final implementation decision.** PS-1A establishes technical feasibility and PS-1B records the decision.
+**Approved** (PS-1B.1, 19 October 2026): the unified document is adopted, and the coexistence fallback below is not needed. Its canonical structure (schema v2) is **Proposed** in `docs/HANDOFF-PS-1B.1.md` §B and validated in PS-1B.2.
 
 - One sermon (`ideas.id`, kind `sermon`) has one rich-text document that holds both a hierarchical outline and manuscript prose, in any proportion. A person may work in structured outline form, free-form manuscript, or both, in the same workspace.
 - The sermon's identity, its related sermons and points, its passages, its classifications, and its preaching history are unchanged by the document's arrival.
@@ -55,11 +55,23 @@ The central document for the controlled evolution of Sermon Tracker into **Preac
 
 ### 3.2 Candidate editor
 
-**Proposed.** Tiptap on ProseMirror is the candidate to evaluate in PS-1A, not a chosen dependency. PS-1A may recommend another editor or rejection.
+**Approved** (PS-1B.1): Tiptap on ProseMirror is the canonical editor foundation, on PS-1A's evidence.
+
+- Packages are pinned exactly.
+- A paid or Pro extension needs the owner's approval.
+- The extensions PS-1B.2 needs (`@tiptap/extension-text-style`, `-highlight`, `-text-align`) were approved by the owner on 19 October 2026. Their version, peer dependencies, and licence are verified when they are installed in PS-1B.2.
 
 ### 3.3 Candidate document schema
 
-**Proposed**, for PS-1A to test (names are working names):
+**Superseded** by schema v2 (`docs/HANDOFF-PS-1B.1.md` §B.2, **Proposed**), which adds:
+
+- free block ordering;
+- an optional introduction and conclusion anywhere (at most one each);
+- rich point titles;
+- block Scripture passages with print presentation;
+- preacher notes and page breaks.
+
+The table below is the PS-1A candidate, kept for history (names are working names):
 
 | Node                 | Purpose                                                                                                |
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -70,6 +82,45 @@ The central document for the controlled evolution of Sermon Tracker into **Preac
 | `scriptureReference` | An inline or block node carrying the five reference numbers as attributes, validated by `reference.ts` |
 
 Point labels are derived from the nested structure with the existing numbering engine (section 8.3), never stored in the text.
+
+### 3.4 Decisions added in PS-1B.1
+
+**Approved by the owner** (the PS-1B.1 brief and its follow-up; details in `docs/HANDOFF-PS-1B.1.md`):
+
+- **Sections.** The introduction and conclusion are optional semantic sections, not document boundaries. Prose may stand anywhere.
+- **Formatting.** Text colors and highlighting are standard capabilities. Default text follows the theme. Inline formatting is kept apart from Outline Layout.
+- **Outline Layout** is first-class:
+  - per-level markers, including the introduction and conclusion;
+  - spacing and presets;
+  - no configuration text shown to the person;
+  - labels never stored in the text.
+- **Scripture** has three separate concerns:
+  - canonical content, which is in the document;
+  - editor expansion, which is view state, never in the document and never a save;
+  - print presentation: per passage `full`, `reference`, or `hidden`, plus temporary document-wide overrides.
+- **Full passages.** A full Scripture block in a sermon document is not bound by the 6/12 preview caps and is never truncated. The caps keep governing previews and rows.
+- **Translation** may be overridden per document and per passage. Verse text is never stored.
+- **Expansion preferences.** The defaults and whether states are remembered are account preferences (Settings → Editor). Remembered states are device-local.
+- **Two editable layouts** on one document: Regular (pageless, the default) and Print (paginated). True editable pagination is validated, not approximated.
+- **Separation.** Five kinds of state are kept apart: the canonical document, editor view, Workspace Panel, account preferences, and print/export options. A view change never makes a document revision or a server write (handoff §J).
+- **Workspace Panel.** One application-wide panel of tabbed tools, owned by the authenticated shell rather than the editor.
+  - It is docked on the right, resizable, closable, and a sheet on small screens.
+  - Its state is kept across navigation.
+  - It is reached through one contextual-opening API.
+  - No tab appears before its tool works. A split view of two tools is possible later; IDE-style docking is not built.
+  - It replaces an editor-only Bible sidebar (handoff §I). It is built in PS-4.
+- **Dictionary.** English and Spanish, with lookup between them, on a dedicated page and as a panel tool sharing one domain. Its lookup language is its own setting. It is built in its own later phase, after PS-4. No source is chosen and no dataset is assumed redistributable (handoff §K.1).
+- **AI.** The panel can take an AI tool later through the same registry. Nothing about AI is approved for building (handoff §K.2).
+
+**Approved direction, Proposed technique.** The owner approved the PS-1B.1 architecture and design direction (19 October 2026). These techniques stay Proposed until PS-1B.2 validates them or the phase that builds them decides them (handoff §B.1, "Before PS-2"):
+
+- schema v2;
+- the node-ID rules (§6.3);
+- `OutlineLayout`, wrapping `NumberingConfig` verbatim;
+- color serialization as preset keys or `#rrggbb`;
+- snapshot persistence with revision checks;
+- the source-point side table;
+- the schema-version rules (an older client never saves a newer document).
 
 ---
 
@@ -209,16 +260,27 @@ These are related but not interchangeable.
 - The prototype's choice for the Open question is to clear `legacyEntryId` on a copy and record `derivedFrom`. The handoff sets out the trade-off for PS-1B.
 - `sourcePointId` was carried as a node attribute only. That is not a replacement for the foreign key, so the integrity mechanism stays a PS-2 decision.
 
+**Recommended in PS-1B.1** (`docs/HANDOFF-PS-1B.1.md` §B.6; **Proposed**):
+
+- **Scope.** Node IDs are random UUIDs. They are unique within a document by enforcement and across documents by generation. Nothing relies on cross-document uniqueness.
+- **Copy.** A copy clears `legacyEntryId` and records `derivedFrom` (PS-1A's choice, adopted).
+- **Paste from another document.** It always re-keys, keeps `sourcePointId`, and drops legacy provenance and `derivedFrom`.
+- **Split and merge.** A split's second part has no `sourcePointId`. A merge keeps the survivor's.
+- **Source-point integrity.** A side table (`document_point_sources`) is written from the snapshot in the save's transaction and is authoritative over the JSON attribute (§B.6, §E.3).
+
 ### 6.4 Open decisions
 
 | Question                                                                                                                                                                                 | Decided in  |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| Unified document adopted, or the coexistence fallback                                                                                                                                    | PS-1B       |
-| Editor library (Tiptap/ProseMirror or other)                                                                                                                                             | PS-1B       |
-| Canonical stored form: ProseMirror JSON, a normalized relational form, or both                                                                                                           | PS-1B       |
+| Unified document adopted, or the coexistence fallback. **Decided in PS-1B.1: unified (Approved)**                                                                                        | PS-1B       |
+| Editor library (Tiptap/ProseMirror or other). **Decided in PS-1B.1: Tiptap/ProseMirror (Approved)**                                                                                      | PS-1B       |
+| Canonical stored form. **Recommended in PS-1B.1: validated ProseMirror JSON plus derived relational side tables (Proposed)**                                                             | PS-1B       |
 | How source-point integrity is kept: **Proposed** side table (node ID → point ID, owner, FK with `SET NULL` semantics) beside the document, or another mechanism with the same guarantees | PS-2        |
-| Node-ID scope: per document or global                                                                                                                                                    | PS-1B       |
-| Snapshot saves versus incremental patches                                                                                                                                                | PS-1B, PS-3 |
+| Node-ID scope. **Recommended in PS-1B.1: random UUIDs, enforced unique per document (Proposed)**                                                                                         | PS-1B       |
+| Snapshot saves versus incremental patches. **Recommended in PS-1B.1: snapshots with revision checks (Proposed); cadence measured in PS-3b**                                              | PS-1B, PS-3 |
+| Editable pagination: built in PS-4/PS-5, or a dedicated PS-5a Print Layout milestone                                                                                                     | PS-1B.2     |
+| A bounded chapter-range endpoint for long Scripture passages, if per-chapter requests prove too costly                                                                                   | PS-4        |
+| Where the editor preferences live (account columns or a validated preference object)                                                                                                     | PS-2        |
 | Revision granularity: one document revision, or shape and words apart as outlines do today                                                                                               | PS-2, PS-3  |
 | Character limits for headings, notes, and prose (today 200 and 2000 per entry; 500 entries)                                                                                              | PS-2        |
 | What counts as development (`markDeveloped`) for document edits                                                                                                                          | PS-2        |
@@ -273,7 +335,7 @@ All **High**. Each is verified in code; none is a fault in today's single-versio
 
 Further rules (**Proposed** for PS-3): new types such as `document.*` with their own `schemaVersion`; the server switches on `schemaVersion` before any existing payload changes; a new `entityType` gets its own branch in `onApplied`; IndexedDB changes only as a third or later step of `migrations` in `db.ts`; download responses validated before they are stored; new download endpoints rather than changed shapes of existing ones.
 
-No synchronization change is made in PS-0B.
+No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invariants the document must meet (`docs/HANDOFF-PS-1B.1.md` §E.7); they do not replace this list.
 
 ---
 
@@ -424,21 +486,24 @@ No synchronization change is made in PS-0B.
 
 **Approved** structure; the content of each phase may change with evidence. The core sermon experience comes first, but infrastructure safety comes before any feature that depends on it. Each phase owns its verification.
 
-| Phase       | Name                                                                            | Status   | Depends on                                                 |
-| ----------- | ------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------- |
-| **PS-0B**   | Architecture Reconciliation & Migration Readiness                               | Complete | —                                                          |
-| **PS-0C.1** | Notification Efficiency Optimization (section 4.3)                              | Complete | PS-0B                                                      |
-| **PS-1A**   | Rich-Text Editor Feasibility Prototype (section 15)                             | Complete | PS-0B; package approval                                    |
-| **PS-1B**   | Editor Evaluation & Canonical Document Architecture Decision                    | Next     | PS-1A; owner's real-phone check of the lab                 |
-| **PS-2**    | Document Data Model, Additive Schema & Legacy Conversion Foundation             | Planned  | PS-1B                                                      |
-| **PS-3a**   | Synchronization protocol compatibility (section 7.3, items 1–9)                 | Planned  | PS-1B                                                      |
-| **PS-3b**   | Document Persistence, Revisioning & Offline Synchronization                     | Planned  | PS-2, PS-3a                                                |
-| **PS-4**    | Unified Sermon Workspace, Research, Scripture Integration & Lifecycle           | Planned  | PS-3b                                                      |
-| **PS-5**    | Advanced Editing, Templates, Printing, PDF/Word Export & Related Features       | Planned  | PS-4                                                       |
-| **PS-6**    | Help Center, Administration, Notifications, PWA Updates & Platform Improvements | Planned  | Independent of PS-2–5 where it touches nothing they change |
-| **PS-7a**   | Production Migration: conversion of legacy outlines in production               | Planned  | PS-2, PS-3b, section 9.3                                   |
-| **PS-7b**   | Final Branding & Domain coexistence and drain (section 11)                      | Planned  | PS-3a (item 10)                                            |
-| **PS-7c**   | Domain redirect and retirement of legacy structures (contract)                  | Planned  | PS-7a, PS-7b                                               |
+| Phase                           | Name                                                                                                                    | Status       | Depends on                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------- |
+| **PS-0B**                       | Architecture Reconciliation & Migration Readiness                                                                       | Complete     | —                                                          |
+| **PS-0C.1**                     | Notification Efficiency Optimization (section 4.3)                                                                      | Complete     | PS-0B                                                      |
+| **PS-1A**                       | Rich-Text Editor Feasibility Prototype (section 15)                                                                     | Complete     | PS-0B; package approval                                    |
+| **PS-1B.1**                     | Product Experience & Flexible Document Architecture (documentation)                                                     | Complete     | PS-1A                                                      |
+| **PS-1B.2**                     | Editor lab validation of the PS-1B.1 architecture (section 15.9)                                                        | Next         | PS-1B.1 (approved and closed); owner's go to start         |
+| **PS-2**                        | Document Data Model, Additive Schema & Legacy Conversion Foundation                                                     | Planned      | PS-1B.2 (its completion criteria, handoff PS-1B.1 §H)      |
+| **PS-3a**                       | Synchronization protocol compatibility (section 7.3, items 1–9)                                                         | Planned      | PS-1B.1                                                    |
+| **PS-3b**                       | Document Persistence, Revisioning & Offline Synchronization                                                             | Planned      | PS-2, PS-3a                                                |
+| **PS-4**                        | Unified Sermon Workspace, Research, Scripture Integration & Lifecycle, including the Workspace Panel and its Bible tool | Planned      | PS-3b                                                      |
+| **PS-5**                        | Advanced Editing, Templates, Printing, PDF/Word Export & Related Features                                               | Planned      | PS-4                                                       |
+| **Dictionary** (to be numbered) | English/Spanish Dictionary page and Workspace Panel tool (handoff PS-1B.1 §K.1)                                         | Planned      | PS-4 (the panel)                                           |
+| **AI** (to be numbered)         | A Workspace Panel AI tool, only once its scope is approved (handoff PS-1B.1 §K.2)                                       | Not approved | Owner approval; PS-4                                       |
+| **PS-6**                        | Help Center, Administration, Notifications, PWA Updates & Platform Improvements                                         | Planned      | Independent of PS-2–5 where it touches nothing they change |
+| **PS-7a**                       | Production Migration: conversion of legacy outlines in production                                                       | Planned      | PS-2, PS-3b, section 9.3                                   |
+| **PS-7b**                       | Final Branding & Domain coexistence and drain (section 11)                                                              | Planned      | PS-3a (item 10)                                            |
+| **PS-7c**                       | Domain redirect and retirement of legacy structures (contract)                                                          | Planned      | PS-7a, PS-7b                                               |
 
 Phases may be subdivided where dependencies or rollout risk justify it. This list is not an instruction to build them now.
 
@@ -446,15 +511,15 @@ Phases may be subdivided where dependencies or rollout risk justify it. This lis
 
 ## 14. Acceptance gates
 
-| Gate                      | Before                                    | Must hold                                                                                                                         |
-| ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Prototype isolation       | PS-1A is reported done                    | The lab returns 404 outside development (tested); no import of `@/db`, actions, `features/offline`, or `features/sync`; no schema |
-| Editor decision           | PS-2 starts                               | PS-1B records adopt/revise/reject against PS-1A's criteria, with evidence                                                         |
-| Schema                    | Any PS migration                          | Additive; reviewed against live code; deletion and owner rules (section 10); `0015`–`0019` documented                             |
-| Sync compatibility        | Any document change queued offline        | Section 7.3 complete and tested across versions                                                                                   |
-| Efficiency                | Each phase that touches a scenario in 4.4 | Baseline measured; measurements recorded in the handoff; no regression without a written reason                                   |
-| Production data migration | PS-7a in production                       | Section 9.3 checkpoints; fresh verified Neon branch or backup; recovery rehearsed; owner's go                                     |
-| Domain transition         | PS-7b redirect                            | Drain path proven on a real installed device with queued work; communication sent; Clerk and mail verified                        |
+| Gate                      | Before                                    | Must hold                                                                                                                              |
+| ------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Prototype isolation       | PS-1A is reported done                    | The lab returns 404 outside development (tested); no import of `@/db`, actions, `features/offline`, or `features/sync`; no schema      |
+| Editor decision           | PS-2 starts                               | PS-1B records adopt/revise/reject against PS-1A's criteria, with evidence (done in PS-1B.1), and PS-1B.2 meets `HANDOFF-PS-1B.1.md` §H |
+| Schema                    | Any PS migration                          | Additive; reviewed against live code; deletion and owner rules (section 10); `0015`–`0019` documented                                  |
+| Sync compatibility        | Any document change queued offline        | Section 7.3 complete and tested across versions                                                                                        |
+| Efficiency                | Each phase that touches a scenario in 4.4 | Baseline measured; measurements recorded in the handoff; no regression without a written reason                                        |
+| Production data migration | PS-7a in production                       | Section 9.3 checkpoints; fresh verified Neon branch or backup; recovery rehearsed; owner's go                                          |
+| Domain transition         | PS-7b redirect                            | Drain path proven on a real installed device with queued work; communication sent; Clerk and mail verified                             |
 
 ---
 
@@ -535,24 +600,44 @@ Enough evidence to adopt, revise, or reject the unified document direction and t
   - Item 9 passes at desktop size and in phone emulation. **The real-phone check is outstanding (owner).**
 - **Recommendation:** adopt Tiptap/ProseMirror, and revise the candidate schema in PS-1B. The conditions and the structural restrictions to decide are in the handoff.
 
+### 15.9 PS-1B.2: the lab widened (Approved scope, after PS-1B.1)
+
+PS-1B.2 validates the PS-1B.1 architecture in the same lab, under the same isolation (sections 15.2 and 15.3):
+
+- development only;
+- fixtures only;
+- no database, action, sync, or offline import;
+- the legacy outline editor untouched.
+
+Two boundaries widen:
+
+- **Read-only reuse.** The lab may also import client Scripture code and `src/features/outlines/editor/moves.ts`. The Scripture code is `loadChapter` in `src/features/scripture/use-chapter.ts`, `ScriptureBrowser` through `ScriptureHost`, and the passage building blocks. Loading chapter text is a read through the existing `/api/bible` route.
+- **Browser storage.** The lab may keep device-local view state (Scripture expansion memory, the layout per tab, panel width) under lab-only keys.
+
+PS-1B.2 does not build the Workspace Panel and does not change the shell: an editor beside a docked panel is tested with a lab-local stand-in only. Its scope, order, and completion criteria are `docs/HANDOFF-PS-1B.1.md` §G and §H. The three Tiptap extensions it needs are approved; their version, peer dependencies, and licence are verified at install. A subdivision of PS-1B.2 needs the owner's authorization.
+
 ---
 
 ## 16. Known risks
 
-| Risk                                                                     | Severity | Mitigation                                                                  |
-| ------------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------- |
-| Version skew in sync silently drops fields or leads to discarded work    | High     | Section 7.3 before PS-3b                                                    |
-| Old PWA installs strand queued work at a domain change                   | High     | Section 11.2 drain before redirect                                          |
-| A conversion loses structure, numbering, or provenance                   | High     | Section 8 invariants; idempotent, verified, non-destructive                 |
-| A production migration damages data with no fresh backup                 | High     | Section 9.3 gates                                                           |
-| Two production builds migrate concurrently                               | Medium   | One release with migrations at a time; Proposed lock (9.3)                  |
-| A new user-owned table blocks account deletion                           | Medium   | Section 10 rules and the Proposed test                                      |
-| Editor saves multiply database writes and keep Neon awake                | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3                        |
-| Polling keeps Neon awake                                                 | Low      | Reduced in PS-0C.1 (15-minute fallback, event-driven); removal remains PS-6 |
-| The prototype reaches production                                         | Medium   | Two server-side guards, tested (15.2)                                       |
-| JSON storage weakens referential integrity                               | Medium   | Section 6.1; relational integrity kept                                      |
-| Tiptap or ProseMirror cannot meet the numbering or identity requirements | Medium   | PS-1A tests them; fallback in 3.1                                           |
-| Documentation drift (README, `DATABASE.md` 0015–0019)                    | Low      | README in PS-7; `DATABASE.md` before PS-2                                   |
+| Risk                                                                            | Severity | Mitigation                                                                           |
+| ------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| Version skew in sync silently drops fields or leads to discarded work           | Critical | Section 7.3 before PS-3b; invariants in handoff PS-1B.1 §E.7; register §F            |
+| A legacy outline edit from an old client arrives after its sermon was converted | Critical | Translated when lossless, else a kept conflict; never dropped (handoff PS-1B.1 §E.7) |
+| Old PWA installs strand queued work at a domain change                          | High     | Section 11.2 drain before redirect                                                   |
+| A conversion loses structure, numbering, or provenance                          | High     | Section 8 invariants; idempotent, verified, non-destructive                          |
+| A production migration damages data with no fresh backup                        | High     | Section 9.3 gates                                                                    |
+| Two production builds migrate concurrently                                      | Medium   | One release with migrations at a time; Proposed lock (9.3)                           |
+| A new user-owned table blocks account deletion                                  | Medium   | Section 10 rules and the Proposed test                                               |
+| Editor saves multiply database writes and keep Neon awake                       | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3                                 |
+| Polling keeps Neon awake                                                        | Low      | Reduced in PS-0C.1 (15-minute fallback, event-driven); removal remains PS-6          |
+| The prototype reaches production                                                | Medium   | Two server-side guards, tested (15.2)                                                |
+| JSON storage weakens referential integrity                                      | Medium   | Section 6.1; relational integrity kept                                               |
+| Tiptap or ProseMirror cannot meet the numbering or identity requirements        | Medium   | PS-1A tests them; fallback in 3.1                                                    |
+| Editable pagination (Print Layout) cannot split long blocks reliably            | High     | PS-1B.2 spike with measurements; a dedicated PS-5a rather than approximation         |
+| An older client saves a newer document and drops what it cannot read            | Critical | Read-only for a newer `schemaVersion` (handoff PS-1B.1 §B.11), enforced in PS-3a     |
+| Long Scripture passages cost many chapter requests                              | Medium   | Lazy loading, bounded concurrency, local text; measured in PS-1B.2                   |
+| Documentation drift (README, `DATABASE.md` 0015–0019)                           | Low      | README in PS-7; `DATABASE.md` before PS-2                                            |
 
 ---
 
@@ -560,11 +645,11 @@ Enough evidence to adopt, revise, or reject the unified document direction and t
 
 Collected from the sections above, with the phase that decides each.
 
-1. Unified document adopted, or the coexistence fallback (PS-1B).
-2. Editor library (PS-1B).
-3. Canonical stored form of the document (PS-1B).
-4. Node-ID scope, duplicate provenance, and copying between sermons (PS-1B).
-5. Snapshot or incremental saves; save cadence (PS-1B, PS-3).
+1. Unified document adopted, or the coexistence fallback: **decided**, unified (Approved in PS-1B.1).
+2. Editor library: **decided**, Tiptap/ProseMirror (Approved in PS-1B.1).
+3. Canonical stored form of the document: JSON plus side tables (Proposed in PS-1B.1).
+4. Node-ID scope, duplicate provenance, and copying between sermons (Proposed in PS-1B.1, §6.3).
+5. Snapshot or incremental saves: snapshots (Proposed in PS-1B.1). Save cadence is set in PS-3b.
 6. Revision granularity (PS-2, PS-3).
 7. Mechanism for source-point integrity (PS-2).
 8. Limits on document size and on headings and notes (PS-2).
@@ -575,5 +660,11 @@ Collected from the sections above, with the phase that decides each.
 13. Knowledge base storage and authoring (PS-6).
 14. Removing the notification fallback poll entirely, after PS-0C.1 reduced it (PS-6).
 15. Clerk domain change, drain period, and old-origin paths (PS-7).
+16. Editable pagination: built in PS-4/PS-5, or a dedicated PS-5a (decided by the PS-1B.2 verdict).
+17. A bounded chapter-range endpoint for long passages (PS-4, on PS-1B.2's measurements).
+18. Where editor preferences are stored (PS-2).
+19. The Workspace Panel's docking thresholds, and moving docked pages off viewport media queries (PS-4).
+20. Dictionary data sources, licensing, attribution, storage, and offline use (the Dictionary phase).
+21. Whether and how an AI tool is offered: scope, privacy, authorization, provider, and cost (needs the owner's approval before any phase).
 
 **Flagged for a later phase, not changed in PS-0B:** `README.md` still describes "idea tracking, not manuscript writing" and a status from Phase 2C.1B, under the Sermon Tracker name; update it with the rebrand (PS-7) or when the document model is adopted (PS-1B).
