@@ -341,6 +341,74 @@ describe("push notifications", () => {
     );
   });
 
+  it("tells the application's open windows, and only them, that notifications changed", async () => {
+    const showNotification = vi.fn(async () => {});
+    sandbox.self.registration.showNotification = showNotification;
+    const ours = { url: `${origin}/library`, postMessage: vi.fn() };
+    const another = { url: `${origin}/dashboard`, postMessage: vi.fn() };
+    const elsewhere = { url: "https://evil.example/", postMessage: vi.fn() };
+    const matchAll = vi.fn(async () => [ours, elsewhere, another]);
+    sandbox.self.clients.matchAll = matchAll;
+    let done: Promise<unknown> = Promise.resolve();
+    listeners.push({
+      data: { json: () => ({ title: "Sermon Tracker", body: "New reply.", url: "/support/1" }) },
+      waitUntil: (value: Promise<unknown>) => (done = value),
+    });
+    await done;
+
+    expect(showNotification).toHaveBeenCalledWith("Sermon Tracker", {
+      body: "New reply.",
+      tag: undefined,
+      icon: "/brand/icon-192.png",
+      badge: "/brand/icon-192.png",
+      data: { url: "/support/1" },
+    });
+    expect(matchAll).toHaveBeenCalledWith({ type: "window", includeUncontrolled: true });
+    // The type alone: nothing of the push, the account, or the ticket.
+    expect(ours.postMessage).toHaveBeenCalledWith({ type: "NOTIFICATIONS_CHANGED" });
+    expect(another.postMessage).toHaveBeenCalledWith({ type: "NOTIFICATIONS_CHANGED" });
+    expect(elsewhere.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("still shows the notification when the windows cannot be told", async () => {
+    const showNotification = vi.fn(async () => {});
+    sandbox.self.registration.showNotification = showNotification;
+    let done: Promise<unknown> = Promise.resolve();
+    const push = () =>
+      listeners.push({
+        data: { json: () => ({ title: "x", body: "y" }) },
+        waitUntil: (value: Promise<unknown>) => (done = value),
+      });
+
+    sandbox.self.clients.matchAll = async () => {
+      throw new Error("no clients");
+    };
+    push();
+    await expect(done).resolves.toBeDefined();
+
+    const broken = {
+      url: `${origin}/library`,
+      postMessage: vi.fn(() => {
+        throw new Error("detached");
+      }),
+    };
+    const fine = { url: `${origin}/outlines`, postMessage: vi.fn() };
+    sandbox.self.clients.matchAll = async () => [broken, fine];
+    push();
+    await expect(done).resolves.toBeDefined();
+    expect(fine.postMessage).toHaveBeenCalled();
+    expect(showNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not answer a page's NOTIFICATIONS_CHANGED, or any other unknown message", () => {
+    const port = { postMessage: vi.fn() };
+    listeners.message({ data: { type: "NOTIFICATIONS_CHANGED" }, ports: [port] });
+    listeners.message({ data: "anything", ports: [port] });
+    listeners.message({ data: null, ports: [] });
+    expect(port.postMessage).not.toHaveBeenCalled();
+    expect(sandbox.self.skipWaiting).not.toHaveBeenCalled();
+  });
+
   it("focuses an open window on a click, or opens one", async () => {
     const navigate = vi.fn(async () => undefined);
     const focus = vi.fn(async () => undefined);

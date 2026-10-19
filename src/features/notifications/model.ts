@@ -17,8 +17,15 @@ export type NotificationKind = (typeof notificationKinds)[number];
 /** How many the bell shows; the page shows `pageSize`. */
 export const bellSize = 8;
 export const pageSize = 100;
-/** How often the bell asks again while its tab is shown. */
-export const pollMs = 60_000;
+/**
+ * The bell's fallback: how often it asks again while it, its tab, and the
+ * network are all there. Everything else that asks is an event (refresh.ts).
+ */
+export const pollMs = 15 * 60_000;
+/** The least time between two routine asks (mount, focus, the tab shown again, the fallback). */
+export const minRefreshMs = 30_000;
+/** What the service worker posts to open windows when a push arrives; it carries nothing else. */
+export const notificationsChangedMessage = "NOTIFICATIONS_CHANGED";
 
 const requesterKindSet: ReadonlySet<string> = new Set(requesterKinds);
 

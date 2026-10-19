@@ -207,7 +207,8 @@ self.addEventListener("message", function (event) {
 });
 
 // Web Push (features/notifications): show what the server sent, which is never
-// anything a person wrote, and open only an address inside the application.
+// anything a person wrote, tell open windows to ask again, and open only an
+// address inside the application.
 function safePath(value) {
   try {
     var url = new URL(typeof value === "string" ? value : "/dashboard", self.location.origin);
@@ -225,16 +226,30 @@ self.addEventListener("push", function (event) {
   } catch (e) {
     data = {};
   }
-  event.waitUntil(
-    self.registration.showNotification(String(data.title || "Sermon Tracker"), {
-      body: typeof data.body === "string" ? data.body : "",
-      tag: typeof data.tag === "string" ? data.tag : undefined,
-      icon: "/brand/icon-192.png",
-      badge: "/brand/icon-192.png",
-      data: { url: safePath(data.url) },
-    }),
-  );
+  var shown = self.registration.showNotification(String(data.title || "Sermon Tracker"), {
+    body: typeof data.body === "string" ? data.body : "",
+    tag: typeof data.tag === "string" ? data.tag : undefined,
+    icon: "/brand/icon-192.png",
+    badge: "/brand/icon-192.png",
+    data: { url: safePath(data.url) },
+  });
+  event.waitUntil(Promise.all([shown, tellWindows()]));
 });
+
+// Tells the application's open windows that their notifications changed, so a
+// bell asks again (features/notifications/refresh.ts). The message is the type
+// alone: nothing of the push, the account, or the ticket. It never fails the push.
+async function tellWindows() {
+  try {
+    var windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (var i = 0; i < windows.length; i++) {
+      try {
+        if (new URL(windows[i].url).origin !== self.location.origin) continue;
+        windows[i].postMessage({ type: "NOTIFICATIONS_CHANGED" });
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
 
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();

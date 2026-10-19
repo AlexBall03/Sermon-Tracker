@@ -118,17 +118,17 @@ It applies to every PS phase, not to a later optimization effort. Data integrity
 
 From the PS-0B audit. **Verified** means read in the code; **Potential** means suspected and not confirmed. None was measured; none is changed in PS-0B.
 
-| Pattern                                                                                                                                                                       | Status    | Why it matters                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------- |
-| The notification bell polls `GET /api/notifications` every 60 s while a tab is visible, and on focus (`pollMs`, `src/features/notifications/model.ts:21`)                     | Verified  | Each poll is an invocation, an access lookup, and a query; an open tab keeps Neon from idling  |
-| The `(app)` shell runs `requireActiveUser()` and `getPreferences()` on every render (`src/app/(app)/layout.tsx`); `getAccess` is cached per request only                      | Verified  | Every signed-in page reads the user row; a document workspace must not add per-request lookups |
-| Outline autosave sends one transactional, locking action per pause in typing (about 0.9 s) (`src/features/outlines/editor/store.ts`)                                          | Verified  | A rich-text editor saving at that rate would multiply writes; section 4.2's editor rules apply |
-| The dashboard reads about seven bounded queries per visit (`ARCHITECTURE.md`, "Dashboard")                                                                                    | Verified  | Acceptable today; new workspace sections must not add unbounded reads                          |
-| `OfflineAgent` refreshes ideas at most every 5 minutes on focus or reconnect (`offline-account.tsx:35`); the worker checks for updates at most every 30 minutes (`pwa.ts:83`) | Verified  | Bounded already; document sync should follow the same discipline                               |
-| The daily account-deletion cron (`vercel.json`) does nothing without pending work                                                                                             | Verified  | Acceptable; an example of the bar for scheduled work                                           |
-| Old tabs whose Server Action IDs no longer exist after a deployment may retry `syncMutation` until marked failed                                                              | Potential | Wasted invocations and stuck work; skew behavior on Vercel is unverified (section 7)           |
+| Pattern                                                                                                                                                                                           | Status    | Why it matters                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------- |
+| The notification bell polled `GET /api/notifications` every 60 s while a tab was visible, and on focus. **Implemented in PS-0C.1:** event-driven refresh with a 15-minute fallback (`refresh.ts`) | Verified  | Each request is an invocation, an access lookup, and two queries; an open tab kept Neon from idling |
+| The `(app)` shell runs `requireActiveUser()` and `getPreferences()` on every render (`src/app/(app)/layout.tsx`); `getAccess` is cached per request only                                          | Verified  | Every signed-in page reads the user row; a document workspace must not add per-request lookups      |
+| Outline autosave sends one transactional, locking action per pause in typing (about 0.9 s) (`src/features/outlines/editor/store.ts`)                                                              | Verified  | A rich-text editor saving at that rate would multiply writes; section 4.2's editor rules apply      |
+| The dashboard reads about seven bounded queries per visit (`ARCHITECTURE.md`, "Dashboard")                                                                                                        | Verified  | Acceptable today; new workspace sections must not add unbounded reads                               |
+| `OfflineAgent` refreshes ideas at most every 5 minutes on focus or reconnect (`offline-account.tsx:35`); the worker checks for updates at most every 30 minutes (`pwa.ts:83`)                     | Verified  | Bounded already; document sync should follow the same discipline                                    |
+| The daily account-deletion cron (`vercel.json`) does nothing without pending work                                                                                                                 | Verified  | Acceptable; an example of the bar for scheduled work                                                |
+| Old tabs whose Server Action IDs no longer exist after a deployment may retry `syncMutation` until marked failed                                                                                  | Potential | Wasted invocations and stuck work; skew behavior on Vercel is unverified (section 7)                |
 
-Replacing the bell's polling is not in scope for PS-0B. It is listed for PS-6.
+Replacing the bell's polling was not in scope for PS-0B. PS-0C.1 reduced it (`docs/HANDOFF-PS-0C.1.md`): the bell asks on mount, focus, the tab shown again, reconnecting, opening the panel, after a read, and when the service worker reports a push, with a 15-minute fallback only while it is on screen, visible, and online (about 4 interval requests per visible tab-hour, down from about 60; estimated, not measured). Removing the fallback entirely and the generalized notification architecture remain PS-6.
 
 ### 4.4 Performance acceptance criteria
 
@@ -401,16 +401,16 @@ No synchronization change is made in PS-0B.
 
 **Direction (Proposed for PS-6):**
 
-| Capability                       | Reuse                                      | New                                                                                                |
-| -------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Unified Help Center              | `/support`, the ticket model               | One entry point combining help articles and reporting                                              |
-| Searchable knowledge base        | i18n dictionaries for chrome               | Article storage, search, en/es content; Open Decision whether in the database or in the repository |
-| Contextual issue reporting       | `page_url`, `area` on tickets, screenshots | A report action from any page that fills context                                                   |
-| Administrative support inbox     | `/admin/feedback`                          | Saved views                                                                                        |
-| Assignment and triage            | Statuses, internal notes                   | An assignee column (additive) and filters; none exists                                             |
-| Knowledge-base management        | Admin shell                                | Editing and publishing articles                                                                    |
-| Release notes                    | Notifications, `UpdateNotice`              | A release-note record and its display                                                              |
-| Platform notification management | `notify`, `dispatch.ts`, Web Push          | Administrator-sent announcements; replace polling (section 4.3)                                    |
+| Capability                       | Reuse                                      | New                                                                                                    |
+| -------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Unified Help Center              | `/support`, the ticket model               | One entry point combining help articles and reporting                                                  |
+| Searchable knowledge base        | i18n dictionaries for chrome               | Article storage, search, en/es content; Open Decision whether in the database or in the repository     |
+| Contextual issue reporting       | `page_url`, `area` on tickets, screenshots | A report action from any page that fills context                                                       |
+| Administrative support inbox     | `/admin/feedback`                          | Saved views                                                                                            |
+| Assignment and triage            | Statuses, internal notes                   | An assignee column (additive) and filters; none exists                                                 |
+| Knowledge-base management        | Admin shell                                | Editing and publishing articles                                                                        |
+| Release notes                    | Notifications, `UpdateNotice`              | A release-note record and its display                                                                  |
+| Platform notification management | `notify`, `dispatch.ts`, Web Push          | Administrator-sent announcements; remove the remaining fallback poll (section 4.3, reduced in PS-0C.1) |
 
 ---
 
@@ -418,20 +418,21 @@ No synchronization change is made in PS-0B.
 
 **Approved** structure; the content of each phase may change with evidence. The core sermon experience comes first, but infrastructure safety comes before any feature that depends on it. Each phase owns its verification.
 
-| Phase     | Name                                                                            | Status   | Depends on                                                 |
-| --------- | ------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------- |
-| **PS-0B** | Architecture Reconciliation & Migration Readiness                               | Complete | —                                                          |
-| **PS-1A** | Rich-Text Editor Feasibility Prototype (section 15)                             | Next     | PS-0B; package approval                                    |
-| **PS-1B** | Editor Evaluation & Canonical Document Architecture Decision                    | Planned  | PS-1A                                                      |
-| **PS-2**  | Document Data Model, Additive Schema & Legacy Conversion Foundation             | Planned  | PS-1B                                                      |
-| **PS-3a** | Synchronization protocol compatibility (section 7.3, items 1–9)                 | Planned  | PS-1B                                                      |
-| **PS-3b** | Document Persistence, Revisioning & Offline Synchronization                     | Planned  | PS-2, PS-3a                                                |
-| **PS-4**  | Unified Sermon Workspace, Research, Scripture Integration & Lifecycle           | Planned  | PS-3b                                                      |
-| **PS-5**  | Advanced Editing, Templates, Printing, PDF/Word Export & Related Features       | Planned  | PS-4                                                       |
-| **PS-6**  | Help Center, Administration, Notifications, PWA Updates & Platform Improvements | Planned  | Independent of PS-2–5 where it touches nothing they change |
-| **PS-7a** | Production Migration: conversion of legacy outlines in production               | Planned  | PS-2, PS-3b, section 9.3                                   |
-| **PS-7b** | Final Branding & Domain coexistence and drain (section 11)                      | Planned  | PS-3a (item 10)                                            |
-| **PS-7c** | Domain redirect and retirement of legacy structures (contract)                  | Planned  | PS-7a, PS-7b                                               |
+| Phase       | Name                                                                            | Status   | Depends on                                                 |
+| ----------- | ------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------- |
+| **PS-0B**   | Architecture Reconciliation & Migration Readiness                               | Complete | —                                                          |
+| **PS-0C.1** | Notification Efficiency Optimization (section 4.3)                              | Complete | PS-0B                                                      |
+| **PS-1A**   | Rich-Text Editor Feasibility Prototype (section 15)                             | Next     | PS-0B; package approval                                    |
+| **PS-1B**   | Editor Evaluation & Canonical Document Architecture Decision                    | Planned  | PS-1A                                                      |
+| **PS-2**    | Document Data Model, Additive Schema & Legacy Conversion Foundation             | Planned  | PS-1B                                                      |
+| **PS-3a**   | Synchronization protocol compatibility (section 7.3, items 1–9)                 | Planned  | PS-1B                                                      |
+| **PS-3b**   | Document Persistence, Revisioning & Offline Synchronization                     | Planned  | PS-2, PS-3a                                                |
+| **PS-4**    | Unified Sermon Workspace, Research, Scripture Integration & Lifecycle           | Planned  | PS-3b                                                      |
+| **PS-5**    | Advanced Editing, Templates, Printing, PDF/Word Export & Related Features       | Planned  | PS-4                                                       |
+| **PS-6**    | Help Center, Administration, Notifications, PWA Updates & Platform Improvements | Planned  | Independent of PS-2–5 where it touches nothing they change |
+| **PS-7a**   | Production Migration: conversion of legacy outlines in production               | Planned  | PS-2, PS-3b, section 9.3                                   |
+| **PS-7b**   | Final Branding & Domain coexistence and drain (section 11)                      | Planned  | PS-3a (item 10)                                            |
+| **PS-7c**   | Domain redirect and retirement of legacy structures (contract)                  | Planned  | PS-7a, PS-7b                                               |
 
 Phases may be subdivided where dependencies or rollout risk justify it. This list is not an instruction to build them now.
 
@@ -514,20 +515,20 @@ Enough evidence to adopt, revise, or reject the unified document direction and t
 
 ## 16. Known risks
 
-| Risk                                                                     | Severity | Mitigation                                                  |
-| ------------------------------------------------------------------------ | -------- | ----------------------------------------------------------- |
-| Version skew in sync silently drops fields or leads to discarded work    | High     | Section 7.3 before PS-3b                                    |
-| Old PWA installs strand queued work at a domain change                   | High     | Section 11.2 drain before redirect                          |
-| A conversion loses structure, numbering, or provenance                   | High     | Section 8 invariants; idempotent, verified, non-destructive |
-| A production migration damages data with no fresh backup                 | High     | Section 9.3 gates                                           |
-| Two production builds migrate concurrently                               | Medium   | One release with migrations at a time; Proposed lock (9.3)  |
-| A new user-owned table blocks account deletion                           | Medium   | Section 10 rules and the Proposed test                      |
-| Editor saves multiply database writes and keep Neon awake                | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3        |
-| Polling keeps Neon awake                                                 | Medium   | Notification polling listed for PS-6                        |
-| The prototype reaches production                                         | Medium   | Two server-side guards, tested (15.2)                       |
-| JSON storage weakens referential integrity                               | Medium   | Section 6.1; relational integrity kept                      |
-| Tiptap or ProseMirror cannot meet the numbering or identity requirements | Medium   | PS-1A tests them; fallback in 3.1                           |
-| Documentation drift (README, `DATABASE.md` 0015–0019)                    | Low      | README in PS-7; `DATABASE.md` before PS-2                   |
+| Risk                                                                     | Severity | Mitigation                                                                  |
+| ------------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------- |
+| Version skew in sync silently drops fields or leads to discarded work    | High     | Section 7.3 before PS-3b                                                    |
+| Old PWA installs strand queued work at a domain change                   | High     | Section 11.2 drain before redirect                                          |
+| A conversion loses structure, numbering, or provenance                   | High     | Section 8 invariants; idempotent, verified, non-destructive                 |
+| A production migration damages data with no fresh backup                 | High     | Section 9.3 gates                                                           |
+| Two production builds migrate concurrently                               | Medium   | One release with migrations at a time; Proposed lock (9.3)                  |
+| A new user-owned table blocks account deletion                           | Medium   | Section 10 rules and the Proposed test                                      |
+| Editor saves multiply database writes and keep Neon awake                | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3                        |
+| Polling keeps Neon awake                                                 | Low      | Reduced in PS-0C.1 (15-minute fallback, event-driven); removal remains PS-6 |
+| The prototype reaches production                                         | Medium   | Two server-side guards, tested (15.2)                                       |
+| JSON storage weakens referential integrity                               | Medium   | Section 6.1; relational integrity kept                                      |
+| Tiptap or ProseMirror cannot meet the numbering or identity requirements | Medium   | PS-1A tests them; fallback in 3.1                                           |
+| Documentation drift (README, `DATABASE.md` 0015–0019)                    | Low      | README in PS-7; `DATABASE.md` before PS-2                                   |
 
 ---
 
@@ -548,7 +549,7 @@ Collected from the sections above, with the phase that decides each.
 11. Whether Vercel skew protection covers Server Actions for old tabs (PS-3a).
 12. Relation of `ideas.notes`, the idea editor, and the document (PS-4).
 13. Knowledge base storage and authoring (PS-6).
-14. Replacing notification polling (PS-6).
+14. Removing the notification fallback poll entirely, after PS-0C.1 reduced it (PS-6).
 15. Clerk domain change, drain period, and old-origin paths (PS-7).
 
 **Flagged for a later phase, not changed in PS-0B:** `README.md` still describes "idea tracking, not manuscript writing" and a status from Phase 2C.1B, under the Sermon Tracker name; update it with the rebrand (PS-7) or when the document model is adopted (PS-1B).

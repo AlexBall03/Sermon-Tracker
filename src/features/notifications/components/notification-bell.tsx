@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 
@@ -9,7 +9,13 @@ import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { markAllNotificationsRead, markNotificationsRead } from "../actions";
-import { pollMs, type NotificationItem, type NotificationSummary } from "../model";
+import {
+  notificationsChangedMessage,
+  pollMs,
+  type NotificationItem,
+  type NotificationSummary,
+} from "../model";
+import { createRefresher, type Refresher, type RefreshResult } from "../refresh";
 import { NotificationList } from "./notification-list";
 
 type State =
@@ -17,64 +23,99 @@ type State =
   | { phase: "error"; last?: NotificationSummary }
   | { phase: "ready"; data: NotificationSummary };
 
+function lastData(current: State) {
+  return current.phase === "ready"
+    ? current.data
+    : current.phase === "error"
+      ? current.last
+      : undefined;
+}
+
+async function fetchSummary(signal: AbortSignal) {
+  const response = await fetch("/api/notifications", { cache: "no-store", signal });
+  if (!response.ok) throw new Error(String(response.status));
+  return (await response.json()) as NotificationSummary;
+}
+
+function isChangedMessage(data: unknown) {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { type?: unknown }).type === notificationsChangedMessage
+  );
+}
+
 /**
  * The bar's bell: the unread count, and the latest few in a panel. It asks
- * again every minute while its tab is shown, when the tab is shown again, and
- * when the panel opens; there is no live connection.
+ * when it mounts, when its tab is shown again or focused, when the network
+ * comes back, when the service worker says a push arrived, when the panel
+ * opens, and after something is marked read; otherwise only every `pollMs`
+ * (15 minutes). Nothing is asked while it is off screen, its tab is hidden,
+ * or the browser is offline. `refresh.ts` decides; there is no live connection.
  */
 export function NotificationBell({ className }: { className?: string }) {
   const t = useT("notifications");
   const [state, setState] = useState<State>({ phase: "loading" });
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-
-  const load = useCallback(async () => {
-    // The bar draws a bell for each screen size; only the one on screen asks.
-    if (trigger.current && trigger.current.getClientRects().length === 0) return;
-    try {
-      const response = await fetch("/api/notifications", { cache: "no-store" });
-      if (!response.ok) throw new Error(String(response.status));
-      const data = (await response.json()) as NotificationSummary;
-      setState({ phase: "ready", data });
-    } catch {
-      setState((current) => ({
-        phase: "error",
-        last:
-          current.phase === "ready"
-            ? current.data
-            : current.phase === "error"
-              ? current.last
-              : undefined,
-      }));
-    }
-  }, []);
+  const refresher = useRef<Refresher | null>(null);
 
   useEffect(() => {
-    // The first ask waits a tick, so nothing is set while the bell mounts.
-    const first = window.setTimeout(() => void load(), 0);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, pollMs);
-    const onShow = () => {
-      if (document.visibilityState === "visible") void load();
+    const current = createRefresher({
+      fetchSummary,
+      apply: (result: RefreshResult) =>
+        setState((previous) =>
+          result.ok
+            ? { phase: "ready", data: result.data }
+            : { phase: "error", last: lastData(previous) },
+        ),
+      canAsk: () =>
+        // The bar draws a bell for each screen size; only the one on screen asks.
+        !(trigger.current && trigger.current.getClientRects().length === 0) &&
+        document.visibilityState === "visible" &&
+        navigator.onLine !== false,
+    });
+    refresher.current = current;
+    const routine = () => current.refresh("routine");
+    const event = () => current.refresh("event");
+    const onMessage = (message: MessageEvent) => {
+      if (isChangedMessage(message.data)) event();
     };
-    document.addEventListener("visibilitychange", onShow);
-    window.addEventListener("focus", onShow);
+
+    // The first ask waits a tick, so nothing is set while the bell mounts.
+    const first = window.setTimeout(routine, 0);
+    const timer = window.setInterval(routine, pollMs);
+    document.addEventListener("visibilitychange", routine);
+    window.addEventListener("focus", routine);
+    window.addEventListener("online", event);
+    const worker = "serviceWorker" in navigator ? navigator.serviceWorker : undefined;
+    worker?.addEventListener("message", onMessage);
+    // A bell that comes on screen (the window crossed the breakpoint) asks once.
+    const observed = trigger.current;
+    const observer =
+      observed && typeof ResizeObserver !== "undefined" ? new ResizeObserver(routine) : undefined;
+    if (observer && observed) observer.observe(observed);
+
     return () => {
       window.clearTimeout(first);
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onShow);
-      window.removeEventListener("focus", onShow);
+      document.removeEventListener("visibilitychange", routine);
+      window.removeEventListener("focus", routine);
+      window.removeEventListener("online", event);
+      worker?.removeEventListener("message", onMessage);
+      observer?.disconnect();
+      current.dispose();
+      if (refresher.current === current) refresher.current = null;
     };
-  }, [load]);
+  }, []);
 
-  const data =
-    state.phase === "ready" ? state.data : state.phase === "error" ? state.last : undefined;
+  const data = lastData(state);
   const unread = data?.unread ?? 0;
 
-  function opened(item: NotificationItem) {
+  async function opened(item: NotificationItem) {
     setOpen(false);
     if (item.read) return;
+    refresher.current?.invalidate();
     setState((current) =>
       current.phase === "ready"
         ? {
@@ -88,12 +129,16 @@ export function NotificationBell({ className }: { className?: string }) {
           }
         : current,
     );
-    void markNotificationsRead([item.id]).catch(() => undefined);
+    await markNotificationsRead([item.id]).catch(() => undefined);
+    refresher.current?.invalidate();
+    refresher.current?.refresh("explicit");
   }
 
   async function readAll() {
+    refresher.current?.invalidate();
     await markAllNotificationsRead().catch(() => undefined);
-    await load();
+    refresher.current?.invalidate();
+    refresher.current?.refresh("explicit");
   }
 
   return (
@@ -101,7 +146,7 @@ export function NotificationBell({ className }: { className?: string }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) void load();
+        if (next) refresher.current?.refresh("explicit");
       }}
     >
       <PopoverTrigger
@@ -135,7 +180,7 @@ export function NotificationBell({ className }: { className?: string }) {
           {unread > 0 && (
             <button
               type="button"
-              onClick={readAll}
+              onClick={() => void readAll()}
               className="rounded-md px-1.5 py-1 text-xs font-medium text-primary transition-colors duration-150 hover:bg-primary/10 active:bg-primary/15"
             >
               {t.markAllRead}
@@ -157,7 +202,7 @@ export function NotificationBell({ className }: { className?: string }) {
           ) : data.items.length === 0 ? (
             <p className="p-4 text-sm leading-relaxed text-muted-foreground">{t.empty}</p>
           ) : (
-            <NotificationList items={data.items} onOpen={opened} compact />
+            <NotificationList items={data.items} onOpen={(item) => void opened(item)} compact />
           )}
         </div>
         <Link
