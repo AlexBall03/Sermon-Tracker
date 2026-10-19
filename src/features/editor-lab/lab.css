@@ -1,0 +1,147 @@
+/*
+ * The editor lab's document (PS-1A, development only). Semantic tokens only.
+ * A point's number is the title's `data-label`, drawn here as text by CSS:
+ * it is never part of the document and is not selected or copied.
+ */
+
+.lab-surface:focus-within {
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.lab-editor {
+  min-height: 60vh;
+  max-width: 72ch;
+  margin-inline: auto;
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem;
+  outline: none;
+  color: var(--foreground);
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.lab-editor p {
+  margin: 0.375rem 0;
+}
+
+.lab-editor h2,
+.lab-editor h3,
+.lab-editor h4 {
+  margin: 1.25rem 0 0.25rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.lab-editor h2 {
+  font-size: 1.375rem;
+}
+
+.lab-editor h3 {
+  font-size: 1.1875rem;
+}
+
+.lab-editor ul,
+.lab-editor ol {
+  margin: 0.375rem 0;
+  padding-left: 1.5rem;
+}
+
+.lab-editor ul {
+  list-style: disc;
+}
+
+.lab-editor ol {
+  list-style: decimal;
+}
+
+.lab-editor blockquote {
+  margin: 0.75rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+/* Sections and points */
+
+.lab-section {
+  margin: 0.5rem 0 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.lab-section:last-child {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+.lab-editor .lab-title {
+  margin: 0.875rem 0 0.25rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.lab-section > .lab-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+.lab-editor > .lab-point > .lab-title {
+  font-size: 1.125rem;
+}
+
+.lab-numbered::before {
+  content: attr(data-label);
+  margin-inline-end: 0.5em;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.lab-point .lab-point {
+  padding-left: 1.25rem;
+}
+
+/* Indentation stops growing after eight levels, so a deep outline stays readable on a phone. */
+.lab-point .lab-point .lab-point .lab-point .lab-point .lab-point .lab-point .lab-point .lab-point {
+  padding-left: 0;
+}
+
+@media (max-width: 40rem) {
+  .lab-point .lab-point {
+    padding-left: 0.75rem;
+  }
+}
+
+/* Passages */
+
+.lab-passages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0.125rem 0 0.375rem;
+  min-height: 1.5rem;
+}
+
+.lab-scripture {
+  display: inline-block;
+  padding: 0 0.5em;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-family: var(--font-sans);
+  font-size: 0.875em;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.lab-editor .ProseMirror-selectednode.lab-scripture {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

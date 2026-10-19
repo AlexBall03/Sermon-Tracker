@@ -1,6 +1,7 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
+import { labGuard } from "@/features/editor-lab/availability";
 import { isAuthConfigured } from "@/lib/env";
 import { appRoutes, routes } from "@/lib/site";
 import { applySplash } from "@/lib/splash";
@@ -46,6 +47,9 @@ const withClerk = clerkMiddleware(async (auth, request) => {
 });
 
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  // The development-only editor lab (PS-1A) is a 404 everywhere else, before anything else runs.
+  const unavailable = labGuard(request.nextUrl.pathname);
+  if (unavailable) return unavailable;
   // Without Clerk keys nobody can be signed in, so application routes stay closed.
   if (!isAuthConfigured()) {
     const response = isAppRoute(request)

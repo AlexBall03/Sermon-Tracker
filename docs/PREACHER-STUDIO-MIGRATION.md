@@ -203,6 +203,12 @@ These are related but not interchangeable.
 - **Reusing a saved point:** creates a new node with a new ID and `sourcePointId` naming the point; the point is never written to.
 - **Copy between sermons:** an Open Decision (keep IDs when unique there, or always re-key).
 
+**Tried in PS-1A** (`docs/HANDOFF-PS-1A.md` §8; still **Proposed**, nothing here is decided):
+
+- Every rule above held in the lab's tests: conversion, paste and duplicate (including a pasted subtree and HTML carrying IDs), split, merge, move, undo, and reusing a saved point twice.
+- The prototype's choice for the Open question is to clear `legacyEntryId` on a copy and record `derivedFrom`. The handoff sets out the trade-off for PS-1B.
+- `sourcePointId` was carried as a node attribute only. That is not a replacement for the foreign key, so the integrity mechanism stays a PS-2 decision.
+
 ### 6.4 Open decisions
 
 | Question                                                                                                                                                                                 | Decided in  |
@@ -422,8 +428,8 @@ No synchronization change is made in PS-0B.
 | ----------- | ------------------------------------------------------------------------------- | -------- | ---------------------------------------------------------- |
 | **PS-0B**   | Architecture Reconciliation & Migration Readiness                               | Complete | —                                                          |
 | **PS-0C.1** | Notification Efficiency Optimization (section 4.3)                              | Complete | PS-0B                                                      |
-| **PS-1A**   | Rich-Text Editor Feasibility Prototype (section 15)                             | Next     | PS-0B; package approval                                    |
-| **PS-1B**   | Editor Evaluation & Canonical Document Architecture Decision                    | Planned  | PS-1A                                                      |
+| **PS-1A**   | Rich-Text Editor Feasibility Prototype (section 15)                             | Complete | PS-0B; package approval                                    |
+| **PS-1B**   | Editor Evaluation & Canonical Document Architecture Decision                    | Next     | PS-1A; owner's real-phone check of the lab                 |
 | **PS-2**    | Document Data Model, Additive Schema & Legacy Conversion Foundation             | Planned  | PS-1B                                                      |
 | **PS-3a**   | Synchronization protocol compatibility (section 7.3, items 1–9)                 | Planned  | PS-1B                                                      |
 | **PS-3b**   | Document Persistence, Revisioning & Offline Synchronization                     | Planned  | PS-2, PS-3a                                                |
@@ -510,6 +516,24 @@ Enough evidence to adopt, revise, or reject the unified document direction and t
 ### 15.7 Deliverable
 
 `docs/HANDOFF-PS-1A.md`: what was built, what was run and what it showed, what was not run, the measurements in 15.5 item 10, and a recommendation (adopt, revise, or reject) against these criteria: every test in 15.5 passes or its failure is explained; the outline guarantees of section 8 can be kept; identity rules hold under paste, split, and merge; numbering needs no ordinary-list workaround; usable on a phone; acceptable bundle cost.
+
+### 15.8 As built (19 October 2026)
+
+**Implemented** as a development-only prototype. Details, measurements, and exact results are in `docs/HANDOFF-PS-1A.md`. Nothing in this subsection approves the prototype's schema or identity rules; they remain **Proposed** for PS-1B.
+
+- **Packages.** `@tiptap/core`, `@tiptap/pm`, `@tiptap/react`, and `@tiptap/starter-kit` are pinned at 3.31.4. All are MIT, with one copy of each ProseMirror package.
+- **Guards.**
+  - The proxy guard (`labGuard`) and the page guard are both built and unit-tested.
+  - The **production gate was run against a real local production build** (`npx next build` + `next start`). Every `/lab` address answered HTTP 404, both to a guest and to a signed-in active account.
+  - That build loaded the development `.env.local` (there is no production environment file here). The 404 is answered before Clerk or any database work.
+- **Deviations from 15.6, for the reasons given:**
+  - The lab specs live in `tests/lab/`, not `tests/e2e/lab/`. The main configuration's `testDir: ./tests/e2e` is recursive and would have swept them into the production suite.
+  - There are two configurations: `playwright.lab.config.ts` (development) and `playwright.lab-prod.config.ts` (the production gate).
+  - The development configuration accepts `LAB_BASE_URL` to reuse a development server already running for the folder, because Next allows only one per folder.
+- **Results against 15.5.**
+  - Items 1–8 and 10 pass, with copy and paste tested through ProseMirror's own clipboard handlers using synthetic clipboard events.
+  - Item 9 passes at desktop size and in phone emulation. **The real-phone check is outstanding (owner).**
+- **Recommendation:** adopt Tiptap/ProseMirror, and revise the candidate schema in PS-1B. The conditions and the structural restrictions to decide are in the handoff.
 
 ---
 

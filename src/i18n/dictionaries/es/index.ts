@@ -18,3 +18,4 @@ export { offline } from "./offline";
 export { support } from "./support";
 export { notifications } from "./notifications";
 export { legal } from "./legal";
+export { editorLab } from "./editorLab";

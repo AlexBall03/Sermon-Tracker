@@ -19,7 +19,9 @@
     "db:migrate:prod": "node scripts/db/cli.mjs migrate prod",
     "db:status": "node scripts/db/cli.mjs status",
     "db:stamp": "node scripts/db/cli.mjs stamp",
-    "brand:assets": "node scripts/generate-brand-assets.mjs"
+    "brand:assets": "node scripts/generate-brand-assets.mjs",
+    "test:e2e:lab": "playwright test -c playwright.lab.config.ts",
+    "test:e2e:lab:prod": "playwright test -c playwright.lab-prod.config.ts"
   },
   "engines": {
     "node": ">=22"
@@ -29,6 +31,10 @@
     "@clerk/localizations": "^4.23.0",
     "@clerk/nextjs": "^7.9.13",
     "@neondatabase/serverless": "^1.2.0",
+    "@tiptap/core": "3.31.4",
+    "@tiptap/pm": "3.31.4",
+    "@tiptap/react": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
     "@vercel/blob": "^2.8.2",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
