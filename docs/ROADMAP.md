@@ -15,7 +15,8 @@ The owner's order, as of 13 October 2026. Completed phases keep their numbers; t
 5. **PWA & Offline Support** (Phase 5) — implemented: 5A, 5B, 5B.1, 5C, 5D.1, and 5D.2 ([5A](HANDOFF-5A.md), [5B](HANDOFF-5B.md), [5B.1](HANDOFF-5B.1.md), [5C](HANDOFF-5C.md), [5D.1](HANDOFF-5D.1.md), [5D.2](HANDOFF-5D.2.md))
 6. **Phase 6A: Contact & Feedback System** — complete (owner-confirmed 14 October 2026)
 7. **Private Beta Release Candidate Check** — completed per owner report (14 October 2026); release-check evidence and deployment status have not been independently verified here
-8. **Private Beta Launch** — launched 14 October 2026 (owner-confirmed deployment and invitations sent); next: Phase 7A beta feedback triage, followed by prioritized Phase 7 work, Phase 8 public readiness and Phase 9 post-launch enhancements
+8. **Private Beta Launch** — launched 14 October 2026 (owner-confirmed deployment and invitations sent)
+9. **Condensed Public Release** (decided 16 October 2026) — implemented in four checkpoints, each committed by the owner; **public release is not yet complete**: it waits on the owner's production configuration and smoke tests (see [below](#condensed-public-release-16-october-2026))
 
 Every feature phase owns proportionate verification, accessibility, and narrow-screen work ("How much to verify" in `ARCHITECTURE.md`). The Private Beta Release Candidate Check is a system-level release gate, not a substitute for phase-level verification; Phase 8B includes the public release gate.
 
@@ -175,7 +176,20 @@ Build a conventional support and feedback workflow before inviting testers.
 
 Invite a small, controlled set of users. The core application and contact/feedback workflow must be reliable online; offline Bible, capture, ideas and outlines must be functional as advertised. Communicate limitations clearly. Collect reproducible bug reports, feature feedback and operational signals; do not open general public registration yet.
 
+## Condensed Public Release (16 October 2026)
+
+The owner replaced the remaining Phase 7 and Phase 8 sequence with one condensed release, built in four checkpoints and committed by the owner after each. The outline editor and its saving were deliberately left untouched.
+
+1. **Public access** — open registration at `/sign-up` (Clerk; a new identity is admitted only with a verified email or an invitation, always as a standard user), Get Started and Sign In on the landing page, and Save Changes for a ticket's status. No migration.
+2. **Account deletion** — self-service (Settings, Account & Security, behind Clerk reverification) and administrative, through one retryable service that removes Blob screenshots, database rows, the Clerk identity, and the user row last; a daily Vercel Cron retries what did not finish. Migration `0018_account_deletion`.
+3. **Notifications** — in-app notifications (bell, `/notifications`), optional support email preferences, and Web Push (VAPID, per-device subscriptions, service-worker `push`/`notificationclick`), with Settings, Notifications. Migration `0019_notifications`. This is the Phase 7C scope.
+4. **Release verification** — Privacy Policy (`/privacy`) and Terms of Service (`/terms`) in both languages, factual and marked for owner and legal review; consolidated checks; this roadmap.
+
+Not done in this release, moved to Phase 9: the rest of Phase 7B (offline saved Scripture, preaching record, and dashboard/library overview), and the open-ended parts of 7A and 8A (beta-driven polish). Phase 8B's operational items (backup and restore drill, monitoring and alerts, rollback rehearsal) are owner actions listed in the release check, not code.
+
 ## Phase 7 — Beta-Driven Development
+
+Superseded for launch by the Condensed Public Release above; 7C is done there, and 7B's remaining work is Phase 9.
 
 ### 7A — Beta Feedback & Core Workflow Improvements
 
@@ -205,11 +219,11 @@ Open access under the chosen registration policy only when release gates pass. R
 
 ## Phase 9 — Post-Launch Development
 
-Prioritize by user demand: analytics/reporting, reminders, resurfacing and discovery, sharing with independent copies, import/export, advanced productivity, and any offline or push capabilities deferred from earlier phases. These are not automatically beta or public-launch blockers.
+Prioritize by user demand: the remaining offline capabilities from 7B, beta-driven polish, analytics/reporting, reminders, resurfacing and discovery, sharing with independent copies, import/export, advanced productivity, and any offline or push capabilities deferred from earlier phases. These are not automatically beta or public-launch blockers.
 
 ## Release strategy and phase rules
 
-- **Order (revised 14 October 2026):** 5D.2 ✅ → 6A ✅ → Private Beta Release Candidate Check (formerly 6B) ✅ (owner-reported) → private beta ✅ (invitations sent) → **7A (next)** → 7B → 7C (prioritize by beta findings) → 8A → 8B → public release → 9.
+- **Order (revised 16 October 2026):** 5D.2 ✅ → 6A ✅ → Private Beta Release Candidate Check (formerly 6B) ✅ (owner-reported) → private beta ✅ (invitations sent) → Condensed Public Release (checkpoints 1–4 implemented) → **owner production configuration and smoke tests (next)** → public release → 9.
 - Maintain proportionate tests, accessibility, responsive behavior, handoffs and architectural constraints **inside each implementation phase**. Release gates validate the whole system.
 - Protect user content: never silently discard queued offline work; preserve server authorization and ownership. Neon remains authoritative; IndexedDB is per-device storage.
 - Phase 7 ordering can respond to beta evidence. A feature that is unnecessary to ship safely should not block users from benefiting from the core product.

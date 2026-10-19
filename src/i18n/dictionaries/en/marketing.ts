@@ -21,6 +21,8 @@ export const marketing = {
     signIn: "Sign In",
     getStarted: "Get Started",
     contact: "Contact",
+    privacy: "Privacy",
+    terms: "Terms",
     openMenu: "Open menu",
     closeMenu: "Close menu",
     language: "Language",

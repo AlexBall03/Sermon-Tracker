@@ -17,6 +17,8 @@ export const marketing: Untranslated<typeof english> = {
     signIn: "Iniciar sesión",
     getStarted: "Comenzar",
     contact: "Contacto",
+    privacy: "Privacidad",
+    terms: "Términos",
     openMenu: "Abrir menú",
     closeMenu: "Cerrar menú",
     language: "Idioma",

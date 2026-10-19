@@ -33,6 +33,8 @@ export function SiteFooter({
     { href: routes.contact, label: t.nav.contact },
     { href: routes.signIn, label: t.nav.signIn },
     { href: routes.signUp, label: t.nav.getStarted },
+    { href: routes.privacy, label: t.nav.privacy },
+    { href: routes.terms, label: t.nav.terms },
   ];
 
   return (

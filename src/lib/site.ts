@@ -54,6 +54,8 @@ export const routes = {
   adminFeedback: "/admin/feedback",
   /** The public contact form. */
   contact: "/contact",
+  privacy: "/privacy",
+  terms: "/terms",
   /** Help & Feedback: the account's messages; a new one at `/support/new`, one at `/support/<id>`. */
   support: "/support",
   supportNew: "/support/new",
