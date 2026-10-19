@@ -17,6 +17,7 @@ The owner's order, as of 13 October 2026. Completed phases keep their numbers; t
 7. **Private Beta Release Candidate Check** — completed per owner report (14 October 2026); release-check evidence and deployment status have not been independently verified here
 8. **Private Beta Launch** — launched 14 October 2026 (owner-confirmed deployment and invitations sent)
 9. **Condensed Public Release** (decided 16 October 2026) — implemented in four checkpoints, each committed by the owner; **public release is not yet complete**: it waits on the owner's production configuration and smoke tests (see [below](#condensed-public-release-16-october-2026))
+10. **Preacher Studio migration program** (from 19 October 2026) — PS-0B is complete (19 October 2026); PS-1A, the development-only editor prototype, is next. It does not block or change the public-release smoke tests (see [below](#preacher-studio-migration-program-from-19-october-2026))
 
 Every feature phase owns proportionate verification, accessibility, and narrow-screen work ("How much to verify" in `ARCHITECTURE.md`). The Private Beta Release Candidate Check is a system-level release gate, not a substitute for phase-level verification; Phase 8B includes the public release gate.
 
@@ -220,6 +221,24 @@ Open access under the chosen registration policy only when release gates pass. R
 ## Phase 9 — Post-Launch Development
 
 Prioritize by user demand: the remaining offline capabilities from 7B, beta-driven polish, analytics/reporting, reminders, resurfacing and discovery, sharing with independent copies, import/export, advanced productivity, and any offline or push capabilities deferred from earlier phases. These are not automatically beta or public-launch blockers.
+
+## Preacher Studio migration program (from 19 October 2026)
+
+Sermon Tracker is to evolve, not be rebuilt, into **Preacher Studio** (future domain `preacherstudio.com`). The program, its approved decisions, its proposals, its open questions, and its acceptance gates are in [PREACHER-STUDIO-MIGRATION.md](PREACHER-STUDIO-MIGRATION.md); this section only tracks status. Its phases carry the prefix `PS-` so they are never confused with Sermon Tracker's own (Phase 1A above is the foundation, not the editor prototype), and their handoffs are `HANDOFF-PS-<phase>.md`. Nothing has been renamed and nothing in the program is built yet.
+
+Approved for the whole program: one sermon identity with one unified rich-text document is the preferred direction (not final until PS-1B); infrastructure efficiency is an architectural principle; existing sermon IDs, relations, point ideas, passages, preaching history, and support records are preserved; schema changes are additive first and production data changes pass the migration document's checkpoints.
+
+- **PS-0B: Architecture Reconciliation & Migration Readiness** — complete (19 October 2026). Documentation only: a read-only audit and the migration document; `AGENTS.md` and `ARCHITECTURE.md` scoped so their rules against a manuscript editor govern the legacy outline code and not the PS-1A experiment. No code, schema, migration, configuration, or package changed. Verified with Prettier on the changed files, a check of every relative link and cited path, and a review of the diff; no build, test suite, or database command was run
+- **PS-1A: Rich-Text Editor Feasibility Prototype** — next. Development-only `/lab/editor` in the authenticated shell, 404 everywhere else, fixtures only, no persistence, no sync queue, the outline editor untouched; Tiptap/ProseMirror as the candidate. Needs the owner's approval to install the editor packages. Specification: section 15 of the migration document
+- **PS-1B: Editor Evaluation & Canonical Document Architecture Decision**
+- **PS-2: Document Data Model, Additive Schema & Legacy Conversion Foundation**
+- **PS-3a: Synchronization protocol compatibility** (before any document is queued offline) and **PS-3b: Document Persistence, Revisioning & Offline Synchronization**
+- **PS-4: Unified Sermon Workspace, Research, Scripture Integration & Lifecycle**
+- **PS-5: Advanced Editing, Templates, Printing, PDF/Word Export & Related Features**
+- **PS-6: Help Center, Administration, Notifications, PWA Updates & Platform Improvements**
+- **PS-7a: Production migration of legacy outlines**, **PS-7b: Final branding and domain coexistence with a drain period**, **PS-7c: Domain redirect and retirement of legacy structures**
+
+The order may change with evidence; the core sermon experience comes first, but the infrastructure safety work each feature depends on comes before it.
 
 ## Release strategy and phase rules
 
