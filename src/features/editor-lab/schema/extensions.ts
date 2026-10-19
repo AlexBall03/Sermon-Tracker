@@ -2,30 +2,41 @@ import { getSchema, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 
 import { defaultLocale, type Locale } from "@/i18n/locales";
+import { DocumentClipboard, type ClipboardNotice } from "../clipboard";
 import { NodeIdentity, type IdFactory } from "../identity";
 import { OutlineNumbering } from "../numbering";
 import { OutlineKeymap } from "../outline-commands";
+import { formattingExtensions } from "./formatting";
 import {
-  EntryPassages,
-  EntryTitle,
   LabDocument,
   OutlinePoint,
-  SermonConclusion,
-  SermonIntroduction,
+  PageBreak,
+  PointTitle,
+  PreacherNote,
+  SectionTitle,
+  SermonSection,
 } from "./nodes";
-import { ScriptureReferenceNode } from "./scripture";
+import { ScripturePassageNode, ScriptureReferenceNode } from "./scripture";
 
-export type LabExtensionOptions = { locale?: Locale; newId?: IdFactory };
+export type LabExtensionOptions = {
+  locale?: Locale;
+  newId?: IdFactory;
+  onNotice?: (notice: ClipboardNotice) => void;
+};
 
 /**
- * Everything the lab's editor is made of. StarterKit gives the manuscript
- * (paragraphs, headings, lists, quotations, bold, italic, underline, hard
- * breaks, undo and redo); what an outline needs beyond it is the lab's own.
+ * Everything the lab's editor is made of: schema v2 (PS-1B.1 §B.2). StarterKit
+ * gives the manuscript (paragraphs, headings 2–4, lists, quotations, bold,
+ * italic, underline, hard breaks, undo and redo); the approved Tiptap
+ * extensions give color, highlight, and alignment; the sermon's own nodes,
+ * identity, numbering, clipboard, and structure commands are the lab's.
  */
 export function labExtensions({
   locale = defaultLocale,
   newId,
+  onNotice,
 }: LabExtensionOptions = {}): Extensions {
+  const ids = newId ?? (() => crypto.randomUUID());
   return [
     StarterKit.configure({
       document: false,
@@ -35,18 +46,22 @@ export function labExtensions({
       horizontalRule: false,
       link: false,
       strike: false,
-      // The schema allows nothing after the conclusion, so no trailing paragraph is forced.
+      // No paragraph is forced at the end: a document may end with a section or a point.
       trailingNode: false,
     }),
+    ...formattingExtensions,
     LabDocument,
-    SermonIntroduction,
-    SermonConclusion,
+    SermonSection,
+    SectionTitle,
     OutlinePoint,
-    EntryTitle,
-    EntryPassages,
+    PointTitle,
+    PreacherNote,
+    PageBreak,
     ScriptureReferenceNode.configure({ locale }),
+    ScripturePassageNode.configure({ locale }),
     OutlineNumbering,
-    newId ? NodeIdentity.configure({ newId }) : NodeIdentity,
+    NodeIdentity.configure({ newId: ids }),
+    DocumentClipboard.configure({ newId: ids, onNotice }),
     OutlineKeymap,
   ];
 }

@@ -492,7 +492,8 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 | **PS-0C.1**                     | Notification Efficiency Optimization (section 4.3)                                                                      | Complete     | PS-0B                                                      |
 | **PS-1A**                       | Rich-Text Editor Feasibility Prototype (section 15)                                                                     | Complete     | PS-0B; package approval                                    |
 | **PS-1B.1**                     | Product Experience & Flexible Document Architecture (documentation)                                                     | Complete     | PS-1A                                                      |
-| **PS-1B.2**                     | Editor lab validation of the PS-1B.1 architecture (section 15.9)                                                        | Next         | PS-1B.1 (approved and closed); owner's go to start         |
+| **PS-1B.2A**                    | Canonical Document Architecture Validation (section 15.9)                                                               | Complete     | PS-1B.1 (approved and closed); owner's go                  |
+| **PS-1B.2B**                    | The rest of the lab validation of PS-1B.1 (section 15.9)                                                                | Next         | PS-1B.2A; owner's go to start                              |
 | **PS-2**                        | Document Data Model, Additive Schema & Legacy Conversion Foundation                                                     | Planned      | PS-1B.2 (its completion criteria, handoff PS-1B.1 §H)      |
 | **PS-3a**                       | Synchronization protocol compatibility (section 7.3, items 1–9)                                                         | Planned      | PS-1B.1                                                    |
 | **PS-3b**                       | Document Persistence, Revisioning & Offline Synchronization                                                             | Planned      | PS-2, PS-3a                                                |
@@ -615,6 +616,17 @@ Two boundaries widen:
 - **Browser storage.** The lab may keep device-local view state (Scripture expansion memory, the layout per tab, panel width) under lab-only keys.
 
 PS-1B.2 does not build the Workspace Panel and does not change the shell: an editor beside a docked panel is tested with a lab-local stand-in only. Its scope, order, and completion criteria are `docs/HANDOFF-PS-1B.1.md` §G and §H. The three Tiptap extensions it needs are approved; their version, peer dependencies, and licence are verified at install. A subdivision of PS-1B.2 needs the owner's authorization.
+
+**Subdivided by the owner (19 October 2026):**
+
+- **PS-1B.2A, Canonical Document Architecture Validation: complete** ([handoff](HANDOFF-PS-1B.2A.md)).
+  - Schema v2 and its validator, with a pure v1 → v2 migration.
+  - Legacy conversion and a projection that reports its losses.
+  - The §B.6 identity rules, cross-document paste included.
+  - Rich titles and the §B.5 structural commands.
+  - The three extensions installed at 3.31.4 (MIT). §H items 1, 2, 5, 11, and the isolation half of 10 are met.
+  - The techniques stay Proposed; their open points are the handoff's §13.
+- **PS-1B.2B: next.** §G items 2, 3, 4 (controls and theme tokens), 5, 7, 8, and 9, and the rest of §H.
 
 ---
 

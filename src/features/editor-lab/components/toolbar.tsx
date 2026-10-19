@@ -3,6 +3,7 @@
 import { useEditorState, type Editor } from "@tiptap/react";
 import {
   ArrowDown,
+  Copy,
   ArrowUp,
   Bold,
   CornerDownRight,
@@ -23,7 +24,15 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
-import { addPoint, indent, movePoint, outdent, run, type Command } from "../outline-commands";
+import {
+  addPoint,
+  duplicatePoint,
+  indent,
+  movePoint,
+  outdent,
+  run,
+  type Command,
+} from "../outline-commands";
 
 /** How many times the toolbar has rendered, for the lab's measurements. */
 export const toolbarRenders = { count: 0 };
@@ -47,6 +56,7 @@ export function LabToolbar({ editor }: { editor: Editor }) {
         redo: current.can().redo(),
         point: can(addPoint("sibling")),
         subpoint: can(addPoint("child")),
+        duplicate: can(duplicatePoint),
         up: can(movePoint("up")),
         down: can(movePoint("down")),
         indent: can(indent),
@@ -128,6 +138,12 @@ export function LabToolbar({ editor }: { editor: Editor }) {
           disabled={!state.subpoint}
           onPress={command(addPoint("child"))}
           icon={CornerDownRight}
+        />
+        <Tool
+          label={t.duplicate}
+          disabled={!state.duplicate}
+          onPress={command(duplicatePoint)}
+          icon={Copy}
         />
         <Tool
           label={t.moveUp}

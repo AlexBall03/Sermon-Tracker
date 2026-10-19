@@ -2,7 +2,7 @@ import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 /*
- * The editor lab (PS-1A) on a development server, signed in. It needs the
+ * The editor lab (PS-1A, PS-1B.2A) on a development server, signed in. It needs the
  * same account the main suite's signed-in specs use: E2E_CLERK_USER_EMAIL,
  * an admitted user of the development Clerk instance (tests/e2e/library.spec.ts
  * explains). The lab saves nothing and reads no account data; these tests
@@ -40,7 +40,7 @@ async function openLab(page: Page) {
 
 const editor = (page: Page) => page.getByTestId("lab-editor");
 const titleOf = (page: Page, id: string) =>
-  editor(page).locator(`[data-id="${id}"] > [data-type="entry-title"]`);
+  editor(page).locator(`[data-id="${id}"] > [data-type="point-title"]`);
 
 /** Puts the cursor at the end of a point's title. */
 async function intoTitle(page: Page, id: string) {
@@ -186,12 +186,12 @@ test.describe("editor lab, signed in", () => {
     // A new point after it, numbered from the structure.
     await page.keyboard.press("ControlOrMeta+Enter");
     await page.keyboard.type("A third point");
-    const third = editor(page).locator('[data-type="entry-title"]', { hasText: "A third point" });
+    const third = editor(page).locator('[data-type="point-title"]', { hasText: "A third point" });
     await expect(third).toHaveAttribute("data-label", "III.");
     await page.keyboard.press("ControlOrMeta+Shift+Enter");
     await page.keyboard.type("Its first subpoint");
     await expect(
-      editor(page).locator('[data-type="entry-title"]', { hasText: "Its first subpoint" }),
+      editor(page).locator('[data-type="point-title"]', { hasText: "Its first subpoint" }),
     ).toHaveAttribute("data-label", "A.");
 
     // Tab is the browser's: it leaves the editor and moves nothing.
@@ -216,21 +216,34 @@ test.describe("editor lab, signed in", () => {
   }) => {
     await openLab(page);
     const chips = editor(page).locator(".lab-scripture");
+    const blocks = editor(page).locator(".lab-passage");
     const before = await chips.count();
+    const blocksBefore = await blocks.count();
 
     await editor(page).getByText("Be ye doers of the word").click();
     await page.keyboard.press("End");
     await panel(page, "Insert");
     await page.getByRole("textbox", { name: "Passage" }).fill("James 1:22");
-    await page.getByRole("button", { name: "Insert passage" }).click();
+    await page.getByRole("button", { name: "Insert inline reference" }).click();
     await expect(page.getByTestId("lab-scripture-message")).toHaveText("Inserted.");
     await expect(chips).toHaveCount(before + 1);
     await expect(editor(page).locator('.lab-scripture[data-book="59"]')).toHaveText("James 1:22");
+
+    // A passage block goes after the line the cursor is on.
+    await editor(page).getByText("Be ye doers of the word").click();
+    await page.getByRole("textbox", { name: "Passage" }).fill("James 1:23");
+    await page.getByRole("button", { name: "Insert passage" }).click();
+    await expect(blocks).toHaveCount(blocksBefore + 1);
+    await expect(editor(page).locator('.lab-passage[data-verse-start="23"]')).toHaveAttribute(
+      "data-print",
+      "full",
+    );
 
     await page.getByRole("textbox", { name: "Passage" }).fill("John 99:1");
     await page.getByRole("button", { name: "Insert passage" }).click();
     await expect(page.getByTestId("lab-scripture-message")).not.toHaveText("Inserted.");
     await expect(chips).toHaveCount(before + 1);
+    await expect(blocks).toHaveCount(blocksBefore + 1);
 
     // The same saved point, twice: two points with their own IDs.
     await intoTitle(page, "pw-2");
@@ -299,8 +312,8 @@ test.describe("editor lab, signed in", () => {
     // Copy: select from the first subpoint's title to the end of the second's, and let the editor copy it.
     await page.evaluate(() => {
       const root = document.querySelector('[data-testid="lab-editor"]')!;
-      const from = root.querySelector('[data-id="pw-1a"] > [data-type="entry-title"]')!.firstChild!;
-      const to = root.querySelector('[data-id="pw-1b"] > [data-type="entry-title"]')!.firstChild!;
+      const from = root.querySelector('[data-id="pw-1a"] > [data-type="point-title"]')!.firstChild!;
+      const to = root.querySelector('[data-id="pw-1b"] > [data-type="point-title"]')!.firstChild!;
       const range = document.createRange();
       range.setStart(from, 0);
       range.setEnd(to, to.textContent!.length);
@@ -355,6 +368,73 @@ test.describe("editor lab, signed in", () => {
     // The impossible passage is kept as words, not as a passage.
     await expect(editor(page)).toContainText("John 99:1");
     await expect(editor(page).locator('.lab-scripture[data-chapter-start="99"]')).toHaveCount(0);
+  });
+
+  test("schema v2: rich titles, leaving a point with Enter, and a paste between documents", async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== "desktop", "Checked at desktop size.");
+    await openLab(page);
+    await choose(page, "Document", "The Lamp and the Path (schema v2, mixed)");
+    await expect(titleOf(page, "lp-1")).toHaveAttribute("data-label", "I.");
+    // Rich titles: the bold word is part of the title, the number is not.
+    await expect(titleOf(page, "lp-1").locator("strong")).toHaveText("Illuminates");
+    await expect(titleOf(page, "lp-2")).toHaveAttribute("data-label", "II.");
+
+    // Bold in a title, from the keyboard.
+    await titleOf(page, "lp-2").click();
+    await page.keyboard.press("End");
+    for (let index = 0; index < "Light".length; index += 1)
+      await page.keyboard.press("Shift+ArrowLeft");
+    await page.keyboard.press("ControlOrMeta+b");
+    await expect(titleOf(page, "lp-2").locator("strong")).toHaveText("Light");
+
+    // Enter on an empty last line leaves the subpoint; what is typed then belongs to its parent.
+    await editor(page).getByText("Plain to the simple.").click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Written after the subpoint");
+    const written = editor(page).getByText("Written after the subpoint");
+    await expect(written).toBeVisible();
+    await expect(editor(page).locator('[data-id="lp-1a"]')).not.toContainText("Written after");
+    await expect(editor(page).locator('[data-id="lp-1"]')).toContainText("Written after");
+
+    // Copy a passage block, open another document, and paste it there: it gets a new ID.
+    await editor(page).locator('.lab-passage[data-id="lp-1-p1"]').click();
+    const copied = await page.evaluate(() => {
+      const transfer = new DataTransfer();
+      document
+        .querySelector('[data-testid="lab-editor"]')!
+        .dispatchEvent(
+          new ClipboardEvent("copy", { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+      return transfer.getData("text/html");
+    });
+    expect(copied).toContain("data-ps-document=");
+    expect(copied).toContain('data-id="lp-1-p1"');
+    await choose(page, "Document", "Outline only");
+    await titleOf(page, "oo-2").click();
+    await page.keyboard.press("End");
+    await page.evaluate((html) => {
+      const transfer = new DataTransfer();
+      transfer.setData("text/html", html);
+      document
+        .querySelector('[data-testid="lab-editor"]')!
+        .dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+    }, copied);
+    const pasted = editor(page).locator(".lab-passage");
+    await expect(pasted).toHaveCount(1);
+    const id = await pasted.getAttribute("data-id");
+    expect(id).toBeTruthy();
+    expect(id).not.toBe("lp-1-p1");
+
+    // The document still passes the validator and reloads unchanged.
+    await panel(page, "Checks");
+    await page.getByRole("button", { name: "Reload from JSON and compare" }).click();
+    await expect(page.getByTestId("lab-check-result")).toHaveAttribute("data-ok", "true");
   });
 
   test("stays responsive on a 500-entry outline and renders nothing per keystroke", async ({

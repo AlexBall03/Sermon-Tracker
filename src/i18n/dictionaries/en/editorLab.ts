@@ -1,5 +1,5 @@
 /**
- * The development-only editor lab (PS-1A, /lab/editor). Fixture sermon text
+ * The development-only editor lab (PS-1A, PS-1B.2A; /lab/editor). Fixture sermon text
  * is test data and lives with the fixtures, not here.
  */
 export const editorLab = {
@@ -11,13 +11,18 @@ export const editorLab = {
   limitationsTitle: "What this prototype does not do",
   limitations: [
     "It does not save, sync, or queue anything, and never touches a real sermon or outline.",
-    "Its schema and its identity rules are proposals for PS-1B, not decisions.",
+    "Its schema (v2) and its identity rules are being validated (PS-1B.2), not yet decided for production.",
     "Points are numbered by the outline engine; ordinary lists keep their own numbers.",
-    "Prose after a point's subpoints, formatting, lists, and inline passages do not fit a legacy entry; the conversion reports them.",
+    "Passages show their reference only; expanding them, colors' theme tones, and Print Layout come in PS-1B.2B.",
+    "Rich content (formatting, notes, prose outside points, page breaks) does not fit a legacy entry; the conversion reports it.",
   ],
   fixture: "Document",
   fixtures: {
-    powerOfGodsWord: "The Power of God's Word (mixed)",
+    lampAndPath: "The Lamp and the Path (schema v2, mixed)",
+    sectionsAnywhere: "Sections anywhere, page breaks",
+    manuscriptOnly: "Manuscript only",
+    outlineOnly: "Outline only",
+    powerOfGodsWord: "The Power of God's Word (PS-1A, migrated)",
     empty: "Empty outline",
     minimal: "Minimal outline",
     sections: "Introduction and conclusion",
@@ -43,6 +48,7 @@ export const editorLab = {
     orderedList: "Numbered list",
     addPoint: "Add point",
     addSubpoint: "Add subpoint",
+    duplicate: "Duplicate point",
     moveUp: "Move point up",
     moveDown: "Move point down",
     indent: "Indent",
@@ -51,7 +57,13 @@ export const editorLab = {
     redo: "Redo",
   },
   shortcuts:
-    "Alt+Shift+↑/↓ moves a point, Alt+Shift+→/← indents and outdents, Ctrl+Enter adds a point, Ctrl+Shift+Enter a subpoint. Tab is left to the browser.",
+    "Alt+Shift+↑/↓ moves a point, Alt+Shift+→/← indents and outdents, Ctrl+Enter adds a point, Ctrl+Shift+Enter a subpoint, Enter on an empty last line leaves a point. Tab is left to the browser.",
+  notices: {
+    section_to_heading: (role: "introduction" | "conclusion"): string =>
+      role === "introduction"
+        ? "The document already has an introduction, so the pasted one became a heading with its content."
+        : "The document already has a conclusion, so the pasted one became a heading with its content.",
+  },
   panel: {
     label: "Inspect",
     json: "JSON",
@@ -70,6 +82,7 @@ export const editorLab = {
     reloaded: "Reloaded from JSON: identical.",
     differs: "Reloaded from JSON: it differs.",
     refused: "The document could not be reloaded:",
+    warnings: "Loaded, with warnings:",
     legacyRun: "Convert to legacy and back",
     legacyIdentical: "Legacy round trip: the outline comes back as it was shown.",
     legacyDiffers: "Legacy round trip: the outline differs.",
@@ -90,8 +103,10 @@ export const editorLab = {
     insertSaved: (title: string) => `Insert “${title}”`,
     scripture: "Passage",
     scripturePlaceholder: "John 3:16",
-    scriptureHint: "In a point's title it joins the point's passages; in prose it is inline.",
+    scriptureHint:
+      "A passage is a block after the line you are on; an inline reference goes where the cursor is, in prose or in a title.",
     insertScripture: "Insert passage",
+    insertInline: "Insert inline reference",
     inserted: "Inserted.",
     notHere: "A passage cannot go there.",
   },

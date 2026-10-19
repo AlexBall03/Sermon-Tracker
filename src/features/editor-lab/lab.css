@@ -1,5 +1,5 @@
 /*
- * The editor lab's document (PS-1A, development only). Semantic tokens only.
+ * The editor lab's document (PS-1A, PS-1B.2A; development only). Semantic tokens only.
  * A point's number is the title's `data-label`, drawn here as text by CSS:
  * it is never part of the document and is not selected or copied.
  */
@@ -66,17 +66,11 @@
 
 /* Sections and points */
 
+/* A section may stand anywhere, so it looks the same wherever it is (no first/last rule). */
 .lab-section {
-  margin: 0.5rem 0 1.25rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.lab-section:last-child {
-  margin-top: 1.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
-  border-bottom: 0;
+  margin: 0.75rem 0 1.25rem;
+  padding-block: 0.5rem;
+  border-block: 1px solid var(--border);
 }
 
 .lab-editor .lab-title {
@@ -118,14 +112,40 @@
   }
 }
 
-/* Passages */
+/* Passages, notes, and page breaks */
 
-.lab-passages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin: 0.125rem 0 0.375rem;
-  min-height: 1.5rem;
+/* A passage block shows its reference only; its expansion and verse text come in PS-1B.2B. */
+.lab-passage {
+  margin: 0.375rem 0;
+  padding: 0.125rem 0.625rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.lab-passage[data-print="hidden"] {
+  border-left-style: dashed;
+}
+
+.lab-editor .ProseMirror-selectednode.lab-passage,
+.lab-editor .ProseMirror-selectednode.lab-page-break {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.lab-note {
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+/* In Regular Layout a page break is only a thin marker. */
+.lab-page-break {
+  margin: 1rem 0;
+  border-top: 1px dashed var(--border);
 }
 
 .lab-scripture {

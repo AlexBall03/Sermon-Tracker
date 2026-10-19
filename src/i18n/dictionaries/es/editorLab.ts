@@ -11,13 +11,18 @@ export const editorLab: Untranslated<typeof english> = {
   limitationsTitle: "Lo que este prototipo no hace",
   limitations: [
     "No guarda, sincroniza ni pone en cola nada, y nunca toca un sermón ni un bosquejo reales.",
-    "Su esquema y sus reglas de identidad son propuestas para PS-1B, no decisiones.",
+    "Su esquema (v2) y sus reglas de identidad se están validando (PS-1B.2); aún no son decisiones para producción.",
     "Los puntos se numeran con el motor de los bosquejos; las listas comunes llevan sus propios números.",
-    "La prosa después de los subpuntos, el formato, las listas y los pasajes en línea no caben en una entrada antigua; la conversión los informa.",
+    "Los pasajes muestran solo su referencia; desplegarlos, los tonos de color del tema y el diseño de impresión llegan en PS-1B.2B.",
+    "El contenido enriquecido (formato, notas, prosa fuera de los puntos, saltos de página) no cabe en una entrada antigua; la conversión lo informa.",
   ],
   fixture: "Documento",
   fixtures: {
-    powerOfGodsWord: "The Power of God's Word (mixto)",
+    lampAndPath: "The Lamp and the Path (esquema v2, mixto)",
+    sectionsAnywhere: "Secciones en cualquier lugar, saltos de página",
+    manuscriptOnly: "Solo manuscrito",
+    outlineOnly: "Solo bosquejo",
+    powerOfGodsWord: "The Power of God's Word (PS-1A, migrado)",
     empty: "Bosquejo vacío",
     minimal: "Bosquejo mínimo",
     sections: "Introducción y conclusión",
@@ -43,6 +48,7 @@ export const editorLab: Untranslated<typeof english> = {
     orderedList: "Lista numerada",
     addPoint: "Añadir punto",
     addSubpoint: "Añadir subpunto",
+    duplicate: "Duplicar el punto",
     moveUp: "Subir el punto",
     moveDown: "Bajar el punto",
     indent: "Aumentar sangría",
@@ -51,7 +57,13 @@ export const editorLab: Untranslated<typeof english> = {
     redo: "Rehacer",
   },
   shortcuts:
-    "Alt+Mayús+↑/↓ mueve un punto, Alt+Mayús+→/← aumenta y reduce la sangría, Ctrl+Intro añade un punto, Ctrl+Mayús+Intro un subpunto. Tab queda para el navegador.",
+    "Alt+Mayús+↑/↓ mueve un punto, Alt+Mayús+→/← aumenta y reduce la sangría, Ctrl+Intro añade un punto, Ctrl+Mayús+Intro un subpunto, Intro en una última línea vacía sale del punto. Tab queda para el navegador.",
+  notices: {
+    section_to_heading: (role: "introduction" | "conclusion"): string =>
+      role === "introduction"
+        ? "El documento ya tiene una introducción, así que la pegada se convirtió en un encabezado con su contenido."
+        : "El documento ya tiene una conclusión, así que la pegada se convirtió en un encabezado con su contenido.",
+  },
   panel: {
     label: "Inspeccionar",
     json: "JSON",
@@ -70,6 +82,7 @@ export const editorLab: Untranslated<typeof english> = {
     reloaded: "Recargado desde el JSON: idéntico.",
     differs: "Recargado desde el JSON: es distinto.",
     refused: "No se pudo recargar el documento:",
+    warnings: "Cargado, con advertencias:",
     legacyRun: "Convertir al formato antiguo y volver",
     legacyIdentical: "Ida y vuelta al formato antiguo: el bosquejo vuelve como se mostraba.",
     legacyDiffers: "Ida y vuelta al formato antiguo: el bosquejo es distinto.",
@@ -91,8 +104,10 @@ export const editorLab: Untranslated<typeof english> = {
     insertSaved: (title: string) => `Insertar «${title}»`,
     scripture: "Pasaje",
     scripturePlaceholder: "Juan 3:16",
-    scriptureHint: "En el título de un punto se une a sus pasajes; en la prosa queda en línea.",
+    scriptureHint:
+      "Un pasaje es un bloque tras la línea en la que está; una referencia en línea va donde está el cursor, en la prosa o en un título.",
     insertScripture: "Insertar pasaje",
+    insertInline: "Insertar referencia en línea",
     inserted: "Insertado.",
     notHere: "Un pasaje no puede ir ahí.",
   },

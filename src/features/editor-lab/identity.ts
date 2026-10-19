@@ -1,28 +1,35 @@
 import { Extension, type JSONContent } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Fragment, type Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Mapping } from "@tiptap/pm/transform";
 
 import { identifiedTypes } from "./schema/nodes";
+import { isTextOnly } from "./changes";
 
 /*
- * Document-node identity (PS-1A prototype; migration document §6.3, Proposed).
+ * Document-node identity (PS-1B.1 §B.6, Proposed; validated in PS-1B.2A).
  *
- * Every point, section, and passage has an `id`, unique in its document. After
- * every change that touches the document, one step makes it so again:
+ * Every section, point, passage, inline reference, and note has an `id`,
+ * unique in its document. After every change that could add or copy such a
+ * node, one step makes it so again:
  *
  * - a node with no ID is given one;
- * - where two nodes share an ID (a paste, a duplicate), the node that was
- *   there before keeps it, found by mapping its old position through the
- *   change; the other is the copy and is given a new ID, remembers the ID it
- *   came from in `derivedFrom`, and loses `legacyEntryId`/`legacyRevision`.
- *   It keeps `sourcePointId`. (Whether a copy keeps the legacy ID is an Open
- *   Decision; clearing it is this prototype's choice, explained in the handoff.)
+ * - where two nodes share an ID (a paste or a duplicate within the
+ *   document), the node that was there before keeps it, found by mapping its
+ *   old position through the change; the other is the copy: it gets a new ID,
+ *   remembers the original in `derivedFrom`, and loses its legacy provenance
+ *   (`legacyEntryId`, `legacyRevision`, `legacyParentId`), so a legacy entry
+ *   stands for exactly one node. It keeps `sourcePointId`.
  *
  * A move takes the node out and puts the same node back in one change, so it
- * keeps its ID and everything under it keeps theirs. A split gives the second
- * part a new ID (the command leaves it without one); a merge keeps the first
- * part's node, so its ID wins and the absorbed one is retired.
+ * keeps its ID and everything under it keeps theirs; so do cut and paste,
+ * undo, and redo. A split gives the second part a new ID (the command leaves
+ * it without one); a merge keeps the first part's node, so its ID wins and the
+ * absorbed one is retired. Content pasted from another document is re-keyed
+ * before it arrives (`rekeyForeign`, used by `clipboard.ts`).
+ *
+ * A change that only touched text (`isTextOnly`) adds no identified node, so
+ * the step is skipped without walking the document.
  */
 
 export type IdFactory = () => string;
@@ -31,16 +38,47 @@ const identified = new Set<string>(identifiedTypes);
 
 export const isIdentified = (typeName: string) => identified.has(typeName);
 
-/** What a copy of a node keeps of its provenance. */
+const legacyFields = ["legacyEntryId", "legacyRevision", "legacyParentId"] as const;
+
+/** What a copy of a node keeps of its provenance, within the same document. */
 export function copyAttributes(
   attrs: Record<string, unknown>,
   id: string,
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...attrs, id };
   if ("derivedFrom" in attrs) next.derivedFrom = attrs.id ?? null;
-  if ("legacyEntryId" in attrs) next.legacyEntryId = null;
-  if ("legacyRevision" in attrs) next.legacyRevision = null;
+  for (const field of legacyFields) if (field in attrs) next[field] = null;
   return next;
+}
+
+/** What a node pasted from another document keeps: none of its lineage, only its source point. */
+export function foreignAttributes(
+  attrs: Record<string, unknown>,
+  id: string,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...attrs, id };
+  if ("derivedFrom" in attrs) next.derivedFrom = null;
+  for (const field of legacyFields) if (field in attrs) next[field] = null;
+  return next;
+}
+
+/** A node and everything in it with fresh identities, as content from another document. */
+function rekeyNode(node: ProseMirrorNode, newId: IdFactory): ProseMirrorNode {
+  if (node.isText) return node;
+  // The node before what is in it, so new IDs follow document order.
+  const attrs = isIdentified(node.type.name) ? foreignAttributes(node.attrs, newId()) : node.attrs;
+  return node.type.create(attrs, rekeyFragment(node.content, newId), node.marks);
+}
+
+function rekeyFragment(fragment: Fragment, newId: IdFactory): Fragment {
+  const nodes: ProseMirrorNode[] = [];
+  fragment.forEach((child) => nodes.push(rekeyNode(child, newId)));
+  return Fragment.fromArray(nodes);
+}
+
+/** A slice pasted from another document: new IDs throughout (§B.6). */
+export function rekeyForeign(slice: Slice, newId: IdFactory): Slice {
+  return new Slice(rekeyFragment(slice.content, newId), slice.openStart, slice.openEnd);
 }
 
 /** IDs that appear on more than one node of a document. */
@@ -60,6 +98,9 @@ export function duplicateIds(doc: ProseMirrorNode): string[] {
 
 export const identityKey = new PluginKey("labIdentity");
 
+/** How many full identity passes ran, for the lab's measurements and tests. */
+export const identityStats = { passes: 0 };
+
 export const NodeIdentity = Extension.create<{ newId: IdFactory }>({
   name: "nodeIdentity",
 
@@ -74,6 +115,8 @@ export const NodeIdentity = Extension.create<{ newId: IdFactory }>({
         key: identityKey,
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
+          if (isTextOnly(transactions)) return null;
+          identityStats.passes += 1;
 
           // Where each node that had an ID before the change is now.
           const mapping = new Mapping();
@@ -125,9 +168,10 @@ export const NodeIdentity = Extension.create<{ newId: IdFactory }>({
 });
 
 /**
- * The same rules on document JSON, before it is loaded: a node with no ID is
- * given one, and of nodes sharing an ID the first keeps it. Returns a copy;
- * the input is not changed.
+ * The same rules on document JSON: a node with no ID is given one, and of
+ * nodes sharing an ID the first keeps it. An explicit, opt-in repair for
+ * fixtures and tools; loading never calls it (the validator refuses missing
+ * and duplicate IDs instead). Returns a copy; the input is not changed.
  */
 export function assignIds(doc: JSONContent, newId: IdFactory): JSONContent {
   const copy = structuredClone(doc);
@@ -143,7 +187,7 @@ export function assignIds(doc: JSONContent, newId: IdFactory): JSONContent {
         attrs.id = newId();
       } else if (seen.has(id)) {
         Object.assign(attrs, copyAttributes(attrs, newId()));
-        if (node.type !== "scriptureReference") attrs.derivedFrom = id;
+        if (node.type === "outlinePoint" || node.type === "sermonSection") attrs.derivedFrom = id;
       }
       seen.add(attrs.id as string);
       node.attrs = attrs;

@@ -10,6 +10,8 @@ import {
   type LegacyEntry,
   type LegacyOutline,
 } from "./legacy";
+import { layoutFromNumbering } from "./layout";
+import { migrateDocument } from "./migrate";
 import { documentLabels } from "./numbering";
 import { labSchema } from "./schema/extensions";
 import { testEditor } from "./testing";
@@ -80,12 +82,12 @@ describe("legacy outline → document → legacy", () => {
       if (typeof node.attrs.legacyEntryId === "string") {
         const refs: unknown[] = [];
         node.forEach((child) => {
-          if (child.type.name === "entryPassages") {
-            child.forEach((reference) => {
-              const { id: _id, ...numbers } = reference.attrs;
-              void _id;
-              refs.push(numbers);
-            });
+          if (child.type.name === "scripturePassage") {
+            const { id: _id, translation, print, ...numbers } = child.attrs;
+            void _id;
+            // Converted passages follow the document's translation and print as references.
+            expect({ translation, print }).toEqual({ translation: null, print: "reference" });
+            refs.push(numbers);
           }
         });
         found.set(node.attrs.legacyEntryId, { refs, attrs: node.attrs });
@@ -250,13 +252,21 @@ describe("malformed legacy rows", () => {
     const broken = { version: 1, preset: "custom", levels: [] } as never;
     const result = convert({ ...legacyFixtures.minimal, numbering: broken });
     expect(result.issues).toEqual([{ code: "invalid_numbering" }]);
-    expect(result.doc.attrs?.numbering).toBe(broken);
+    expect(result.doc.attrs?.layout).toEqual(layoutFromNumbering(broken));
+    expect(result.doc.attrs?.layout.numbering).toBe(broken);
+    // The document still loads: the unreadable layout is a warning, kept as it is.
+    const restored = restoreDocument(result.doc, schema);
+    expect(restored.ok && restored.warnings).toEqual([
+      { code: "invalid_layout", path: "/attrs/layout" },
+    ]);
   });
 });
 
 describe("document → legacy losses", () => {
   it("reports everything in a mixed document that an entry cannot hold", () => {
-    const { outline, losses } = documentToLegacy(powerOfGodsWord);
+    const migrated = migrateDocument(powerOfGodsWord);
+    if (!migrated.ok) throw new Error("not migrated");
+    const { outline, losses } = documentToLegacy(migrated.doc);
     expect(outline.entries.map((entry) => entry.id)).toEqual([
       "pw-intro",
       "pw-1",
@@ -285,15 +295,15 @@ describe("document → legacy losses", () => {
   it("reports prose after a subpoint as out of place in the notes", () => {
     const { losses, outline } = documentToLegacy({
       type: "doc",
-      attrs: { numbering: { version: 1, preset: "traditional" } },
+      attrs: { layout: layoutFromNumbering({ version: 1, preset: "traditional" }) },
       content: [
         {
           type: "outlinePoint",
           attrs: { id: "a" },
           content: [
-            { type: "entryTitle", content: [{ type: "text", text: "A" }] },
+            { type: "pointTitle", content: [{ type: "text", text: "A" }] },
             { type: "paragraph", content: [{ type: "text", text: "before" }] },
-            { type: "outlinePoint", attrs: { id: "a1" }, content: [{ type: "entryTitle" }] },
+            { type: "outlinePoint", attrs: { id: "a1" }, content: [{ type: "pointTitle" }] },
             { type: "paragraph", content: [{ type: "text", text: "after" }] },
           ],
         },

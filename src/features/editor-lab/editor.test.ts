@@ -5,13 +5,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { numberingPresetIds } from "@/features/outlines/model";
 import { numberOutline, type NumberingConfig } from "@/features/outlines/numbering";
 import { orderEntries } from "@/features/outlines/tree";
+import { paragraph, sermonDocument } from "./documents";
 import { customNumbering, legacyFixtures, powerOfGodsWord, ref, savedPoints } from "./fixtures";
 import { assignIds } from "./identity";
 import { documentToLegacy, legacyToDocument, type LegacyOutline } from "./legacy";
+import { layoutFromNumbering } from "./layout";
 import { documentLabels, numberingKey } from "./numbering";
 import {
   addPoint,
   indent,
+  insertPassage,
   insertReference,
   mergeWithPrevious,
   movePoint,
@@ -21,7 +24,6 @@ import {
 } from "./outline-commands";
 import { labSchema } from "./schema/extensions";
 import { ids, shape, testEditor, titleStart } from "./testing";
-import { restoreDocument } from "./validate";
 import type { Editor, JSONContent } from "@tiptap/core";
 
 const schema = labSchema();
@@ -51,115 +53,6 @@ const cursorIn = (editor: Editor, id: string, offset = 0) =>
 
 const labels = (editor: Editor) => numberingKey.getState(editor.state)!.labels;
 
-describe("the document schema", () => {
-  const doc = (content: JSONContent[]) => ({ type: "doc", content });
-  const intro = {
-    type: "sermonIntroduction",
-    attrs: { id: "i" },
-    content: [{ type: "entryTitle" }],
-  };
-  const end = { type: "sermonConclusion", attrs: { id: "c" }, content: [{ type: "entryTitle" }] };
-  const pt = (id: string, extra: JSONContent[] = []) => ({
-    type: "outlinePoint",
-    attrs: { id },
-    content: [{ type: "entryTitle" }, ...extra],
-  });
-  const para = { type: "paragraph", content: [{ type: "text", text: "prose" }] };
-
-  it("accepts the mixed sermon, an empty document, and prose between points", () => {
-    expect(restoreDocument(powerOfGodsWord, schema).ok).toBe(true);
-    expect(restoreDocument(doc([]), schema).ok).toBe(true);
-    expect(
-      restoreDocument(doc([intro, pt("a"), para, pt("b", [para, pt("b1")]), end]), schema).ok,
-    ).toBe(true);
-  });
-
-  it.each([
-    ["a second introduction", doc([intro, { ...intro, attrs: { id: "i2" } }])],
-    ["an introduction after a point", doc([pt("a"), intro])],
-    ["a conclusion before a point", doc([end, pt("a")])],
-    ["prose after the conclusion", doc([end, para])],
-    [
-      "a point inside the introduction",
-      doc([{ ...intro, content: [{ type: "entryTitle" }, pt("x")] }]),
-    ],
-    [
-      "a point without a title",
-      doc([{ type: "outlinePoint", attrs: { id: "a" }, content: [para] }]),
-    ],
-    [
-      "a point inside a list",
-      doc([{ type: "bulletList", content: [{ type: "listItem", content: [para, pt("x")] }] }]),
-    ],
-    [
-      "bold in a title",
-      doc([
-        {
-          type: "outlinePoint",
-          attrs: { id: "a" },
-          content: [
-            {
-              type: "entryTitle",
-              content: [{ type: "text", text: "t", marks: [{ type: "bold" }] }],
-            },
-          ],
-        },
-      ]),
-    ],
-    [
-      "text among the passages",
-      doc(
-        [pt("a", [])].map((p) => ({
-          ...p,
-          content: [
-            { type: "entryTitle" },
-            { type: "entryPassages", content: [{ type: "text", text: "x" }] },
-          ],
-        })),
-      ),
-    ],
-  ])("refuses %s", (_name, json) => {
-    const result = restoreDocument(json, schema);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.problems[0].code).toBe("schema");
-  });
-
-  it("refuses a passage that is not in the Bible, too many passages, duplicate IDs, and bad numbering", () => {
-    const passage = (attrs: Record<string, unknown>) => ({ type: "scriptureReference", attrs });
-    const codes = (json: JSONContent) => {
-      const result = restoreDocument(json, schema);
-      return result.ok ? [] : result.problems.map((problem) => problem.code);
-    };
-    const withPassages = (...refs: JSONContent[]) =>
-      doc([
-        {
-          type: "outlinePoint",
-          attrs: { id: "a" },
-          content: [{ type: "entryTitle" }, { type: "entryPassages", content: refs }],
-        },
-      ]);
-    expect(codes(withPassages(passage({ id: "r", ...ref(43, 22, 1) })))).toEqual([
-      "invalid_reference",
-    ]);
-    expect(codes(withPassages(passage({ id: "r", ...ref(43, 3, 16, 16) })))).toEqual([
-      "invalid_reference",
-    ]);
-    expect(codes(withPassages(passage({ id: "r", book: 43 })))).toEqual(["invalid_reference"]);
-    expect(
-      codes(
-        withPassages(
-          ...Array.from({ length: 11 }, (_, n) => passage({ id: `r${n}`, ...ref(43, 3, n + 1) })),
-        ),
-      ),
-    ).toEqual(["too_many_references"]);
-    expect(codes(doc([pt("a"), pt("a")]))).toEqual(["duplicate_id"]);
-    expect(codes({ ...doc([]), attrs: { numbering: { version: 1, preset: "fancy" } } })).toEqual([
-      "invalid_numbering",
-    ]);
-    expect(codes({ type: "paragraph" } as JSONContent)).toEqual(["not_a_document"]);
-  });
-});
-
 describe("JSON round trip in the editor", () => {
   const fixtures = Object.entries(legacyFixtures).filter(([name]) => name !== "malformed");
 
@@ -169,11 +62,12 @@ describe("JSON round trip in the editor", () => {
     const again = editorFor(first).getJSON();
     expect(again).toEqual(first);
     // The document attributes travel with it.
-    expect(first.attrs?.numbering).toEqual(outline.numbering);
+    expect(first.attrs?.layout).toEqual(layoutFromNumbering(outline.numbering));
+    expect(first.attrs?.schemaVersion).toBe(2);
     expect(first.attrs?.legacyOutlineId).toBe(outline.id);
   });
 
-  it("is stable for the mixed sermon, and keeps its marks and inline passage", () => {
+  it("is stable for PS-1A's mixed sermon (migrated), and keeps its marks and inline passage", () => {
     const first = editorFor(powerOfGodsWord).getJSON();
     expect(editorFor(first).getJSON()).toEqual(first);
     expect(JSON.stringify(first)).toContain('"type":"italic"');
@@ -215,7 +109,7 @@ describe("numbering", () => {
     const editor = fromLegacy(legacyFixtures.nested);
     expect(labels(editor).get("n-a")).toBe("I.");
     expect(labels(editor).get("n-a1x1ii")).toBe("(1)");
-    const title = editor.view.dom.querySelector('[data-id="n-a1"] > [data-type="entry-title"]');
+    const title = editor.view.dom.querySelector('[data-id="n-a1"] > [data-type="point-title"]');
     expect(title?.getAttribute("data-label")).toBe("A.");
     expect(title?.textContent).toBe("Level two");
   });
@@ -243,18 +137,26 @@ describe("numbering", () => {
     expect(labels(editor).get("c-a1x")).toBe("I.a.1.");
     // Overflow repeats from level two.
     expect(labels(editor).get("c-a1x1")).toBe("(a)");
+    const layout = editor.state.doc.attrs.layout;
     editor.view.dispatch(
-      editor.state.tr.setDocAttribute("numbering", { version: 1, preset: "decimal" }),
+      editor.state.tr.setDocAttribute("layout", {
+        ...layout,
+        numbering: { version: 1, preset: "decimal" },
+      }),
     );
     expect(labels(editor).get("c-a1x")).toBe("1.1.1.");
     expect(labels(editor).get("c-a")).toBe("1.");
     const after = editor.getJSON();
-    expect({ ...after, attrs: { ...after.attrs, numbering: null } }).toEqual({
+    expect({ ...after, attrs: { ...after.attrs, layout: null } }).toEqual({
       ...before,
-      attrs: { ...before.attrs, numbering: null },
+      attrs: { ...before.attrs, layout: null },
     });
-    // And back again, exactly.
-    editor.view.dispatch(editor.state.tr.setDocAttribute("numbering", customNumbering));
+    // And back again, exactly, in one undo.
+    editor.commands.undo();
+    expect(editor.getJSON()).toEqual(before);
+    editor.view.dispatch(
+      editor.state.tr.setDocAttribute("layout", { ...layout, numbering: customNumbering }),
+    );
     expect(editor.getJSON()).toEqual(before);
   });
 
@@ -480,14 +382,14 @@ describe("identity", () => {
           {
             type: "outlinePoint",
             attrs: { id: "a", legacyEntryId: "a" },
-            content: [{ type: "entryTitle" }],
+            content: [{ type: "pointTitle" }],
           },
           {
             type: "outlinePoint",
             attrs: { id: "a", legacyEntryId: "a" },
-            content: [{ type: "entryTitle" }],
+            content: [{ type: "pointTitle" }],
           },
-          { type: "outlinePoint", content: [{ type: "entryTitle" }] },
+          { type: "outlinePoint", content: [{ type: "pointTitle" }] },
         ],
       },
       () => `fresh-${(n += 1)}`,
@@ -515,16 +417,36 @@ describe("Scripture references", () => {
     expect(JSON.stringify(editor.getJSON())).not.toContain("James 1:22");
   });
 
-  it("adds a passage to a point's passages from its title, up to ten", () => {
-    const editor = fromLegacy(legacyFixtures.minimal);
-    cursorIn(editor, "min-1");
-    expect(run(editor, insertReference(ref(43, 3, 16)))).toBe(true);
-    expect(documentToLegacy(editor.getJSON()).outline.entries[0].references).toEqual([
+  it("adds a passage block after a point's title and the passages already there", () => {
+    const editor = fromLegacy(legacyFixtures.passages);
+    cursorIn(editor, "p-2");
+    expect(run(editor, insertPassage(ref(43, 3, 16)))).toBe(true);
+    const back = documentToLegacy(editor.getJSON());
+    expect(back.outline.entries[1].references).toEqual([
+      ...legacyFixtures.passages.entries[1].references,
       ref(43, 3, 16),
     ]);
-    const full = fromLegacy(legacyFixtures.passages);
-    cursorIn(full, "p-1");
-    expect(run(full, insertReference(ref(43, 3, 16)))).toBe(false);
+    // A passage a person inserts prints in full, which a legacy entry cannot say.
+    expect(back.losses).toEqual([{ code: "passage_print", entryId: "p-2", detail: "full" }]);
+    // An eleventh passage is a document's to hold; the projection reports it.
+    cursorIn(editor, "p-1");
+    expect(run(editor, insertPassage(ref(43, 3, 16)))).toBe(true);
+    expect(documentToLegacy(editor.getJSON()).losses).toContainEqual({
+      code: "over_limit",
+      entryId: "p-1",
+      detail: "references",
+    });
+  });
+
+  it("puts an inline reference in a title, where v2 allows one", () => {
+    const editor = fromLegacy(legacyFixtures.minimal);
+    cursorIn(editor, "min-1", "The one point".length);
+    expect(run(editor, insertReference(ref(43, 3, 16)))).toBe(true);
+    const title = (editor.getJSON() as JSONContent).content![0].content![0];
+    expect(title.content!.at(-1)).toMatchObject({
+      type: "scriptureReference",
+      attrs: { book: 43, translation: null, display: "reference" },
+    });
   });
 
   it("survives edits beside it, and is deleted whole", () => {
@@ -550,7 +472,7 @@ describe("Scripture references", () => {
   });
 
   it("is taken from pasted HTML only when it is a passage of the Bible", () => {
-    const editor = editorFor({ type: "doc", content: [{ type: "paragraph" }] });
+    const editor = editorFor(sermonDocument([paragraph()]));
     const parse = (html: string) => {
       const element = document.createElement("div");
       element.innerHTML = html;

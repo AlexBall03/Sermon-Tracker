@@ -7,7 +7,7 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
-import { parseReference } from "@/features/scripture/reference";
+import { parseReference, type ScriptureReference } from "@/features/scripture/reference";
 import { formatNumber } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
 import { savedPoints } from "../fixtures";
@@ -21,7 +21,7 @@ import {
 import { jsonBytes, loadDocument } from "../load";
 import { timeIt, type SaveMeter } from "../measure";
 import { documentRows, numberingStats } from "../numbering";
-import { addPoint, insertReference, run } from "../outline-commands";
+import { addPoint, insertPassage, insertReference, run, type Command } from "../outline-commands";
 import { toolbarRenders } from "./toolbar";
 
 const panels = ["json", "checks", "legacy", "insert", "measure"] as const;
@@ -102,12 +102,17 @@ function ChecksPanel({ editor }: { editor: Editor }) {
       setResult({
         ok: false,
         text: t.refused,
-        detail: restored.problems.map((p) => `${p.code} ${p.detail ?? ""}`),
+        detail: restored.problems.map((p) => `${p.code} ${p.path ?? ""} ${p.detail ?? ""}`),
       });
       return;
     }
     const same = JSON.stringify(editor.getJSON()) === JSON.stringify(before);
-    setResult({ ok: same, text: same ? t.reloaded : t.differs });
+    const warnings = restored.warnings.map((p) => `${p.code} ${p.path ?? ""}`);
+    setResult({
+      ok: same,
+      text: same ? (warnings.length ? `${t.reloaded} ${t.warnings}` : t.reloaded) : t.differs,
+      detail: warnings,
+    });
   };
 
   const legacy = () => {
@@ -217,14 +222,13 @@ function InsertPanel({ editor }: { editor: Editor }) {
   const [text, setText] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const insertPassage = (event: React.FormEvent) => {
-    event.preventDefault();
+  const insert = (make: (reference: ScriptureReference) => Command) => {
     const parsed = parseReference(text, locale);
     if (!parsed.ok) {
       setMessage({ ok: false, text: parsed.message });
       return;
     }
-    const done = run(editor, insertReference(parsed.reference));
+    const done = run(editor, make(parsed.reference));
     setMessage({ ok: done, text: done ? t.inserted : t.notHere });
     if (done) {
       setText("");
@@ -262,7 +266,13 @@ function InsertPanel({ editor }: { editor: Editor }) {
           </Button>
         ))}
       </section>
-      <form className="flex flex-col gap-2" onSubmit={insertPassage}>
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          insert(insertPassage);
+        }}
+      >
         <label htmlFor={inputId} className="font-semibold">
           {t.scripture}
         </label>
@@ -284,6 +294,15 @@ function InsertPanel({ editor }: { editor: Editor }) {
             {t.insertScripture}
           </Button>
         </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => insert(insertReference)}
+        >
+          {t.insertInline}
+        </Button>
         {message && (
           <p
             role="status"

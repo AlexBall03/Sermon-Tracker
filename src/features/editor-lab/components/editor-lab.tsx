@@ -7,7 +7,9 @@ import { Select } from "@/components/ui/select";
 import { numberingPresetIds } from "@/features/outlines/model";
 import type { NumberingConfig } from "@/features/outlines/numbering";
 import { useLocale, useT } from "@/i18n/client";
+import type { ClipboardNotice } from "../clipboard";
 import { customNumbering } from "../fixtures";
+import { layoutFromNumbering, layoutNumbering, layoutParses } from "../layout";
 import { labFixture, labFixtureIds, loadDocument, type LabFixtureId } from "../load";
 import { createSaveMeter } from "../measure";
 import { labExtensions } from "../schema/extensions";
@@ -17,10 +19,17 @@ import "../lab.css";
 
 const firstFixture: LabFixtureId = "powerOfGodsWord";
 
+/** A key for each document opened, so copying from one and pasting in another is a paste between documents. */
+let opened = 0;
+const keyFor = (id: LabFixtureId) => `lab:${id}:${(opened += 1)}`;
+
 /**
- * The editor lab (PS-1A): one Tiptap editor over a fixture document, with
+ * The editor lab (PS-1A, PS-1B.2A): one Tiptap editor over a fixture document, with
  * the controls and read-outs needed to judge it. It is a prototype: nothing
  * is saved, synced, queued, or sent, and it reads no account data.
+ *
+ * Every document is loaded through the validator (`loadDocument`), the first
+ * one included, so the lab never shows a document the validator refuses.
  *
  * The editor does not render React on a transaction
  * (`shouldRerenderOnTransaction: false`); the toolbar follows only the
@@ -32,13 +41,17 @@ export function EditorLab() {
   const [fixture, setFixture] = useState<LabFixtureId>(firstFixture);
   const [initial] = useState(() => labFixture(firstFixture));
   const [issues, setIssues] = useState(initial.issues);
+  const [notice, setNotice] = useState<ClipboardNotice | null>(null);
+  const [ready, setReady] = useState(false);
   const meter = useMemo(() => createSaveMeter(), []);
-  const extensions = useMemo(() => labExtensions({ locale }), [locale]);
+  const extensions = useMemo(
+    () => labExtensions({ locale, onNotice: (next) => setNotice(next) }),
+    [locale],
+  );
   const renders = useRef({ count: 0 });
 
   const editor = useEditor({
     extensions,
-    content: initial.doc,
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
     editorProps: {
@@ -51,8 +64,10 @@ export function EditorLab() {
         "data-testid": "lab-editor",
       },
     },
-    onCreate: () => {
+    onCreate: ({ editor: created }) => {
+      loadDocument(created, initial.doc, keyFor(firstFixture));
       meter.ready(performance.now());
+      setReady(true);
     },
     onUpdate: ({ editor: current }) => meter.changed(current),
   });
@@ -65,9 +80,10 @@ export function EditorLab() {
   const open = (id: LabFixtureId) => {
     if (!editor) return;
     const next = labFixture(id);
-    loadDocument(editor, next.doc);
+    loadDocument(editor, next.doc, keyFor(id));
     setFixture(id);
     setIssues(next.issues);
+    setNotice(null);
     meter.reset();
   };
 
@@ -75,7 +91,7 @@ export function EditorLab() {
     <div
       className="mt-6 flex flex-col gap-6"
       data-testid="editor-lab"
-      data-ready={editor ? "true" : "false"}
+      data-ready={editor && ready ? "true" : "false"}
     >
       <div
         role="note"
@@ -117,6 +133,11 @@ export function EditorLab() {
           <div className="min-w-0 rounded-xl border bg-surface shadow-card">
             <EditorContent editor={editor} className="lab-surface" />
           </div>
+          {notice && (
+            <p role="status" data-testid="lab-notice" className="text-sm text-gold-ink">
+              {t.notices[notice.code](notice.role)}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">{t.shortcuts}</p>
         </div>
         {editor && <SidePanel editor={editor} issues={issues} meter={meter} renders={renders} />}
@@ -136,13 +157,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** The outline's numbering: a document attribute, changed in one transaction that can be undone. */
+/** The outline's numbering: part of the document's layout, changed in one transaction that can be undone. */
 function NumberingSelect({ editor }: { editor: Editor }) {
   const t = useT("editorLab");
   const presets = useT("outlines").numbering.presets;
   const current = useEditorState({
     editor,
-    selector: ({ editor: e }) => (e.state.doc.attrs.numbering as NumberingConfig).preset,
+    selector: ({ editor: e }) => layoutNumbering(e.state.doc.attrs.layout).preset,
   });
   const configs: Record<string, NumberingConfig> = {
     ...Object.fromEntries(numberingPresetIds.map((preset) => [preset, { version: 1, preset }])),
@@ -153,7 +174,12 @@ function NumberingSelect({ editor }: { editor: Editor }) {
       label={t.numbering}
       value={current}
       onChange={(value) => {
-        editor.view.dispatch(editor.state.tr.setDocAttribute("numbering", configs[value]));
+        const layout = editor.state.doc.attrs.layout;
+        // An unreadable layout is replaced only now, when a person chooses one.
+        const next = layoutParses(layout)
+          ? { ...layout, numbering: configs[value] }
+          : layoutFromNumbering(configs[value]);
+        editor.view.dispatch(editor.state.tr.setDocAttribute("layout", next));
       }}
       options={[
         ...numberingPresetIds.map((preset) => ({ value: preset, label: presets[preset] })),

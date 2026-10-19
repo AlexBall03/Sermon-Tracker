@@ -4,22 +4,24 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import type { EntryType } from "@/features/outlines/model";
-import { numberOutline, readNumbering, type NumberingConfig } from "@/features/outlines/numbering";
+import { numberOutline, type NumberingConfig } from "@/features/outlines/numbering";
 import { orderEntries, type TreeRow } from "@/features/outlines/tree";
+import { layoutNumbering } from "./layout";
+import { isTextOnly } from "./changes";
 
 /*
  * Point numbers in the document, from the outline's own engine. The nested
  * points are read back as the rows `tree.ts` knows (a parent and a place
  * among siblings), put in order with `orderEntries`, and labelled with
- * `numberOutline` under the document's numbering configuration. The label is
- * drawn as a decoration attribute on the point's title and shown by CSS, as
- * text only. It is never part of the document, its JSON, or what is copied.
+ * `numberOutline` under the numbering of the document's layout
+ * (`layout.numbering`). The label is drawn as a decoration attribute on the
+ * point's title and shown by CSS, as text only. It is never part of the
+ * document, its JSON, or what is copied. A change that only touched text
+ * cannot change a label, so the decorations are mapped instead of rebuilt.
  */
 
-const sectionTypes: Record<string, EntryType> = {
-  sermonIntroduction: "introduction",
-  sermonConclusion: "conclusion",
-};
+const sectionType = (node: ProseMirrorNode): EntryType =>
+  node.attrs.role === "conclusion" ? "conclusion" : "introduction";
 
 /** A point or section of the document, as a tree row, with where its node starts. */
 export type DocumentRow = TreeRow & { pos: number };
@@ -49,11 +51,11 @@ export function documentRows(doc: ProseMirrorNode): DocumentRow[] {
       rows.push({ id, parentId, type: "point", position, pos });
       return true;
     }
-    if (name in sectionTypes) {
+    if (name === "sermonSection") {
       rows.push({
         id: keyOf(node, pos),
         parentId: null,
-        type: sectionTypes[name],
+        type: sectionType(node),
         position: 0,
         pos,
       });
@@ -67,7 +69,7 @@ export function documentRows(doc: ProseMirrorNode): DocumentRow[] {
 /** The label of every point by its key, and the order the engine gives them. */
 export function documentLabels(doc: ProseMirrorNode, numbering?: NumberingConfig) {
   const rows = documentRows(doc);
-  const config = numbering ?? readNumbering(doc.attrs.numbering);
+  const config = numbering ?? layoutNumbering(doc.attrs.layout);
   const placed = orderEntries(rows);
   return { rows, placed, labels: numberOutline(placed, config) };
 }
@@ -84,7 +86,7 @@ function build(doc: ProseMirrorNode): NumberingState {
     const label = labels.get(row.id) ?? "";
     const point = doc.nodeAt(row.pos);
     const title = point?.firstChild;
-    if (!title || title.type.name !== "entryTitle") continue;
+    if (!title || title.type.name !== "pointTitle") continue;
     // The title starts just inside the point.
     decorations.push(
       Decoration.node(
@@ -110,6 +112,9 @@ export const OutlineNumbering = Extension.create({
           init: (_, state) => build(state.doc),
           apply(tr, previous, _old, state) {
             if (!tr.docChanged) return previous;
+            if (isTextOnly([tr])) {
+              return { ...previous, decorations: previous.decorations.map(tr.mapping, tr.doc) };
+            }
             const started = performance.now();
             const next = build(state.doc);
             numberingStats.builds += 1;

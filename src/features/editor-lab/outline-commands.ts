@@ -1,22 +1,42 @@
 import { Extension, type Editor } from "@tiptap/core";
-import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { liftListItem, sinkListItem } from "@tiptap/pm/schema-list";
-import { TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from "@tiptap/pm/state";
 
 import { moveTarget, type MoveDirection } from "@/features/outlines/editor/moves";
 import { outlineLimits } from "@/features/outlines/model";
 import { planMove } from "@/features/outlines/tree";
 import type { ScriptureReference } from "@/features/scripture/reference";
 import { documentRows } from "./numbering";
+import type { SectionRole } from "./schema/model";
+import { isTextOnly } from "./changes";
 
 /*
- * Changing the outline's shape inside the document. Each command reads the
- * points back as tree rows, asks the legacy editor's `moveTarget`
- * (`outlines/editor/moves.ts`) where a move goes, checks it with `planMove`
- * (`tree.ts`), and then takes the point out and puts the same node back in
- * one transaction, so it keeps its ID and carries everything under it. The
- * Tab key is never taken: indent and outdent are Alt+Shift+→/←, as in the
- * outline editor.
+ * Changing the document's structure (PS-1B.1 §B.5). A point owns exactly
+ * what is nested in it: its title, its body, and its subpoints. Prose between
+ * two sibling points belongs to their parent, so it stays where it was written
+ * when a point moves, and a point always moves with everything it owns.
+ *
+ * Moves read the points back as tree rows, ask the legacy editor's
+ * `moveTarget` (`outlines/editor/moves.ts`) where a move goes, and check it
+ * with `planMove` (`tree.ts`). Up and down exchange the point with the
+ * sibling point beside it: the two trade places and whatever lies between
+ * them (prose, a section, a page break) stays where it is, so down undoes up
+ * (PS-1B.2A closeout). Indent, outdent, and the move to the main points take
+ * the point out and put it back where `planMove` says. Either way the same
+ * nodes move in one transaction, so every ID is kept and a point carries
+ * everything under it.
+ * Every command checks before it changes anything and returns false when it
+ * cannot apply; the toolbar, the keyboard, and the tests call the same ones.
+ * The Tab key is never taken.
  */
 
 export type Command = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
@@ -33,6 +53,20 @@ function around($pos: ResolvedPos, type: string): Found | null {
 }
 
 export const pointAround = ($pos: ResolvedPos) => around($pos, "outlinePoint");
+const sectionAround = ($pos: ResolvedPos) => around($pos, "sermonSection");
+
+const titleTypes = new Set(["pointTitle", "sectionTitle"]);
+const containerTypes = new Set(["outlinePoint", "sermonSection"]);
+
+/** The point or section whose title holds the cursor. */
+function titleHolder($pos: ResolvedPos): Found | null {
+  if (!titleTypes.has($pos.parent.type.name) || $pos.depth < 1) return null;
+  return {
+    node: $pos.node($pos.depth - 1),
+    pos: $pos.before($pos.depth - 1),
+    depth: $pos.depth - 1,
+  };
+}
 
 /** Where a point goes to be the `index`th among the points under `parentId`. */
 export function insertionPoint(doc: ProseMirrorNode, parentId: string | null, index: number) {
@@ -51,7 +85,18 @@ export function insertionPoint(doc: ProseMirrorNode, parentId: string | null, in
   return parent.pos + doc.nodeAt(parent.pos)!.nodeSize - 1;
 }
 
-const pointCount = (doc: ProseMirrorNode) => documentRows(doc).length;
+/** Points and sections in a document. */
+const entryCount = (doc: ProseMirrorNode) => documentRows(doc).length;
+
+/** Points and sections in a node, the node included. */
+function entriesIn(node: ProseMirrorNode) {
+  let count = containerTypes.has(node.type.name) ? 1 : 0;
+  node.descendants((child) => {
+    if (containerTypes.has(child.type.name)) count += 1;
+    return child.type.name === "outlinePoint";
+  });
+  return count;
+}
 
 /** Moves the point holding the cursor: up, down, indent, outdent, or out to the main points. */
 export function movePoint(direction: MoveDirection): Command {
@@ -67,18 +112,42 @@ export function movePoint(direction: MoveDirection): Command {
     if (!dispatch) return true;
 
     const { from, to } = state.selection;
+    // The cursor goes with the point, where it was in it.
+    const inside = (position: number) =>
+      Math.min(Math.max(position - point.pos, 1), point.node.nodeSize - 1);
+    const follow = (tr: Transaction, at: number) =>
+      tr.setSelection(
+        TextSelection.between(tr.doc.resolve(at + inside(from)), tr.doc.resolve(at + inside(to))),
+      );
+
+    if (direction === "up" || direction === "down") {
+      const siblings = rows.filter(
+        (row) => row.type === "point" && row.parentId === target.parentId,
+      );
+      const place = siblings.findIndex((row) => row.id === id);
+      const other = siblings[direction === "up" ? place - 1 : place + 1];
+      if (!other) return false;
+      const otherNode = state.doc.nodeAt(other.pos)!;
+      const [first, second] =
+        direction === "up"
+          ? [{ pos: other.pos, node: otherNode }, point]
+          : [point, { pos: other.pos, node: otherNode }];
+      // The later slot first, so the earlier one's position still holds.
+      const tr = state.tr
+        .replaceWith(second.pos, second.pos + second.node.nodeSize, first.node)
+        .replaceWith(first.pos, first.pos + first.node.nodeSize, second.node);
+      const at =
+        direction === "up" ? first.pos : second.pos + second.node.nodeSize - first.node.nodeSize;
+      dispatch(follow(tr, at).scrollIntoView());
+      return true;
+    }
+
     const end = point.pos + point.node.nodeSize;
     const tr = state.tr.delete(point.pos, end);
     const at = insertionPoint(tr.doc, target.parentId, plan.position);
     if (at === null) return false;
     tr.insert(at, point.node);
-    // The cursor goes with the point, where it was in it.
-    const inside = (position: number) =>
-      Math.min(Math.max(position - point.pos, 1), point.node.nodeSize - 1);
-    tr.setSelection(
-      TextSelection.between(tr.doc.resolve(at + inside(from)), tr.doc.resolve(at + inside(to))),
-    );
-    dispatch(tr.scrollIntoView());
+    dispatch(follow(tr, at).scrollIntoView());
     return true;
   };
 }
@@ -96,7 +165,7 @@ export const outdent: Command = (state, dispatch) => {
   return movePoint("outdent")(state, dispatch);
 };
 
-/** What a new point holds: a title, notes as paragraphs, passages, and where it came from. */
+/** What a new point holds: a title, passages, notes as paragraphs, and where it came from. */
 export type PointSeed = {
   title?: string;
   notes?: string | null;
@@ -112,31 +181,30 @@ export function notesToParagraphs(state: EditorState, notes: string): ProseMirro
     .map((line) => paragraph.create(null, line ? state.schema.text(line) : null));
 }
 
+/** A passage block a person inserts: printed in full, following the document's translation. */
+function passageNode(state: EditorState, reference: ScriptureReference) {
+  return state.schema.nodes.scripturePassage.create({
+    ...reference,
+    translation: null,
+    print: "full",
+  });
+}
+
 function newPoint(state: EditorState, seed: PointSeed = {}) {
-  const { outlinePoint, entryTitle, entryPassages, scriptureReference } = state.schema.nodes;
+  const { outlinePoint, pointTitle } = state.schema.nodes;
   const children: ProseMirrorNode[] = [
-    entryTitle.create(null, seed.title ? state.schema.text(seed.title) : null),
+    pointTitle.create(null, seed.title ? state.schema.text(seed.title) : null),
   ];
-  if (seed.references && seed.references.length > 0) {
-    children.push(
-      entryPassages.create(
-        null,
-        seed.references.map((reference) => scriptureReference.create({ ...reference })),
-      ),
-    );
-  }
+  for (const reference of seed.references ?? []) children.push(passageNode(state, reference));
   if (seed.notes) children.push(...notesToParagraphs(state, seed.notes));
   // No ID: the identity step gives it a new one.
   return outlinePoint.create({ sourcePointId: seed.sourcePointId ?? null }, children);
 }
 
-/** Where a new main point goes when the cursor is not in a point. */
+/** Where a new main point goes when the cursor is not in a point: after the top-level block it is in. */
 function topLevelInsertion(state: EditorState) {
   const { $from } = state.selection;
   if ($from.depth === 0) return state.doc.content.size;
-  const top = $from.node(1);
-  // Never after the conclusion: before it.
-  if (top.type.name === "sermonConclusion") return $from.before(1);
   return $from.after(1);
 }
 
@@ -147,7 +215,7 @@ function topLevelInsertion(state: EditorState) {
  */
 export function addPoint(kind: "sibling" | "child", seed?: PointSeed): Command {
   return (state, dispatch) => {
-    if (pointCount(state.doc) >= outlineLimits.entries) return false;
+    if (entryCount(state.doc) >= outlineLimits.entries) return false;
     const point = pointAround(state.selection.$from);
     if (kind === "child" && !point) return false;
     const at = !point
@@ -164,38 +232,38 @@ export function addPoint(kind: "sibling" | "child", seed?: PointSeed): Command {
   };
 }
 
-/** Where a point's body begins: after its title and its passages. */
-function bodyStart(point: Found) {
-  let pos = point.pos + 1;
-  let index = 0;
-  for (; index < point.node.childCount; index += 1) {
-    const child = point.node.child(index);
-    if (child.type.name !== "entryTitle" && child.type.name !== "entryPassages") break;
+/** Where a container's body begins: after its title and the passages straight after it. */
+function bodyStart(holder: Found) {
+  let pos = holder.pos + 1;
+  for (let index = 0; index < holder.node.childCount; index += 1) {
+    const child = holder.node.child(index);
+    if (index > 0 && child.type.name !== "scripturePassage") break;
     pos += child.nodeSize;
   }
   return pos;
 }
 
 /**
- * Enter in a point's title. At its end it opens a paragraph of notes under
- * the title. Inside it, it splits the point: the words after the cursor
- * become a new point after this one, which gets a new ID and remembers this
- * one in `derivedFrom`; the body and the subpoints stay with the first part.
+ * Enter in a title (§B.4):
+ * - at its end, or in a section's title, it opens a paragraph at the start of
+ *   the body (after the passages that follow the title);
+ * - at the very start of a point's non-empty title, it opens an empty point
+ *   before this one, which keeps its ID, its words, and everything it owns;
+ * - inside a point's title, it splits the point: the words after the cursor
+ *   (marks and inline passages included) become a new point after this one,
+ *   which gets a new ID and remembers this one in `derivedFrom`; the body and
+ *   the subpoints stay with the first part.
  */
 export const titleEnter: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
-  if (!empty || $from.parent.type.name !== "entryTitle") return false;
-  const holder =
-    around($from, "outlinePoint") ??
-    around($from, "sermonIntroduction") ??
-    around($from, "sermonConclusion");
+  if (!empty) return false;
+  const holder = titleHolder($from);
   if (!holder) return false;
-  if (!dispatch) return true;
+  const isPoint = holder.node.type.name === "outlinePoint";
+  const atEnd = $from.parentOffset === $from.parent.content.size;
 
-  if (
-    $from.parentOffset === $from.parent.content.size ||
-    holder.node.type.name !== "outlinePoint"
-  ) {
+  if (atEnd || !isPoint) {
+    if (!dispatch) return true;
     const at = bodyStart(holder);
     const tr = state.tr.insert(at, state.schema.nodes.paragraph.create());
     tr.setSelection(TextSelection.create(tr.doc, at + 1));
@@ -203,17 +271,28 @@ export const titleEnter: Command = (state, dispatch) => {
     return true;
   }
 
-  if (pointCount(state.doc) >= outlineLimits.entries) return false;
+  if (entryCount(state.doc) >= outlineLimits.entries) return false;
+  const { outlinePoint, pointTitle } = state.schema.nodes;
+
+  if ($from.parentOffset === 0) {
+    if (!dispatch) return true;
+    const blank = outlinePoint.create({ sourcePointId: null }, pointTitle.create());
+    const tr = state.tr.insert(holder.pos, blank);
+    tr.setSelection(TextSelection.create(tr.doc, holder.pos + blank.nodeSize + 2));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+
+  if (!dispatch) return true;
   const titleEnd = $from.end();
   const rest = $from.parent.content.cut($from.parentOffset);
   const tr = state.tr.delete($from.pos, titleEnd);
   const after = tr.mapping.map(holder.pos + holder.node.nodeSize);
-  const { outlinePoint, entryTitle } = state.schema.nodes;
   tr.insert(
     after,
     outlinePoint.create(
       { derivedFrom: holder.node.attrs.id ?? null, sourcePointId: null },
-      entryTitle.create(null, rest),
+      pointTitle.create(null, rest),
     ),
   );
   tr.setSelection(TextSelection.create(tr.doc, after + 2));
@@ -224,49 +303,34 @@ export const titleEnter: Command = (state, dispatch) => {
 /**
  * Backspace at the very start of a point's title, when the node before it is
  * a point beside it: the two become one. The first keeps its node and ID; the
- * second's title is added to the first's, its passages after the first's, and
- * its body and subpoints after the first's. The second ID is retired.
+ * second's title (with its marks) is added to the first's, and its body and
+ * subpoints after the first's. The second ID is retired; its source point's
+ * link ends with it.
  */
 export const mergeWithPrevious: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
-  if (!empty || $from.parent.type.name !== "entryTitle" || $from.parentOffset !== 0) return false;
+  if (!empty || $from.parent.type.name !== "pointTitle" || $from.parentOffset !== 0) return false;
   const current = pointAround($from);
   if (!current) return false;
-  const $point = state.doc.resolve(current.pos);
-  const previous = $point.nodeBefore;
+  const previous = state.doc.resolve(current.pos).nodeBefore;
   if (!previous || previous.type.name !== "outlinePoint") return false;
   if (!dispatch) return true;
 
   const parts = (node: ProseMirrorNode) => {
-    let title: ProseMirrorNode | null = null;
-    let passages: ProseMirrorNode | null = null;
     const rest: ProseMirrorNode[] = [];
-    node.forEach((child) => {
-      if (child.type.name === "entryTitle") title = child;
-      else if (child.type.name === "entryPassages") passages = child;
-      else rest.push(child);
+    node.forEach((child, _offset, index) => {
+      if (index > 0) rest.push(child);
     });
-    return {
-      title: title as ProseMirrorNode | null,
-      passages: passages as ProseMirrorNode | null,
-      rest,
-    };
+    return { title: node.firstChild!, rest };
   };
-  const first = parts(previous);
+  const head = parts(previous);
   const second = parts(current.node);
-  const { entryTitle, entryPassages } = state.schema.nodes;
-  const join = first.title?.content.size ?? 0;
-  const title = entryTitle.create(
+  const join = head.title.content.size;
+  const title = state.schema.nodes.pointTitle.create(
     null,
-    (first.title?.content ?? Fragment.empty).append(second.title?.content ?? Fragment.empty),
+    head.title.content.append(second.title.content),
   );
-  const references = [
-    ...(first.passages ? first.passages.content.content : []),
-    ...(second.passages ? second.passages.content.content : []),
-  ];
-  const children = [title];
-  if (references.length > 0) children.push(entryPassages.create(null, references));
-  const merged = previous.type.create(previous.attrs, [...children, ...first.rest, ...second.rest]);
+  const merged = previous.type.create(previous.attrs, [title, ...head.rest, ...second.rest]);
 
   const start = current.pos - previous.nodeSize;
   const tr = state.tr.replaceWith(start, current.pos + current.node.nodeSize, merged);
@@ -275,32 +339,232 @@ export const mergeWithPrevious: Command = (state, dispatch) => {
   return true;
 };
 
-/** A passage at the cursor: in an entry's passages when the cursor is in its title, otherwise inline. */
+/**
+ * Enter in an empty paragraph that is the last thing in a point or section
+ * (§B.5, "leaving a point"): the paragraph moves out to just after it, where
+ * it belongs to the point's parent (the enclosing point, or the document).
+ */
+export const leaveContainer: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parent.type.name !== "paragraph" || $from.parent.content.size > 0) {
+    return false;
+  }
+  const depth = $from.depth - 1;
+  if (depth < 1) return false;
+  const container = $from.node(depth);
+  if (!containerTypes.has(container.type.name)) return false;
+  if ($from.index(depth) !== container.childCount - 1) return false;
+  if (!dispatch) return true;
+
+  const paragraphStart = $from.before();
+  const tr = state.tr.delete(paragraphStart, paragraphStart + $from.parent.nodeSize);
+  const after = tr.mapping.map($from.after(depth));
+  tr.insert(after, state.schema.nodes.paragraph.create());
+  tr.setSelection(TextSelection.create(tr.doc, after + 1));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * Backspace at the start of a block straight after a point or a section. The
+ * container is a boundary that editing does not cross: instead of selecting
+ * the whole point (where a second Backspace would delete it with everything
+ * it owns), the cursor goes to the end of the point's last text. An empty
+ * paragraph there is removed on the way.
+ */
+export const backspaceAfterContainer: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parentOffset !== 0 || !$from.parent.isTextblock || $from.depth < 1) {
+    return false;
+  }
+  if (titleTypes.has($from.parent.type.name)) return false;
+  const parent = $from.node($from.depth - 1);
+  const index = $from.index($from.depth - 1);
+  if (index === 0) return false;
+  const before = parent.child(index - 1);
+  if (!containerTypes.has(before.type.name)) return false;
+  if (!dispatch) return true;
+
+  const blockStart = $from.before();
+  const tr = state.tr;
+  if ($from.parent.content.size === 0) tr.delete(blockStart, blockStart + $from.parent.nodeSize);
+  const containerEnd = blockStart - 1;
+  tr.setSelection(Selection.near(tr.doc.resolve(containerEnd), -1));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * Delete at the end of a block straight before a point or a section: the
+ * mirror of `backspaceAfterContainer`. ProseMirror would select the whole
+ * point, and a second Delete would remove it with everything it owns; instead
+ * the cursor goes to the start of its title. An empty line is removed on the way.
+ */
+export const deleteBeforeContainer: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || !$from.parent.isTextblock || $from.depth < 1) return false;
+  if ($from.parentOffset !== $from.parent.content.size) return false;
+  if (titleTypes.has($from.parent.type.name)) return false;
+  const parent = $from.node($from.depth - 1);
+  const index = $from.index($from.depth - 1);
+  if (index + 1 >= parent.childCount) return false;
+  if (!containerTypes.has(parent.child(index + 1).type.name)) return false;
+  if (!dispatch) return true;
+
+  const blockStart = $from.before();
+  const blockEnd = $from.after();
+  const tr = state.tr;
+  // The container starts where the block ends; its title's text one level further in.
+  let titleStart = blockEnd + 2;
+  if ($from.parent.content.size === 0) {
+    tr.delete(blockStart, blockEnd);
+    titleStart = blockStart + 2;
+  }
+  tr.setSelection(TextSelection.create(tr.doc, titleStart));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * A title is one line (§B.4): Shift+Enter, which elsewhere is a line break,
+ * does nothing in a title rather than splitting it into a body paragraph.
+ */
+export const titleLineBreak: Command = (state) =>
+  titleTypes.has(state.selection.$from.parent.type.name);
+
+/** A copy of the point holding the cursor, with everything it owns, straight after it (§B.6). */
+export const duplicatePoint: Command = (state, dispatch) => {
+  const point = pointAround(state.selection.$from);
+  if (!point) return false;
+  if (entryCount(state.doc) + entriesIn(point.node) > outlineLimits.entries) return false;
+  if (!dispatch) return true;
+  const at = point.pos + point.node.nodeSize;
+  // The same node again: the identity step gives the copy and its contents new IDs.
+  const tr = state.tr.insert(at, point.node);
+  const offset = state.selection.from - point.pos;
+  tr.setSelection(TextSelection.create(tr.doc, at + offset));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/** Whether the document already has a section in this role. */
+function hasRole(doc: ProseMirrorNode, role: SectionRole) {
+  let found = false;
+  doc.forEach((child) => {
+    if (child.type.name === "sermonSection" && child.attrs.role === role) found = true;
+  });
+  return found;
+}
+
+/**
+ * A main point becomes the introduction or the conclusion (§B.3), keeping its
+ * ID and provenance; a section has no source point. Refused, rather than
+ * flattened or stripped, for a point with subpoints (a section holds none),
+ * a point with its own numbering, a subpoint, or a role the document has.
+ */
+export function turnIntoSection(role: SectionRole): Command {
+  return (state, dispatch) => {
+    const point = pointAround(state.selection.$from);
+    if (!point || point.depth !== 1) return false;
+    if (point.node.attrs.presentation !== null) return false;
+    let hasSubpoints = false;
+    point.node.forEach((child) => {
+      if (child.type.name === "outlinePoint") hasSubpoints = true;
+    });
+    if (hasSubpoints || hasRole(state.doc, role)) return false;
+    if (!dispatch) return true;
+
+    const { sermonSection, sectionTitle } = state.schema.nodes;
+    const { id, legacyEntryId, legacyRevision, derivedFrom } = point.node.attrs;
+    const rest: ProseMirrorNode[] = [];
+    point.node.forEach((child, _offset, index) => {
+      if (index > 0) rest.push(child);
+    });
+    const section = sermonSection.create({ id, legacyEntryId, legacyRevision, derivedFrom, role }, [
+      sectionTitle.create(null, point.node.firstChild!.content),
+      ...rest,
+    ]);
+    const { from, to } = state.selection;
+    const tr = state.tr.replaceWith(point.pos, point.pos + point.node.nodeSize, section);
+    // The same size, so the cursor stays where it was.
+    tr.setSelection(TextSelection.between(tr.doc.resolve(from), tr.doc.resolve(to)));
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
+/** The section holding the cursor becomes a main point, keeping its ID and provenance. */
+export const turnIntoPoint: Command = (state, dispatch) => {
+  const section = sectionAround(state.selection.$from);
+  if (!section) return false;
+  if (!dispatch) return true;
+  const { outlinePoint, pointTitle } = state.schema.nodes;
+  const { id, legacyEntryId, legacyRevision, derivedFrom } = section.node.attrs;
+  const rest: ProseMirrorNode[] = [];
+  section.node.forEach((child, _offset, index) => {
+    if (index > 0) rest.push(child);
+  });
+  const point = outlinePoint.create(
+    {
+      id,
+      legacyEntryId,
+      legacyRevision,
+      derivedFrom,
+      sourcePointId: null,
+      legacyParentId: null,
+      presentation: null,
+    },
+    [pointTitle.create(null, section.node.firstChild!.content), ...rest],
+  );
+  const { from, to } = state.selection;
+  const tr = state.tr.replaceWith(section.pos, section.pos + section.node.nodeSize, point);
+  tr.setSelection(TextSelection.between(tr.doc.resolve(from), tr.doc.resolve(to)));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * A passage block (§B.8), after the block holding the cursor, at the nearest
+ * level that can hold one: in a title, after the passages that follow it; in
+ * a list or a quotation, after the list or the quotation.
+ */
+export function insertPassage(reference: ScriptureReference): Command {
+  return (state, dispatch) => {
+    const { $from } = state.selection;
+    const node = passageNode(state, reference);
+    let at: number | null = null;
+    const holder = titleHolder($from);
+    if (holder) {
+      at = bodyStart(holder);
+    } else {
+      for (let depth = $from.depth; depth >= 1; depth -= 1) {
+        const parent = $from.node(depth - 1);
+        const index = $from.indexAfter(depth - 1);
+        if (parent.canReplaceWith(index, index, node.type)) {
+          at = $from.after(depth);
+          break;
+        }
+      }
+    }
+    if (at === null) return false;
+    if (!dispatch) return true;
+    const tr = state.tr.insert(at, node);
+    tr.setSelection(NodeSelection.create(tr.doc, at));
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
+/** An inline reference at the cursor, in prose or in a title. */
 export function insertReference(reference: ScriptureReference): Command {
   return (state, dispatch) => {
-    const { scriptureReference, entryPassages } = state.schema.nodes;
-    const node = scriptureReference.create({ ...reference });
+    const { scriptureReference } = state.schema.nodes;
+    const node = scriptureReference.create({
+      ...reference,
+      translation: null,
+      display: "reference",
+    });
     const { $from } = state.selection;
-    if ($from.parent.type.name === "entryTitle" || $from.parent.type.name === "entryPassages") {
-      const holder =
-        around($from, "outlinePoint") ??
-        around($from, "sermonIntroduction") ??
-        around($from, "sermonConclusion");
-      if (!holder) return false;
-      const titleNode = holder.node.firstChild!;
-      const second = holder.node.childCount > 1 ? holder.node.child(1) : null;
-      if (second?.type.name === "entryPassages") {
-        if (second.childCount >= outlineLimits.references) return false;
-        if (!dispatch) return true;
-        const at = holder.pos + 1 + titleNode.nodeSize + second.nodeSize - 1;
-        dispatch(state.tr.insert(at, node).scrollIntoView());
-        return true;
-      }
-      if (!dispatch) return true;
-      const at = holder.pos + 1 + titleNode.nodeSize;
-      dispatch(state.tr.insert(at, entryPassages.create(null, node)).scrollIntoView());
-      return true;
-    }
     if (!$from.parent.inlineContent) return false;
     if (!$from.parent.canReplaceWith($from.index(), $from.index(), scriptureReference))
       return false;
@@ -310,9 +574,27 @@ export function insertReference(reference: ScriptureReference): Command {
   };
 }
 
+/** The first command that applies. */
+const firstOf =
+  (...commands: Command[]): Command =>
+  (state, dispatch) =>
+    commands.some((command) => command(state, dispatch));
+
 /** Runs a command against an editor. */
 export const run = (editor: Editor, command: Command) =>
   command(editor.state, (tr) => editor.view.dispatch(tr));
+
+/** How many of each section a document holds at its top level. */
+function sectionCounts(doc: ProseMirrorNode) {
+  const counts = { introduction: 0, conclusion: 0 } as Record<string, number>;
+  doc.forEach((child) => {
+    if (child.type.name === "sermonSection")
+      counts[child.attrs.role] = (counts[child.attrs.role] ?? 0) + 1;
+  });
+  return counts;
+}
+
+export const sectionGuardKey = new PluginKey("labSectionGuard");
 
 export const OutlineKeymap = Extension.create({
   name: "outlineKeymap",
@@ -327,8 +609,26 @@ export const OutlineKeymap = Extension.create({
       "Alt-Shift-ArrowLeft": on(outdent),
       "Mod-Enter": on(addPoint("sibling")),
       "Mod-Shift-Enter": on(addPoint("child")),
-      Enter: on(titleEnter),
-      Backspace: on(mergeWithPrevious),
+      Enter: on(firstOf(titleEnter, leaveContainer)),
+      "Shift-Enter": on(titleLineBreak),
+      Backspace: on(firstOf(mergeWithPrevious, backspaceAfterContainer)),
+      Delete: on(deleteBeforeContainer),
     };
+  },
+  addProseMirrorPlugins() {
+    return [
+      // At most one introduction and one conclusion (§B.2 invariant 1): a
+      // change that would make a second is refused. A paste of one is turned
+      // into a heading before it gets here (`clipboard.ts`).
+      new Plugin({
+        key: sectionGuardKey,
+        filterTransaction(tr, state) {
+          if (!tr.docChanged || isTextOnly([tr])) return true;
+          const after = sectionCounts(tr.doc);
+          const before = sectionCounts(state.doc);
+          return Object.keys(after).every((role) => after[role] <= Math.max(1, before[role] ?? 0));
+        },
+      }),
+    ];
   },
 });

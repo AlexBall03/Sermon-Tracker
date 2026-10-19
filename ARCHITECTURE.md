@@ -1321,4 +1321,5 @@ The rules that go with it:
 | Preacher Studio phases prefixed `PS-`                  | Sermon Tracker's Phase 1A and `HANDOFF-1A.md` already exist and must not be overwritten |
 | Infrastructure efficiency is an architectural rule     | The owner saw excessive Vercel and Neon usage elsewhere; cost is designed, not patched  |
 | The editor lab is development-only, persists nothing   | A feasibility experiment must never reach users or their data                           |
+| Lab documents are read only through `restoreDocument`  | One validator, no silent repair: schema v2 is proven before PS-2 stores it (PS-1B.2A)   |
 | `sermon-tracker*` storage, lock, channel names kept    | Renaming them would orphan queued work and offline copies on devices                    |

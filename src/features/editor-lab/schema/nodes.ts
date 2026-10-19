@@ -1,38 +1,45 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 
-import { defaultNumbering } from "@/features/outlines/numbering";
+import { defaultLayout } from "../layout";
+import { currentSchemaVersion, noteKinds } from "./model";
 
 /*
- * The candidate sermon document (PS-1A, Proposed; migration document §3.3).
+ * The canonical sermon document, schema v2 (PS-1B.1 §B.2, Proposed; validated
+ * in PS-1B.2A). One document holds outline, manuscript, or both:
  *
- *   doc               sermonIntroduction? (outlinePoint | block)* sermonConclusion?
- *   sermonIntroduction / sermonConclusion
- *                     entryTitle entryPassages? block*        (never holds a point)
- *   outlinePoint      entryTitle entryPassages? (block | outlinePoint)*
- *   entryTitle        text*   (plain, no marks: a legacy title is plain text)
- *   entryPassages     scriptureReference*
+ *   doc               (block | scripturePassage | preacherNote | outlinePoint
+ *                      | sermonSection | pageBreak)+
+ *   sermonSection     sectionTitle (block | scripturePassage | preacherNote)*
+ *   outlinePoint      pointTitle (block | scripturePassage | preacherNote | outlinePoint)*
+ *   pointTitle, sectionTitle   (text | scriptureReference)*, with marks
+ *   preacherNote      (paragraph | bulletList | orderedList)+
  *
- * `block` is ordinary manuscript: paragraphs, headings, lists, quotations.
- * Points are real nested nodes, never styled paragraphs or list items, and a
- * point's number is never in the document: it is drawn from the structure by
- * the numbering plugin with the outline's own engine.
- *
- * Everything here is a prototype for PS-1B to judge, not a decided schema.
+ * `block` is StarterKit's ordinary manuscript (paragraphs, headings, lists,
+ * quotations), and lists and quotations hold only those: a point, a section,
+ * a passage block, a note, or a page break never sits inside one. The
+ * introduction and conclusion are optional, at most one of each, anywhere at
+ * the top level; "at most one" is not a content expression, so it is kept by
+ * the validator and by the section guard (`outline-commands.ts`). A point's
+ * number is never in the document: the numbering plugin draws it.
  */
 
-/** The node types that carry a document-node identity. */
+/** The node types that carry a document-node identity (`id`). */
 export const identifiedTypes = [
-  "sermonIntroduction",
-  "sermonConclusion",
+  "sermonSection",
   "outlinePoint",
+  "scripturePassage",
   "scriptureReference",
+  "preacherNote",
 ] as const;
 
 /** The node types that stand for a legacy outline entry. */
-export const entryNodeTypes = ["sermonIntroduction", "outlinePoint", "sermonConclusion"] as const;
+export const entryNodeTypes = ["sermonSection", "outlinePoint"] as const;
+
+/** Content a point's or a section's body may hold besides subpoints. */
+export const proseContent = "block | scripturePassage | preacherNote";
 
 /** An attribute kept in the HTML as `data-<name>`, so copy and paste carry it. */
-export function dataAttribute(name: string, kind: "string" | "number" = "string") {
+export function dataAttribute(name: string, kind: "string" | "number" | "json" = "string") {
   const attribute = `data-${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
   return {
     default: null,
@@ -40,17 +47,27 @@ export function dataAttribute(name: string, kind: "string" | "number" = "string"
       const value = element.getAttribute(attribute);
       if (value === null || value === "") return null;
       if (kind === "string") return value;
+      if (kind === "json") {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      }
       const number = Number(value);
       return Number.isFinite(number) ? number : null;
     },
     renderHTML: (attributes: Record<string, unknown>) =>
       attributes[name] === null || attributes[name] === undefined
         ? {}
-        : { [attribute]: String(attributes[name]) },
+        : {
+            [attribute]:
+              kind === "json" ? JSON.stringify(attributes[name]) : String(attributes[name]),
+          },
   };
 }
 
-/** Provenance kept on a node that stands for an outline entry. */
+/** Provenance kept on a node that stands for an outline entry (§B.6). */
 const entryAttributes = () => ({
   id: dataAttribute("id"),
   /** The legacy `outline_entries.id` this node was converted from. */
@@ -64,55 +81,64 @@ const entryAttributes = () => ({
 export const LabDocument = Node.create({
   name: "doc",
   topNode: true,
-  content: "sermonIntroduction? (outlinePoint | block)* sermonConclusion?",
+  content: `(${proseContent} | outlinePoint | sermonSection | pageBreak)+`,
   addAttributes() {
     return {
-      schemaVersion: { default: 1 },
-      numbering: { default: defaultNumbering },
+      schemaVersion: { default: currentSchemaVersion },
+      layout: { default: defaultLayout() },
+      /** The sermon's own Bible translation, or null to follow the account's (§B.8.4). */
+      translation: { default: null },
       legacyOutlineId: { default: null },
       legacyRevision: { default: null },
     };
   },
 });
 
-function section(name: "sermonIntroduction" | "sermonConclusion", type: string) {
-  return Node.create({
-    name,
-    content: "entryTitle entryPassages? block*",
-    defining: true,
-    isolating: true,
-    addAttributes: entryAttributes,
-    parseHTML() {
-      return [{ tag: `section[data-type="${type}"]` }];
-    },
-    renderHTML({ HTMLAttributes }) {
-      return [
-        "section",
-        mergeAttributes(HTMLAttributes, { "data-type": type, class: "lab-section" }),
-        0,
-      ];
-    },
-  });
-}
-
-export const SermonIntroduction = section("sermonIntroduction", "sermon-introduction");
-export const SermonConclusion = section("sermonConclusion", "sermon-conclusion");
-
-export const OutlinePoint = Node.create({
-  name: "outlinePoint",
-  content: "entryTitle entryPassages? (block | outlinePoint)*",
+export const SermonSection = Node.create({
+  name: "sermonSection",
+  content: `sectionTitle (${proseContent})*`,
   defining: true,
   isolating: true,
   addAttributes() {
     return {
       ...entryAttributes(),
-      /** The saved point idea this point was made from (`source_point_id` today). */
+      /** "introduction" or "conclusion". No default: a section that does not say is refused. */
+      role: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-role"),
+        renderHTML: (attributes: Record<string, unknown>) => ({ "data-role": attributes.role }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'section[data-type="sermon-section"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "section",
+      mergeAttributes(HTMLAttributes, { "data-type": "sermon-section", class: "lab-section" }),
+      0,
+    ];
+  },
+});
+
+export const OutlinePoint = Node.create({
+  name: "outlinePoint",
+  content: `pointTitle (${proseContent} | outlinePoint)*`,
+  defining: true,
+  isolating: true,
+  addAttributes() {
+    return {
+      ...entryAttributes(),
+      /** The saved point idea this point was made from (`source_point_id` today). A hint (§E.3). */
       sourcePointId: dataAttribute("sourcePointId"),
       /**
        * The parent the legacy row named, kept only when conversion could not
        * honour it (an orphan, a point under a section, a loop), so it is not lost.
        */
       legacyParentId: dataAttribute("legacyParentId"),
+      /** This point's own numbering override (§D.3), or null. */
+      presentation: dataAttribute("presentation", "json"),
     };
   },
   parseHTML() {
@@ -127,34 +153,67 @@ export const OutlinePoint = Node.create({
   },
 });
 
-export const EntryTitle = Node.create({
-  name: "entryTitle",
-  content: "text*",
-  marks: "",
+/** Marks a title may carry: no link, no code, no strike (§B.4). */
+const titleMarks = "bold italic underline textStyle highlight";
+
+function title(name: "pointTitle" | "sectionTitle", type: string) {
+  return Node.create({
+    name,
+    content: "(text | scriptureReference)*",
+    marks: titleMarks,
+    defining: true,
+    parseHTML() {
+      return [{ tag: `p[data-type="${type}"]`, priority: 60 }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["p", mergeAttributes(HTMLAttributes, { "data-type": type, class: "lab-title" }), 0];
+    },
+  });
+}
+
+export const PointTitle = title("pointTitle", "point-title");
+export const SectionTitle = title("sectionTitle", "section-title");
+
+export const PreacherNote = Node.create({
+  name: "preacherNote",
+  content: "(paragraph | bulletList | orderedList)+",
   defining: true,
+  isolating: true,
+  addAttributes() {
+    return {
+      id: dataAttribute("id"),
+      kind: {
+        default: noteKinds[5],
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-kind"),
+        renderHTML: (attributes: Record<string, unknown>) => ({ "data-kind": attributes.kind }),
+      },
+      /** "show", "hide", or null for the kind's default (§B.10). */
+      print: dataAttribute("print"),
+    };
+  },
   parseHTML() {
-    return [{ tag: 'p[data-type="entry-title"]', priority: 60 }];
+    return [{ tag: 'aside[data-type="preacher-note"]' }];
   },
   renderHTML({ HTMLAttributes }) {
     return [
-      "p",
-      mergeAttributes(HTMLAttributes, { "data-type": "entry-title", class: "lab-title" }),
+      "aside",
+      mergeAttributes(HTMLAttributes, { "data-type": "preacher-note", class: "lab-note" }),
       0,
     ];
   },
 });
 
-export const EntryPassages = Node.create({
-  name: "entryPassages",
-  content: "scriptureReference*",
+export const PageBreak = Node.create({
+  name: "pageBreak",
+  atom: true,
+  selectable: true,
   parseHTML() {
-    return [{ tag: 'div[data-type="entry-passages"]' }];
+    return [{ tag: 'div[data-type="page-break"]' }];
   },
   renderHTML({ HTMLAttributes }) {
     return [
       "div",
-      mergeAttributes(HTMLAttributes, { "data-type": "entry-passages", class: "lab-passages" }),
-      0,
+      mergeAttributes(HTMLAttributes, { "data-type": "page-break", class: "lab-page-break" }),
     ];
   },
 });
