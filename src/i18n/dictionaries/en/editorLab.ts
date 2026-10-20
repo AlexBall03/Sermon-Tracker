@@ -40,6 +40,7 @@ export const editorLab = {
   },
   numbering: "Numbering",
   customNumbering: "Custom (POINT I: / (a) / 1.1.1.)",
+  customNumberingOwn: "Custom (this document's)",
   editorLabel: "Sermon document",
   workspace: {
     back: "Back to Outlines",
@@ -68,6 +69,9 @@ export const editorLab = {
     marginValue: (value: string, unit: "in" | "cm"): string =>
       unit === "in" ? `${value} in` : `${value} cm`,
     resetMargins: "Reset margins",
+    pageSetup: "Page setup",
+    marginsHint:
+      "In Print Layout, drag the markers on the ruler above the page to set the side margins.",
     expandPassages: "Expand passages in Regular",
     collapsePassages: "Collapse passages in Regular",
     expandInPrint: "In Print Layout each passage shows as it prints",
@@ -90,6 +94,9 @@ export const editorLab = {
     outdent: "Outdent",
     undo: "Undo",
     redo: "Redo",
+    quote: "Quotation",
+    documentStyles: "Edit styles",
+    closeStyles: "Close styles",
   },
   format: {
     style: "Paragraph style",
@@ -158,7 +165,7 @@ export const editorLab = {
   },
   documentStyles: {
     title: "Document styles",
-    hint: "Changes are previewed on the document and written only when you apply them. Text with its own formatting keeps it.",
+    hint: "Change how Normal Text, Title, Subtitle, and Headings 1–4 look throughout this sermon: every paragraph in that style follows. Changes show on the document as a preview and are kept only when you apply them. Text with its own formatting keeps it.",
     target: "Style to edit",
     defaults: "Document defaults",
     customized: "Customized",
@@ -269,10 +276,18 @@ export const editorLab = {
   /** The schema v4 architecture-validation prototype (/lab/editor/v4). */
   v4: {
     metaTitle: "Editor Lab · Schema v4",
-    title: "Editor Lab: schema v4 (experimental)",
+    title: "Sermon editor: schema v4 (integrated workspace)",
     description:
-      "An architecture-validation prototype. Points are ordinary blocks with a semantic depth; who owns what is worked out from order and depth.",
-    notice: "Experimental. Nothing here is saved, synced, or sent; reloading the page starts over.",
+      "The integrated sermon editor (A1): schema v4's freeform-first document in the full editing workspace. Points are ordinary blocks with a semantic depth; who owns what is worked out from order and depth.",
+    notice:
+      "Development only. Nothing here is saved, synced, or sent; reloading the page starts over.",
+    limitations: [
+      "It does not save, sync, or queue anything, and never touches a real sermon or outline. Persistence is the next checkpoint (A2).",
+      "Schema v4 is approved as the direction but not yet for production storage.",
+      "Saved points cannot be inserted yet; Scripture passages and inline references can (Inspect → Insert).",
+      "Component appearance and print color modes are not built yet.",
+      "Opening a v3 document converts it to v4 as it opens; the v3 lab stays as the baseline.",
+    ],
     baseline: "Open the v3 lab",
     fixture: "Document",
     fixtures: {
@@ -290,17 +305,20 @@ export const editorLab = {
       toPoint: "Turn into point",
       toProse: "Remove point, keep content",
       deleteGroup: "Delete point and its content",
-      increase: "Increase level",
-      decrease: "Outdent in place",
-      moveOut: "Move out",
-      moveUp: "Move point up",
-      moveDown: "Move point down",
+      increase: "Increase level, with its content",
+      decrease: "Outdent in place (takes in what follows)",
+      moveOut: "Move out, with its content",
+      moveUp: "Move up, with its content",
+      moveDown: "Move down, with its content",
+      duplicate: "Duplicate point and its content",
       introduction: "Make introduction",
       conclusion: "Make conclusion",
       clearRole: "Remove role",
     },
-    look: "Point look",
-    lookComponent: "Point style",
+    more: "More point actions",
+    thisPoint: "This point",
+    withContent: "This point and its content",
+    loadRefused: "This document could not be opened, so the editor was left as it was:",
     undo: "Undo",
     notices: {
       point_converted: (linked: boolean): string =>

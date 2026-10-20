@@ -2,7 +2,7 @@ import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 /*
- * The schema v4 prototype (/lab/editor/v4) in a real browser: only what
+ * The integrated sermon editor on schema v4 (/lab/editor/v4, A1) in a real browser: only what
  * jsdom cannot establish. The unit tests (src/features/editor-lab/v4) check
  * the documents; these check the caret, real typing and native deletion,
  * arrow keys across blocks, the presentation, and Print Layout. Signed in
@@ -19,14 +19,15 @@ async function openV4(page: Page) {
   await page.goto("/sign-in");
   await clerk.signIn({ page, emailAddress: email ?? "" });
   await page.goto("/lab/editor/v4");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("schema v4", {
+  // The workspace fills the window over the page (its heading is behind it); it says when it is ready.
+  await expect(page.getByTestId("sermon-workspace")).toHaveAttribute("data-ready", "true", {
     timeout: 60_000,
   });
   await expect(page.locator("html")).not.toHaveAttribute("data-splash", /.+/, { timeout: 30_000 });
   await expect(editor(page).locator('[data-id="p-a"]')).toBeVisible({ timeout: 30_000 });
 }
 
-const editor = (page: Page) => page.getByTestId("lab-v4-editor");
+const editor = (page: Page) => page.getByTestId("sermon-editor");
 const point = (page: Page, id: string) =>
   editor(page).locator(`p[data-type="point"][data-id="${id}"]`);
 const paragraph = (page: Page, text: string | RegExp) =>
@@ -49,7 +50,7 @@ function caretBlock(page: Page) {
 function blockOrder(page: Page) {
   return page.evaluate(() =>
     Array.from(
-      document.querySelectorAll('[data-testid="lab-v4-editor"] > :not([contenteditable="false"])'),
+      document.querySelectorAll('[data-testid="sermon-editor"] > :not([contenteditable="false"])'),
     ).map((block) =>
       block.getAttribute("data-type") === "point"
         ? `point:${block.getAttribute("data-id")}`
@@ -61,7 +62,7 @@ function blockOrder(page: Page) {
 /** Whether keyboard focus is in the editor. */
 function focusInEditor(page: Page) {
   return page.evaluate(() =>
-    Boolean(document.activeElement?.closest('[data-testid="lab-v4-editor"]')),
+    Boolean(document.activeElement?.closest('[data-testid="sermon-editor"]')),
   );
 }
 
@@ -80,7 +81,7 @@ async function place(page: Page, from: Spot, to?: Spot) {
   await page.evaluate(
     ([start, end]) => {
       type NodeLike = { textContent: string; attrs: { id?: string }; content: { size: number } };
-      const element = document.querySelector('[data-testid="lab-v4-editor"]') as HTMLElement & {
+      const element = document.querySelector('[data-testid="sermon-editor"]') as HTMLElement & {
         editor: {
           state: { doc: { forEach: (f: (n: NodeLike, pos: number) => void) => void } };
           commands: {
@@ -169,7 +170,7 @@ test.describe("schema v4 prototype, signed in", () => {
     await page.keyboard.press("Backspace");
     await expect(point(page, "p-b")).toHaveCount(0);
     await expect(paragraph(page, "Subpoint")).toHaveAttribute("data-depth", "1");
-    await expect(page.getByTestId("lab-v4-notice")).toBeVisible();
+    await expect(page.getByTestId("sermon-editor-notice")).toBeVisible();
     await page.keyboard.press("Control+z");
     await expect(point(page, "p-b")).toHaveText("Subpoint ");
   });
@@ -290,7 +291,7 @@ test.describe("schema v4 prototype, signed in", () => {
     await page.evaluate(() => document.execCommand("forwardDelete"));
     await expect(point(page, "p-b")).toHaveText("Subpoint B");
     await expect(paragraph(page, "Belongs to I")).toHaveText("Belongs to I");
-    await expect(page.getByTestId("lab-v4-notice")).toBeVisible();
+    await expect(page.getByTestId("sermon-editor-notice")).toBeVisible();
   });
 
   test("an IME composition over a selection from writing into a heading", async ({ page }) => {
@@ -318,17 +319,42 @@ test.describe("schema v4 prototype, signed in", () => {
     await expect(paragraph(page, "Bodyあ")).toHaveCount(1);
   });
 
-  test("presentation changes indentation only; Print Layout paginates and stays editable", async ({
+  test("A1: the toolbar formats a point, turns it into writing, and undo brings it back", async ({
+    page,
+  }) => {
+    await openV4(page);
+    await place(page, ["p-a", 0], ["p-a", "Subpoint".length]);
+    await page.getByRole("button", { name: "Bold", exact: true }).click();
+    await expect(point(page, "p-a").locator("strong")).toHaveText("Subpoint");
+
+    // The paragraph style menu gives a point a look; it stays the same point.
+    await page.getByRole("combobox", { name: "Paragraph style" }).click();
+    await page.getByRole("option", { name: "Heading 2" }).click();
+    await expect(point(page, "p-a")).toHaveAttribute("data-style-name", "heading2");
+
+    // The Point toggle is pressed in a point; pressing it makes the point writing (here a heading, its look).
+    await place(page, ["p-a", 2]);
+    const toggle = page.getByRole("button", { name: "Remove point, keep content" });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await toggle.click();
+    await expect(point(page, "p-a")).toHaveCount(0);
+    await expect(editor(page).locator("h2", { hasText: "Subpoint A" })).toHaveCount(1);
+    await expect(page.getByTestId("sermon-editor-notice")).toBeVisible();
+
+    await page.getByRole("button", { name: "Undo", exact: true }).first().click();
+    await expect(point(page, "p-a")).toHaveCount(1);
+    await expect(point(page, "p-a").locator("strong")).toHaveText("Subpoint");
+  });
+
+  test("depth is drawn as an outline; Print Layout paginates and stays editable", async ({
     page,
   }) => {
     await openV4(page);
     const body = paragraph(page, "Body of A");
-    const indent = () => body.evaluate((element) => getComputedStyle(element).paddingLeft);
-    expect(await indent()).not.toBe("0px");
-    await page.getByRole("radio", { name: "Manuscript" }).check({ force: true });
-    expect(await indent()).toBe("0px");
+    // A sermon is always an outline (A1): there is no manuscript view that flattens it.
+    expect(await body.evaluate((element) => getComputedStyle(element).paddingLeft)).not.toBe("0px");
     await expect(body).toHaveAttribute("data-depth", "2");
-    await page.getByRole("radio", { name: "Outline" }).check({ force: true });
+    await expect(page.getByRole("radio", { name: "Manuscript" })).toHaveCount(0);
 
     await page.getByRole("combobox", { name: "Document" }).click();
     await page.getByRole("option", { name: /Print Layout test/ }).click();

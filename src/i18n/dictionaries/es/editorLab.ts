@@ -40,6 +40,7 @@ export const editorLab: Untranslated<typeof english> = {
   },
   numbering: "Numeración",
   customNumbering: "Personalizada (POINT I: / (a) / 1.1.1.)",
+  customNumberingOwn: "Personalizada (la de este documento)",
   editorLabel: "Documento del sermón",
   workspace: {
     back: "Volver a los bosquejos",
@@ -68,6 +69,9 @@ export const editorLab: Untranslated<typeof english> = {
     marginValue: (value: string, unit: "in" | "cm"): string =>
       unit === "in" ? `${value} in` : `${value} cm`,
     resetMargins: "Restablecer márgenes",
+    pageSetup: "Configurar página",
+    marginsHint:
+      "En el diseño de impresión, arrastre los marcadores de la regla sobre la página para ajustar los márgenes laterales.",
     expandPassages: "Desplegar pasajes en Normal",
     collapsePassages: "Plegar pasajes en Normal",
     expandInPrint: "En el diseño de impresión cada pasaje se ve como se imprime",
@@ -90,6 +94,9 @@ export const editorLab: Untranslated<typeof english> = {
     outdent: "Reducir sangría",
     undo: "Deshacer",
     redo: "Rehacer",
+    quote: "Cita",
+    documentStyles: "Editar estilos",
+    closeStyles: "Cerrar estilos",
   },
   format: {
     style: "Estilo de párrafo",
@@ -169,7 +176,7 @@ export const editorLab: Untranslated<typeof english> = {
   },
   documentStyles: {
     title: "Estilos del documento",
-    hint: "Los cambios se previsualizan en el documento y solo se escriben al aplicarlos. El texto con formato propio lo conserva.",
+    hint: "Cambie el aspecto del texto normal, el título, el subtítulo y los encabezados 1–4 en todo este sermón: cada párrafo con ese estilo lo sigue. Los cambios se ven en el documento como vista previa y solo se conservan al aplicarlos. El texto con formato propio lo conserva.",
     target: "Estilo que se edita",
     defaults: "Valores predeterminados del documento",
     customized: "Personalizado",
@@ -280,11 +287,18 @@ export const editorLab: Untranslated<typeof english> = {
   },
   v4: {
     metaTitle: "Laboratorio del editor · Esquema v4",
-    title: "Laboratorio del editor: esquema v4 (experimental)",
+    title: "Editor de sermones: esquema v4 (espacio de trabajo integrado)",
     description:
-      "Un prototipo para validar la arquitectura. Los puntos son bloques comunes con una profundidad semántica; a quién pertenece cada cosa se deduce del orden y la profundidad.",
+      "El editor de sermones integrado (A1): el documento de esquema v4, primero libre, en el espacio de edición completo. Los puntos son bloques comunes con una profundidad semántica; a quién pertenece cada cosa se deduce del orden y la profundidad.",
     notice:
-      "Experimental. Aquí no se guarda, sincroniza ni envía nada; al recargar la página se empieza de nuevo.",
+      "Solo para desarrollo. Aquí no se guarda, sincroniza ni envía nada; al recargar la página se empieza de nuevo.",
+    limitations: [
+      "No guarda, sincroniza ni pone en cola nada, y nunca toca un sermón ni un bosquejo reales. La persistencia es el siguiente paso (A2).",
+      "El esquema v4 está aprobado como dirección, pero todavía no para el almacenamiento en producción.",
+      "Todavía no se pueden insertar puntos guardados; sí pasajes de las Escrituras y referencias en línea (Inspeccionar → Insertar).",
+      "La apariencia de los componentes y los modos de color de impresión aún no están hechos.",
+      "Al abrir un documento v3 se convierte a v4; el laboratorio v3 se conserva como referencia.",
+    ],
     baseline: "Abrir el laboratorio v3",
     fixture: "Documento",
     fixtures: {
@@ -302,17 +316,20 @@ export const editorLab: Untranslated<typeof english> = {
       toPoint: "Convertir en punto",
       toProse: "Quitar el punto y conservar el contenido",
       deleteGroup: "Eliminar el punto y su contenido",
-      increase: "Aumentar nivel",
-      decrease: "Reducir nivel en su lugar",
-      moveOut: "Sacar al nivel superior",
-      moveUp: "Subir punto",
-      moveDown: "Bajar punto",
+      increase: "Aumentar nivel, con su contenido",
+      decrease: "Reducir nivel en su lugar (incorpora lo que sigue)",
+      moveOut: "Sacar al nivel superior, con su contenido",
+      moveUp: "Subir, con su contenido",
+      moveDown: "Bajar, con su contenido",
+      duplicate: "Duplicar el punto y su contenido",
       introduction: "Hacer introducción",
       conclusion: "Hacer conclusión",
       clearRole: "Quitar función",
     },
-    look: "Aspecto del punto",
-    lookComponent: "Estilo de punto",
+    more: "Más acciones del punto",
+    thisPoint: "Este punto",
+    withContent: "Este punto y su contenido",
+    loadRefused: "No se pudo abrir este documento, así que el editor quedó como estaba:",
     undo: "Deshacer",
     notices: {
       point_converted: (linked: boolean) =>

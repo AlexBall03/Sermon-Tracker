@@ -173,14 +173,22 @@ export const setHighlight =
 
 type Block = { node: ProseMirrorNode; pos: number; $inside: ResolvedPos };
 
-/** The paragraphs and headings the selection is in or across (at a cursor, the one it is in). */
+/** Text blocks that take paragraph formatting: paragraphs, headings, and schema v4's point heading. */
+const formatted = new Set(["paragraph", "heading", "point"]);
+
+/**
+ * The paragraphs and headings the selection is in or across (at a cursor, the
+ * one it is in), and schema v4's point headings (`v4/schema.ts`), which take
+ * alignment, paragraph format, and a named style's look like any paragraph.
+ * A v3 document has no `point`, so for it this is unchanged.
+ */
 function selectedBlocks(state: EditorState): Block[] {
   const blocks: Block[] = [];
   const seen = new Set<number>();
   for (const range of state.selection.ranges) {
     state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
       if (!node.isTextblock) return true;
-      if ((node.type.name === "paragraph" || node.type.name === "heading") && !seen.has(pos)) {
+      if (formatted.has(node.type.name) && !seen.has(pos)) {
         seen.add(pos);
         blocks.push({ node, pos, $inside: state.doc.resolve(pos + 1) });
       }
@@ -212,21 +220,34 @@ const takesNamedStyle = (block: Block) => !componentGoverned(block.$inside);
 /**
  * Puts the selected paragraphs and headings in a named style. Normal, Title,
  * and Subtitle are paragraphs (`styleName`); Heading 1–4 are headings. The
- * block's alignment and format go with it. Nothing else changes: the block
- * stays where it is, inside whatever point or section holds it.
+ * block's alignment, format, and (schema v4) depth go with it. Nothing else
+ * changes: the block stays where it is, inside whatever point or section holds it.
+ *
+ * A schema v4 point heading only takes the style's look (`styleName`): it
+ * stays a point, with its ID, depth, and role. `null` gives it back its
+ * component's look, and applies to nothing else.
  */
 export const setNamedStyle =
-  (name: NamedStyle): Command =>
+  (name: NamedStyle | null): Command =>
   (state, dispatch) =>
-    namedStyles.includes(name) &&
+    (name === null || namedStyles.includes(name)) &&
     changeBlocks(state, dispatch, (block, tr) => {
-      if (!takesNamedStyle(block)) return false;
+      if (block.node.type.name === "point") {
+        tr.setNodeAttribute(block.pos, "styleName", name);
+        return true;
+      }
+      if (name === null || !takesNamedStyle(block)) return false;
       const { schema } = state;
       const heading = name.startsWith("heading");
       const type = heading ? schema.nodes.heading : schema.nodes.paragraph;
       const $pos = state.doc.resolve(block.pos);
       if (!$pos.parent.canReplaceWith($pos.index(), $pos.index() + 1, type)) return false;
-      const carried = { textAlign: block.node.attrs.textAlign, format: block.node.attrs.format };
+      const carried: Record<string, unknown> = {
+        textAlign: block.node.attrs.textAlign,
+        format: block.node.attrs.format,
+      };
+      // Schema v4: a block's depth is its meaning (who owns it), never a style's to change.
+      if ("depth" in block.node.attrs) carried.depth = block.node.attrs.depth;
       const attrs = heading
         ? { ...carried, level: Number(name.slice("heading".length)) }
         : { ...carried, styleName: name === "normal" ? null : name };
@@ -234,7 +255,7 @@ export const setNamedStyle =
       return true;
     });
 
-/** Aligns the selected paragraphs and headings; null returns them to their style's alignment. */
+/** Aligns the selected paragraphs, headings, and point headings; null returns them to their style's alignment. */
 export const setAlignment =
   (align: Alignment | null): Command =>
   (state, dispatch) =>

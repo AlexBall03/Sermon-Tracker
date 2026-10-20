@@ -63,10 +63,6 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
     selector: ({ editor: current }) => {
       const can = (command: Command) => command(current.state);
       return {
-        bulletList: current.isActive("bulletList"),
-        orderedList: current.isActive("orderedList"),
-        undo: current.can().undo(),
-        redo: current.can().redo(),
         point: can(addPoint("sibling")),
         subpoint: can(addPoint("child")),
         duplicate: can(duplicatePoint),
@@ -81,50 +77,18 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
     toolbarRenders.count += 1;
   });
 
-  const chain = () => editor.chain().focus();
   const command = (value: Command) => () => {
     run(editor, value);
     editor.commands.focus();
   };
 
   return (
-    <div
-      role="toolbar"
-      aria-label={t.label}
-      // One row: on a phone it scrolls sideways instead of stacking; wider, it wraps if it must.
-      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 md:flex-wrap md:overflow-visible"
-    >
-      <Group>
-        <Tool
-          label={t.undo}
-          disabled={!state.undo}
-          onPress={() => chain().undo().run()}
-          icon={Undo2}
-        />
-        <Tool
-          label={t.redo}
-          disabled={!state.redo}
-          onPress={() => chain().redo().run()}
-          icon={Redo2}
-        />
-      </Group>
+    <ToolbarRow label={t.label} end={children}>
+      <HistoryGroup editor={editor} />
       <StyleGroup editor={editor} />
       <InlineGroup editor={editor} />
       <ParagraphGroup editor={editor} />
-      <Group>
-        <Tool
-          label={t.bulletList}
-          pressed={state.bulletList}
-          onPress={() => chain().toggleBulletList().run()}
-          icon={List}
-        />
-        <Tool
-          label={t.orderedList}
-          pressed={state.orderedList}
-          onPress={() => chain().toggleOrderedList().run()}
-          icon={ListOrdered}
-        />
-      </Group>
+      <ListGroup editor={editor} />
       <Group last>
         <Tool
           label={t.addPoint}
@@ -169,15 +133,97 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
           icon={IndentIncrease}
         />
       </Group>
-      {children && (
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{children}</div>
-      )}
+    </ToolbarRow>
+  );
+}
+
+/**
+ * The toolbar's row. One row: on a phone it scrolls sideways instead of
+ * stacking; wider, it wraps if it must. `end` (the view's controls) is kept
+ * at the row's end.
+ */
+export function ToolbarRow({
+  label,
+  end,
+  children,
+}: {
+  label: string;
+  end?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label={label}
+      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 md:flex-wrap md:overflow-visible"
+    >
+      {children}
+      {end && <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{end}</div>}
     </div>
   );
 }
 
-/** Paragraph style, font, and size. */
-function StyleGroup({ editor }: { editor: Editor }) {
+/** Undo and redo. */
+export function HistoryGroup({ editor }: { editor: Editor }) {
+  const t = useT("editorLab").toolbar;
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => ({
+      undo: current.can().undo(),
+      redo: current.can().redo(),
+    }),
+  });
+  const chain = () => editor.chain().focus();
+  return (
+    <Group>
+      <Tool
+        label={t.undo}
+        disabled={!state.undo}
+        onPress={() => chain().undo().run()}
+        icon={Undo2}
+      />
+      <Tool
+        label={t.redo}
+        disabled={!state.redo}
+        onPress={() => chain().redo().run()}
+        icon={Redo2}
+      />
+    </Group>
+  );
+}
+
+/** The two kinds of list; `children` are further block toggles of the same kind (a quotation). */
+export function ListGroup({ editor, children }: { editor: Editor; children?: React.ReactNode }) {
+  const t = useT("editorLab").toolbar;
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => ({
+      bulletList: current.isActive("bulletList"),
+      orderedList: current.isActive("orderedList"),
+    }),
+  });
+  const chain = () => editor.chain().focus();
+  return (
+    <Group>
+      <Tool
+        label={t.bulletList}
+        pressed={state.bulletList}
+        onPress={() => chain().toggleBulletList().run()}
+        icon={List}
+      />
+      <Tool
+        label={t.orderedList}
+        pressed={state.orderedList}
+        onPress={() => chain().toggleOrderedList().run()}
+        icon={ListOrdered}
+      />
+      {children}
+    </Group>
+  );
+}
+
+/** Paragraph style, font, and size; `children` go right after them (a control for the styles themselves). */
+export function StyleGroup({ editor, children }: { editor: Editor; children?: React.ReactNode }) {
   const keeper = useKeptSelection(editor);
   const state = useEditorState({
     editor,
@@ -193,13 +239,14 @@ function StyleGroup({ editor }: { editor: Editor }) {
         <StyleSelect state={state.block} keeper={keeper} />
         <FontSelect state={state.text} keeper={keeper} />
         <SizeField state={state.text} keeper={keeper} />
+        {children}
       </div>
     </Group>
   );
 }
 
 /** Bold, italic, underline, and the two colors. */
-function InlineGroup({ editor }: { editor: Editor }) {
+export function InlineGroup({ editor }: { editor: Editor }) {
   const t = useT("editorLab").toolbar;
   const keeper = useKeptSelection(editor);
   const state = useEditorState({
@@ -257,7 +304,7 @@ function InlineGroup({ editor }: { editor: Editor }) {
 }
 
 /** Alignment, spacing, and clearing direct formatting. */
-function ParagraphGroup({ editor }: { editor: Editor }) {
+export function ParagraphGroup({ editor }: { editor: Editor }) {
   const t = useT("editorLab").format;
   const keeper = useKeptSelection(editor);
   const state = useEditorState({
@@ -278,7 +325,7 @@ function ParagraphGroup({ editor }: { editor: Editor }) {
   );
 }
 
-function Group({ children, last }: { children: React.ReactNode; last?: boolean }) {
+export function Group({ children, last }: { children: React.ReactNode; last?: boolean }) {
   return (
     <div className={cn("flex items-center gap-0.5", !last && "border-r pr-1")}>{children}</div>
   );

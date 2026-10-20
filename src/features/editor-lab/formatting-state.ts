@@ -106,11 +106,20 @@ export function textState(state: EditorState): TextState {
   };
 }
 
+/** A schema v4 point heading that keeps its component's own look (no named style). */
+export const componentLook = "component" as const;
+
 export type BlockState = {
-  /** The named style of the selected paragraphs; null where none can be chosen (a title, a note). */
-  style: Maybe<NamedStyle> | null;
+  /**
+   * The named style of the selected paragraphs; null where none can be chosen
+   * (a title, a note). A schema v4 point heading shows its look: a named
+   * style, or `componentLook`.
+   */
+  style: Maybe<NamedStyle | typeof componentLook> | null;
   /** The named styles that can be chosen here. */
   styles: NamedStyle[];
+  /** Whether the selection holds a schema v4 point heading, which can return to its component's look. */
+  component: boolean;
   align: Maybe<Alignment> | null;
   lineHeight: Maybe<number> | null;
   spaceBefore: Maybe<number> | null;
@@ -125,15 +134,23 @@ export type BlockState = {
 
 export function blockState(state: EditorState): BlockState {
   const styles = stylesInForce(state);
-  const blocks: { name: NamedStyle | null; resolved: ReturnType<typeof resolveAt> }[] = [];
+  const blocks: {
+    name: NamedStyle | typeof componentLook | null;
+    resolved: ReturnType<typeof resolveAt>;
+  }[] = [];
+  let points = false;
   for (const range of state.selection.ranges) {
     state.doc.nodesBetween(range.$from.pos, range.$to.pos, (node, pos) => {
       if (blocks.length >= textLimit) return false;
       if (!node.isTextblock) return true;
-      if (node.type.name === "paragraph" || node.type.name === "heading") {
+      const point = node.type.name === "point";
+      if (point || node.type.name === "paragraph" || node.type.name === "heading") {
         const resolved = resolveAt(styles, state.doc.resolve(pos + 1));
+        if (point) points = true;
         blocks.push({
-          name: namedStyleOf(node.type.name, node.attrs),
+          name: point
+            ? ((node.attrs.styleName as NamedStyle | null) ?? componentLook)
+            : namedStyleOf(node.type.name, node.attrs),
           // The block's own alignment comes after its style's, as it is drawn.
           resolved: {
             ...resolved,
@@ -154,6 +171,7 @@ export function blockState(state: EditorState): BlockState {
   return {
     style: choices.length ? agree(blocks.map((block) => block.name ?? "normal")) : null,
     styles: choices,
+    component: points,
     align: property("align"),
     lineHeight: property("lineHeight"),
     spaceBefore: property("spaceBefore"),

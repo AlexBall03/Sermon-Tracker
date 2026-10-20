@@ -508,6 +508,8 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 
 Phases may be subdivided where dependencies or rollout risk justify it. This list is not an instruction to build them now.
 
+**Integration program (20 October 2026).** The owner moved from lab-only validation to integrating the editor for the product, in checkpoints A1, A2, and so on. A1 (unified editor workspace, §15.10; [handoff](HANDOFF-PS-A1.md)) is complete pending the owner's review. A2 adds persistence around it. The PS-2/PS-3b/PS-4 rows above still govern the data model, synchronization, and the workspace shell those checkpoints reach.
+
 ---
 
 ## 14. Acceptance gates
@@ -675,10 +677,26 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - **D3:** typing or Backspace over a selection from a heading into writing keeps the conventional join (the point survives).
   - **D4:** deleted points and reparented blocks are reported; a refused change says so, never during a composition or for the editor's own follow-up changes.
   - Implemented: modifier Backspace/Delete at a point's edge, drops within the document (same nodes and IDs), IME composition over a selection into a heading (checked in desktop Chromium), deletions the browser makes itself (`beforeinput`, plus a text check in the guard), and the depth limit on every command. Deleting a parent never repairs what survives it: depths stay, owners follow from order, and the change is reported.
+- **A1, Unified Editor Workspace Integration (20 October 2026; [handoff](HANDOFF-PS-A1.md)).** The first checkpoint of the integration program.
+  - **Implemented:** schema v4 and the PS-ER1 hardening are integrated into v3's workspace as one editor, `SermonWorkspace`, in `src/features/sermon-editor/`. It is production-intended, but runs only at the development route `/lab/editor/v4`, persists nothing, and changed no production route or table.
+  - **Reused from v3:** the full-window workspace, the whole formatting toolbar, fonts, colors, named styles and Document Styles, numbering, page setup, the margin ruler, Regular and editable Print Layout, Scripture nodes, identity, and the clipboard.
+  - **Changed for v4:**
+    - the toolbar's outline actions are v4 commands, labelled by whether they act on the point alone or on its content;
+    - a point takes a named style's look, alignment, and spacing from the ordinary controls;
+    - the introduction and conclusion are framed as v3 framed its sections;
+    - new `insertPassage` (ownership-checked) and `duplicatePointGroup`.
+  - **Owner's decisions in A1:**
+    - **Always an outline.** A sermon is always drawn as an outline. The Outline/Manuscript presentation switch is removed from the editor; this settles the open question below for the editor.
+    - **No gutter mark.** The caret-group gutter mark is not part of the editor.
+    - **Google Docs as the bar.** The editor should be as simple and intuitive as Google Docs.
+  - **Superseded:**
+    - further feature work in the v3 lab (§15.9 "Next"): v3 is now the frozen baseline;
+    - the v4 lab as a validation-only prototype: it is now the integrated editor's development host.
+  - **Next (A2):** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2").
 - **Open:**
   - §8.3's wording ("derived from the document's nested structure"): the labels are the same engine's, but the structure is no longer nested;
   - how the points under an introduction or conclusion are numbered (a policy, today counted on their own);
-  - whether presentation is a document style or view state;
+  - whether presentation is a document style or view state (for the editor, settled in A1: always an outline; print or export presentations remain open);
   - typing markers (`I.`, `1.`) to make points;
   - production storage and migration of v3 documents.
 

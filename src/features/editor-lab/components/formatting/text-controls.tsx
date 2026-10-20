@@ -15,7 +15,7 @@ import {
   setNamedStyle,
   steppedSize,
 } from "../../formatting-commands";
-import { mixed, type BlockState, type TextState } from "../../formatting-state";
+import { componentLook, mixed, type BlockState, type TextState } from "../../formatting-state";
 import {
   fontCategories,
   fontRegistry,
@@ -35,15 +35,20 @@ import { Tool } from "../toolbar";
 
 type Keeper = ReturnType<typeof useKeptSelection>;
 
-/** The paragraph style; in a title, a note, or a script it rests, showing that the component governs. */
+/**
+ * The paragraph style; in a title, a note, or a script it rests, showing that
+ * the component governs. On a schema v4 point heading it is the point's look:
+ * "Component style" (its component's own) or a named style; it stays a point.
+ */
 export function StyleSelect({ state, keeper }: { state: BlockState; keeper: Keeper }) {
   const t = useT("editorLab").format;
   const governed = state.style === null;
-  const value = state.style === null ? "component" : state.style === mixed ? "" : state.style;
+  const value = state.style === null ? componentLook : state.style === mixed ? "" : state.style;
   const options = governed
-    ? [{ value: "component", label: t.componentStyle }]
+    ? [{ value: componentLook, label: t.componentStyle }]
     : [
         ...(state.style === mixed ? [{ value: "", label: t.mixed }] : []),
+        ...(state.component ? [{ value: componentLook, label: t.componentStyle }] : []),
         ...namedStyles
           .filter((name) => state.styles.includes(name))
           .map((name) => ({ value: name, label: t.styleNames[name] })),
@@ -56,6 +61,11 @@ export function StyleSelect({ state, keeper }: { state: BlockState; keeper: Keep
         disabled={governed}
         onChange={(next) => {
           // Only a person's choice of another style: a menu whose options change can report its own value.
+          if (next === componentLook) {
+            if (state.component && state.style !== componentLook)
+              keeper.choose(setNamedStyle(null));
+            return;
+          }
           const name = next as NamedStyle;
           if (state.styles.includes(name) && name !== state.style)
             keeper.choose(setNamedStyle(name));

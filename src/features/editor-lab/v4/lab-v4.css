@@ -5,7 +5,8 @@
  * steps at most, as v3 does); "manuscript" draws nothing in. Either way the
  * document is the same, and a paragraph's own indent (`format`, margin-left)
  * is added on top. Nothing here is printed differently from the screen
- * except the group mark and the irregular mark, which are never printed.
+ * except the irregular mark, which is never printed. Since A1 the editor
+ * always draws the outline (a sermon is an outline, however fully written).
  */
 
 .lab-editor > [data-depth] {
@@ -52,27 +53,57 @@
   margin-top: 0.5rem;
 }
 
-/* The group of the point around the caret: a mark in the gutter, so ownership shows even in a manuscript. */
-.lab-editor > .lab-v4-group {
-  position: relative;
+/*
+ * The introduction and the conclusion, framed as v3 framed its sections (a
+ * rule above and below, `lab.css` `.lab-section`), around the role's
+ * heading and everything it owns (`roleFrames` in `plugins.ts`).
+ */
+.lab-editor > .lab-v4-frame-start {
+  margin-top: 1.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
 }
-.lab-editor > .lab-v4-group::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -0.625rem;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--ring);
-  opacity: 0.45;
-  pointer-events: none;
+.lab-editor > .lab-v4-frame-end {
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
 }
-.lab-editor > :is(p, h1, h2, h3, h4).lab-v4-group::after {
-  left: calc(var(--v4-indent, 0rem) - 0.625rem);
+.lab-editor > .lab-v4-frame-start:first-child {
+  margin-top: 0;
 }
-.lab-editor > .lab-v4-group-head::after {
-  opacity: 0.8;
+.lab-editor > .lab-v4-frame-end:last-child {
+  margin-bottom: 0;
+}
+
+/* On a phone each level is drawn in less, as v3 draws it there (`lab.css`, 0.75rem a level). */
+@media (max-width: 40rem) {
+  .lab-editor > [data-depth] {
+    --v4-indent: 5.25rem;
+  }
+  .lab-editor > [data-depth="1"] {
+    --v4-indent: 0rem;
+  }
+  .lab-editor > [data-depth="2"] {
+    --v4-indent: 0.75rem;
+  }
+  .lab-editor > [data-depth="3"] {
+    --v4-indent: 1.5rem;
+  }
+  .lab-editor > [data-depth="4"] {
+    --v4-indent: 2.25rem;
+  }
+  .lab-editor > [data-depth="5"] {
+    --v4-indent: 3rem;
+  }
+  .lab-editor > [data-depth="6"] {
+    --v4-indent: 3.75rem;
+  }
+  .lab-editor > [data-depth="7"] {
+    --v4-indent: 4.5rem;
+  }
+  .lab-editor > [data-depth="8"] {
+    --v4-indent: 5.25rem;
+  }
 }
 
 /* An irregular block (a skipped level, or deeper than its point): shown, never repaired. */
@@ -82,9 +113,6 @@
 }
 
 @media print {
-  .lab-editor > .lab-v4-group::after {
-    display: none;
-  }
   .lab-editor > [data-irregular] {
     outline: none;
   }

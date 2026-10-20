@@ -167,8 +167,10 @@ describe("Enter in a point heading", () => {
     expect(point.attrs.styleName).toBe("heading2");
     expect(point.child(0).marks.map((mark) => mark.type.name)).toEqual(["bold"]);
     expect(editor.getHTML()).toContain('data-style-name="heading2"');
-    // v3's paragraph style command leaves the point alone.
-    expect(run(editor, setNamedStyle("normal"))).toBe(false);
+    // Since A1 the toolbar's paragraph style command gives a point a look too; it stays a point.
+    expect(run(editor, setNamedStyle("normal"))).toBe(true);
+    expect(block(editor, 1).type.name).toBe("point");
+    expect(block(editor, 1).attrs.styleName).toBe("normal");
   });
 });
 

@@ -21,7 +21,7 @@ import {
   protectedDeletion,
 } from "./commands";
 import { maxDepth, noticeMeta, structuralMeta, type PointRole, type V4Notice } from "./model";
-import { analyze, groupRange, nearestPoint } from "./ownership";
+import { analyze } from "./ownership";
 
 /*
  * What keeps a v4 document's meaning safe while it is edited as ordinary text (prototype):
@@ -407,26 +407,36 @@ export function setPresentation(view: EditorView, presentation: Presentation) {
 
 export const presentationOf = (state: EditorState) => presentationKey.getState(state) ?? "outline";
 
-/* The group around the caret: drawn beside the page, never printed. */
+/*
+ * The introduction and the conclusion as components (A1): v3 drew each as a
+ * framed section, a rule above and below. In v4 a role is on a main point,
+ * and what it owns follows it, so the frame opens at the role's heading and
+ * closes after the last block of its group. Drawn from order and depth on
+ * each change of the document; never part of it.
+ */
 
-const groupKey = new PluginKey<DecorationSet>("labV4Group");
+const frameKey = new PluginKey<DecorationSet>("labV4RoleFrames");
 
-function groupDecorations(state: EditorState): DecorationSet {
-  const { $from } = state.selection;
-  if ($from.depth === 0) return DecorationSet.empty;
+function roleFrames(state: EditorState): DecorationSet {
   const structure = analyze(state.doc);
-  const point = nearestPoint(structure, $from.index(0));
-  if (point === null) return DecorationSet.empty;
-  const { end } = groupRange(structure, point);
   const decorations: Decoration[] = [];
-  for (let index = point; index < end; index += 1) {
-    const block = structure.blocks[index];
-    decorations.push(
-      Decoration.node(block.pos, block.pos + block.node.nodeSize, {
-        class: index === point ? "lab-v4-group lab-v4-group-head" : "lab-v4-group",
-      }),
-    );
-  }
+  structure.blocks.forEach((block, index) => {
+    const role = block.isPoint ? (block.node.attrs.role as string | null) : null;
+    if (!role) return;
+    const end = structure.groupEnd[index];
+    for (let member = index; member < end; member += 1) {
+      const { node, pos } = structure.blocks[member];
+      const classes = ["lab-v4-framed"];
+      if (member === index) classes.push("lab-v4-frame-start");
+      if (member === end - 1) classes.push("lab-v4-frame-end");
+      decorations.push(
+        Decoration.node(pos, pos + node.nodeSize, {
+          class: classes.join(" "),
+          "data-frame": role,
+        }),
+      );
+    }
+  });
   return DecorationSet.create(state.doc, decorations);
 }
 
@@ -546,13 +556,12 @@ export const V4Plugins = Extension.create<V4PluginOptions>({
         },
       }),
       new Plugin<DecorationSet>({
-        key: groupKey,
+        key: frameKey,
         state: {
-          init: (_, state) => groupDecorations(state),
-          apply: (tr, previous, _old, state) =>
-            tr.docChanged || tr.selectionSet ? groupDecorations(state) : previous,
+          init: (_, state) => roleFrames(state),
+          apply: (tr, previous, _old, state) => (tr.docChanged ? roleFrames(state) : previous),
         },
-        props: { decorations: (state) => groupKey.getState(state) },
+        props: { decorations: (state) => frameKey.getState(state) },
       }),
     ];
   },

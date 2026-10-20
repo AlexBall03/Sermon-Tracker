@@ -9,6 +9,8 @@ import {
 } from "@tiptap/pm/state";
 import type { Mappable } from "@tiptap/pm/transform";
 
+import type { ScriptureReference } from "@/features/scripture/reference";
+
 import type { Command } from "../outline-commands";
 import { maxDepth, noticeMeta, structuralMeta, type PointRole, type V4Notice } from "./model";
 import {
@@ -752,6 +754,90 @@ export function addPoint(kind: "sibling" | "child"): Command {
     tr.setSelection(TextSelection.create(tr.doc, at + 1));
     dispatch(structural(tr).scrollIntoView());
     return true;
+  };
+}
+
+/**
+ * Duplicates the point holding the caret with everything it owns, straight
+ * after its group, so the copy is its next sibling and nothing else changes
+ * owner. The copies are the same nodes again: the identity step gives each
+ * a new ID that remembers its original (`derivedFrom`), as v3's duplicate
+ * does. A role is not copied (a document has one introduction and one
+ * conclusion). The caret goes to the same place in the copy's heading.
+ */
+export const duplicatePointGroup: Command = (state, dispatch) => {
+  const index = blockIndex(state.selection.$from);
+  if (index === null) return false;
+  const structure = analyze(state.doc);
+  const point = nearestPoint(structure, index);
+  if (point === null) return false;
+  if (!dispatch) return true;
+  const { to, end } = groupRange(structure, point);
+  const nodes: ProseMirrorNode[] = [];
+  for (let member = point; member < end; member += 1) {
+    const { node } = structure.blocks[member];
+    nodes.push(
+      member === point && node.attrs.role
+        ? node.type.create({ ...node.attrs, role: null }, node.content, node.marks)
+        : node,
+    );
+  }
+  const tr = state.tr.insert(to, nodes);
+  const head = structure.blocks[point];
+  const offset =
+    index === point ? state.selection.from - head.pos : Math.min(1, head.node.nodeSize - 1);
+  tr.setSelection(TextSelection.create(tr.doc, to + Math.max(1, offset)));
+  dispatch(structural(tr).scrollIntoView());
+  return true;
+};
+
+/* Scripture */
+
+/** The top-level block a passage goes after: the one the selection ends in, or a selected top-level node. */
+function anchorIndex(state: EditorState): number | null {
+  const { selection } = state;
+  if (selection instanceof NodeSelection && selection.$from.depth === 0) {
+    return selection.$from.index(0);
+  }
+  return blockIndex(selection.$to);
+}
+
+/**
+ * A Scripture passage block straight after the block the selection is in
+ * (v3's rule: "a block after the line you are on"), where it belongs to the
+ * same point that block belongs to (after a point heading: to that point),
+ * and where no other block changes owner.
+ *
+ * The depth is not assumed: the anchor's own depth is tried first, then each
+ * shallower one, and a depth is taken only when the mapped owners of every
+ * block already in the document are unchanged (`reparented`). Where none
+ * keeps them, the command does not apply. One transaction (one undo step);
+ * the new passage is selected. Its ID comes from the identity step.
+ */
+export function insertPassage(reference: ScriptureReference): Command {
+  return (state, dispatch) => {
+    const index = anchorIndex(state);
+    if (index === null) return false;
+    const structure = analyze(state.doc);
+    const anchor = structure.blocks[index];
+    const at = anchor.pos + anchor.node.nodeSize;
+    const { scripturePassage } = state.schema.nodes;
+    for (let depth = Math.min(anchor.depth, maxDepth); depth >= 0; depth -= 1) {
+      const node = scripturePassage.create({
+        ...reference,
+        translation: null,
+        print: "full",
+        depth,
+      });
+      const tr = state.tr.insert(at, node);
+      if (reparented(structure, tr.doc, tr.mapping) > 0) continue;
+      if (dispatch) {
+        tr.setSelection(NodeSelection.create(tr.doc, at));
+        dispatch(structural(tr).scrollIntoView());
+      }
+      return true;
+    }
+    return false;
   };
 }
 

@@ -28,13 +28,11 @@ async function openLab(page: Page) {
   await clerk.signIn({ page, emailAddress: email ?? "" });
   const started = Date.now();
   await page.goto("/lab/editor");
-  await expect(page.getByRole("heading", { level: 1, name: "Editor Lab" })).toBeVisible({
+  // The workspace fills the window and hides the page heading behind it (lab.css); it says when it is ready.
+  await expect(page.getByTestId("editor-lab")).toHaveAttribute("data-ready", "true", {
     timeout: 60_000,
   });
   await expect(page.locator("html")).not.toHaveAttribute("data-splash", /.+/, { timeout: 30_000 });
-  await expect(page.getByTestId("editor-lab")).toHaveAttribute("data-ready", "true", {
-    timeout: 30_000,
-  });
   return Date.now() - started;
 }
 

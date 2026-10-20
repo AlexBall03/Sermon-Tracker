@@ -60,7 +60,7 @@ export function SidePanel({ editor, issues, meter, renders }: SidePanelProps) {
   );
 }
 
-function JsonPanel({ editor }: { editor: Editor }) {
+export function JsonPanel({ editor }: { editor: Editor }) {
   const t = useT("editorLab").json;
   const locale = useLocale();
   const [json, setJson] = useState<string | null>(null);
