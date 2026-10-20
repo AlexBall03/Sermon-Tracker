@@ -3,7 +3,7 @@ import type { Mark, Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
 
 import { outlineLimits } from "@/features/outlines/model";
 import { layoutParses } from "./layout";
-import { migrateDocument } from "./migrate";
+import { migrateDocument, v3ContentIn } from "./migrate";
 import { validHighlight, validTextColor } from "./schema/formatting";
 import {
   currentSchemaVersion,
@@ -19,6 +19,16 @@ import {
 } from "./schema/model";
 import { identifiedTypes } from "./schema/nodes";
 import { referenceFrom } from "./schema/scripture";
+import { appearanceSchemaFor } from "./styles/attributes";
+import {
+  documentStylesSchema,
+  isFontKey,
+  isFontSize,
+  pageSetupSchema,
+  paragraphFormatSchema,
+  paragraphStyleNames,
+  subtitleSchema,
+} from "./styles/model";
 
 /*
  * Whether document JSON may be loaded: the one entry point for reading a
@@ -33,7 +43,10 @@ import { referenceFrom } from "./schema/scripture";
  * 5. The invariants a content expression cannot state: one introduction and
  *    one conclusion at most, every identified node with an ID unique in the
  *    document, every closed-list attribute a listed value, every passage one
- *    that exists in normal form, every color a preset key or `#rrggbb`.
+ *    that exists in normal form, every color a preset key or `#rrggbb`, and
+ *    (schema v3) every style contract (`styles`, `subtitle`, `page`,
+ *    `styleName`, `format`, `appearance`, a font family or size) null or
+ *    exactly what its schema in `styles/model.ts` accepts.
  *
  * Nothing is repaired and the input is never changed. Each problem names
  * where it is (`path`, a JSON pointer into the document as given, or as
@@ -134,6 +147,9 @@ const isNullableString = (value: unknown) =>
   value === null || (typeof value === "string" && value.length > 0);
 const isNullableInteger = (value: unknown) => value === null || Number.isInteger(value);
 const oneOf = (list: readonly unknown[], value: unknown) => list.includes(value);
+/** Null, or a value `schema` accepts exactly as it is. */
+const nullOr = (schema: { safeParse(value: unknown): { success: boolean } }, value: unknown) =>
+  value === null || schema.safeParse(value).success;
 
 /** The invariants of a document that fits the schema. */
 function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
@@ -147,6 +163,10 @@ function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
   }
   if (!isNullableString(doc.attrs.legacyOutlineId)) bad("", "doc.legacyOutlineId");
   if (!isNullableInteger(doc.attrs.legacyRevision)) bad("", "doc.legacyRevision");
+  // The style contracts (schema v3): null, or exactly what their schemas accept. Never repaired.
+  if (!nullOr(documentStylesSchema, doc.attrs.styles)) bad("", "doc.styles");
+  if (!nullOr(subtitleSchema, doc.attrs.subtitle)) bad("", "doc.subtitle");
+  if (!nullOr(pageSetupSchema, doc.attrs.page)) bad("", "doc.page");
 
   const firstAt = new Map<string, string>();
   const roles = new Map<string, string>();
@@ -155,8 +175,20 @@ function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
   const checkMarks = (marks: readonly Mark[], path: string) => {
     marks.forEach((mark, index) => {
       const where = `${path}/marks/${index}`;
-      if (mark.type.name === "textStyle" && !validTextColor(mark.attrs.color)) {
-        problems.push({ code: "invalid_color", path: where, detail: String(mark.attrs.color) });
+      if (mark.type.name === "textStyle") {
+        const { color, fontFamily, fontSize } = mark.attrs;
+        if (color === null && fontFamily === null && fontSize === null) {
+          problems.push({ code: "invalid_attribute", path: where, detail: "textStyle (empty)" });
+        }
+        if (color !== null && !validTextColor(color)) {
+          problems.push({ code: "invalid_color", path: where, detail: String(color) });
+        }
+        if (fontFamily !== null && !isFontKey(fontFamily)) {
+          bad(where, `textStyle.fontFamily=${fontFamily}`);
+        }
+        if (fontSize !== null && !isFontSize(fontSize)) {
+          bad(where, `textStyle.fontSize=${fontSize}`);
+        }
       }
       if (mark.type.name === "highlight" && !validHighlight(mark.attrs.color)) {
         problems.push({ code: "invalid_color", path: where, detail: String(mark.attrs.color) });
@@ -244,6 +276,19 @@ function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
       if (!oneOf(textAlignments, attrs.textAlign))
         bad(path, `${name}.textAlign=${attrs.textAlign}`);
     }
+    if (name === "paragraph" && attrs.styleName !== null) {
+      if (!oneOf(paragraphStyleNames, attrs.styleName))
+        bad(path, `paragraph.styleName=${attrs.styleName}`);
+    }
+    if (
+      (name === "paragraph" || name === "heading") &&
+      !nullOr(paragraphFormatSchema, attrs.format)
+    ) {
+      bad(path, `${name}.format`);
+    }
+    if (name in appearanceSchemaFor && !nullOr(appearanceSchemaFor[name], attrs.appearance)) {
+      bad(path, `${name}.appearance`);
+    }
     node.forEach((child, _offset, index) => visit(child, `${path}/content/${index}`));
   };
   doc.forEach((child, _offset, index) => visit(child, `/content/${index}`));
@@ -271,6 +316,11 @@ export function restoreDocument(json: unknown, schema: Schema): Restored {
         { code: migrated.code, path: "/attrs/schemaVersion", detail: String(migrated.version) },
       ],
     };
+  }
+  // A document that says it is older than v3 holds only what its version could (paths as given).
+  if (migrated.from < 3) {
+    const newer = v3ContentIn(json as JSONContent);
+    if (newer.length > 0) return { ok: false, problems: newer };
   }
   const source = migrated.doc;
 

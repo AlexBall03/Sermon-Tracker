@@ -361,7 +361,10 @@ describe("node identity (§B.6)", () => {
       {
         type: "pointTitle",
         content: [
-          text("Its clarity", { type: "textStyle", attrs: { color: "blue" } }),
+          text("Its clarity", {
+            type: "textStyle",
+            attrs: { color: "blue", fontFamily: null, fontSize: null },
+          }),
           text("Its warmth", { type: "bold" }, { type: "highlight", attrs: { color: "yellow" } }),
         ],
       },
@@ -401,6 +404,32 @@ describe("node identity (§B.6)", () => {
       ),
     ).toBe(true);
     expect(valid(b)).toEqual([]);
+  });
+
+  it("re-keys a Script pasted from another document and keeps its words, lists, and appearance", () => {
+    const a = editorFor(documentFixtures.stylesAndScript, { documentKey: "doc-a" });
+    const b = editorFor(sectionsAnywhere, { documentKey: "doc-b", prefix: "b-" });
+    const original = nodeJSON(a, "st-1-s");
+    pasteAt(b, docEnd(b), copyNode(a, "st-1-s").html);
+    const pasted = b.getJSON().content!.filter((node) => node.type === "script");
+    expect(pasted).toHaveLength(1);
+    expect(pasted[0].attrs!.id).toMatch(/^b-/);
+    expect(withoutIdentity(pasted[0])).toEqual(withoutIdentity(original));
+    expect(pasted[0].attrs!.appearance).toEqual({ accent: "#0f766e", italic: false });
+    expect(valid(b)).toEqual([]);
+  });
+
+  it("gives a Script copied within its document a new ID and leaves the original's", () => {
+    const editor = editorFor(documentFixtures.stylesAndScript, { documentKey: "doc-a" });
+    const original = nodeJSON(editor, "st-open");
+    pasteAt(editor, docEnd(editor), copyNode(editor, "st-open").html);
+    const scripts = editor
+      .getJSON()
+      .content!.filter((node) => node.type === "script")
+      .map((node) => node.attrs!.id);
+    expect(scripts).toEqual(["st-open", "new-1"]);
+    expect(withoutIdentity(nodeJSON(editor, "new-1"))).toEqual(withoutIdentity(original));
+    expect(valid(editor)).toEqual([]);
   });
 
   it("treats pasted HTML that names no document as foreign, even when it carries IDs", () => {
@@ -648,7 +677,7 @@ describe("Enter and Backspace at structural boundaries", () => {
     // The title is a paragraph with the same words and marks, where the point was; the body follows.
     expect(top[index]).toEqual({
       type: "paragraph",
-      attrs: { textAlign: null },
+      attrs: { textAlign: null, styleName: null, format: null },
       content: point.content![0].content,
     });
     expect(top.slice(index + 1, index + point.content!.length)).toEqual(point.content!.slice(1));
@@ -724,7 +753,7 @@ describe("Enter and Backspace at structural boundaries", () => {
       text(
         "Walking",
         // Marks are kept in the schema's order: textStyle ranks first.
-        { type: "textStyle", attrs: { color: "green" } },
+        { type: "textStyle", attrs: { color: "green", fontFamily: null, fontSize: null } },
         { type: "bold" },
         { type: "italic" },
         { type: "underline" },

@@ -376,7 +376,7 @@ test.describe("editor lab, signed in", () => {
   }) => {
     test.skip(test.info().project.name !== "desktop", "Checked at desktop size.");
     await openLab(page);
-    await choose(page, "Document", "The Lamp and the Path (schema v2, mixed)");
+    await choose(page, "Document", "The Lamp and the Path (mixed)");
     await expect(titleOf(page, "lp-1")).toHaveAttribute("data-label", "I.");
     // Rich titles: the bold word is part of the title, the number is not.
     await expect(titleOf(page, "lp-1").locator("strong")).toHaveText("Illuminates");

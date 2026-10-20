@@ -83,10 +83,14 @@ describe("legacy outline → document → legacy", () => {
         const refs: unknown[] = [];
         node.forEach((child) => {
           if (child.type.name === "scripturePassage") {
-            const { id: _id, translation, print, ...numbers } = child.attrs;
+            const { id: _id, translation, print, appearance, ...numbers } = child.attrs;
             void _id;
             // Converted passages follow the document's translation and print as references.
-            expect({ translation, print }).toEqual({ translation: null, print: "reference" });
+            expect({ translation, print, appearance }).toEqual({
+              translation: null,
+              print: "reference",
+              appearance: null,
+            });
             refs.push(numbers);
           }
         });

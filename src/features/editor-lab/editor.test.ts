@@ -63,7 +63,7 @@ describe("JSON round trip in the editor", () => {
     expect(again).toEqual(first);
     // The document attributes travel with it.
     expect(first.attrs?.layout).toEqual(layoutFromNumbering(outline.numbering));
-    expect(first.attrs?.schemaVersion).toBe(2);
+    expect(first.attrs?.schemaVersion).toBe(3);
     expect(first.attrs?.legacyOutlineId).toBe(outline.id);
   });
 

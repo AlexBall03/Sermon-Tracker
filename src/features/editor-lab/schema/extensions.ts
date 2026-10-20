@@ -8,6 +8,7 @@ import { OutlineNumbering } from "../numbering";
 import { OutlineKeymap } from "../outline-commands";
 import { PassageExpansion } from "../pagination/expansion";
 import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
+import { StyleAttributes } from "../styles/attributes";
 import { formattingExtensions } from "./formatting";
 import {
   LabDocument,
@@ -15,6 +16,7 @@ import {
   PageBreak,
   PointTitle,
   PreacherNote,
+  Script,
   SectionTitle,
   SermonSection,
 } from "./nodes";
@@ -29,8 +31,8 @@ export type LabExtensionOptions = {
 };
 
 /**
- * Everything the lab's editor is made of: schema v2 (PS-1B.1 §B.2). StarterKit
- * gives the manuscript (paragraphs, headings 2–4, lists, quotations, bold,
+ * Everything the lab's editor is made of: schema v3 (PS-1B.1 §B.2, PS-1B.2B.2). StarterKit
+ * gives the manuscript (paragraphs, headings 1–4, lists, quotations, bold,
  * italic, underline, hard breaks, undo and redo); the approved Tiptap
  * extensions give color, highlight, and alignment; the sermon's own nodes,
  * identity, numbering, clipboard, and structure commands are the lab's, and
@@ -46,7 +48,7 @@ export function labExtensions({
   return [
     StarterKit.configure({
       document: false,
-      heading: { levels: [2, 3, 4] },
+      heading: { levels: [1, 2, 3, 4] },
       code: false,
       codeBlock: false,
       horizontalRule: false,
@@ -62,6 +64,8 @@ export function labExtensions({
     OutlinePoint,
     PointTitle,
     PreacherNote,
+    Script,
+    StyleAttributes,
     PageBreak,
     ScriptureReferenceNode.configure({ locale }),
     ScripturePassageNode.configure({ locale }),

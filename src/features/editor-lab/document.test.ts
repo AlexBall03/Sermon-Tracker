@@ -64,13 +64,13 @@ function contentOf(json: JSONContent) {
 describe("PS-1A documents (schema v1) keep loading", () => {
   const names = Object.keys(v1Documents) as LegacyFixtureId[];
 
-  it.each(names)("%s, as PS-1A's converter wrote it, migrates to valid v2", (name) => {
+  it.each(names)("%s, as PS-1A's converter wrote it, migrates to valid v3", (name) => {
     const v1 = deepFreeze(structuredClone(v1Documents[name]));
     const restored = restoreDocument(v1, schema);
     expect(restored.ok ? [] : restored.problems).toEqual([]);
     if (!restored.ok) return;
     expect(restored.migratedFrom).toBe(1);
-    expect(restored.doc.attrs.schemaVersion).toBe(2);
+    expect(restored.doc.attrs.schemaVersion).toBe(3);
   });
 
   it.each(names)("%s migrates to exactly what the v2 converter writes", (name) => {
@@ -112,14 +112,14 @@ describe("PS-1A documents (schema v1) keep loading", () => {
   it("migration is pure and never lowers a version", () => {
     const v1 = deepFreeze(structuredClone(powerOfGodsWord));
     const once = migrateDocument(v1);
-    expect(once.ok && once.doc.attrs?.schemaVersion).toBe(2);
+    expect(once.ok && once.doc.attrs?.schemaVersion).toBe(3);
     const twice = once.ok ? migrateDocument(once.doc) : null;
     // A current document comes back as it is, the same object.
     expect(twice?.ok && twice.doc).toBe(once.ok && once.doc);
   });
 });
 
-describe("schema v2 documents", () => {
+describe("schema v3 documents", () => {
   const fixtures = Object.entries(documentFixtures);
 
   it.each(fixtures)("%s is valid and loads back exactly as written", (_name, fixture) => {
@@ -247,20 +247,20 @@ describe("versions", () => {
   it("never reads a newer document as an older one", () => {
     const newer = {
       ...documentFixtures.outlineOnly,
-      attrs: { ...documentFixtures.outlineOnly.attrs, schemaVersion: 3 },
+      attrs: { ...documentFixtures.outlineOnly.attrs, schemaVersion: 4 },
     };
     expect(restoreDocument(newer, schema)).toEqual({
       ok: false,
-      problems: [{ code: "unsupported_version", path: "/attrs/schemaVersion", detail: "3" }],
+      problems: [{ code: "unsupported_version", path: "/attrs/schemaVersion", detail: "4" }],
     });
-    expect(migrateDocument(newer)).toEqual({ ok: false, code: "unsupported_version", version: 3 });
+    expect(migrateDocument(newer)).toEqual({ ok: false, code: "unsupported_version", version: 4 });
   });
 
   it("writes the current version, whatever was loaded and however it was edited", () => {
     for (const json of [powerOfGodsWord, ...Object.values(documentFixtures)]) {
       const editor = editorFor(json);
       run(editor, addPoint("sibling"));
-      expect(editor.getJSON().attrs?.schemaVersion).toBe(2);
+      expect(editor.getJSON().attrs?.schemaVersion).toBe(3);
     }
   });
 });

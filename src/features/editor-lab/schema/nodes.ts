@@ -4,15 +4,22 @@ import { defaultLayout } from "../layout";
 import { currentSchemaVersion, noteKinds } from "./model";
 
 /*
- * The canonical sermon document, schema v2 (PS-1B.1 §B.2, Proposed; validated
- * in PS-1B.2A). One document holds outline, manuscript, or both:
+ * The canonical sermon document, schema v3 (PS-1B.1 §B.2, validated in
+ * PS-1B.2A; v3 in PS-1B.2B.2 B.2A). One document holds outline, manuscript,
+ * or both:
  *
- *   doc               (block | scripturePassage | preacherNote | outlinePoint
- *                      | sermonSection | pageBreak)+
- *   sermonSection     sectionTitle (block | scripturePassage | preacherNote)*
- *   outlinePoint      pointTitle (block | scripturePassage | preacherNote | outlinePoint)*
+ *   doc               (prose | outlinePoint | sermonSection | pageBreak)+
+ *   prose             block | scripturePassage | preacherNote | script
+ *   sermonSection     sectionTitle prose*
+ *   outlinePoint      pointTitle (prose | outlinePoint)*
  *   pointTitle, sectionTitle   (text | scriptureReference)*, with marks
  *   preacherNote      (paragraph | bulletList | orderedList)+
+ *   script            (paragraph | bulletList | orderedList)+
+ *
+ * v3 adds the Script (exact wording the preacher means to say aloud) and the
+ * style contracts: the document's `styles`, `subtitle`, and `page`; a
+ * paragraph's `styleName`; a paragraph's or heading's `format`; a component's
+ * `appearance` (`styles/model.ts`, `styles/attributes.ts`).
  *
  * `block` is StarterKit's ordinary manuscript (paragraphs, headings, lists,
  * quotations), and lists and quotations hold only those: a point, a section,
@@ -30,13 +37,14 @@ export const identifiedTypes = [
   "scripturePassage",
   "scriptureReference",
   "preacherNote",
+  "script",
 ] as const;
 
 /** The node types that stand for a legacy outline entry. */
 export const entryNodeTypes = ["sermonSection", "outlinePoint"] as const;
 
 /** Content a point's or a section's body may hold besides subpoints. */
-export const proseContent = "block | scripturePassage | preacherNote";
+export const proseContent = "block | scripturePassage | preacherNote | script";
 
 /** An attribute kept in the HTML as `data-<name>`, so copy and paste carry it. */
 export function dataAttribute(name: string, kind: "string" | "number" | "json" = "string") {
@@ -90,6 +98,12 @@ export const LabDocument = Node.create({
       translation: { default: null },
       legacyOutlineId: { default: null },
       legacyRevision: { default: null },
+      /** The document's own styles (`DocumentStyles`), or null for every default. */
+      styles: { default: null },
+      /** The optional line under the sermon's title. The title is the sermon's, never stored here. */
+      subtitle: { default: null },
+      /** The sermon's own paper, margins, running header, and page numbers (`PageSetup`), or null. */
+      page: { default: null },
     };
   },
 });
@@ -198,6 +212,34 @@ export const PreacherNote = Node.create({
     return [
       "aside",
       mergeAttributes(HTMLAttributes, { "data-type": "preacher-note", class: "lab-note" }),
+      0,
+    ];
+  },
+});
+
+/**
+ * A Script: exact wording the preacher means to say aloud (the owner's
+ * definition, PS-1B.2B.2). Not a note (a reminder to the preacher) and not
+ * Scripture. It holds ordinary paragraphs and lists, so it is written like
+ * any prose and flows over pages as lines; it may stand wherever prose may,
+ * but never inside a list, a quotation, a note, or another script. It is not
+ * isolating, so editing at its edges behaves as it does at a quotation's.
+ * Its look is a component style and its own `appearance` (B.2C).
+ */
+export const Script = Node.create({
+  name: "script",
+  content: "(paragraph | bulletList | orderedList)+",
+  defining: true,
+  addAttributes() {
+    return { id: dataAttribute("id") };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="script"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, { "data-type": "script", class: "lab-script" }),
       0,
     ];
   },

@@ -1,8 +1,9 @@
 import { getStyleProperty, mergeAttributes } from "@tiptap/core";
 import { Highlight } from "@tiptap/extension-highlight";
 import { TextAlign } from "@tiptap/extension-text-align";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
+import { isFontKey, isFontSize } from "../styles/model";
 import { defaultHighlight, highlightPresets, textAlignments, textColorPresets } from "./model";
 
 /*
@@ -73,14 +74,37 @@ function colorHTML(color: unknown, property: "color" | "background-color") {
     : { "data-color": color };
 }
 
-/** `textStyle` carries only a color in schema v2: a span without one is not a mark. */
+/** A font family as stored: a registry key (`styles/model.ts`), read from our own markup only. */
+const fontFamilyOf = (element: HTMLElement) => {
+  const value = element.getAttribute("data-font-family");
+  return isFontKey(value) ? value : null;
+};
+
+/** A font size as stored: points, a number, read from our own markup only. */
+const fontSizeOf = (element: HTMLElement) => {
+  const raw = element.getAttribute("data-font-size");
+  const value = raw === null || raw === "" ? Number.NaN : Number(raw);
+  return isFontSize(value) ? value : null;
+};
+
+/**
+ * `textStyle` carries a color, a font family, a font size, or several
+ * (schema v3): a span with none of them is not a mark. Foreign fonts and
+ * sizes in pasted HTML are mapped in B.2B; until then only our own
+ * `data-font-*` attributes are read, and anything else gives no font.
+ */
 export const LabTextStyle = TextStyle.extend({
   parseHTML() {
     return [
       {
         tag: "span",
         consuming: false,
-        getAttrs: (element) => (textColorOf(element as HTMLElement) ? {} : false),
+        getAttrs: (node) => {
+          const element = node as HTMLElement;
+          return textColorOf(element) || fontFamilyOf(element) || fontSizeOf(element) !== null
+            ? {}
+            : false;
+        },
       },
     ];
   },
@@ -132,4 +156,54 @@ export const LabTextAlign = TextAlign.configure({
   defaultAlignment: null,
 });
 
-export const formattingExtensions = [LabTextStyle, LabColor, LabHighlight, LabTextAlign];
+/**
+ * The font family and size of a run of text (schema v3). Kept as `data-`
+ * attributes only: nothing is drawn from them until B.2B loads the fonts and
+ * styles them, and the stored value is never a CSS string.
+ */
+export const LabFontFamily = FontFamily.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["textStyle"],
+        attributes: {
+          fontFamily: {
+            default: null,
+            parseHTML: fontFamilyOf,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              isFontKey(attributes.fontFamily) ? { "data-font-family": attributes.fontFamily } : {},
+          },
+        },
+      },
+    ];
+  },
+});
+
+export const LabFontSize = FontSize.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["textStyle"],
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: fontSizeOf,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              isFontSize(attributes.fontSize)
+                ? { "data-font-size": String(attributes.fontSize) }
+                : {},
+          },
+        },
+      },
+    ];
+  },
+});
+
+export const formattingExtensions = [
+  LabTextStyle,
+  LabColor,
+  LabFontFamily,
+  LabFontSize,
+  LabHighlight,
+  LabTextAlign,
+];

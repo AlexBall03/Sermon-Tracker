@@ -9,7 +9,7 @@ import { layoutBeyondNumbering, layoutFromNumbering } from "./layout";
 import { currentSchemaVersion } from "./schema/model";
 
 /*
- * Legacy outline ⇄ canonical document, schema v2 (PS-1B.1 §E.2; lab only, no
+ * Legacy outline ⇄ canonical document, schema v3 (PS-1B.1 §E.2; lab only, no
  * production use).
  *
  * `legacyToDocument` is exact. It walks the entries in the order
@@ -222,7 +222,16 @@ export type Loss = {
     | "color"
     | "alignment"
     | "translation"
-    | "presentation";
+    | "presentation"
+    // Schema v3 (PS-1B.2B.2): a legacy entry has no Script, style, font, or page settings.
+    | "script"
+    | "styles"
+    | "subtitle"
+    | "page"
+    | "text_style"
+    | "paragraph_format"
+    | "appearance"
+    | "font";
   /** The entry it belongs to, when it belongs to one. */
   entryId?: string;
   /** The node type, the field, or the limit. */
@@ -254,6 +263,22 @@ function referenceOf(attrs: Record<string, unknown> = {}): ScriptureReference {
 
 const colorMarks = new Set(["textStyle", "highlight"]);
 
+type MarkJson = NonNullable<JSONContent["marks"]>[number];
+/** A highlight, or a text style that sets a color (a text style may set only a font, schema v3). */
+const hasColor = (marks: MarkJson[]) =>
+  marks.some(
+    (mark) =>
+      mark.type === "highlight" ||
+      (mark.type === "textStyle" && mark.attrs?.color !== null && mark.attrs?.color !== undefined),
+  );
+/** A text style that sets a font family or size (schema v3). */
+const hasFont = (marks: MarkJson[]) =>
+  marks.some(
+    (mark) =>
+      mark.type === "textStyle" &&
+      ((mark.attrs?.fontFamily ?? null) !== null || (mark.attrs?.fontSize ?? null) !== null),
+  );
+
 /** The type of entry a node stands for, if it stands for one. */
 function entryTypeOf(node: JSONContent): EntryType | null {
   if (node.type === "outlinePoint") return "point";
@@ -275,6 +300,14 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
   if (layoutBeyondNumbering(layout)) losses.push({ code: "layout" });
   if (attrs.translation !== null && attrs.translation !== undefined) {
     losses.push({ code: "translation", detail: String(attrs.translation) });
+  }
+  for (const field of ["styles", "subtitle", "page"] as const) {
+    if (attrs[field] !== null && attrs[field] !== undefined) {
+      losses.push({
+        code: field,
+        ...(field === "subtitle" ? { text: String(attrs.subtitle) } : {}),
+      });
+    }
   }
 
   const entryId = (node: JSONContent) => {
@@ -311,6 +344,8 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
       losses.push({ code: "page_break" });
     } else if (node.type === "preacherNote") {
       losses.push({ code: "note", detail: node.attrs?.kind, text: plainText(node) });
+    } else if (node.type === "script") {
+      losses.push({ code: "script", text: plainText(node) });
     } else {
       losses.push({ code: "top_level_block", detail: node.type, text: plainText(node) });
     }
@@ -331,6 +366,7 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
     if (type === "point" && node.attrs?.presentation) {
       losses.push({ code: "presentation", entryId: id });
     }
+    if (node.attrs?.appearance) losses.push({ code: "appearance", entryId: id });
 
     for (const child of node.content ?? []) {
       switch (child.type) {
@@ -340,8 +376,11 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
             if (inline.type === "text") {
               title += inline.text ?? "";
               const marks = inline.marks ?? [];
-              if (marks.some((mark) => colorMarks.has(mark.type))) {
+              if (hasColor(marks)) {
                 losses.push({ code: "color", entryId: id, text: inline.text });
+              }
+              if (hasFont(marks)) {
+                losses.push({ code: "font", entryId: id, text: inline.text });
               }
               if (marks.some((mark) => !colorMarks.has(mark.type))) {
                 losses.push({
@@ -373,6 +412,7 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
               detail: String(child.attrs.translation),
             });
           }
+          if (child.attrs?.appearance) losses.push({ code: "appearance", entryId: id });
           break;
         case "paragraph": {
           sawBody = true;
@@ -381,13 +421,20 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
           if (child.attrs?.textAlign) {
             losses.push({ code: "alignment", entryId: id, detail: String(child.attrs.textAlign) });
           }
+          if (child.attrs?.styleName) {
+            losses.push({ code: "text_style", entryId: id, detail: String(child.attrs.styleName) });
+          }
+          if (child.attrs?.format) losses.push({ code: "paragraph_format", entryId: id });
           let line = "";
           for (const inline of child.content ?? []) {
             if (inline.type === "text") {
               line += inline.text ?? "";
               const marks = inline.marks ?? [];
-              if (marks.some((mark) => colorMarks.has(mark.type))) {
+              if (hasColor(marks)) {
                 losses.push({ code: "color", entryId: id, text: inline.text });
+              }
+              if (hasFont(marks)) {
+                losses.push({ code: "font", entryId: id, text: inline.text });
               }
               const plain = marks.filter((mark) => !colorMarks.has(mark.type));
               if (plain.length) {
@@ -418,6 +465,10 @@ export function documentToLegacy(doc: JSONContent, locale: Locale = defaultLocal
           sawBody = true;
           sawChild = true;
           children.push({ node: child, parentId: id, position: children.length });
+          break;
+        case "script":
+          sawBody = true;
+          losses.push({ code: "script", entryId: id, text: plainText(child) });
           break;
         case "preacherNote":
           sawBody = true;
