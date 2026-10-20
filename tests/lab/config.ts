@@ -5,7 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
  * configuration (playwright.config.ts) is unchanged and does not see them:
  * they live in tests/lab, outside its tests/e2e.
  *
- *   npm run test:e2e:lab        playwright.lab.config.ts: the lab on a
+ *   npm run test:e2e:lab        playwright.lab.config.ts: the lab (and, since
+ *                               PS-1B.2B.1, its Print Layout) on a
  *                               development server (port 3200, or an
  *                               existing one named by LAB_BASE_URL), signed
  *                               in, at desktop and phone sizes
@@ -30,7 +31,7 @@ export function labConfig({ production }: { production: boolean }) {
   const baseURL = existing ?? `http://localhost:${port}`;
 
   return defineConfig({
-    testMatch: production ? "production.spec.ts" : "editor.spec.ts",
+    testMatch: production ? "production.spec.ts" : /(editor|pagination)\.spec\.ts$/,
     fullyParallel: false,
     workers: 1,
     forbidOnly: !!process.env.CI,

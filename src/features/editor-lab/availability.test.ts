@@ -66,12 +66,31 @@ describe("the lab's boundaries (migration document §15.3)", () => {
     for (const { path, text } of sources) expect(text, path).not.toMatch(pattern);
   });
 
+  /*
+   * PS-1B.1 §G lets the lab keep device-local view state in the browser under
+   * lab-only keys. Since PS-1B.2B.1 one file does (Print Layout's default
+   * layout, its last paper and margins, and this tab's layout, the owner's
+   * request), and nothing else may.
+   */
+  const viewStatePreferences = /pagination[\\/]preferences\.ts$/;
+
   it("sends and stores nothing", () => {
     for (const { path, text } of sources) {
       expect(text, path).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|WebSocket|EventSource/);
-      expect(text, path).not.toMatch(/localStorage|sessionStorage|indexedDB|caches\./);
+      expect(text, path).not.toMatch(/indexedDB|caches\./);
+      if (!viewStatePreferences.test(path)) {
+        expect(text, path).not.toMatch(/localStorage|sessionStorage/);
+      }
       expect(text, path).not.toMatch(/setInterval\(/);
     }
+  });
+
+  it("keeps its browser preferences under lab-only keys", () => {
+    const preferences = sources.find(({ path }) => viewStatePreferences.test(path));
+    expect(preferences).toBeDefined();
+    const keys = [...preferences!.text.matchAll(/:\s*"([^"]*:[^"]*)"/g)].map((match) => match[1]);
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(key).toMatch(/^ps-lab:/);
   });
 
   it("is not in the navigation, the routes, the sitemap, or the tour", () => {

@@ -243,7 +243,90 @@ export const outlineOnly = sermonDocument(
   { layout: layoutFromNumbering({ version: 1, preset: "decimal" }) },
 );
 
-export const documentFixtures = { lampAndPath, sectionsAnywhere, manuscriptOnly, outlineOnly };
+/**
+ * Numbered sentences, so that every line of a long paragraph can be told
+ * apart when pages are compared (PS-1B.2B.1). Plain test text.
+ */
+const sentences = (prefix: string, from: number, count: number) =>
+  Array.from(
+    { length: count },
+    (_, index) =>
+      `${prefix} ${from + index}: the word of the Lord endureth, and the grass withereth, but his mercy is from everlasting.`,
+  ).join(" ");
+
+/**
+ * Print Layout's test sermon (PS-1B.2B.1): prose and points mixed, a
+ * paragraph longer than a Letter page, points nested across a page, an
+ * explicit page break, a whole chapter printed in full (Romans 8, collapsed
+ * in Regular Layout until expanded), and passages printed as a reference and
+ * hidden.
+ */
+export const printLayout = sermonDocument(
+  [
+    heading(2, text("Pages Without Seams")),
+    paragraph(text(`A test sermon for Print Layout. ${sentences("Opening", 1, 4)}`)),
+    section(
+      "pl-intro",
+      "introduction",
+      [text("Introduction")],
+      [paragraph(text(sentences("Introduction", 1, 6)))],
+    ),
+    point(
+      "pl-1",
+      [text("A Paragraph Longer Than a Page")],
+      [paragraph(text(sentences("Long", 1, 48)))],
+    ),
+    point(
+      "pl-2",
+      [text("Points Nested Across a Page")],
+      [
+        paragraph(text(sentences("Second", 1, 3))),
+        ...Array.from({ length: 6 }, (_, index) =>
+          point(
+            `pl-2-${index + 1}`,
+            [text(`Subpoint ${index + 1}`)],
+            [
+              paragraph(text(sentences(`Sub ${index + 1}`, 1, 2))),
+              point(
+                `pl-2-${index + 1}a`,
+                [text(`Under subpoint ${index + 1}`)],
+                [paragraph(text(sentences(`Deep ${index + 1}`, 1, 1)))],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+    paragraph(text("Prose after the points, before an explicit page break.")),
+    pageBreak,
+    point(
+      "pl-3",
+      [text("The Spirit of Life")],
+      [
+        paragraph(text("Romans 8 is printed in full:")),
+        passage("pl-3-p1", ref(45, 8), "full"),
+        passage("pl-3-p2", ref(43, 3, 16), "reference"),
+        passage("pl-3-p3", ref(43, 3, 17), "hidden"),
+        paragraph(text(sentences("After", 1, 3))),
+      ],
+    ),
+    section(
+      "pl-end",
+      "conclusion",
+      [text("Conclusion")],
+      [paragraph(text(sentences("Closing", 1, 3)))],
+    ),
+  ],
+  { translation: "kjv" },
+);
+
+export const documentFixtures = {
+  lampAndPath,
+  sectionsAnywhere,
+  manuscriptOnly,
+  outlineOnly,
+  printLayout,
+};
 export type DocumentFixtureId = keyof typeof documentFixtures;
 
 /** A copy of `base` with one change, for the invalid set. */

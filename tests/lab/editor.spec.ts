@@ -49,7 +49,8 @@ async function intoTitle(page: Page, id: string) {
 }
 
 async function panel(page: Page, name: string) {
-  await page.getByRole("radio", { name }).check({ force: true });
+  // As a click does: in the editor workspace (PS-1B.2B.1) the inspector can be scrolled out of view.
+  await page.getByRole("radio", { name }).evaluate((input: HTMLInputElement) => input.click());
 }
 
 async function choose(page: Page, label: string, option: string) {

@@ -4,12 +4,17 @@
  * it is never part of the document and is not selected or copied.
  */
 
+/*
+ * The document is never outlined while it is being written in: the caret
+ * shows where the writing goes, as in a word processor.
+ */
 .lab-surface:focus-within {
-  border-radius: inherit;
-  box-shadow: 0 0 0 2px var(--ring);
+  box-shadow: none;
 }
 
 .lab-editor {
+  /* The caret is emerald (the colour of focus), deep enough to read on paper in either theme. */
+  caret-color: var(--primary);
   min-height: 60vh;
   max-width: 72ch;
   margin-inline: auto;
@@ -164,4 +169,427 @@
 .lab-editor .ProseMirror-selectednode.lab-scripture {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
+}
+
+/* Passage verses (PS-1B.2B.1). Shown in Regular Layout when expanded, in Print Layout by `print`. */
+
+.lab-passage-label {
+  font-weight: 500;
+}
+
+.lab-passage-text {
+  display: none;
+  margin-top: 0.125rem;
+  color: var(--foreground);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+.lab-passage-text p {
+  margin: 0;
+}
+
+/* A verse number never changes the height of its line. */
+.lab-passage-text sup {
+  position: relative;
+  top: -0.4em;
+  margin-inline: 0.15em 0.2em;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.7em;
+  vertical-align: baseline;
+}
+
+.lab-editor[data-layout="regular"] .lab-passage[data-expanded] .lab-passage-text,
+.lab-editor[data-layout="print"] .lab-passage[data-print="full"] .lab-passage-text {
+  display: block;
+}
+
+/*
+ * Print Layout (PS-1B.2B.1, `pagination/plugin.ts`). The editor is one sheet
+ * wide and its padding is the paper's margins; the page gaps are floats as
+ * wide as the text, so no line can sit where one is. Nothing here may give
+ * a block of the document its own formatting context (overflow, flex, grid,
+ * flow-root): lines inside such a block would not flow round the gaps.
+ */
+
+.lab-scaler[data-layout="print"] {
+  overflow: clip;
+}
+
+.lab-scaler[data-layout="print"] > .lab-sheet-column {
+  transform-origin: top left;
+}
+
+.lab-editor[data-layout="print"] {
+  display: flow-root;
+  box-sizing: border-box;
+  width: var(--page-w);
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: var(--mt) var(--mr) 0 var(--ml);
+  background: var(--surface);
+  box-shadow: var(--elevation-raised);
+}
+
+.lab-pages {
+  height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* A page's text area: no width, so lines flow beside it; it only holds the next edge down. */
+.lab-page-spacer {
+  float: left;
+  clear: both;
+  width: 0;
+  height: var(--content-h);
+}
+
+.lab-page-gap,
+.lab-page-end {
+  position: relative;
+  float: left;
+  clear: both;
+  width: calc(100% + var(--ml) + var(--mr));
+  margin-left: calc(-1 * var(--ml));
+  /*
+   * Wider than the text by the right margin, and not pulled back: no room is
+   * left beside a gap at all, not even the zero width an empty line needs,
+   * so an empty line moves to the next page like any other.
+   */
+  margin-right: 0;
+  print-color-adjust: exact;
+}
+
+/* The bottom margin of one sheet, the desk between, and the top margin of the next. */
+.lab-page-gap {
+  height: calc(var(--mb) + var(--desk) + var(--mt));
+  background: linear-gradient(
+    to bottom,
+    var(--surface) 0 var(--mb),
+    var(--background) var(--mb) calc(var(--mb) + var(--desk)),
+    var(--surface) calc(var(--mb) + var(--desk)) 100%
+  );
+}
+
+.lab-page-end {
+  height: var(--mb);
+  background: var(--surface);
+}
+
+/* Page numbers sit at the bottom right, aligned with the text's right edge. */
+.lab-page-number {
+  position: absolute;
+  top: calc(var(--mb) / 2);
+  right: var(--mr);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1;
+  text-align: right;
+  transform: translateY(-50%);
+}
+
+/* An explicit break fills the rest of its page; on screen its top is marked. */
+.lab-editor[data-layout="print"] > .lab-page-break {
+  height: calc(var(--fill, 0px) + var(--mb) + var(--desk) + var(--mt));
+  margin: 0;
+  border: 0;
+  box-shadow: inset 0 1px 0 var(--border);
+}
+
+.lab-editor[data-layout="print"] > .lab-page-break[data-at-top] {
+  height: 0;
+}
+
+/* A hidden passage is a marker that takes no space on the page. */
+.lab-editor[data-layout="print"] .lab-passage[data-print="hidden"] {
+  position: relative;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lab-editor[data-layout="print"] .lab-passage[data-print="hidden"] .lab-passage-label {
+  position: absolute;
+  inset-inline-end: 0;
+  top: -0.75rem;
+  padding: 0 0.375rem;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+}
+
+/*
+ * The ruler above the sheet (`margin-ruler.tsx`): grey margins, a white text
+ * area, marks at the paper's own scale, and the margin edges to drag.
+ */
+/* The desk the sheets lie on, in Print Layout. */
+.lab-desk {
+  background: var(--background);
+}
+
+/* The ruler stays at the top of the desk while the pages scroll under it. */
+.lab-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 24px;
+  margin-bottom: 1.25rem;
+  background: var(--surface);
+  box-shadow: var(--elevation-card);
+  user-select: none;
+}
+
+.lab-ruler-margin {
+  position: absolute;
+  inset-block: 0;
+  background: var(--secondary);
+}
+
+.lab-ruler-marks {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.lab-ruler-tick {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+}
+
+.lab-ruler-number {
+  fill: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+
+/* The edge between margin and text: a narrow grip, a line when it is held or focused. */
+.lab-margin-edge {
+  position: absolute;
+  inset-block: 0;
+  width: 12px;
+  margin-left: -6px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.lab-margin-edge::after {
+  content: "";
+  position: absolute;
+  inset-block: 3px;
+  left: 5px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--muted-foreground);
+  opacity: 0.45;
+  transition:
+    opacity 120ms,
+    background-color 120ms;
+}
+
+.lab-margin-edge:hover::after,
+.lab-margin-edge:focus-visible::after,
+.lab-margin-edge[data-active]::after {
+  background: var(--primary);
+  opacity: 1;
+}
+
+.lab-margin-edge:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+  border-radius: 2px;
+}
+
+/* While a margin is dragged: a guide down the page, and the margin's width. */
+.lab-margin-guide {
+  position: absolute;
+  top: 100%;
+  left: 5px;
+  height: 100vh;
+  border-left: 1px solid color-mix(in oklab, var(--primary) 40%, transparent);
+  pointer-events: none;
+}
+
+.lab-margin-value {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 6px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--foreground);
+  color: var(--background);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/*
+ * Printing Print Layout: the sheet alone, at the paper's size (`@page`,
+ * written by the lab for the chosen paper), with no desk between pages. The
+ * screen already put every line inside a page, so the printer's own breaks
+ * fall in the blank gaps; orphans and widows are left to the screen.
+ */
+@media print {
+  body:has(.lab-editor[data-layout="print"]) {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+
+  body:has(.lab-editor[data-layout="print"]) :not(:has(.lab-editor), .lab-editor, .lab-editor *) {
+    display: none !important;
+  }
+
+  body:has(.lab-editor[data-layout="print"]) :has(.lab-editor) {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /*
+   * Printed in ink on paper whatever the theme: in dark mode the screen's
+   * light text and dark sheet would otherwise print grey on white, with a
+   * dark band where a page's margin is drawn.
+   */
+  .lab-editor[data-layout="print"] {
+    --desk: 0px !important;
+    --foreground: var(--brand-ink);
+    --muted-foreground: color-mix(in oklab, var(--brand-ink) 65%, transparent);
+    --border: color-mix(in oklab, var(--brand-ink) 16%, transparent);
+    --surface: transparent;
+    --background: transparent;
+    --secondary: transparent;
+    --primary: var(--brand-emerald);
+    --primary-soft: color-mix(in oklab, var(--brand-emerald) 9%, transparent);
+    color: var(--foreground);
+    background: none;
+    box-shadow: none;
+  }
+
+  .lab-editor[data-layout="print"],
+  .lab-editor[data-layout="print"] * {
+    orphans: 1;
+    widows: 1;
+    break-before: auto;
+    break-after: auto;
+    break-inside: auto;
+  }
+
+  .lab-editor[data-layout="print"] > .lab-page-break {
+    box-shadow: none;
+  }
+
+  .lab-editor[data-layout="print"] .lab-passage[data-print="hidden"] {
+    display: none;
+  }
+}
+
+/*
+ * The gap cursor (a place between blocks where no text can be typed, such as
+ * after a closing section), drawn as a caret rather than as a black dash. It
+ * takes no space, as ProseMirror's own does: showing it must never move the
+ * writing around it (it once did, and looked like a line appearing).
+ */
+.lab-editor .ProseMirror-gapcursor {
+  position: absolute;
+  height: 0;
+}
+
+.lab-editor .ProseMirror-gapcursor::after {
+  content: "";
+  position: absolute;
+  top: 0.25em;
+  left: 0;
+  width: 0;
+  height: 1.2em;
+  border-top: 0;
+  /* As thin as the browser's own caret, and the same colour, so the two look alike. */
+  border-left: 1px solid var(--primary);
+  animation: lab-caret-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes lab-caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-editor .ProseMirror-gapcursor::after {
+    animation: none;
+  }
+}
+
+/*
+ * An empty line (a textblock holding only ProseMirror's trailing break) has
+ * no width, and Chrome lays such a line beside a page gap instead of below
+ * it. In Print Layout it gets an invisible mark one pixel wide, so it moves
+ * to the next page like a line of text. Numbered titles already have their
+ * label. Nothing here is in the document.
+ */
+.lab-editor[data-layout="print"]
+  :is(p, h2, h3, h4, .lab-title):not(.lab-numbered):has(
+    > br.ProseMirror-trailingBreak:first-child
+  )::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+}
+
+/* The mark that gives an empty last line its width in Print Layout (`plugin.ts`). */
+.lab-line-mark {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+}
+
+/*
+ * Print Layout's indentation is the paper's, never the window's: the narrower
+ * indent for small screens (above) would wrap lines differently on a phone,
+ * and pages must not depend on the window.
+ */
+.lab-editor[data-layout="print"] .lab-point .lab-point {
+  padding-left: 1.25rem;
+}
+
+.lab-editor[data-layout="print"]
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point
+  .lab-point {
+  padding-left: 0;
+}
+
+/*
+ * A section that ends the document leaves no empty space under it (the
+ * caret between blocks, when shown after it, does not count as content).
+ */
+.lab-editor > .lab-section:not(:has(~ :not(.ProseMirror-gapcursor))) {
+  margin-bottom: 0;
 }

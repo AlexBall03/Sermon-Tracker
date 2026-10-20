@@ -1,5 +1,5 @@
 /**
- * The development-only editor lab (PS-1A, PS-1B.2A; /lab/editor). Fixture sermon text
+ * The development-only editor lab (PS-1A, PS-1B.2A, PS-1B.2B.1; /lab/editor). Fixture sermon text
  * is test data and lives with the fixtures, not here.
  */
 export const editorLab = {
@@ -13,7 +13,7 @@ export const editorLab = {
     "It does not save, sync, or queue anything, and never touches a real sermon or outline.",
     "Its schema (v2) and its identity rules are being validated (PS-1B.2), not yet decided for production.",
     "Points are numbered by the outline engine; ordinary lists keep their own numbers.",
-    "Passages show their reference only; expanding them, colors' theme tones, and Print Layout come in PS-1B.2B.",
+    "Print Layout is a feasibility prototype (PS-1B.2B.1): its paper, margins, and default are kept in this browser only, and a passage is expanded or collapsed all at once.",
     "Rich content (formatting, notes, prose outside points, page breaks) does not fit a legacy entry; the conversion reports it.",
   ],
   fixture: "Document",
@@ -33,10 +33,44 @@ export const editorLab = {
     whitespace: "Notes whitespace",
     malformed: "Malformed hierarchy",
     stress: "500 entries (stress)",
+    printLayout: "Print Layout test (long paragraph, Romans 8)",
   },
   numbering: "Numbering",
   customNumbering: "Custom (POINT I: / (a) / 1.1.1.)",
   editorLabel: "Sermon document",
+  workspace: {
+    back: "Back to Outlines",
+    prototype: "Prototype · nothing is saved",
+  },
+  print: {
+    layout: "Layout",
+    layouts: { regular: "Regular", print: "Print" },
+    defaultLayout: "Default layout",
+    defaults: {
+      automatic: "Automatic (Print on desktop, Regular on mobile)",
+      regular: "Regular",
+      print: "Print",
+    },
+    paper: "Paper",
+    papers: {
+      letter: "Letter (8.5 × 11 in)",
+      legal: "Legal (8.5 × 14 in)",
+      a4: "A4 (210 × 297 mm)",
+      a5: "A5 (148 × 210 mm)",
+      halfLetter: "Half Letter (5.5 × 8.5 in)",
+    },
+    margins: "Side margins",
+    leftMargin: "Left margin",
+    rightMargin: "Right margin",
+    marginValue: (value: string, unit: "in" | "cm"): string =>
+      unit === "in" ? `${value} in` : `${value} cm`,
+    resetMargins: "Reset margins",
+    expandPassages: "Expand passages in Regular",
+    collapsePassages: "Collapse passages in Regular",
+    expandInPrint: "In Print Layout each passage shows as it prints",
+    pages: (count: string) => `${count} pages`,
+    remembered: "Paper and margins are remembered in this browser for the next document.",
+  },
   toolbar: {
     label: "Formatting and outline",
     bold: "Bold",
@@ -124,6 +158,11 @@ export const editorLab = {
     saves: "Coalesced saves (simulated, 900 ms)",
     savedBytes: "Bytes those saves would send",
     loaded: "Editor ready after",
+    pages: "Pages (Print Layout)",
+    pagination: "Last pagination",
+    paginationSlowest: "Slowest pagination",
+    paginationRuns: "Pagination runs",
+    paginationPasses: "Layout passes, last run",
     ms: (value: string) => `${value} ms`,
   },
 };

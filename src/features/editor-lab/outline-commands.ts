@@ -1,5 +1,6 @@
 import { Extension, type Editor } from "@tiptap/core";
-import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from "@tiptap/pm/model";
+import { GapCursor } from "@tiptap/pm/gapcursor";
 import { liftListItem, sinkListItem } from "@tiptap/pm/schema-list";
 import {
   NodeSelection,
@@ -301,8 +302,10 @@ export const titleEnter: Command = (state, dispatch) => {
 };
 
 /**
- * Backspace at the very start of a point's title, when the node before it is
- * a point beside it: the two become one. The first keeps its node and ID; the
+ * The two points become one, when the node before the cursor's point is a
+ * point beside it (a command; Backspace reaches the same end in two steps,
+ * through `unwrapPoint` and `backspaceAfterContainer`, as a word processor
+ * does with list items). The first keeps its node and ID; the
  * second's title (with its marks) is added to the first's, and its body and
  * subpoints after the first's. The second ID is retired; its source point's
  * link ends with it.
@@ -366,11 +369,74 @@ export const leaveContainer: Command = (state, dispatch) => {
 };
 
 /**
+ * Backspace in a point that holds nothing (an empty title, no body, no
+ * subpoints): the point is removed and the cursor goes to the end of the line
+ * before it, as Backspace removes an empty list item in a word processor
+ * (the owner's decision, PS-1B.2B.1). A document left with nothing gets one
+ * empty line.
+ */
+export const removeEmptyPoint: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parent.type.name !== "pointTitle" || $from.parent.content.size > 0) {
+    return false;
+  }
+  const current = pointAround($from);
+  if (!current || current.node.childCount !== 1) return false;
+  if (!dispatch) return true;
+  const end = current.pos + current.node.nodeSize;
+  const tr =
+    current.depth === 1 && state.doc.childCount === 1
+      ? state.tr.replaceWith(current.pos, end, state.schema.nodes.paragraph.create())
+      : state.tr.delete(current.pos, end);
+  tr.setSelection(Selection.near(tr.doc.resolve(tr.mapping.map(current.pos)), -1));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
+ * Backspace at the very start of a point's title: the point becomes ordinary
+ * writing again, as Backspace takes the bullet off a list item (the owner's
+ * decision, PS-1B.2B.1). Its title becomes a paragraph with the same words
+ * and marks, in the same place; its body follows it unchanged; its subpoints
+ * keep their IDs and everything they own and move up one level, to the
+ * point's parent. Nothing is deleted, the point's own ID is retired, and one
+ * undo restores it. A second Backspace then joins that paragraph to the line
+ * before (`backspaceAfterContainer`).
+ */
+export const unwrapPoint: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parent.type.name !== "pointTitle" || $from.parentOffset !== 0) return false;
+  const current = pointAround($from);
+  if (!current) return false;
+  const { paragraph } = state.schema.nodes;
+  const title = current.node.firstChild!;
+  if (!paragraph.validContent(title.content)) return false;
+  const rest: ProseMirrorNode[] = [];
+  current.node.forEach((child, _offset, index) => {
+    if (index > 0) rest.push(child);
+  });
+  const replacement = [paragraph.create(null, title.content), ...rest];
+  const $point = state.doc.resolve(current.pos);
+  const index = $point.index();
+  if (!$point.parent.canReplace(index, index + 1, Fragment.from(replacement))) return false;
+  if (!dispatch) return true;
+  const tr = state.tr.replaceWith(current.pos, current.pos + current.node.nodeSize, replacement);
+  tr.setSelection(TextSelection.create(tr.doc, current.pos + 1));
+  dispatch(tr.scrollIntoView());
+  return true;
+};
+
+/**
  * Backspace at the start of a block straight after a point or a section. The
- * container is a boundary that editing does not cross: instead of selecting
- * the whole point (where a second Backspace would delete it with everything
- * it owns), the cursor goes to the end of the point's last text. An empty
- * paragraph there is removed on the way.
+ * container is a boundary that editing does not cross by accident: its whole
+ * node is never selected (where a second Backspace would delete it with
+ * everything it owns). Instead, as in a word processor:
+ *
+ * - an empty line is removed, and the cursor goes to the end of the point's
+ *   last text;
+ * - a line with words is joined to the end of the point's last text, when
+ *   that text can hold them (a title holds no line break); otherwise the
+ *   cursor goes there and nothing changes.
  */
 export const backspaceAfterContainer: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
@@ -385,11 +451,26 @@ export const backspaceAfterContainer: Command = (state, dispatch) => {
   if (!containerTypes.has(before.type.name)) return false;
   if (!dispatch) return true;
 
+  const line = $from.parent;
   const blockStart = $from.before();
-  const tr = state.tr;
-  if ($from.parent.content.size === 0) tr.delete(blockStart, blockStart + $from.parent.nodeSize);
   const containerEnd = blockStart - 1;
-  tr.setSelection(Selection.near(tr.doc.resolve(containerEnd), -1));
+  const target = Selection.near(state.doc.resolve(containerEnd), -1);
+  const tr = state.tr;
+  if (line.content.size === 0) {
+    tr.delete(blockStart, blockStart + line.nodeSize);
+    tr.setSelection(Selection.near(tr.doc.resolve(containerEnd), -1));
+  } else if (
+    target instanceof TextSelection &&
+    target.$from.parent.isTextblock &&
+    target.$from.parentOffset === target.$from.parent.content.size &&
+    target.$from.parent.type.validContent(target.$from.parent.content.append(line.content))
+  ) {
+    tr.delete(blockStart, blockStart + line.nodeSize);
+    tr.insert(target.from, line.content);
+    tr.setSelection(TextSelection.create(tr.doc, target.from));
+  } else {
+    tr.setSelection(target);
+  }
   dispatch(tr.scrollIntoView());
   return true;
 };
@@ -594,6 +675,36 @@ function sectionCounts(doc: ProseMirrorNode) {
   return counts;
 }
 
+/**
+ * → at the very end of a section's last line, or ← at the very start of its
+ * title, stops at the section's edge (a gap cursor) where there is one: the
+ * place just after or before the section where a new line can be opened with
+ * Enter or by typing (the owner's request, PS-1B.2B.1). Without this only ↓
+ * stopped there, and → went straight past. Where writing already follows
+ * the section, the cursor goes on into it as before.
+ */
+export const toSectionEdge =
+  (dir: 1 | -1): Command =>
+  (state, dispatch) => {
+    const { selection } = state;
+    if (!(selection instanceof TextSelection) || !selection.empty) return false;
+    const $head = selection.$head;
+    const section = sectionAround($head);
+    if (!section) return false;
+    const end = section.pos + section.node.nodeSize;
+    const edge =
+      dir > 0
+        ? Selection.near(state.doc.resolve(end - 1), -1)
+        : Selection.near(state.doc.resolve(section.pos + 1), 1);
+    if (edge.head !== $head.pos) return false;
+    const $gap = state.doc.resolve(dir > 0 ? end : section.pos);
+    // An edge to stop at: no line of text directly beside it (there the cursor simply goes into that line).
+    const beside = [$gap.nodeBefore, $gap.nodeAfter];
+    if (beside.some((node) => node?.isTextblock)) return false;
+    if (dispatch) dispatch(state.tr.setSelection(new GapCursor($gap)).scrollIntoView());
+    return true;
+  };
+
 export const sectionGuardKey = new PluginKey("labSectionGuard");
 
 export const OutlineKeymap = Extension.create({
@@ -609,9 +720,11 @@ export const OutlineKeymap = Extension.create({
       "Alt-Shift-ArrowLeft": on(outdent),
       "Mod-Enter": on(addPoint("sibling")),
       "Mod-Shift-Enter": on(addPoint("child")),
+      ArrowRight: on(toSectionEdge(1)),
+      ArrowLeft: on(toSectionEdge(-1)),
       Enter: on(firstOf(titleEnter, leaveContainer)),
       "Shift-Enter": on(titleLineBreak),
-      Backspace: on(firstOf(mergeWithPrevious, backspaceAfterContainer)),
+      Backspace: on(firstOf(removeEmptyPoint, unwrapPoint, backspaceAfterContainer)),
       Delete: on(deleteBeforeContainer),
     };
   },

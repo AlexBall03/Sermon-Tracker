@@ -37,7 +37,12 @@ import {
 /** How many times the toolbar has rendered, for the lab's measurements. */
 export const toolbarRenders = { count: 0 };
 
-export function LabToolbar({ editor }: { editor: Editor }) {
+/**
+ * The editor's one toolbar row, in the order word processors use: history,
+ * then formatting, then the outline's own actions. `children` are the view's
+ * controls (layout, paper), kept at the row's end.
+ */
+export function LabToolbar({ editor, children }: { editor: Editor; children?: React.ReactNode }) {
   const t = useT("editorLab").toolbar;
   // Only what the buttons show; the toolbar renders again only when one of these changes.
   const state = useEditorState({
@@ -78,8 +83,23 @@ export function LabToolbar({ editor }: { editor: Editor }) {
     <div
       role="toolbar"
       aria-label={t.label}
-      className="flex flex-wrap items-center gap-1 rounded-xl border bg-surface p-1.5 shadow-card"
+      // One row: on a phone it scrolls sideways instead of stacking; wider, it wraps if it must.
+      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 md:flex-wrap md:overflow-visible"
     >
+      <Group>
+        <Tool
+          label={t.undo}
+          disabled={!state.undo}
+          onPress={() => chain().undo().run()}
+          icon={Undo2}
+        />
+        <Tool
+          label={t.redo}
+          disabled={!state.redo}
+          onPress={() => chain().redo().run()}
+          icon={Redo2}
+        />
+      </Group>
       <Group>
         <Tool
           label={t.bold}
@@ -126,7 +146,7 @@ export function LabToolbar({ editor }: { editor: Editor }) {
           icon={ListOrdered}
         />
       </Group>
-      <Group>
+      <Group last>
         <Tool
           label={t.addPoint}
           disabled={!state.point}
@@ -170,20 +190,9 @@ export function LabToolbar({ editor }: { editor: Editor }) {
           icon={IndentIncrease}
         />
       </Group>
-      <Group last>
-        <Tool
-          label={t.undo}
-          disabled={!state.undo}
-          onPress={() => chain().undo().run()}
-          icon={Undo2}
-        />
-        <Tool
-          label={t.redo}
-          disabled={!state.redo}
-          onPress={() => chain().redo().run()}
-          icon={Redo2}
-        />
-      </Group>
+      {children && (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{children}</div>
+      )}
     </div>
   );
 }
@@ -194,7 +203,7 @@ function Group({ children, last }: { children: React.ReactNode; last?: boolean }
   );
 }
 
-function Tool({
+export function Tool({
   label,
   icon: Icon,
   onPress,

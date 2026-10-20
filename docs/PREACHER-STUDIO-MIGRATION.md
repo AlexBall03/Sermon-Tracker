@@ -493,7 +493,7 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 | **PS-1A**                       | Rich-Text Editor Feasibility Prototype (section 15)                                                                     | Complete     | PS-0B; package approval                                    |
 | **PS-1B.1**                     | Product Experience & Flexible Document Architecture (documentation)                                                     | Complete     | PS-1A                                                      |
 | **PS-1B.2A**                    | Canonical Document Architecture Validation (section 15.9)                                                               | Complete     | PS-1B.1 (approved and closed); owner's go                  |
-| **PS-1B.2B**                    | The rest of the lab validation of PS-1B.1 (section 15.9)                                                                | Next         | PS-1B.2A; owner's go to start                              |
+| **PS-1B.2B**                    | The rest of the lab validation of PS-1B.1 (section 15.9); PS-1B.2B.1 (pagination) complete                              | In progress  | PS-1B.2A; owner's go to start                              |
 | **PS-2**                        | Document Data Model, Additive Schema & Legacy Conversion Foundation                                                     | Planned      | PS-1B.2 (its completion criteria, handoff PS-1B.1 §H)      |
 | **PS-3a**                       | Synchronization protocol compatibility (section 7.3, items 1–9)                                                         | Planned      | PS-1B.1                                                    |
 | **PS-3b**                       | Document Persistence, Revisioning & Offline Synchronization                                                             | Planned      | PS-2, PS-3a                                                |
@@ -626,7 +626,15 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - Rich titles and the §B.5 structural commands.
   - The three extensions installed at 3.31.4 (MIT). §H items 1, 2, 5, 11, and the isolation half of 10 are met.
   - The techniques stay Proposed; their open points are the handoff's §13.
-- **PS-1B.2B: next.** §G items 2, 3, 4 (controls and theme tokens), 5, 7, 8, and 9, and the rest of §H.
+- **PS-1B.2B: in progress, in parts.**
+  - **PS-1B.2B.1, Editable Pagination Feasibility: complete** ([handoff](HANDOFF-PS-1B.2B.1.md)). §G item 2: every criterion P1–P11 has a recorded result, and the verdict is that Print Layout is built with PS-4/PS-5 (the owner's real-phone, screen-reader, and Safari/Firefox print checks outstanding). §H item 8 is met.
+  - **The owner's decisions of 19 October 2026** recorded there (§8) and Approved by the owner:
+    - Print Layout only on a desktop (no Regular Layout, no toggle); on a phone, Regular by default with a toggle to Print; the default chosen in Settings. This amends handoff PS-1B.1 §C.9.
+    - A sermon keeps its own paper and margins, and the account's default for new sermons follows the last choice. This amends §J for that one value.
+    - Page numbers at the bottom right.
+    - Backspace removes, unwraps, and then joins points, as a word processor does with list items. This supersedes PS-1B.2A's rule.
+    - A title and subtitle on every page; a text-styles menu; Google Docs–like shortcuts; typing `1.`, `I.`, `i.`, or `*` to start points and bullets; the phone editor's reading and editing modes; printing that suits black-and-white printers; an Outlines home with the account's own templates and card and list views; an editor page that puts the editor first. These are requirements for the next parts and phases, not built.
+  - **Next:** §G items 3, 4 (controls and theme tokens), 5, 7 (with the owner's requests above), 8, and 9, and the rest of §H.
 
 ---
 

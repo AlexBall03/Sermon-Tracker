@@ -3,7 +3,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ClipboardNotice } from "./clipboard";
-import { documentFixtures, paragraph, point, sermonDocument, text } from "./documents";
+import { documentFixtures, paragraph, point, section, sermonDocument, text } from "./documents";
 import { legacyFixtures } from "./fixtures";
 import { documentToLegacy, legacyToDocument } from "./legacy";
 import {
@@ -20,6 +20,7 @@ import {
   turnIntoSection,
 } from "./outline-commands";
 import { numberingKey } from "./numbering";
+import { GapCursor } from "@tiptap/pm/gapcursor";
 import { ids, nodeJSON, nodePos, shape, testEditor, titleStart, topLevel } from "./testing";
 import { restoreDocument } from "./validate";
 
@@ -573,18 +574,35 @@ describe("Enter and Backspace at structural boundaries", () => {
     expect(editor.state.selection.$from.depth).toBe(1);
   });
 
-  it("Backspace at the start of prose after a point goes into the point and deletes nothing", () => {
+  it("Backspace at the start of prose after a point joins it to the point's last line, and never deletes the point", () => {
     const editor = editorFor(lampAndPath);
     const before = editor.getJSON();
     const after =
       nodePos(editor, "lp-1") + editor.state.doc.nodeAt(nodePos(editor, "lp-1"))!.nodeSize;
     select(editor, after + 1);
     press(editor, "Backspace");
-    expect(editor.getJSON()).toEqual(before);
-    // The cursor is at the end of lp-1's last text (lp-1b's title).
-    expect(editor.state.selection.$from.parent.type.name).toBe("pointTitle");
-    expect(editor.state.selection.$from.node(-1).attrs.id).toBe("lp-1b");
+    // As a word processor joins two lines: the prose ends lp-1's last line (lp-1b's title).
+    const title = editor.state.doc.nodeAt(nodePos(editor, "lp-1b"))!.firstChild!;
+    expect(title.textContent).toBe("Its warmthBetween the points: prose that belongs to no point.");
     expect(editor.state.selection.$from.parentOffset).toBe("Its warmth".length);
+    expect(ids(editor)).toEqual(ids(editorFor(lampAndPath)));
+    expect(valid(editor)).toEqual([]);
+    editor.commands.undo();
+    expect(editor.getJSON()).toEqual(before);
+  });
+
+  it("Backspace after a point never joins a line break into a title; it only moves the cursor", () => {
+    const editor = editorFor(
+      sermonDocument([
+        point("j-1", [text("One")]),
+        paragraph(text("Two"), { type: "hardBreak" }, text("lines")),
+      ]),
+    );
+    const before = editor.getJSON();
+    select(editor, editor.state.doc.firstChild!.nodeSize + 1);
+    press(editor, "Backspace");
+    expect(editor.getJSON()).toEqual(before);
+    expect(editor.state.selection.$from.parent.type.name).toBe("pointTitle");
   });
 
   it("Backspace removes an empty line after a point and stops at the point", () => {
@@ -619,12 +637,75 @@ describe("Enter and Backspace at structural boundaries", () => {
     expect(editor.state.selection.from).toBe(titleStart(editor, "d-1"));
   });
 
-  it("Backspace at the start of a title with prose before it changes nothing", () => {
+  it("Backspace at the start of a title turns the point into writing; its body stays, one undo restores it", () => {
     const editor = editorFor(lampAndPath);
     const before = editor.getJSON();
+    const point = nodeJSON(editor, "lp-2");
+    const index = topLevel(editor).indexOf("lp-2");
     cursorIn(editor, "lp-2");
     press(editor, "Backspace");
+    const top = editor.getJSON().content!;
+    // The title is a paragraph with the same words and marks, where the point was; the body follows.
+    expect(top[index]).toEqual({
+      type: "paragraph",
+      attrs: { textAlign: null },
+      content: point.content![0].content,
+    });
+    expect(top.slice(index + 1, index + point.content!.length)).toEqual(point.content!.slice(1));
+    expect(ids(editor)).not.toContain("lp-2");
+    expect(editor.state.selection.from).toBe(
+      editor.state.doc.resolve(editor.state.selection.from).start(),
+    );
+    expect(valid(editor)).toEqual([]);
+    editor.commands.undo();
     expect(editor.getJSON()).toEqual(before);
+  });
+
+  it("Backspace unwrapping a point moves its subpoints up one level, with everything they own", () => {
+    const editor = editorFor(lampAndPath);
+    const a = nodeJSON(editor, "lp-1a");
+    const b = nodeJSON(editor, "lp-1b");
+    cursorIn(editor, "lp-1");
+    press(editor, "Backspace");
+    expect(topLevel(editor)).toContain("lp-1a");
+    expect(nodeJSON(editor, "lp-1a")).toEqual(a);
+    expect(nodeJSON(editor, "lp-1b")).toEqual(b);
+    expect(valid(editor)).toEqual([]);
+  });
+
+  it("Backspace twice merges a point into the one before, as list items merge in a word processor", () => {
+    const editor = editorFor(
+      sermonDocument([
+        point("m-1", [text("One")], [paragraph(text("Body"))]),
+        point("m-2", [text("Two")]),
+      ]),
+    );
+    cursorIn(editor, "m-2");
+    press(editor, "Backspace");
+    expect(topLevel(editor)).toEqual(["m-1", "paragraph"]);
+    press(editor, "Backspace");
+    expect(topLevel(editor)).toEqual(["m-1"]);
+    expect(nodeJSON(editor, "m-1").content!.at(-1)).toEqual(paragraph(text("BodyTwo")));
+    expect(editor.state.selection.$from.parentOffset).toBe("Body".length);
+    editor.commands.undo();
+    editor.commands.undo();
+    expect(topLevel(editor)).toEqual(["m-1", "m-2"]);
+  });
+
+  it("Backspace in an empty point removes it and goes to the end of the line before", () => {
+    const editor = editorFor(
+      sermonDocument([point("e-1", [text("One")], [point("e-1a", [])]), paragraph(text("After"))]),
+    );
+    cursorIn(editor, "e-1a");
+    press(editor, "Backspace");
+    expect(ids(editor)).toEqual(["e-1"]);
+    expect(editor.state.selection.$from.parent.textContent).toBe("One");
+    expect(editor.state.selection.$from.parentOffset).toBe(3);
+    // The only thing in a document: an empty line is left.
+    const alone = editorFor(sermonDocument([point("e-2", [])]));
+    cursorIn(alone, "e-2");
+    press(alone, "Backspace");
+    expect(alone.getJSON().content).toEqual([paragraph()]);
   });
 
   it("a title takes no line break; Mod+B and colors work in it", () => {
@@ -650,5 +731,52 @@ describe("Enter and Backspace at structural boundaries", () => {
       ),
     );
     expect(valid(editor)).toEqual([]);
+  });
+});
+
+describe("the caret before and after a section (a gap cursor), the owner's checks (PS-1B.2B.1)", () => {
+  const sermon = () =>
+    editorFor(
+      sermonDocument([
+        section("g-intro", "introduction", [text("Introduction")], [paragraph(text("Opening."))]),
+        point("g-1", [text("A point")]),
+        section("g-end", "conclusion", [text("Conclusion")], [paragraph(text("Closing."))]),
+      ]),
+    );
+
+  it("Enter after the conclusion opens a line below it; Backspace there removes it and returns to the conclusion", () => {
+    const editor = sermon();
+    const before = editor.getJSON();
+    const end = editor.state.doc.content.size;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(end))),
+    );
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual(["g-intro", "g-1", "g-end", "paragraph"]);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    press(editor, "Backspace");
+    expect(editor.getJSON()).toEqual(before);
+    // Back at the end of the conclusion's last text.
+    expect(editor.state.selection.$from.parent.textContent).toBe("Closing.");
+    expect(editor.state.selection.$from.parentOffset).toBe("Closing.".length);
+  });
+
+  it("Enter before a section opens a line above it, and between a section and a point too", () => {
+    const editor = sermon();
+    editor.view.dispatch(editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(0))));
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual(["paragraph", "g-intro", "g-1", "g-end"]);
+    const between = nodePos(editor, "g-1");
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new GapCursor(editor.state.doc.resolve(between))),
+    );
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual(["paragraph", "g-intro", "paragraph", "g-1", "g-end"]);
+    expect(valid(editor)).toEqual([]);
+  });
+
+  it("a document needs no line after its last section", () => {
+    const editor = sermon();
+    expect(topLevel(editor).at(-1)).toBe("g-end");
   });
 });

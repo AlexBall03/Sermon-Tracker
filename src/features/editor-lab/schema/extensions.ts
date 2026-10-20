@@ -6,6 +6,8 @@ import { DocumentClipboard, type ClipboardNotice } from "../clipboard";
 import { NodeIdentity, type IdFactory } from "../identity";
 import { OutlineNumbering } from "../numbering";
 import { OutlineKeymap } from "../outline-commands";
+import { PassageExpansion } from "../pagination/expansion";
+import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
 import { formattingExtensions } from "./formatting";
 import {
   LabDocument,
@@ -22,6 +24,8 @@ export type LabExtensionOptions = {
   locale?: Locale;
   newId?: IdFactory;
   onNotice?: (notice: ClipboardNotice) => void;
+  /** Where Print Layout starts, and who hears of the page count (PS-1B.2B.1). Regular Layout by default. */
+  printLayout?: Partial<PrintLayoutOptions>;
 };
 
 /**
@@ -29,12 +33,14 @@ export type LabExtensionOptions = {
  * gives the manuscript (paragraphs, headings 2–4, lists, quotations, bold,
  * italic, underline, hard breaks, undo and redo); the approved Tiptap
  * extensions give color, highlight, and alignment; the sermon's own nodes,
- * identity, numbering, clipboard, and structure commands are the lab's.
+ * identity, numbering, clipboard, and structure commands are the lab's, and
+ * so are Print Layout and the passages' expansion (view state only).
  */
 export function labExtensions({
   locale = defaultLocale,
   newId,
   onNotice,
+  printLayout,
 }: LabExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
@@ -63,6 +69,8 @@ export function labExtensions({
     NodeIdentity.configure({ newId: ids }),
     DocumentClipboard.configure({ newId: ids, onNotice }),
     OutlineKeymap,
+    PassageExpansion,
+    printLayout ? PrintLayout.configure(printLayout) : PrintLayout,
   ];
 }
 

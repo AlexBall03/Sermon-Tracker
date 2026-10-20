@@ -21,6 +21,7 @@ import {
 import { jsonBytes, loadDocument } from "../load";
 import { timeIt, type SaveMeter } from "../measure";
 import { documentRows, numberingStats } from "../numbering";
+import { paginationStats, printLayoutOf } from "../pagination/plugin";
 import { addPoint, insertPassage, insertReference, run, type Command } from "../outline-commands";
 import { toolbarRenders } from "./toolbar";
 
@@ -329,6 +330,11 @@ type Measurement = {
   saves: number;
   savedBytes: number;
   ready: number | null;
+  pages: number | null;
+  pagination: number;
+  paginationSlowest: number;
+  paginationRuns: number;
+  paginationPasses: number;
 };
 
 function MeasurePanel({
@@ -360,6 +366,11 @@ function MeasurePanel({
       saves: meter.saves,
       savedBytes: meter.bytes,
       ready: meter.readyMs,
+      pages: printLayoutOf(editor.state)?.layout === "print" ? paginationStats.pages : null,
+      pagination: paginationStats.lastMs,
+      paginationSlowest: paginationStats.slowestMs,
+      paginationRuns: paginationStats.runs,
+      paginationPasses: paginationStats.passes,
     });
   };
 
@@ -378,6 +389,11 @@ function MeasurePanel({
         ["saves", t.saves, number(result.saves)],
         ["savedBytes", t.savedBytes, number(result.savedBytes)],
         ["ready", t.loaded, ms(result.ready)],
+        ["pages", t.pages, result.pages === null ? "–" : number(result.pages)],
+        ["pagination", t.pagination, ms(result.pagination)],
+        ["paginationSlowest", t.paginationSlowest, ms(result.paginationSlowest)],
+        ["paginationRuns", t.paginationRuns, number(result.paginationRuns)],
+        ["paginationPasses", t.paginationPasses, number(result.paginationPasses)],
       ]
     : [];
 
