@@ -23,6 +23,11 @@ type SelectProps = {
   layout?: "list" | "grid";
   disabled?: boolean;
   className?: string;
+  /**
+   * Where focus goes when the menu closes; the trigger by default. A toolbar
+   * over an editor sends it back to the editor, so its selection is kept.
+   */
+  finalFocus?: SelectPrimitive.Popup.Props["finalFocus"];
 };
 
 const item =
@@ -43,6 +48,7 @@ export function Select({
   layout = "list",
   disabled,
   className,
+  finalFocus,
 }: SelectProps) {
   const all = groups ? groups.flatMap((group) => group.options) : options;
   const grid = layout === "grid";
@@ -98,6 +104,7 @@ export function Select({
           className="isolate z-50 outline-none"
         >
           <SelectPrimitive.Popup
+            finalFocus={finalFocus}
             className={cn(
               "max-h-[min(var(--available-height),21rem)] origin-(--transform-origin) scroll-quiet overflow-y-auto overscroll-contain rounded-xl glass-float p-1.5 text-popover-foreground duration-150 outline-none [--float:color-mix(in_oklab,var(--surface-raised)_94%,transparent)] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
               grid ? "w-72 max-w-(--available-width)" : "min-w-(--anchor-width)",

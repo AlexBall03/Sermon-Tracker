@@ -23,9 +23,10 @@ import { timeIt, type SaveMeter } from "../measure";
 import { documentRows, numberingStats } from "../numbering";
 import { paginationStats, printLayoutOf } from "../pagination/plugin";
 import { addPoint, insertPassage, insertReference, run, type Command } from "../outline-commands";
+import { DocumentStylesPanel } from "./document-styles";
 import { toolbarRenders } from "./toolbar";
 
-const panels = ["json", "checks", "legacy", "insert", "measure"] as const;
+const panels = ["json", "checks", "legacy", "insert", "measure", "styles"] as const;
 type Panel = (typeof panels)[number];
 
 type SidePanelProps = {
@@ -54,6 +55,7 @@ export function SidePanel({ editor, issues, meter, renders }: SidePanelProps) {
       {panel === "legacy" && <LegacyPanel editor={editor} issues={issues} />}
       {panel === "insert" && <InsertPanel editor={editor} />}
       {panel === "measure" && <MeasurePanel editor={editor} meter={meter} renders={renders} />}
+      {panel === "styles" && <DocumentStylesPanel editor={editor} />}
     </aside>
   );
 }

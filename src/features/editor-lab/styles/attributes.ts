@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import type { z } from "zod";
 
 import { appearanceSchemas, paragraphFormatSchema, paragraphStyleNames } from "./model";
+import { formatStyle } from "./paragraph-css";
 
 /*
  * The node attributes of the style system (schema v3, PS-1B.2B.2 B.2A):
@@ -15,7 +16,8 @@ import { appearanceSchemas, paragraphFormatSchema, paragraphStyleNames } from ".
  * copy and paste inside the application carry it. What comes back from HTML
  * is checked against the same schema the validator uses: anything else
  * (another application's markup, a hand-edited value) gives null, never a
- * value the validator would refuse. Drawing them is B.2B and B.2C.
+ * value the validator would refuse. A `format` is drawn inline (B.2B); an
+ * `appearance` is drawn in B.2C.
  */
 
 /** The component schema that checks each node type's `appearance`. */
@@ -72,7 +74,17 @@ export const StyleAttributes = Extension.create({
       },
       {
         types: ["paragraph", "heading"],
-        attributes: { format: checkedJson("format", paragraphFormatSchema) },
+        attributes: {
+          format: {
+            ...checkedJson("format", paragraphFormatSchema),
+            // The data attribute for copy and paste, and the overrides drawn inline (B.2B).
+            renderHTML: (attributes: Record<string, unknown>) => {
+              const format = attributes.format as Record<string, number> | null | undefined;
+              if (!format || !paragraphFormatSchema.safeParse(format).success) return {};
+              return { "data-format": JSON.stringify(format), style: formatStyle(format) };
+            },
+          },
+        },
       },
       ...Object.entries(appearanceSchemaFor).map(([type, schema]) => ({
         types: [type],

@@ -44,7 +44,7 @@ function deepFreeze<T>(value: T): T {
 
 /** The v3 fixtures that use nothing v3 added: each has a faithful v2 form. */
 const plainFixtures = Object.entries(documentFixtures).filter(
-  ([name]) => name !== "stylesAndScript",
+  ([name]) => name !== "stylesAndScript" && name !== "typography",
 );
 
 describe("v2 documents keep loading", () => {
@@ -258,9 +258,13 @@ describe("the style contracts", () => {
       '<p><span style="font-family: Arial; font-size: 14pt">pasted</span></p>' +
         '<p><span data-font-family="comic-sans" data-font-size="13.3">made up</span></p>',
     );
-    // Foreign fonts are mapped in B.2B; until then they give no mark, and the words stay.
+    // A foreign font is mapped when it can be (Arial → Arimo, B.2B); an invalid one of ours gives no mark.
     expect(foreign.content!.map((block) => block.content![0])).toEqual([
-      { type: "text", text: "pasted" },
+      {
+        type: "text",
+        text: "pasted",
+        marks: [{ type: "textStyle", attrs: { color: null, fontFamily: "arimo", fontSize: 14 } }],
+      },
       { type: "text", text: "made up" },
     ]);
     const own = parse(

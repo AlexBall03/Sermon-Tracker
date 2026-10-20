@@ -634,7 +634,14 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
     - Page numbers at the bottom right.
     - Backspace removes, unwraps, and then joins points, as a word processor does with list items. This supersedes PS-1B.2A's rule.
     - A title and subtitle on every page; a text-styles menu; Google Docs–like shortcuts; typing `1.`, `I.`, `i.`, or `*` to start points and bullets; the phone editor's reading and editing modes; printing that suits black-and-white printers; an Outlines home with the account's own templates and card and list views; an editor page that puts the editor first. These are requirements for the next parts and phases, not built.
-  - **Next:** §G items 3, 4 (controls and theme tokens), 5, 7 (with the owner's requests above), 8, and 9, and the rest of §H.
+  - **PS-1B.2B.2B, Rich Text, Fonts, Typography & Named Styles: implemented in the lab** ([handoff](HANDOFF-PS-1B.2B.2B.md)), covering §G item 4 for text:
+    - the formatting toolbar and the shared formatting commands;
+    - the 14 registry fonts, loaded on first use;
+    - named styles, with Document Styles (preview, Apply, Cancel) in the inspector;
+    - adaptive colors for text and highlights.
+  - **Approved by the owner (20 October 2026):** in the lab, schema v3's color value is widened to Adaptive (a preset or `#rrggbb`, unchanged), Exact, and Per theme. Readers older than the change refuse the new values. No production migration.
+  - Component appearance (B.2C) and the print color modes (B.2F) are not built.
+  - **Next:** §G items 3, 5, 7 (with the owner's requests above), 8, and 9, component appearance, and the rest of §H.
 
 ---
 

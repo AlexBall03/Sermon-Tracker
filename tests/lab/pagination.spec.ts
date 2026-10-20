@@ -274,11 +274,16 @@ function compare(screen: string[], printed: string[][]) {
     const before = printed[index - 1] ?? [];
     const probe = snippet.slice(0, 12);
     const first = here[0] ?? "";
+    // A point's number is drawn by CSS on screen (never in its text) but is in the printed line:
+    // a short title such as "C. Subpoint 3" is compared without it (PS-1B.2B.2B).
+    const bare = first.replace(/^(?:[ivxlcdm]+|[a-z]|\d+)[.)]/i, "");
     // The same first line: it holds the screen's first words, or is their start (a short line).
     const exact =
       probe.length > 0 &&
       first.length > 0 &&
-      (first.includes(probe) || probe.startsWith(first.slice(0, 12)));
+      (first.includes(probe) ||
+        probe.startsWith(first.slice(0, 12)) ||
+        (bare.length > 0 && probe.startsWith(bare.slice(0, 12))));
     const withinOne =
       exact ||
       (probe.length > 0 &&

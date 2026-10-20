@@ -246,8 +246,10 @@ function bodyStart(holder: Found) {
 
 /**
  * Enter in a title (§B.4):
- * - at its end, or in a section's title, it opens a paragraph at the start of
- *   the body (after the passages that follow the title);
+ * - at its end, or inside a section's title, it opens a paragraph at the start
+ *   of the body (after the passages that follow the title);
+ * - at the very start of a section's non-empty title, it opens an empty line
+ *   before the section, moving the section down; the caret stays on the title;
  * - at the very start of a point's non-empty title, it opens an empty point
  *   before this one, which keeps its ID, its words, and everything it owns;
  * - inside a point's title, it splits the point: the words after the cursor
@@ -262,6 +264,18 @@ export const titleEnter: Command = (state, dispatch) => {
   if (!holder) return false;
   const isPoint = holder.node.type.name === "outlinePoint";
   const atEnd = $from.parentOffset === $from.parent.content.size;
+
+  // At the very start of a section's title, Enter moves the whole section down: an empty
+  // line opens above it, and the caret stays on the title, as at the start of a heading (PS-1B.2B.2B).
+  if (!isPoint && $from.parentOffset === 0 && !atEnd) {
+    const $section = state.doc.resolve(holder.pos);
+    const { paragraph } = state.schema.nodes;
+    if (!$section.parent.canReplaceWith($section.index(), $section.index(), paragraph))
+      return false;
+    if (!dispatch) return true;
+    dispatch(state.tr.insert(holder.pos, paragraph.create()).scrollIntoView());
+    return true;
+  }
 
   if (atEnd || !isPoint) {
     if (!dispatch) return true;
@@ -681,7 +695,10 @@ function sectionCounts(doc: ProseMirrorNode) {
  * place just after or before the section where a new line can be opened with
  * Enter or by typing (the owner's request, PS-1B.2B.1). Without this only ↓
  * stopped there, and → went straight past. Where writing already follows
- * the section, the cursor goes on into it as before.
+ * the section, the cursor goes on into it as before, as a word processor
+ * moves from line to line: an extra stop there would be a key press that
+ * seems to do nothing. A line can be opened beside the section from that
+ * writing, or by Enter at the start of the section's title (`titleEnter`).
  */
 export const toSectionEdge =
   (dir: 1 | -1): Command =>

@@ -14,6 +14,7 @@ import { useLocale, useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import type { ClipboardNotice } from "../clipboard";
 import { customNumbering } from "../fixtures";
+import { labFontVariables } from "../fonts";
 import { layoutFromNumbering, layoutNumbering, layoutParses } from "../layout";
 import { labFixture, labFixtureIds, loadDocument, type LabFixtureId } from "../load";
 import { createSaveMeter } from "../measure";
@@ -130,8 +131,12 @@ export function EditorLab() {
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // The application's bar is hidden while the workspace is open (`lab.css`): covering it by
+    // coming later in the page is not enough, since a bar mounted again comes later still.
+    document.documentElement.dataset.labWorkspace = "open";
     return () => {
       document.body.style.overflow = previous;
+      delete document.documentElement.dataset.labWorkspace;
     };
   }, []);
   useEffect(() => {
@@ -180,7 +185,7 @@ export function EditorLab() {
   if (!host) return null;
   return createPortal(
     <div
-      className="lab-workspace fixed inset-0 z-50 flex flex-col overflow-hidden bg-background"
+      className={`lab-workspace ${labFontVariables} fixed inset-0 z-50 flex flex-col overflow-hidden bg-background`}
       data-testid="editor-lab"
       data-ready={editor && ready ? "true" : "false"}
     >

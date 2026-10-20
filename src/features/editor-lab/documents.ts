@@ -4,6 +4,7 @@ import type { ScriptureReference } from "@/features/scripture/reference";
 import { ref } from "./fixtures";
 import { layoutFromNumbering } from "./layout";
 import { introducedInV3 } from "./migrate";
+import type { ColorValue } from "./styles/colors";
 import type { ProblemCode } from "./validate";
 
 /*
@@ -18,12 +19,12 @@ type Marks = NonNullable<JSONContent["marks"]>;
 const bold = { type: "bold" };
 const italic = { type: "italic" };
 const underline = { type: "underline" };
-const textStyle = (attrs: { color?: string; fontFamily?: string; fontSize?: number }) => ({
+const textStyle = (attrs: { color?: ColorValue; fontFamily?: string; fontSize?: number }) => ({
   type: "textStyle",
   attrs: { color: null, fontFamily: null, fontSize: null, ...attrs },
 });
 const color = (value: string) => textStyle({ color: value });
-const highlight = (value: string) => ({ type: "highlight", attrs: { color: value } });
+const highlight = (value: ColorValue) => ({ type: "highlight", attrs: { color: value } });
 
 export const text = (value: string, ...marks: Marks): JSONContent =>
   marks.length ? { type: "text", text: value, marks } : { type: "text", text: value };
@@ -445,6 +446,72 @@ export const stylesAndScript = sermonDocument(
   },
 );
 
+/**
+ * Typography and color (PS-1B.2B.2B): mixed fonts and sizes in one
+ * paragraph, a long paragraph in a larger size that crosses pages, its own
+ * spacing and indents, every heading, text on highlights, and a color in each
+ * of the three behaviours (adaptive, exact, per theme).
+ */
+export const typography = sermonDocument(
+  [
+    styled({ styleName: "title" }, text("Typography and Color")),
+    styled({ styleName: "subtitle" }, text("Fonts, sizes, spacing, and adaptive colors")),
+    heading(1, text("Heading 1")),
+    paragraph(
+      text("Lora by default, "),
+      text("Inter at 11 points", textStyle({ fontFamily: "inter", fontSize: 11 })),
+      text(", "),
+      text("EB Garamond at 16", textStyle({ fontFamily: "eb-garamond", fontSize: 16 })),
+      text(", "),
+      text("JetBrains Mono", textStyle({ fontFamily: "jetbrains-mono" })),
+      text(", and "),
+      text("Atkinson Hyperlegible Next", textStyle({ fontFamily: "atkinson-hyperlegible-next" })),
+      text(". Español: ¿Dónde está el niño? ¡Señor, ayúdame!"),
+    ),
+    heading(2, text("Heading 2: colors")),
+    paragraph(
+      text("Adaptive blue", color("blue")),
+      text(", adaptive custom navy", color("#1e3a8a")),
+      text(", exact navy", textStyle({ color: { mode: "exact", color: "#1e3a8a" } })),
+      text(
+        ", per theme",
+        textStyle({ color: { mode: "themed", light: "#7c2d12", dark: "#fdba74" } }),
+      ),
+      text(", "),
+      text("highlighted", highlight("yellow")),
+      text(", "),
+      text("red on a custom fill", color("red"), highlight("#1e3a8a")),
+      text(", and "),
+      text("a dark highlight, exact", highlight({ mode: "exact", color: "#1e3a8a" })),
+      text("."),
+    ),
+    heading(3, text("Heading 3: spacing")),
+    styled(
+      {
+        format: {
+          spaceBefore: 18,
+          spaceAfter: 18,
+          indentLeft: 36,
+          indentFirst: -18,
+          lineHeight: 2,
+        },
+      },
+      text(sentences("Spaced", 1, 4)),
+    ),
+    heading(4, text("Heading 4: a long paragraph in 16 points")),
+    paragraph(text(sentences("Long", 1, 40), textStyle({ fontSize: 16 }))),
+    point(
+      "ty-1",
+      [
+        text("A point title "),
+        text("with its own font", textStyle({ fontFamily: "merriweather" })),
+      ],
+      [paragraph(text(sentences("Under the point", 1, 6)))],
+    ),
+  ],
+  { translation: "kjv" },
+);
+
 export const documentFixtures = {
   lampAndPath,
   sectionsAnywhere,
@@ -452,6 +519,7 @@ export const documentFixtures = {
   outlineOnly,
   printLayout,
   stylesAndScript,
+  typography,
 };
 
 /**

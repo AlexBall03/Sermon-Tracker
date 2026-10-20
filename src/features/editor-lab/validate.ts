@@ -181,7 +181,7 @@ function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
           problems.push({ code: "invalid_attribute", path: where, detail: "textStyle (empty)" });
         }
         if (color !== null && !validTextColor(color)) {
-          problems.push({ code: "invalid_color", path: where, detail: String(color) });
+          problems.push({ code: "invalid_color", path: where, detail: JSON.stringify(color) });
         }
         if (fontFamily !== null && !isFontKey(fontFamily)) {
           bad(where, `textStyle.fontFamily=${fontFamily}`);
@@ -191,7 +191,11 @@ function invariantProblems(doc: ProseMirrorNode): DocumentProblem[] {
         }
       }
       if (mark.type.name === "highlight" && !validHighlight(mark.attrs.color)) {
-        problems.push({ code: "invalid_color", path: where, detail: String(mark.attrs.color) });
+        problems.push({
+          code: "invalid_color",
+          path: where,
+          detail: JSON.stringify(mark.attrs.color),
+        });
       }
     });
   };

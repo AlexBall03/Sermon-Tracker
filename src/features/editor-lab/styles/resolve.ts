@@ -1,4 +1,5 @@
 import type { textAlignments } from "../schema/model";
+import type { ColorValue } from "./colors";
 import {
   documentStylesSchema,
   type ComponentKind,
@@ -37,7 +38,7 @@ export type ResolvedBlock = {
   italic: boolean;
   underline: boolean;
   /** null: the theme's text color. */
-  color: string | null;
+  color: ColorValue | null;
   lineHeight: number;
   spaceBefore: number;
   spaceAfter: number;
@@ -52,13 +53,13 @@ export type ResolvedBlock = {
  * means a person or a style turned it off.
  */
 export type ResolvedComponent = Omit<ResolvedBlock, "align"> & {
-  titleColor?: string | null;
-  notationColor?: string | null;
-  referenceColor?: string | null;
-  labelColor?: string | null;
-  border?: string | null;
-  fill?: string | null;
-  accent?: string | null;
+  titleColor?: ColorValue | null;
+  notationColor?: ColorValue | null;
+  referenceColor?: ColorValue | null;
+  labelColor?: ColorValue | null;
+  border?: ColorValue | null;
+  fill?: ColorValue | null;
+  accent?: ColorValue | null;
 };
 
 type BlockLayer = Partial<ResolvedBlock>;
@@ -124,12 +125,42 @@ export const builtInNamed: Record<NamedStyle, BlockLayer> = {
 
 /** The look of each component when the document chooses nothing. Its colors are the theme's (unset). */
 export const builtInComponents: Record<ComponentKind, ComponentStyle> = {
-  introduction: {},
-  conclusion: {},
-  point: { bold: false },
-  subpoint: {},
+  // A section's and a point's values are its title's; tuned in B.2B to the lab's earlier look.
+  introduction: {
+    fontFamily: "playfair-display",
+    fontSize: 15,
+    bold: true,
+    lineHeight: 1.3,
+    spaceBefore: 4,
+    spaceAfter: 4,
+  },
+  conclusion: {
+    fontFamily: "playfair-display",
+    fontSize: 15,
+    bold: true,
+    lineHeight: 1.3,
+    spaceBefore: 4,
+    spaceAfter: 4,
+  },
+  point: {
+    fontFamily: "figtree",
+    fontSize: 13.5,
+    bold: true,
+    lineHeight: 1.35,
+    spaceBefore: 10,
+    spaceAfter: 3,
+  },
+  subpoint: {
+    fontFamily: "figtree",
+    fontSize: 12.5,
+    bold: true,
+    lineHeight: 1.35,
+    spaceBefore: 8,
+    spaceAfter: 2,
+  },
   scripture: {},
-  preacherNote: { fontFamily: "figtree", fontSize: 11 },
+  // A note's and a script's values are their paragraphs'.
+  preacherNote: { fontFamily: "figtree", fontSize: 11, spaceAfter: 3 },
   script: {},
 };
 
@@ -151,10 +182,17 @@ function cascade<T extends object>(...layers: (Partial<T> | null | undefined)[])
  * reads styles without it, by falling back to the defaults.
  */
 export function readStyles(stored: unknown): DocumentStyles | null {
-  if (stored === null || stored === undefined) return null;
+  if (stored === null || stored === undefined || typeof stored !== "object") return null;
+  // The same stored object always reads as the same object, so callers can compare by identity
+  // (the style sheet, the highlight pairs, and the editor's subscriptions do, on every transaction).
+  if (read.has(stored)) return read.get(stored)!;
   const parsed = documentStylesSchema.safeParse(stored);
-  return parsed.success ? parsed.data : null;
+  const styles = parsed.success ? parsed.data : null;
+  read.set(stored, styles);
+  return styles;
 }
+
+const read = new WeakMap<object, DocumentStyles | null>();
 
 /** A block of ordinary text in a named style, with its own `format` (and `textAlign`) last. */
 export function resolveNamed(

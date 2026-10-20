@@ -210,8 +210,13 @@ function lineMarks(doc: ProseMirrorNode, from: number, to: number, set: Decorati
   return set.add(doc, added);
 }
 
-/** Maps the marks through a change and looks again at the blocks it touched. */
-function remark(tr: Transaction, previous: DecorationSet) {
+/**
+ * The whole top-level blocks a change touched, in the new document, from the
+ * start of the first to the end of the last; null when it touched none (a
+ * change of the document's attributes only). Shared by the decorations that
+ * look again only where a change was (`styles/plugin.ts` too).
+ */
+export function touchedBlocks(tr: Transaction): { start: number; end: number } | null {
   let from = Number.POSITIVE_INFINITY;
   let to = -1;
   tr.steps.forEach((step, index) => {
@@ -221,16 +226,23 @@ function remark(tr: Transaction, previous: DecorationSet) {
       to = Math.max(to, after.map(end, 1));
     });
   });
-  let set = previous.map(tr.mapping, tr.doc);
-  if (to < 0) return set;
+  if (to < 0) return null;
   const size = tr.doc.content.size;
   const $from = tr.doc.resolve(Math.max(0, Math.min(from, size)));
   const $to = tr.doc.resolve(Math.max(0, Math.min(to, size)));
-  // Whole blocks: from the start of the first touched block to the end of the last.
-  const start = $from.depth > 0 ? $from.before(1) : 0;
-  const end = $to.depth > 0 ? $to.after(1) : size;
-  set = set.remove(set.find(start, end));
-  return lineMarks(tr.doc, start, end, set);
+  return {
+    start: $from.depth > 0 ? $from.before(1) : 0,
+    end: $to.depth > 0 ? $to.after(1) : size,
+  };
+}
+
+/** Maps the marks through a change and looks again at the blocks it touched. */
+function remark(tr: Transaction, previous: DecorationSet) {
+  let set = previous.map(tr.mapping, tr.doc);
+  const touched = touchedBlocks(tr);
+  if (!touched) return set;
+  set = set.remove(set.find(touched.start, touched.end));
+  return lineMarks(tr.doc, touched.start, touched.end, set);
 }
 
 const paginators = new WeakMap<EditorView, Paginator>();
@@ -276,7 +288,11 @@ class Paginator {
     this.end = this.sheetEdge("lab-page-end", 1);
     this.root.append(this.spacer(), this.end);
     doc.fonts?.ready.then(() => this.schedule()).catch(() => undefined);
+    // A document font arrives when text first uses it (`fonts.ts`): its lines change, so measure again.
+    doc.fonts?.addEventListener?.("loadingdone", this.onFonts);
   }
+
+  private readonly onFonts = () => this.schedule();
 
   /** Starts following the editor's size (again, after a document was loaded). */
   attach() {
@@ -319,6 +335,10 @@ class Paginator {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.observer?.disconnect();
+    // The paginator lives as long as its view, which ProseMirror never reattaches once destroyed.
+    if (!this.view.dom.isConnected) {
+      this.view.dom.ownerDocument.fonts?.removeEventListener?.("loadingdone", this.onFonts);
+    }
   }
 
   /** Measures once in the next frame, however many changes came before it. */

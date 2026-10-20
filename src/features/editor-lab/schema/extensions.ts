@@ -9,6 +9,9 @@ import { OutlineKeymap } from "../outline-commands";
 import { PassageExpansion } from "../pagination/expansion";
 import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
 import { StyleAttributes } from "../styles/attributes";
+import { DocumentStylesExtension } from "../styles/plugin";
+import { GapCaret } from "../gap-caret";
+import { ClickPlacement } from "../click-placement";
 import { formattingExtensions } from "./formatting";
 import {
   LabDocument,
@@ -66,6 +69,7 @@ export function labExtensions({
     PreacherNote,
     Script,
     StyleAttributes,
+    DocumentStylesExtension,
     PageBreak,
     ScriptureReferenceNode.configure({ locale }),
     ScripturePassageNode.configure({ locale }),
@@ -73,6 +77,8 @@ export function labExtensions({
     NodeIdentity.configure({ newId: ids }),
     DocumentClipboard.configure({ newId: ids, onNotice }),
     OutlineKeymap,
+    GapCaret,
+    ClickPlacement,
     PassageExpansion,
     printLayout ? PrintLayout.configure(printLayout) : PrintLayout,
   ];

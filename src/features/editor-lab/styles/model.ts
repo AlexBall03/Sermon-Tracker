@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { paperSizes } from "../pagination/geometry";
 import { highlightPresets, textAlignments, textColorPresets } from "../schema/model";
+import type { ColorValue } from "./colors";
 
 /*
  * The document style contracts of schema v3 (PS-1B.2B.2 B.2A, lab only).
@@ -72,13 +73,33 @@ export const isFontSize = (value: unknown): value is number =>
 /* Colors */
 
 const hex6 = /^#[0-9a-f]{6}$/;
-const colorOf = (presets: readonly string[]) =>
-  z.string().refine((value) => presets.includes(value) || hex6.test(value), "invalid color");
+const hexColor = z.string().regex(hex6);
 
-/** A text-like color (text, title, notation, border, accent): a text preset or `#rrggbb`. */
-export const inkColorSchema = colorOf(textColorPresets);
-/** A fill: a highlight preset or `#rrggbb`. */
-export const fillColorSchema = colorOf(highlightPresets);
+/**
+ * A stored color (PS-1B.2B.2B), one of three intents (`colors.ts`):
+ *
+ *   - a preset key or lowercase `#rrggbb`: Adaptive, the default;
+ *   - `{ mode: "exact", color }`: Exact, drawn as chosen everywhere;
+ *   - `{ mode: "themed", light, dark }`: the person's own color for each theme.
+ *
+ * The two objects widen schema v3 after its first form. Every earlier v3
+ * value keeps its meaning, so no document needs migrating; but a reader older
+ * than this phase refuses the objects, and any change to this union must
+ * change the validator, the marks' HTML, and the paste rules together
+ * (`schema/formatting.ts`). The lab persists nothing, so no older reader
+ * holds such a document; production adoption needs its own approved phase.
+ */
+export const colorValueSchema = (presets: readonly string[]) =>
+  z.union([
+    z.string().refine((value) => presets.includes(value) || hex6.test(value), "invalid color"),
+    z.object({ mode: z.literal("exact"), color: hexColor }).strict(),
+    z.object({ mode: z.literal("themed"), light: hexColor, dark: hexColor }).strict(),
+  ]);
+
+/** A text-like color (text, title, notation, border, accent), from the text presets. */
+export const inkColorSchema = colorValueSchema(textColorPresets);
+/** A fill, from the highlight presets. */
+export const fillColorSchema = colorValueSchema(highlightPresets);
 
 /* Properties */
 
@@ -162,13 +183,13 @@ export const componentStyleSchemas = Object.fromEntries(
 export type ComponentStyle = {
   [K in keyof ReturnType<typeof componentShape>]?: z.infer<ReturnType<typeof componentShape>[K]>;
 } & {
-  titleColor?: string | null;
-  notationColor?: string | null;
-  referenceColor?: string | null;
-  labelColor?: string | null;
-  border?: string | null;
-  fill?: string | null;
-  accent?: string | null;
+  titleColor?: ColorValue | null;
+  notationColor?: ColorValue | null;
+  referenceColor?: ColorValue | null;
+  labelColor?: ColorValue | null;
+  border?: ColorValue | null;
+  fill?: ColorValue | null;
+  accent?: ColorValue | null;
 };
 
 /** A component node's appearance override: the same properties as its style. */

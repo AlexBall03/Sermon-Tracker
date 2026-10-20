@@ -16,6 +16,7 @@ import {
   outdent,
   run,
   titleEnter,
+  toSectionEdge,
   turnIntoPoint,
   turnIntoSection,
 } from "./outline-commands";
@@ -801,6 +802,58 @@ describe("the caret before and after a section (a gap cursor), the owner's check
     );
     press(editor, "Enter");
     expect(topLevel(editor)).toEqual(["paragraph", "g-intro", "paragraph", "g-1", "g-end"]);
+    expect(valid(editor)).toEqual([]);
+  });
+
+  // With prose beside each section: the caret still stops at its edges (PS-1B.2B.2B).
+  const prose = () =>
+    editorFor(
+      sermonDocument([
+        section("p-intro", "introduction", [text("Introduction")], [paragraph(text("Opening."))]),
+        paragraph(text("Between.")),
+        section("p-end", "conclusion", [text("Conclusion")], [paragraph(text("Closing."))]),
+        paragraph(text("After.")),
+      ]),
+    );
+
+  it("Enter at the start of a section's title moves the section down; the caret stays on the title", () => {
+    const editor = prose();
+    const section = nodeJSON(editor, "p-end");
+    editor.commands.setTextSelection(titleStart(editor, "p-end"));
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual(["p-intro", "paragraph", "paragraph", "p-end", "paragraph"]);
+    expect(editor.getJSON().content![2]).toEqual(paragraph());
+    expect(nodeJSON(editor, "p-end")).toEqual(section);
+    expect(editor.state.selection.from).toBe(titleStart(editor, "p-end"));
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual([
+      "p-intro",
+      "paragraph",
+      "paragraph",
+      "paragraph",
+      "p-end",
+      "paragraph",
+    ]);
+    expect(valid(editor)).toEqual([]);
+  });
+
+  it("with writing beside a section, arrows go on into that writing, and Enter there opens the line outside it", () => {
+    const editor = prose();
+    // No extra stop beside a line of text, as a word processor moves from line to line.
+    const opening = titleStart(editor, "p-intro") + "Introduction".length + 2 + "Opening.".length;
+    editor.commands.setTextSelection(opening);
+    expect(toSectionEdge(1)(editor.state)).toBe(false);
+    editor.commands.setTextSelection(titleStart(editor, "p-end"));
+    expect(toSectionEdge(-1)(editor.state)).toBe(false);
+    // Enter at the start of the line after the introduction opens a line between them.
+    let between = -1;
+    editor.state.doc.forEach((node, pos) => {
+      if (between < 0 && node.textContent === "Between.") between = pos + 1;
+    });
+    editor.commands.setTextSelection(between);
+    press(editor, "Enter");
+    expect(topLevel(editor)).toEqual(["p-intro", "paragraph", "paragraph", "p-end", "paragraph"]);
+    expect(editor.getJSON().content![1]).toEqual(paragraph());
     expect(valid(editor)).toEqual([]);
   });
 

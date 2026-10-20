@@ -3,19 +3,20 @@
 import { useEditorState, type Editor } from "@tiptap/react";
 import {
   ArrowDown,
-  Copy,
   ArrowUp,
+  Baseline,
   Bold,
+  Copy,
   CornerDownRight,
-  Heading2,
+  Highlighter,
   IndentDecrease,
   IndentIncrease,
   Italic,
   List,
   ListOrdered,
-  Pilcrow,
   Plus,
   Redo2,
+  RemoveFormatting,
   Underline,
   Undo2,
 } from "lucide-react";
@@ -24,6 +25,8 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
+import { clearFormatting, setHighlight, setTextColor } from "../formatting-commands";
+import { blockState, textState } from "../formatting-state";
 import {
   addPoint,
   duplicatePoint,
@@ -33,14 +36,24 @@ import {
   run,
   type Command,
 } from "../outline-commands";
+import { ColorControl } from "./formatting/color-control";
+import { useKeptSelection } from "./formatting/keep-selection";
+import { AlignButtons, SpacingControl } from "./formatting/paragraph-controls";
+import { FontSelect, SizeField, StyleSelect } from "./formatting/text-controls";
 
 /** How many times the toolbar has rendered, for the lab's measurements. */
 export const toolbarRenders = { count: 0 };
 
 /**
- * The editor's one toolbar row, in the order word processors use: history,
- * then formatting, then the outline's own actions. `children` are the view's
- * controls (layout, paper), kept at the row's end.
+ * The editor's one toolbar row, in the order word processors use: history;
+ * paragraph style, font, and size; bold, italic, underline, and colors;
+ * alignment and spacing; clearing; lists; then the outline's own actions.
+ * `children` are the view's controls (layout, paper), kept at the row's end.
+ *
+ * Every control calls the shared commands (`formatting-commands.ts`,
+ * `outline-commands.ts`). Each group follows only the values it shows
+ * (`useEditorState`), so typing re-renders a group only when what it shows
+ * changes.
  */
 export function LabToolbar({ editor, children }: { editor: Editor; children?: React.ReactNode }) {
   const t = useT("editorLab").toolbar;
@@ -50,11 +63,6 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
     selector: ({ editor: current }) => {
       const can = (command: Command) => command(current.state);
       return {
-        bold: current.isActive("bold"),
-        italic: current.isActive("italic"),
-        underline: current.isActive("underline"),
-        heading: current.isActive("heading"),
-        paragraph: current.isActive("paragraph"),
         bulletList: current.isActive("bulletList"),
         orderedList: current.isActive("orderedList"),
         undo: current.can().undo(),
@@ -100,39 +108,10 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
           icon={Redo2}
         />
       </Group>
+      <StyleGroup editor={editor} />
+      <InlineGroup editor={editor} />
+      <ParagraphGroup editor={editor} />
       <Group>
-        <Tool
-          label={t.bold}
-          pressed={state.bold}
-          onPress={() => chain().toggleBold().run()}
-          icon={Bold}
-        />
-        <Tool
-          label={t.italic}
-          pressed={state.italic}
-          onPress={() => chain().toggleItalic().run()}
-          icon={Italic}
-        />
-        <Tool
-          label={t.underline}
-          pressed={state.underline}
-          onPress={() => chain().toggleUnderline().run()}
-          icon={Underline}
-        />
-      </Group>
-      <Group>
-        <Tool
-          label={t.paragraph}
-          pressed={state.paragraph}
-          onPress={() => chain().setParagraph().run()}
-          icon={Pilcrow}
-        />
-        <Tool
-          label={t.heading}
-          pressed={state.heading}
-          onPress={() => chain().toggleHeading({ level: 2 }).run()}
-          icon={Heading2}
-        />
         <Tool
           label={t.bulletList}
           pressed={state.bulletList}
@@ -194,6 +173,108 @@ export function LabToolbar({ editor, children }: { editor: Editor; children?: Re
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{children}</div>
       )}
     </div>
+  );
+}
+
+/** Paragraph style, font, and size. */
+function StyleGroup({ editor }: { editor: Editor }) {
+  const keeper = useKeptSelection(editor);
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      const text = textState(current.state);
+      const block = blockState(current.state);
+      return { text, block };
+    },
+  });
+  return (
+    <Group>
+      <div className="flex items-center gap-1">
+        <StyleSelect state={state.block} keeper={keeper} />
+        <FontSelect state={state.text} keeper={keeper} />
+        <SizeField state={state.text} keeper={keeper} />
+      </div>
+    </Group>
+  );
+}
+
+/** Bold, italic, underline, and the two colors. */
+function InlineGroup({ editor }: { editor: Editor }) {
+  const t = useT("editorLab").toolbar;
+  const keeper = useKeptSelection(editor);
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      const text = textState(current.state);
+      return {
+        bold: current.isActive("bold"),
+        italic: current.isActive("italic"),
+        underline: current.isActive("underline"),
+        color: text.color,
+        highlight: text.highlight,
+      };
+    },
+  });
+  const chain = () => editor.chain().focus();
+  return (
+    <Group>
+      <Tool
+        label={t.bold}
+        pressed={state.bold}
+        onPress={() => chain().toggleBold().run()}
+        icon={Bold}
+      />
+      <Tool
+        label={t.italic}
+        pressed={state.italic}
+        onPress={() => chain().toggleItalic().run()}
+        icon={Italic}
+      />
+      <Tool
+        label={t.underline}
+        pressed={state.underline}
+        onPress={() => chain().toggleUnderline().run()}
+        icon={Underline}
+      />
+      <ColorControl
+        kind="ink"
+        icon={Baseline}
+        value={state.color}
+        onOpen={keeper.remember}
+        onPick={(value) => keeper.apply(setTextColor(value))}
+        finalFocus={keeper.finalFocus}
+      />
+      <ColorControl
+        kind="fill"
+        icon={Highlighter}
+        value={state.highlight}
+        onOpen={keeper.remember}
+        onPick={(value) => keeper.apply(setHighlight(value))}
+        finalFocus={keeper.finalFocus}
+      />
+    </Group>
+  );
+}
+
+/** Alignment, spacing, and clearing direct formatting. */
+function ParagraphGroup({ editor }: { editor: Editor }) {
+  const t = useT("editorLab").format;
+  const keeper = useKeptSelection(editor);
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => blockState(current.state),
+  });
+  return (
+    <Group>
+      <AlignButtons state={state} keeper={keeper} />
+      <SpacingControl state={state} keeper={keeper} />
+      <Tool
+        label={t.clear}
+        icon={RemoveFormatting}
+        disabled={!state.clearable}
+        onPress={() => keeper.apply(clearFormatting)}
+      />
+    </Group>
   );
 }
 
