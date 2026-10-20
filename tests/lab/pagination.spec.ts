@@ -807,8 +807,11 @@ test.describe("Print Layout, signed in", () => {
       await page.setViewportSize({ width, height: 800 });
       await settled(page);
     }
+    // Expansion is Regular Layout's (the button rests in Print Layout): expand and collapse there, then back.
+    await layout(page, "Regular");
     await page.getByRole("button", { name: "Expand passages in Regular" }).click();
     await page.getByRole("button", { name: "Collapse passages in Regular" }).click();
+    await layout(page, "Print");
     const after = await page.evaluate(() => ({
       json: window.lab.json(),
       history: window.lab.history(),

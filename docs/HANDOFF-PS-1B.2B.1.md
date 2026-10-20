@@ -1,6 +1,6 @@
 # Handoff: PS-1B.2B.1, Editable Pagination Feasibility
 
-**Status: complete; ready for the owner's review and commit** (19 October 2026, on `dev`, uncommitted).
+**Status: complete.** Committed by the owner as `0c26fc5` (19 October 2026, on `dev`). A final verification pass followed (§12); it changed one test (P8, a test defect) and this handoff, both uncommitted.
 
 - **The question.** Can Print Layout give real, editable pages over the one canonical document without changing it? PS-1B.1 §F risk 6 calls this the largest open risk.
 - **The answer is yes, in Chrome.** Every criterion P1–P11 of PS-1B.1 §G.2 has a recorded result (§4):
@@ -306,10 +306,51 @@ These are the owner's, from reviewing the lab on 19 October 2026. Each is record
 
    The owner reports it is still there, so it is **not fixed**. The next phase should settle how a section's edges look (its rules and padding) with the owner, and check it in the owner's browser.
 
-2. **A key press can be lost while a passage's verses load** (stand-in passage view).
-   - Shift+← pressed quickly, at the moment verses arrive, in Regular Layout: 2 of 6 runs selected less than asked. With the Bible requests held back for 8 seconds: 0 of 8. Print Layout: 0 of 6.
-   - Inserting the verses while the browser extends a selection loses it.
-   - §G.3's real passage view must not change the DOM under an active selection: insert while idle, or reserve the space first.
-3. **The editor suite's phone run** needs rerunning after its helper change (§10).
+2. **A command right after rapid selection keys can act on a stale selection** (the passage-loading follow-up; corrected by the final verification, §12).
+   - **What happens.** Five Shift+← presses sent back to back, then Ctrl+B at once, bold three letters instead of five. The browser's selection is right, but ProseMirror's record of it has not caught up when Ctrl+B arrives, and the command acts on its record. With a pause after each key the selection is always right.
+   - **What makes it more likely.** The stand-in passage view inserting verses at the same time.
+     - First runs: Regular Layout 2 of 6 wrong; 0 of 8 with the Bible requests held back.
+     - Final runs of the PS-1B.2A test "rich titles…": 5 of 5 failed. With verse loading turned off, 1 of 4. With Regular Layout as the default instead of Print, 2 of 4. With the new arrow-key bindings removed, 2 of 3.
+   - **What it is not.** It is not caused by Print Layout or by this phase's arrow keys. Whether PS-1B.2A's code fails the same way on this machine today was not checked: that needs the old commit checked out, a Git operation outside this phase.
+   - **For §G.3:** the real passage view must not change the DOM under an active selection (insert while idle, or reserve the space first). The editor phase should then check rapid selection followed by a command on a real keyboard.
+3. **The editor suite's phone run** passed in the final verification (§12).
 4. **Clicking a page gap** leaves the caret where it was (it never jumps to the top). Moving it to the nearest line is a polish for the editor phase.
 5. **The lab's settings** (Numbering, Default layout) sit in the editor's header for convenience. They are lab controls, not the product's design (§8.1 removes Default layout).
+
+## 12. Final verification (19 October 2026, after commit `0c26fc5`)
+
+A tightly scoped pass, at the owner's request. No feature, dependency, or unrelated fix was added. The experiments in item 3 were made in place, one at a time, and each was reverted at once: after the pass, the only code difference from `0c26fc5` is the P8 test fix.
+
+1. **The pagination suite** (`tests/lab/pagination.spec.ts`, the owner's development server on port 3000).
+   - First full run: desktop 13 of 14, phone 3 of 3 (the rest are desktop-only by design).
+   - The failure was **P8, a test defect**. The test pressed "Expand passages in Regular" while in Print Layout, where the owner's change made that button rest under another name. P8 now expands and collapses in Regular Layout, then returns to Print.
+   - Rerun: **P8 passed** with 17 transactions, **0 with `docChanged`**, history depth 0 → 0, the JSON identical, and the breaks restored.
+   - **Final: desktop 14 of 14, phone 3 of 3.**
+2. **The editor-lab regression suite** (`tests/lab/editor.spec.ts`, without the timed writing sessions).
+   - **Phone: 5 of 5 passed**, including "inserts a passage…" and "fits a phone…", whose click helper was corrected.
+   - **Desktop: 6 of 7 passed** ("stays responsive on a 500-entry outline…" was run separately after the serial suite stopped).
+   - **"schema v2: rich titles…" failed**: 5 Shift+← selected 3 letters before Ctrl+B. It also failed 5 of 5 on repeat.
+3. **That failure, investigated only far enough to classify it** (§11 item 2).
+   - It reproduces in Regular Layout (2 of 4), without the new arrow keys (2 of 3), and less often without verse loading (1 of 4).
+   - A trace with a pause after each key selects correctly every time.
+   - **Classification:** a timing-dependent lag of ProseMirror's selection behind back-to-back synthetic key presses, made worse by this phase's stand-in passage view loading verses. It is not caused by Print Layout. It is kept as the follow-up the owner asked for, and not fixed here, because the fix belongs to the real passage view (§G.3).
+   - It was not proven whether PS-1B.2A's code also fails today on this machine: that needs a Git checkout, outside this phase.
+4. **No pagination interaction changes the document or the undo history.** P8 (above). P5: undo and redo restore the JSON exactly. The unit tests: layout, paper, margin, and expansion switches make no `docChanged` and no history entry, and the line-break marks restore exactly on undo.
+5. **Development-only isolation:** `npm run test:e2e:lab:prod` on a fresh `next build` (`.next/BUILD_ID` 19:23:55): **4 passed**. Every `/lab` address is a 404 for a guest and a signed-in account; nothing listens on 3300 afterwards. `npx vitest run src/features/editor-lab "src/app/(app)/lab" src/i18n`: **325 passed**.
+
+**Fully passing in Chrome:** P1, P2, P3, P4, P5, P6, P7, P8, and P11.
+
+**Measured, or passing only where automation can reach:**
+
+- P9: typing cost was measured with desktop and phone emulation, but **a real phone is not verified**.
+- P10: the gaps are hidden from assistive technology and the reading order and Tab order are unchanged, but **no screen reader was used**.
+- P11 outside Chrome: **printing from Safari and Firefox, and with a real printer, is not verified**.
+
+These are the owner's checks (§7).
+
+**Follow-ups kept explicit:**
+
+- the space below the conclusion (§11 item 1);
+- the stale selection made worse by verse loading (§11 item 2).
+
+**Ready for commit:** the test fix and this handoff update are ready, and nothing in the pass is a regression the phase must fix. The rich-titles failure is the documented follow-up above.
