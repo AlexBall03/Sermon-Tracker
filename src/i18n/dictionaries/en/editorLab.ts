@@ -266,4 +266,73 @@ export const editorLab = {
     paginationPasses: "Layout passes, last run",
     ms: (value: string) => `${value} ms`,
   },
+  /** The schema v4 architecture-validation prototype (/lab/editor/v4). */
+  v4: {
+    metaTitle: "Editor Lab · Schema v4",
+    title: "Editor Lab: schema v4 (experimental)",
+    description:
+      "An architecture-validation prototype. Points are ordinary blocks with a semantic depth; who owns what is worked out from order and depth.",
+    notice: "Experimental. Nothing here is saved, synced, or sent; reloading the page starts over.",
+    baseline: "Open the v3 lab",
+    fixture: "Document",
+    fixtures: {
+      parentProse: "Writing that belongs to a parent point",
+      rolesAnywhere: "Introduction and conclusion as roles",
+      writingFirst: "Writing first, structure later",
+    },
+    migrated: (name: string): string => `${name} (v3, migrated)`,
+    presentation: "Presentation",
+    presentations: { outline: "Outline", manuscript: "Manuscript" },
+    actionsLabel: "Structure",
+    actions: {
+      point: "New point",
+      subpoint: "New subpoint",
+      toPoint: "Turn into point",
+      toProse: "Remove point, keep content",
+      deleteGroup: "Delete point and its content",
+      increase: "Increase level",
+      decrease: "Outdent in place",
+      moveOut: "Move out",
+      moveUp: "Move point up",
+      moveDown: "Move point down",
+      introduction: "Make introduction",
+      conclusion: "Make conclusion",
+      clearRole: "Remove role",
+    },
+    look: "Point look",
+    lookComponent: "Point style",
+    undo: "Undo",
+    notices: {
+      point_converted: (linked: boolean): string =>
+        linked
+          ? "The point is now ordinary writing, and its link to a saved point or outline entry is gone. Undo brings both back."
+          : "The point is now ordinary writing. Undo brings it back.",
+      point_removed:
+        "The empty point was removed, with its link to a saved point or outline entry. Undo brings it back.",
+      points_deleted: (count: number): string =>
+        count === 1
+          ? "1 point was deleted with its content."
+          : `${count} points were deleted with their content.`,
+      ownership_changed: (count: number): string =>
+        count === 1
+          ? "1 block now belongs to a different point."
+          : `${count} blocks now belong to a different point.`,
+      role_dropped: (role: "introduction" | "conclusion"): string =>
+        role === "introduction"
+          ? "The document already has an introduction, so the pasted one became an ordinary point."
+          : "The document already has a conclusion, so the pasted one became an ordinary point.",
+    },
+    structure: {
+      title: "Structure",
+      hint: "Who owns each block, worked out from order and depth. Nothing here is stored.",
+      block: "Block",
+      depth: "Depth",
+      owner: "Belongs to",
+      document: "The document",
+      empty: "(empty)",
+      irregular: { skipped_level: "Skipped level", deeper_than_owner: "Deeper than its point" },
+    },
+    shortcuts:
+      "Enter, Backspace, Delete, and Shift+Enter edit as usual. Tab and Shift+Tab: a point's level, or writing into and out of a point. Alt+Shift+↑/↓: move a point with its content. Alt+Shift+→: increase level. Alt+Shift+←: move out. Ctrl+Enter: new point. Ctrl+Shift+Enter: new subpoint.",
+  },
 };

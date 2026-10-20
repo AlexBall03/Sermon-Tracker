@@ -1,6 +1,6 @@
 import type { ResolvedPos } from "@tiptap/pm/model";
 
-import type { DocumentStyles } from "./model";
+import type { ComponentKind, DocumentStyles, NamedStyle } from "./model";
 import {
   componentOf,
   namedStyleOf,
@@ -21,6 +21,19 @@ import {
 export function resolveAt(styles: DocumentStyles | null, $pos: ResolvedPos): ResolvedBlock {
   const block = $pos.parent;
   const depth = $pos.depth;
+  // The experimental schema v4's point heading: its named style if it has one, else its component's.
+  if (block.type.name === "point") {
+    const own = (block.attrs.format ?? null) as Partial<ResolvedBlock> | null;
+    const named = block.attrs.styleName as NamedStyle | null;
+    if (named) return resolveNamed(styles, named, own);
+    const kind: ComponentKind =
+      block.attrs.role === "introduction" || block.attrs.role === "conclusion"
+        ? block.attrs.role
+        : block.attrs.depth === 1
+          ? "point"
+          : "subpoint";
+    return { ...resolveComponent(styles, kind), ...own, align: "left" };
+  }
   if (block.type.name === "pointTitle" || block.type.name === "sectionTitle") {
     let insidePoint = false;
     for (let level = depth - 2; level > 0; level -= 1) {

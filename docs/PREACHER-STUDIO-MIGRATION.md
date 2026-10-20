@@ -360,7 +360,7 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 ### 8.3 Numbering
 
 - `numbering_config` is carried verbatim. Built-in styles are stored by name; custom ones are validated by `numberingConfigSchema` (`src/features/outlines/numbering.ts`).
-- Labels are derived from the document's nested structure with `entryLabel`/`numberOutline`. Ordinary rich-text ordered lists are not relied on to reproduce custom levels, prefixes, suffixes, joining, or overflow. **Approved.**
+- Labels are derived from the document's nested structure with `entryLabel`/`numberOutline`. Ordinary rich-text ordered lists are not relied on to reproduce custom levels, prefixes, suffixes, joining, or overflow. **Approved.** (The provisional schema v4, section 15.10, derives the same labels from order and depth instead of nesting; whether this wording is amended is an Open Decision.)
 - A stored configuration that cannot be parsed reads today as the default, silently. Verification lists such rows before conversion.
 
 ### 8.4 Relationships that must not change
@@ -642,6 +642,39 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - **Approved by the owner (20 October 2026):** in the lab, schema v3's color value is widened to Adaptive (a preset or `#rrggbb`, unchanged), Exact, and Per theme. Readers older than the change refuse the new values. No production migration.
   - Component appearance (B.2C) and the print color modes (B.2F) are not built.
   - **Next:** §G items 3, 5, 7 (with the owner's requests above), 8, and 9, component appearance, and the rest of §H.
+
+### 15.10 Editor redesign: document-first, schema v4 (Provisional; prototype validated in the lab)
+
+**Approved by the owner (20 October 2026) as the direction:** the editor becomes _freeform first, structure on demand_, by Option C, a selective hybrid. **Provisional:** nothing below is approved for production, persistence, or a migration of stored data; the full implementation needs its own approved phase.
+
+- **The model (schema v4).**
+  - The document is a flat sequence of ordinary blocks.
+  - A point is one textblock (`point`) with a semantic `depth`, not a container. Every top-level block carries a `depth`.
+  - Who owns what is derived from order and depth alone (`v4/ownership.ts`); nothing stores a parent.
+  - Notes and scripts stay bounded containers. Lists and quotations keep their usual structure.
+  - The introduction and conclusion are roles on a main point. They can hold prose, Scripture, notes, and subpoints, and stand anywhere.
+  - Depth is meaning, not indentation. Outline and manuscript presentations draw the same document.
+- **Where it lives.**
+  - `src/features/editor-lab/v4/` and the development-only `/lab/editor/v4`, beside the v3 lab, which is unchanged as the baseline.
+  - The shared files changed only additively and are inert for v3: `identifiedTypes` knows `point`; the style sheet, style resolution, and style attributes can draw a v4 point.
+  - No dependency, database, persistence, sync, or production code changed.
+- **Validated** (unit tests in `v4/*.test.ts`; a desktop browser check in `tests/lab/v4.spec.ts`):
+  - ownership of the owner's scenario (writing that belongs to Point I between its subpoints) before and after moving A and B, every level change, and converting headings, each undone and redone exactly;
+  - Enter, Backspace, Delete, and Shift+Enter as specified, with a point's identity always staying with its content;
+  - no edit outside a structural command may end a point while any of its heading survives (a guard refuses it; typing, pasting, and cutting over such a selection delete what was selected and keep the point);
+  - outdent in place (reported when it changes ownership) and move out (takes nothing over);
+  - paste lands at the level where it is put;
+  - v3 → v4 → v3 round trip exact for every lab fixture;
+  - numbering label for label with v3 under every preset and the custom style;
+  - irregular levels accepted, shown, and never repaired;
+  - Print Layout unchanged.
+- **Open:**
+  - §8.3's wording ("derived from the document's nested structure"): the labels are the same engine's, but the structure is no longer nested;
+  - how the points under an introduction or conclusion are numbered (a policy, today counted on their own);
+  - whether presentation is a document style or view state;
+  - the Tab decision;
+  - typing markers (`I.`, `1.`) to make points;
+  - production storage and migration of v3 documents.
 
 ---
 

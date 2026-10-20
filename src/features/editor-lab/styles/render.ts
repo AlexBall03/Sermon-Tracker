@@ -49,7 +49,20 @@ const componentSelectors = (scope: string): [ComponentKind, string][] => [
   ["conclusion", `${scope} .lab-section[data-role="conclusion"] > p.lab-title`],
   ["preacherNote", `${scope} .lab-note ${prose("").trim()}`],
   ["script", `${scope} .lab-script ${prose("").trim()}`],
+  // The experimental schema v4 (`v4/schema.ts`): a point is one flat heading, its kind read from
+  // its depth and role. A v3 document has none, so these match nothing there.
+  ["point", `${scope} p.lab-v4-point[data-depth="1"]:not([data-role])`],
+  ["subpoint", `${scope} p.lab-v4-point:not([data-depth="1"])`],
+  ["introduction", `${scope} p.lab-v4-point[data-role="introduction"]`],
+  ["conclusion", `${scope} p.lab-v4-point[data-role="conclusion"]`],
 ];
+
+/**
+ * A v4 point heading given a named style looks like that style, over its
+ * component's (it stays a point). As specific as the component rules and later, so it wins.
+ */
+const pointNamedSelector = (scope: string, name: NamedStyle) =>
+  `${scope} p.lab-v4-point[data-depth][data-style-name="${name}"]`;
 
 function declarations(block: Rule["block"]): string[] {
   const lines = [
@@ -79,6 +92,10 @@ function rules(styles: DocumentStyles | null, scope: string): Rule[] {
     ...componentSelectors(scope).map(([kind, selector]) => ({
       selector,
       block: resolveComponent(styles, kind),
+    })),
+    ...(Object.keys(named) as NamedStyle[]).map((name) => ({
+      selector: pointNamedSelector(scope, name),
+      block: resolveNamed(styles, name),
     })),
   ];
 }

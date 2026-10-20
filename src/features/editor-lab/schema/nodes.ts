@@ -38,6 +38,8 @@ export const identifiedTypes = [
   "scriptureReference",
   "preacherNote",
   "script",
+  // The experimental schema v4's flat point (`v4/schema.ts`). A v3 document never holds one.
+  "point",
 ] as const;
 
 /** The node types that stand for a legacy outline entry. */

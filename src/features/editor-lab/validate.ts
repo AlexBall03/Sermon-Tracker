@@ -89,7 +89,7 @@ const nodeFields = new Set(["type", "attrs", "content", "marks", "text"]);
 const markFields = new Set(["type", "attrs"]);
 
 /** Unknown types, attributes, and fields in raw JSON, which `nodeFromJSON` would drop or reject. */
-function rawProblems(json: JSONContent, schema: Schema): DocumentProblem[] {
+export function rawProblems(json: JSONContent, schema: Schema): DocumentProblem[] {
   const problems: DocumentProblem[] = [];
   const walk = (node: JSONContent, path: string) => {
     for (const key of Object.keys(node)) {

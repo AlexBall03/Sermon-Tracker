@@ -1,0 +1,91 @@
+/*
+ * Schema v4 prototype: the presentation of semantic depth. Depth is meaning;
+ * how far a block is drawn in is the presentation's choice. "Outline" draws
+ * each level 1.25rem in (main points and their writing at the margin, eight
+ * steps at most, as v3 does); "manuscript" draws nothing in. Either way the
+ * document is the same, and a paragraph's own indent (`format`, margin-left)
+ * is added on top. Nothing here is printed differently from the screen
+ * except the group mark and the irregular mark, which are never printed.
+ */
+
+.lab-editor > [data-depth] {
+  --v4-indent: 10rem;
+}
+.lab-editor > [data-depth="1"] {
+  --v4-indent: 0rem;
+}
+.lab-editor > [data-depth="2"] {
+  --v4-indent: 1.25rem;
+}
+.lab-editor > [data-depth="3"] {
+  --v4-indent: 2.5rem;
+}
+.lab-editor > [data-depth="4"] {
+  --v4-indent: 3.75rem;
+}
+.lab-editor > [data-depth="5"] {
+  --v4-indent: 5rem;
+}
+.lab-editor > [data-depth="6"] {
+  --v4-indent: 6.25rem;
+}
+.lab-editor > [data-depth="7"] {
+  --v4-indent: 7.5rem;
+}
+.lab-editor > [data-depth="8"] {
+  --v4-indent: 8.75rem;
+}
+.lab-editor[data-presentation="manuscript"] > [data-depth] {
+  --v4-indent: 0rem;
+}
+
+/* Text blocks are drawn in by padding; containers (lists, quotations, notes, passages) by margin, keeping their own padding. */
+.lab-editor > :is(p, h1, h2, h3, h4)[data-depth] {
+  padding-left: var(--v4-indent);
+}
+.lab-editor > :is(ul, ol, blockquote, aside, div)[data-depth] {
+  margin-left: var(--v4-indent);
+}
+
+/* A point heading in the flat model sits a little apart from the writing above it. */
+.lab-editor > .lab-v4-point {
+  margin-top: 0.5rem;
+}
+
+/* The group of the point around the caret: a mark in the gutter, so ownership shows even in a manuscript. */
+.lab-editor > .lab-v4-group {
+  position: relative;
+}
+.lab-editor > .lab-v4-group::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.625rem;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ring);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.lab-editor > :is(p, h1, h2, h3, h4).lab-v4-group::after {
+  left: calc(var(--v4-indent, 0rem) - 0.625rem);
+}
+.lab-editor > .lab-v4-group-head::after {
+  opacity: 0.8;
+}
+
+/* An irregular block (a skipped level, or deeper than its point): shown, never repaired. */
+.lab-editor > [data-irregular] {
+  outline: 1px dashed var(--destructive);
+  outline-offset: 2px;
+}
+
+@media print {
+  .lab-editor > .lab-v4-group::after {
+    display: none;
+  }
+  .lab-editor > [data-irregular] {
+    outline: none;
+  }
+}

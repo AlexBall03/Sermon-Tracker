@@ -31,7 +31,7 @@ export function labConfig({ production }: { production: boolean }) {
   const baseURL = existing ?? `http://localhost:${port}`;
 
   return defineConfig({
-    testMatch: production ? "production.spec.ts" : /(editor|pagination|typography)\.spec\.ts$/,
+    testMatch: production ? "production.spec.ts" : /(editor|pagination|typography|v4)\.spec\.ts$/,
     fullyParallel: false,
     workers: 1,
     forbidOnly: !!process.env.CI,

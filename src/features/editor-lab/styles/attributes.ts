@@ -28,6 +28,8 @@ export const appearanceSchemaFor: Record<string, z.ZodType> = {
   scripturePassage: appearanceSchemas.scripture,
   preacherNote: appearanceSchemas.preacherNote,
   script: appearanceSchemas.script,
+  // The experimental schema v4's flat point, at any depth and in any role (`v4/schema.ts`).
+  point: appearanceSchemas.point,
 };
 
 /** An object attribute kept as JSON in a `data-` attribute, read back only when `schema` accepts it. */
@@ -73,7 +75,8 @@ export const StyleAttributes = Extension.create({
         },
       },
       {
-        types: ["paragraph", "heading"],
+        // `point` is the experimental schema v4's point heading (`v4/schema.ts`).
+        types: ["paragraph", "heading", "point"],
         attributes: {
           format: {
             ...checkedJson("format", paragraphFormatSchema),

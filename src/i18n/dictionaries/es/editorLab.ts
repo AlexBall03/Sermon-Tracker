@@ -278,4 +278,73 @@ export const editorLab: Untranslated<typeof english> = {
     paginationPasses: "Pasadas de diseño, la última",
     ms: (value: string) => `${value} ms`,
   },
+  v4: {
+    metaTitle: "Laboratorio del editor · Esquema v4",
+    title: "Laboratorio del editor: esquema v4 (experimental)",
+    description:
+      "Un prototipo para validar la arquitectura. Los puntos son bloques comunes con una profundidad semántica; a quién pertenece cada cosa se deduce del orden y la profundidad.",
+    notice:
+      "Experimental. Aquí no se guarda, sincroniza ni envía nada; al recargar la página se empieza de nuevo.",
+    baseline: "Abrir el laboratorio v3",
+    fixture: "Documento",
+    fixtures: {
+      parentProse: "Texto que pertenece al punto padre",
+      rolesAnywhere: "Introducción y conclusión como funciones",
+      writingFirst: "Primero el texto, después la estructura",
+    },
+    migrated: (name: string) => `${name} (v3, migrado)`,
+    presentation: "Presentación",
+    presentations: { outline: "Bosquejo", manuscript: "Manuscrito" },
+    actionsLabel: "Estructura",
+    actions: {
+      point: "Nuevo punto",
+      subpoint: "Nuevo subpunto",
+      toPoint: "Convertir en punto",
+      toProse: "Quitar el punto y conservar el contenido",
+      deleteGroup: "Eliminar el punto y su contenido",
+      increase: "Aumentar nivel",
+      decrease: "Reducir nivel en su lugar",
+      moveOut: "Sacar al nivel superior",
+      moveUp: "Subir punto",
+      moveDown: "Bajar punto",
+      introduction: "Hacer introducción",
+      conclusion: "Hacer conclusión",
+      clearRole: "Quitar función",
+    },
+    look: "Aspecto del punto",
+    lookComponent: "Estilo de punto",
+    undo: "Deshacer",
+    notices: {
+      point_converted: (linked: boolean) =>
+        linked
+          ? "El punto ahora es texto común y ya no está vinculado a un punto guardado ni a una entrada del bosquejo. Deshacer recupera ambos."
+          : "El punto ahora es texto común. Deshacer lo recupera.",
+      point_removed:
+        "Se quitó el punto vacío, con su vínculo a un punto guardado o a una entrada del bosquejo. Deshacer lo recupera.",
+      points_deleted: (count: number) =>
+        count === 1
+          ? "Se eliminó 1 punto con su contenido."
+          : `Se eliminaron ${count} puntos con su contenido.`,
+      ownership_changed: (count: number) =>
+        count === 1
+          ? "1 bloque ahora pertenece a otro punto."
+          : `${count} bloques ahora pertenecen a otro punto.`,
+      role_dropped: (role: "introduction" | "conclusion") =>
+        role === "introduction"
+          ? "El documento ya tiene una introducción, así que la pegada quedó como un punto común."
+          : "El documento ya tiene una conclusión, así que la pegada quedó como un punto común.",
+    },
+    structure: {
+      title: "Estructura",
+      hint: "A quién pertenece cada bloque, deducido del orden y la profundidad. Nada de esto se guarda.",
+      block: "Bloque",
+      depth: "Profundidad",
+      owner: "Pertenece a",
+      document: "El documento",
+      empty: "(vacío)",
+      irregular: { skipped_level: "Nivel omitido", deeper_than_owner: "Más profundo que su punto" },
+    },
+    shortcuts:
+      "Intro, Retroceso, Suprimir y Mayús+Intro editan como siempre. Tab y Mayús+Tab: el nivel de un punto, o meter y sacar texto de un punto. Alt+Mayús+↑/↓: mover un punto con su contenido. Alt+Mayús+→: aumentar nivel. Alt+Mayús+←: sacar al nivel superior. Ctrl+Intro: nuevo punto. Ctrl+Mayús+Intro: nuevo subpunto.",
+  },
 };
