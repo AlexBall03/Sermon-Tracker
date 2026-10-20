@@ -263,7 +263,7 @@ describe("Backspace and Delete", () => {
     press(editor, "Backspace");
     expect(names(editor)).toEqual(["p-i", "p-a", "Body of B", "p-ii"]);
     expect(allIds(editor)).toEqual(["p-i", "p-a", "p-ii"]);
-    expect(notices).toEqual([]);
+    expect(notices).toEqual([{ code: "points_deleted", count: 1, linked: false, reparented: 0 }]);
   });
 
   it("a built-in deletion that would end a point while its words survive is refused", () => {
@@ -293,7 +293,12 @@ describe("Backspace and Delete", () => {
     caret(editor, "p-b");
     expect(run(editor, deletePointGroup)).toBe(true);
     expect(names(editor)).toEqual(["p-i", "Subpoint A", "Body of A", "Belongs to I", "p-ii"]);
-    expect(notices.at(-1)).toEqual({ code: "points_deleted", count: 1, linked: false });
+    expect(notices.at(-1)).toEqual({
+      code: "points_deleted",
+      count: 1,
+      linked: false,
+      reparented: 0,
+    });
   });
 });
 

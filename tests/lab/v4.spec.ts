@@ -29,7 +29,7 @@ async function openV4(page: Page) {
 const editor = (page: Page) => page.getByTestId("lab-v4-editor");
 const point = (page: Page, id: string) =>
   editor(page).locator(`p[data-type="point"][data-id="${id}"]`);
-const paragraph = (page: Page, text: string) =>
+const paragraph = (page: Page, text: string | RegExp) =>
   editor(page).locator("p:not([data-type])", { hasText: text });
 
 /** Where the browser's caret is: the point it is in (by ID) or the text of its paragraph. */
@@ -44,6 +44,72 @@ function caretBlock(page: Page) {
       : `text:${block.textContent}`;
   });
 }
+
+/** Every top-level block, as `caretBlock` names it, in document order. */
+function blockOrder(page: Page) {
+  return page.evaluate(() =>
+    Array.from(
+      document.querySelectorAll('[data-testid="lab-v4-editor"] > :not([contenteditable="false"])'),
+    ).map((block) =>
+      block.getAttribute("data-type") === "point"
+        ? `point:${block.getAttribute("data-id")}`
+        : `text:${block.textContent}`,
+    ),
+  );
+}
+
+/** Whether keyboard focus is in the editor. */
+function focusInEditor(page: Page) {
+  return page.evaluate(() =>
+    Boolean(document.activeElement?.closest('[data-testid="lab-v4-editor"]')),
+  );
+}
+
+/** A place in a top-level block: a point (by ID) or a paragraph (by its text), and how far in. */
+type Spot = [block: string, offset: number | "end"];
+
+/**
+ * Puts the selection (or, without `to`, the caret) in the editor and focuses
+ * it, through the editor itself (Tiptap keeps itself on its element). The
+ * PS-ER1 tests place it so rather than with a click and arrow keys: what
+ * they test is the key pressed there, and keys pressed straight after a
+ * click are sometimes lost in this lab, before any v4 code runs (it happens
+ * on the commit before PS-ER1 too).
+ */
+async function place(page: Page, from: Spot, to?: Spot) {
+  await page.evaluate(
+    ([start, end]) => {
+      type NodeLike = { textContent: string; attrs: { id?: string }; content: { size: number } };
+      const element = document.querySelector('[data-testid="lab-v4-editor"]') as HTMLElement & {
+        editor: {
+          state: { doc: { forEach: (f: (n: NodeLike, pos: number) => void) => void } };
+          commands: {
+            focus: () => void;
+            setTextSelection: (range: number | { from: number; to: number }) => void;
+          };
+        };
+      };
+      const find = ([name, offset]: Spot) => {
+        let found = -1;
+        element.editor.state.doc.forEach((node, pos) => {
+          if (found < 0 && (node.attrs.id === name || node.textContent === name)) {
+            found = pos + 1 + (offset === "end" ? node.content.size : offset);
+          }
+        });
+        if (found < 0) throw new Error(`no block ${name}`);
+        return found;
+      };
+      element.editor.commands.focus();
+      element.editor.commands.setTextSelection(
+        end ? { from: find(start), to: find(end) } : find(start),
+      );
+    },
+    [from, to] as const,
+  );
+}
+
+/** Selects from "Body of A" after "Body" into Subpoint B's heading after "Subpoint ". */
+const selectIntoB = (page: Page) => place(page, ["Body of A", 4], ["p-b", "Subpoint ".length]);
 
 /** Clicks at the very end (or start) of a block's text. */
 async function clickEdge(page: Page, target: ReturnType<typeof point>, edge: "start" | "end") {
@@ -97,6 +163,8 @@ test.describe("schema v4 prototype, signed in", () => {
     await clickEdge(page, point(page, "p-b"), "end");
     await page.keyboard.press("Backspace");
     await expect(point(page, "p-b")).toHaveText("Subpoint ");
+    // History joins adjacent changes made within 500 ms into one undo step; these are two.
+    await page.waitForTimeout(600);
     await page.keyboard.press("Home");
     await page.keyboard.press("Backspace");
     await expect(point(page, "p-b")).toHaveCount(0);
@@ -138,6 +206,116 @@ test.describe("schema v4 prototype, signed in", () => {
     await page.keyboard.type("!");
     await expect(paragraph(page, "Body!")).toHaveCount(1);
     await expect(point(page, "p-b")).toHaveText("B");
+  });
+
+  /* PS-ER1: interaction hardening, where only a browser can tell. */
+
+  test("Ctrl+Backspace at a heading's start turns the point into writing, as Backspace does", async ({
+    page,
+  }) => {
+    await openV4(page);
+    await place(page, ["p-b", 0]);
+    await page.keyboard.press("Control+Backspace");
+    await expect(point(page, "p-b")).toHaveCount(0);
+    await expect(paragraph(page, "Subpoint B")).toHaveAttribute("data-depth", "1");
+    await page.keyboard.press("Control+z");
+    await expect(point(page, "p-b")).toHaveText("Subpoint B");
+  });
+
+  test("Enter over a selection from writing into a heading deletes it and keeps the point", async ({
+    page,
+  }) => {
+    await openV4(page);
+    await selectIntoB(page);
+    await page.keyboard.press("Enter");
+    await expect(paragraph(page, /^Body$/)).toHaveText("Body");
+    await expect(point(page, "p-b")).toHaveText("B");
+    expect(await caretBlock(page)).toBe("point:p-b");
+  });
+
+  test("Tab with nothing to indent moves focus on, and Shift+Tab comes back", async ({ page }) => {
+    await openV4(page);
+    await place(page, ["p-a", "end"]);
+    const before = await editor(page).innerHTML();
+    await page.keyboard.press("Tab");
+    expect(await focusInEditor(page)).toBe(false);
+    expect(await editor(page).innerHTML()).toBe(before);
+    await page.keyboard.press("Shift+Tab");
+    expect(await focusInEditor(page)).toBe(true);
+  });
+
+  test("Shift+Tab moves a subpoint out with its writing, after its parent's own", async ({
+    page,
+  }) => {
+    await openV4(page);
+    await place(page, ["p-a", "end"]);
+    await page.keyboard.press("Shift+Tab");
+    expect(await focusInEditor(page)).toBe(true);
+    expect(await blockOrder(page)).toEqual([
+      "point:p-i",
+      "text:Belongs to I",
+      "point:p-b",
+      "text:Body of B",
+      "point:p-a",
+      "text:Body of A",
+      "point:p-ii",
+    ]);
+    await expect(point(page, "p-a")).toHaveAttribute("data-depth", "1");
+  });
+
+  test("cutting a selection from writing into a heading keeps the point, and the cut pastes back", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await openV4(page);
+    await selectIntoB(page);
+    await page.keyboard.press("Control+x");
+    await expect(point(page, "p-b")).toHaveText("B");
+    await expect(paragraph(page, /^Body$/)).toHaveText("Body");
+    await place(page, ["p-ii", "end"]);
+    await page.keyboard.press("Control+v");
+    await expect(editor(page)).toContainText("Belongs to I");
+  });
+
+  // Dragging text is not checked here: Playwright starts a drag in the editor but delivers no drop
+  // (mouse or dragTo). The drop itself is unit-tested (`dropTransaction`, interaction.test.ts).
+
+  test("a deletion the browser makes on its own never merges a heading into writing", async ({
+    page,
+  }) => {
+    await openV4(page);
+    await place(page, ["Belongs to I", "end"]);
+    // execCommand edits as a context menu or a virtual keyboard does: no key the editor sees.
+    await page.evaluate(() => document.execCommand("forwardDelete"));
+    await expect(point(page, "p-b")).toHaveText("Subpoint B");
+    await expect(paragraph(page, "Belongs to I")).toHaveText("Belongs to I");
+    await expect(page.getByTestId("lab-v4-notice")).toBeVisible();
+  });
+
+  test("an IME composition over a selection from writing into a heading", async ({ page }) => {
+    await openV4(page);
+    const client = await page.context().newCDPSession(page);
+    // A composition at a caret inside a heading, as a baseline.
+    await place(page, ["p-ii", "end"]);
+    await client.send("Input.imeSetComposition", {
+      text: "か",
+      selectionStart: 1,
+      selectionEnd: 1,
+    });
+    await client.send("Input.insertText", { text: "か" });
+    await expect(point(page, "p-ii")).toHaveText("Main Point IIか");
+    // Over a selection that crosses into a heading.
+    await selectIntoB(page);
+    await client.send("Input.imeSetComposition", {
+      text: "あ",
+      selectionStart: 1,
+      selectionEnd: 1,
+    });
+    await client.send("Input.insertText", { text: "あ" });
+    console.log(`LAB-IME ${JSON.stringify(await blockOrder(page))}`);
+    await expect(point(page, "p-b")).toHaveText("B");
+    await expect(paragraph(page, "Bodyあ")).toHaveCount(1);
   });
 
   test("presentation changes indentation only; Print Layout paginates and stays editable", async ({

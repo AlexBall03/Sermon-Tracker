@@ -1,4 +1,5 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Mappable } from "@tiptap/pm/transform";
 
 /*
  * Who owns what in a v4 document, worked out from order and depth alone
@@ -147,4 +148,30 @@ export function ownerKeys(structure: Structure): (string | null)[] {
     const id = structure.blocks[owner].node.attrs.id;
     return typeof id === "string" && id ? id : `@${owner}`;
   });
+}
+
+/**
+ * How many blocks a change did not remove, and that are not in `touched`
+ * (indices before the change), now belong to someone else. A block is
+ * followed by mapping where it started; one whose start was deleted is gone.
+ */
+export function reparented(
+  before: Structure,
+  after: ProseMirrorNode,
+  mapping: Mappable,
+  touched: ReadonlySet<number> = new Set(),
+): number {
+  const next = analyze(after);
+  const oldKeys = ownerKeys(before);
+  const newKeys = ownerKeys(next);
+  const at = new Map(next.blocks.map((block, index) => [block.pos, index]));
+  let count = 0;
+  before.blocks.forEach((block, index) => {
+    if (touched.has(index)) return;
+    const mapped = mapping.mapResult(block.pos, 1);
+    if (mapped.deleted) return;
+    const now = at.get(mapped.pos);
+    if (now !== undefined && newKeys[now] !== oldKeys[index]) count += 1;
+  });
+  return count;
 }

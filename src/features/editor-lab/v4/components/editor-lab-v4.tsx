@@ -204,17 +204,20 @@ export function EditorLabV4() {
             className="flex items-center gap-3 text-sm text-gold-ink"
           >
             <span>{noticeText(v4.notices, notice)}</span>
-            <button
-              type="button"
-              className="text-primary underline-offset-4 hover:underline"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                undo(editor.state, editor.view.dispatch);
-                setNotice(null);
-              }}
-            >
-              {v4.undo}
-            </button>
+            {/* A refused change made nothing, so there is nothing of it to undo. */}
+            {notice.code !== "change_refused" && (
+              <button
+                type="button"
+                className="text-primary underline-offset-4 hover:underline"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  undo(editor.state, editor.view.dispatch);
+                  setNotice(null);
+                }}
+              >
+                {v4.undo}
+              </button>
+            )}
           </p>
         )}
         <p className="text-xs text-muted-foreground">{v4.shortcuts}</p>
@@ -233,11 +236,13 @@ function noticeText(notices: Notices, notice: V4Notice): string {
     case "point_removed":
       return notices.point_removed;
     case "points_deleted":
-      return notices.points_deleted(notice.count);
+      return notices.points_deleted(notice.count, notice.reparented);
     case "ownership_changed":
       return notices.ownership_changed(notice.count);
     case "role_dropped":
       return notices.role_dropped(notice.role);
+    case "change_refused":
+      return notices.change_refused;
   }
 }
 

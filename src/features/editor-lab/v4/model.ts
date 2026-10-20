@@ -41,12 +41,19 @@ export const depthTypes = [
  */
 export const structuralMeta = "v4Structural";
 
-/** What the editor tells the person after a structural change with consequences (`plugins.ts`). */
+/**
+ * What the editor tells the person after a structural change with
+ * consequences (`plugins.ts`). `points_deleted.reparented` counts the blocks
+ * the deletion left standing that now belong to another point.
+ * `change_refused` is the guard's: a change that would have broken a point
+ * was not made (a fallback; the editing commands never meet it).
+ */
 export type V4Notice =
   | { code: "point_converted"; linked: boolean }
   | { code: "point_removed"; linked: boolean }
-  | { code: "points_deleted"; count: number; linked: boolean }
+  | { code: "points_deleted"; count: number; linked: boolean; reparented: number }
   | { code: "ownership_changed"; count: number }
-  | { code: "role_dropped"; role: PointRole };
+  | { code: "role_dropped"; role: PointRole }
+  | { code: "change_refused" };
 
 export const noticeMeta = "v4Notice";

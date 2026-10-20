@@ -1,17 +1,24 @@
 import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { liftListItem, sinkListItem } from "@tiptap/pm/schema-list";
-import { Selection, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import {
+  NodeSelection,
+  Selection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from "@tiptap/pm/state";
+import type { Mappable } from "@tiptap/pm/transform";
 
 import type { Command } from "../outline-commands";
-import { noticeMeta, structuralMeta, type PointRole, type V4Notice } from "./model";
+import { maxDepth, noticeMeta, structuralMeta, type PointRole, type V4Notice } from "./model";
 import {
   analyze,
   analyzeShapes,
   groupRange,
   nearestPoint,
   nextSibling,
-  ownerKeys,
   previousSibling,
+  reparented,
   type Shape,
   type Structure,
 } from "./ownership";
@@ -79,25 +86,33 @@ function regularDepth(structure: Structure, index: number, wanted: number): numb
   return best;
 }
 
-/** How many blocks that the change did not touch now belong to someone else. */
-function adopted(
-  before: Structure,
+/**
+ * What a deletion did to the structure, for its notice: the points it
+ * removed, and how many blocks it left standing now belong to another point
+ * (a deleted parent's later subpoints go to the point before them; nothing
+ * is repaired). Null when it did neither.
+ */
+export function deletionNotice(
+  before: ProseMirrorNode,
   after: ProseMirrorNode,
-  tr: Transaction,
-  touched: Set<number>,
-): number {
-  const next = analyze(after);
-  const oldKeys = ownerKeys(before);
-  const newKeys = ownerKeys(next);
-  let count = 0;
-  before.blocks.forEach((block, index) => {
-    if (touched.has(index)) return;
-    const mapped = tr.mapping.mapResult(block.pos, 1);
-    if (mapped.deleted) return;
-    const now = next.blocks.findIndex((other) => other.pos === mapped.pos);
-    if (now >= 0 && newKeys[now] !== oldKeys[index]) count += 1;
+  mapping: Mappable,
+): V4Notice | null {
+  const remaining = new Set<unknown>();
+  after.forEach((node) => {
+    if (node.type.name === "point") remaining.add(node.attrs.id);
   });
-  return count;
+  let count = 0;
+  let isLinked = false;
+  before.forEach((node) => {
+    if (node.type.name === "point" && !remaining.has(node.attrs.id)) {
+      count += 1;
+      if (linked(node)) isLinked = true;
+    }
+  });
+  const moved = reparented(analyze(before), after, mapping);
+  if (count > 0) return { code: "points_deleted", count, linked: isLinked, reparented: moved };
+  if (moved > 0) return { code: "ownership_changed", count: moved };
+  return null;
 }
 
 /* Enter */
@@ -113,11 +128,14 @@ function adopted(
  *   after the caret, and everything it owns;
  * - in an empty point that owns nothing, the point becomes an ordinary
  *   paragraph where it stands, at the deepest depth that stays regular.
- * A selection inside the heading is deleted first. One transaction.
+ * A selection inside the heading (words, or an inline reference) is deleted
+ * first. One transaction.
  */
 export const enterInPoint: Command = (state, dispatch) => {
   const heading = pointHeading(state);
-  if (!heading || !(state.selection instanceof TextSelection)) return false;
+  const { selection } = state;
+  const inlineNode = selection instanceof NodeSelection && selection.node.isInline;
+  if (!heading || !(selection instanceof TextSelection || inlineNode)) return false;
   if (!dispatch) return true;
   const structure = analyze(state.doc);
   const block = structure.blocks[heading.index];
@@ -151,6 +169,26 @@ export const enterInPoint: Command = (state, dispatch) => {
     tr.setSelection(TextSelection.create(tr.doc, second + 1));
   }
   dispatch(structural(tr).scrollIntoView());
+  return true;
+};
+
+/**
+ * Enter over a selection across blocks that starts or ends in a point
+ * heading (D2): the selection is deleted without joining a heading to
+ * another block (`boundaryDeletion`), so the boundary that remains is the
+ * break, and the caret goes to the start of the second block. Every point
+ * that survives keeps its identity and words; writing stays writing. A
+ * selection between two pieces of writing is left to the usual Enter.
+ */
+export const enterOverSelection: Command = (state, dispatch) => {
+  const cut = boundaryDeletion(state, { headingAtStart: true });
+  if (!cut) return false;
+  if (dispatch) {
+    const { tr } = cut;
+    const found = Selection.findFrom(tr.doc.resolve(cut.second), 1, true);
+    tr.setSelection(found ?? Selection.near(tr.doc.resolve(cut.second)));
+    dispatch(tr.scrollIntoView());
+  }
   return true;
 };
 
@@ -214,6 +252,7 @@ export const proseToPoint: Command = (state, dispatch) => {
     if (name !== "paragraph" && name !== "heading") continue;
     const owner = structure.owner[index];
     const ownerDepth = owner === null ? 0 : structure.blocks[owner].depth;
+    if (ownerDepth + 1 > maxDepth) continue;
     const styleName =
       name === "heading"
         ? `heading${block.node.attrs.level}`
@@ -297,48 +336,53 @@ export const deleteBeforePoint: Command = (state, dispatch) => {
 };
 
 /**
- * Deleting a selection that ends inside a point heading which it starts
- * before. ProseMirror would join what is left of the heading into the first
- * block, ending the point; instead the selected words of the heading are
- * deleted and the heading stays a point, with its identity and everything
- * it owns. Points wholly selected are deleted, and the people told. Null
- * where ProseMirror's own deletion is already right.
+ * Deletes a text selection across top-level blocks without joining its two
+ * ends: what is selected of the last block goes, then everything from the
+ * selection's start up to that block. So a point heading at either end
+ * stays a point, with its identity, its words outside the selection, and
+ * everything it owns, and the last block keeps its own type and depth.
+ * Points wholly selected are deleted, and the person is told. Applies when
+ * the selection ends in a heading, or (`headingAtStart`) starts in one;
+ * null otherwise, where ProseMirror's own deletion is right. `second` is
+ * where the last block now starts.
  */
-export function protectedDeletion(state: EditorState): Transaction | null {
+function boundaryDeletion(
+  state: EditorState,
+  { headingAtStart }: { headingAtStart: boolean },
+): { tr: Transaction; second: number } | null {
   const { from, to, empty } = state.selection;
   if (empty || !(state.selection instanceof TextSelection)) return null;
+  const $from = state.doc.resolve(from);
   const $to = state.doc.resolve(to);
+  const first = blockIndex($from);
   const last = blockIndex($to);
-  if (last === null) return null;
-  const node = state.doc.child(last);
-  if (node.type.name !== "point") return null;
+  if (first === null || last === null || first === last) return null;
+  const endsInHeading = state.doc.child(last).type.name === "point";
+  const startsInHeading = state.doc.child(first).type.name === "point";
+  if (!endsInHeading && !(headingAtStart && startsInHeading)) return null;
   const start = $to.before(1);
-  if (from >= start) return null;
   const tr = state.tr;
   tr.delete(start + 1, to);
   tr.delete(from, start);
-  tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from, -1)));
-  const removed = countRemovedPoints(state, tr);
-  if (removed.count > 0) {
-    notify(tr, { code: "points_deleted", count: removed.count, linked: removed.linked });
-  }
-  return structural(tr);
+  const notice = deletionNotice(state.doc, tr.doc, tr.mapping);
+  if (notice) notify(tr, notice);
+  return { tr: structural(tr), second: tr.mapping.map(start) };
 }
 
-function countRemovedPoints(state: EditorState, tr: Transaction) {
-  const after = new Set<unknown>();
-  tr.doc.forEach((node) => {
-    if (node.type.name === "point") after.add(node.attrs.id);
-  });
-  let count = 0;
-  let isLinked = false;
-  state.doc.forEach((node) => {
-    if (node.type.name === "point" && !after.has(node.attrs.id)) {
-      count += 1;
-      if (linked(node)) isLinked = true;
-    }
-  });
-  return { count, linked: isLinked };
+/**
+ * Deleting a selection that ends inside a point heading which it starts
+ * before. ProseMirror would join what is left of the heading into the first
+ * block, ending the point; instead the selected words of the heading are
+ * deleted and the heading stays a point (`boundaryDeletion`). Null where
+ * ProseMirror's own deletion is already right: a selection that starts in a
+ * heading and ends in writing joins the writing into the heading, as any
+ * editor joins (D3), and the point survives.
+ */
+export function protectedDeletion(state: EditorState): Transaction | null {
+  const cut = boundaryDeletion(state, { headingAtStart: false });
+  if (!cut) return null;
+  const { tr } = cut;
+  return tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(state.selection.from, -1)));
 }
 
 /** Backspace or Delete with a selection: the protected deletion where it applies. */
@@ -372,7 +416,8 @@ export const deletePointGroup: Command = (state, dispatch) => {
       if (linked(block.node)) isLinked = true;
     }
   }
-  notify(tr, { code: "points_deleted", count: points, linked: isLinked });
+  // The whole group goes, so nothing it owned is left to change owner.
+  notify(tr, { code: "points_deleted", count: points, linked: isLinked, reparented: 0 });
   dispatch(structural(tr).scrollIntoView());
   return true;
 };
@@ -407,7 +452,8 @@ function shift(tr: Transaction, structure: Structure, from: number, to: number, 
  * level down, under the sibling point straight before it. Nothing moves, and
  * nothing outside the group changes owner. Refused for a first child (there
  * is no point to go under), where parent-owned writing stands between it and
- * that sibling, and for a point with a role.
+ * that sibling, for a point with a role, and where anything in the group
+ * would go deeper than `maxDepth`.
  */
 export const increaseLevel: Command = (state, dispatch) => {
   const structure = analyze(state.doc);
@@ -419,6 +465,9 @@ export const increaseLevel: Command = (state, dispatch) => {
     const sibling = previousSibling(structure, index);
     // The sibling must still be open: its group runs right up to this point.
     if (sibling === null || structure.groupEnd[sibling] !== index) return false;
+    for (let member = index; member < structure.groupEnd[index]; member += 1) {
+      if (structure.blocks[member].depth + 1 > maxDepth) return false;
+    }
   }
   if (!dispatch) return true;
   const tr = state.tr;
@@ -432,7 +481,7 @@ export const increaseLevel: Command = (state, dispatch) => {
  * where it stands. Nothing moves; what follows it at its old level (later
  * siblings, its parent's closing writing) now belongs to it. That change of
  * ownership is reported. "Move out" (`moveOut`) is the outdent that takes
- * nothing.
+ * nothing, and the one Shift+Tab uses (D5); this one is a toolbar action only.
  */
 export const decreaseLevel: Command = (state, dispatch) => {
   const structure = analyze(state.doc);
@@ -446,49 +495,77 @@ export const decreaseLevel: Command = (state, dispatch) => {
     shift(tr, structure, index, structure.groupEnd[index], -1);
     for (let member = index; member < structure.groupEnd[index]; member += 1) touched.add(member);
   }
-  const count = adopted(structure, tr.doc, tr, touched);
+  const count = reparented(structure, tr.doc, tr.mapping, touched);
   if (count > 0) notify(tr, { code: "ownership_changed", count });
   dispatch(structural(tr).scrollIntoView());
   return true;
 };
 
 /**
- * Tab in writing (not in a point heading or a list): the block goes into
- * the point straight above it at the next level, where there is one open.
+ * The writing the selection lies in, when it is one top-level block or a
+ * run of them at the same depth with the same owner; null when it touches a
+ * point or mixes levels.
+ */
+function proseRun(state: EditorState, structure: Structure) {
+  const first = blockIndex(state.selection.$from);
+  const last = blockIndex(state.selection.$to);
+  if (first === null || last === null) return null;
+  const { depth } = structure.blocks[first];
+  const owner = structure.owner[first];
+  for (let index = first; index <= last; index += 1) {
+    const block = structure.blocks[index];
+    if (block.isPoint || block.depth !== depth || structure.owner[index] !== owner) return null;
+  }
+  return { first, end: last + 1, depth };
+}
+
+/**
+ * Shifts a run of writing by one level where it stands, only where nothing
+ * else changes owner: indentation stays local (D1, D5). Otherwise nothing
+ * changes and the command does not apply (the key is left to the browser).
+ */
+function shiftProse(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  structure: Structure,
+  run: { first: number; end: number },
+  by: 1 | -1,
+): boolean {
+  const tr = state.tr;
+  shift(tr, structure, run.first, run.end, by);
+  const touched = new Set<number>();
+  for (let index = run.first; index < run.end; index += 1) touched.add(index);
+  if (reparented(structure, tr.doc, tr.mapping, touched) > 0) return false;
+  if (dispatch) dispatch(structural(tr).scrollIntoView());
+  return true;
+}
+
+/**
+ * Tab in writing (not in a point heading or a list): the block, or a run of
+ * them, goes into the point straight above it at the next level, where
+ * there is one open, and only when no other block changes owner by it.
  */
 export const indentProse: Command = (state, dispatch) => {
-  const index = blockIndex(state.selection.$from);
-  if (index === null || blockIndex(state.selection.$to) !== index) return false;
   const structure = analyze(state.doc);
-  const block = structure.blocks[index];
-  if (block.isPoint) return false;
-  const wanted = block.depth + 1;
-  if (regularDepth(structure, index, wanted) !== wanted) return false;
-  if (dispatch) {
-    dispatch(structural(state.tr.setNodeAttribute(block.pos, "depth", wanted)).scrollIntoView());
-  }
-  return true;
+  const run = proseRun(state, structure);
+  if (!run) return false;
+  const wanted = run.depth + 1;
+  if (wanted > maxDepth || regularDepth(structure, run.first, wanted) !== wanted) return false;
+  return shiftProse(state, dispatch, structure, run, 1);
 };
 
 /**
- * Shift+Tab in writing: the block goes up to its owner's parent. What comes
- * after it in its owner's group goes up with it, since it could no longer
- * stay in a point that has ended; when that is more than the block, it is reported.
+ * Shift+Tab in writing: the block, or a run of them, comes up one level
+ * where it stands, only when no other block changes owner by it (in
+ * practice, when it is the last of its point's group). Nothing is moved and
+ * no unselected block changes depth; where that is not possible nothing
+ * changes and the key is left to the browser (D5).
  */
 export const outdentProse: Command = (state, dispatch) => {
-  const index = blockIndex(state.selection.$from);
-  if (index === null || blockIndex(state.selection.$to) !== index) return false;
   const structure = analyze(state.doc);
-  const block = structure.blocks[index];
-  if (block.isPoint || block.depth === 0) return false;
-  if (!dispatch) return true;
-  const owner = structure.owner[index];
-  const end = owner === null ? index + 1 : structure.groupEnd[owner];
-  const tr = state.tr;
-  shift(tr, structure, index, end, -1);
-  if (end - index > 1) notify(tr, { code: "ownership_changed", count: end - index });
-  dispatch(structural(tr).scrollIntoView());
-  return true;
+  const run = proseRun(state, structure);
+  if (!run || run.depth === 0) return false;
+  return shiftProse(state, dispatch, structure, run, -1);
 };
 
 /* Moving groups */
@@ -570,10 +647,51 @@ export const moveOut: Command = (state, dispatch) => {
   const structure = analyze(state.doc);
   const point = nearestPoint(structure, index);
   if (point === null) return false;
+  return moveOutRange(state, dispatch, structure, point, structure.groupEnd[point]);
+};
+
+/**
+ * Shift+Tab on points (D5): Move Out for the points the selection is in.
+ * The selection must start in a heading; several points go together when
+ * they are consecutive siblings (nothing of their parent's own between
+ * them), each with everything it owns. Nothing is adopted.
+ */
+export const moveOutSelected: Command = (state, dispatch) => {
+  const first = blockIndex(state.selection.$from);
+  const last = blockIndex(state.selection.$to);
+  if (first === null || last === null) return false;
+  const structure = analyze(state.doc);
+  if (!structure.blocks[first].isPoint) return false;
+  const points = selectedPoints(state, structure);
+  const parent = structure.owner[first];
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index];
+    if (structure.groupEnd[points[index - 1]] !== point || structure.owner[point] !== parent) {
+      return false;
+    }
+  }
+  const end = structure.groupEnd[points[points.length - 1]];
+  if (last >= end) return false;
+  return moveOutRange(state, dispatch, structure, first, end);
+};
+
+/**
+ * Moves blocks `point`..`end` (a point's group, or consecutive siblings'
+ * groups) one level up, to just after their parent's group, so they take
+ * over nothing. The parent's own writing after them stays the parent's.
+ * Every node is the same node, so every ID is kept. A selection inside the
+ * moved blocks moves with them.
+ */
+function moveOutRange(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  structure: Structure,
+  point: number,
+  end: number,
+): boolean {
   const parent = structure.owner[point];
   if (parent === null || structure.blocks[point].depth <= 1) return false;
   if (!dispatch) return true;
-  const end = structure.groupEnd[point];
   const parentEnd = structure.groupEnd[parent];
   const nodes = reorder(
     state,
@@ -585,17 +703,23 @@ export const moveOut: Command = (state, dispatch) => {
     { from: point, to: end, by: -1 },
   );
   const from = structure.blocks[point].pos;
+  const moved = groupRange(structure, end - 1).to;
   const to = groupRange(structure, parentEnd - 1).to;
-  const caret = state.selection.from - from;
   const tr = state.tr.replaceWith(from, to, nodes);
   let start = from;
   for (let other = end; other < parentEnd; other += 1) {
     start += structure.blocks[other].node.nodeSize;
   }
-  tr.setSelection(Selection.near(tr.doc.resolve(start + caret)));
+  const { anchor, head } = state.selection;
+  const inside = (pos: number) => pos > from && pos < moved;
+  tr.setSelection(
+    state.selection instanceof TextSelection && inside(anchor) && inside(head)
+      ? TextSelection.create(tr.doc, start + anchor - from, start + head - from)
+      : Selection.near(tr.doc.resolve(start + Math.max(0, state.selection.from - from))),
+  );
   dispatch(structural(tr).scrollIntoView());
   return true;
-};
+}
 
 /* New points */
 
@@ -612,7 +736,6 @@ export function addPoint(kind: "sibling" | "child"): Command {
     const structure = analyze(state.doc);
     const point = nearestPoint(structure, index);
     if (kind === "child" && point === null) return false;
-    if (!dispatch) return true;
     let at: number;
     let depth: number;
     if (point === null) {
@@ -623,6 +746,8 @@ export function addPoint(kind: "sibling" | "child"): Command {
       at = groupRange(structure, point).to;
       depth = structure.blocks[point].depth + (kind === "child" ? 1 : 0);
     }
+    if (depth > maxDepth) return false;
+    if (!dispatch) return true;
     const tr = state.tr.insert(at, state.schema.nodes.point.create({ depth }));
     tr.setSelection(TextSelection.create(tr.doc, at + 1));
     dispatch(structural(tr).scrollIntoView());
@@ -684,20 +809,29 @@ const inList = (state: EditorState) => {
   return false;
 };
 
-const listSink: Command = (state, dispatch) =>
-  inList(state) && sinkListItem(state.schema.nodes.listItem)(state, dispatch);
-const listLift: Command = (state, dispatch) =>
-  inList(state) && liftListItem(state.schema.nodes.listItem)(state, dispatch);
-
 export const firstOf =
   (...commands: Command[]): Command =>
   (state, dispatch) =>
     commands.some((command) => command(state, dispatch));
 
-/** Tab: a list item sinks; a point goes a level down in place; writing goes into the point above. */
-export const tab = firstOf(listSink, increaseLevel, indentProse);
-/** Shift+Tab: a list item lifts; a point comes up in place; writing comes up to its owner's parent. */
-export const shiftTab = firstOf(listLift, decreaseLevel, outdentProse);
+/*
+ * Tab and Shift+Tab (D1, D5). Each does the one edit that fits where the
+ * selection is, or nothing; where nothing applies the command returns false,
+ * the key is not taken, and the browser moves focus on (Shift+Tab: back).
+ * The editor is never a keyboard trap.
+ */
+
+/** Tab: a list item sinks (in a list, nothing else); a point goes a level down in place; writing goes into the point above. */
+export const tab: Command = (state, dispatch) =>
+  inList(state)
+    ? sinkListItem(state.schema.nodes.listItem)(state, dispatch)
+    : firstOf(increaseLevel, indentProse)(state, dispatch);
+
+/** Shift+Tab: a list item lifts; a point moves out with its group; writing comes up a level where that changes nothing else. */
+export const shiftTab: Command = (state, dispatch) =>
+  inList(state)
+    ? liftListItem(state.schema.nodes.listItem)(state, dispatch)
+    : firstOf(moveOutSelected, outdentProse)(state, dispatch);
 
 /** For the tests: the shape of a document as the analysis reads it. */
 export const shapesOf = (doc: ProseMirrorNode): Shape[] =>

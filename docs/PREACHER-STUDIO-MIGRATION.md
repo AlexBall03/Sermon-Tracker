@@ -668,11 +668,17 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - numbering label for label with v3 under every preset and the custom style;
   - irregular levels accepted, shown, and never repaired;
   - Print Layout unchanged.
+- **PS-ER1, Interaction Hardening (20 October 2026; lab only; [handoff](HANDOFF-PS-ER1.md)).** The integrity guard is the last line, not the editing experience. **Approved by the owner:**
+  - **D1, Tab:** context-sensitive. In a list it moves the item and nothing else. On a point it increases the level in place. In writing it moves the block (or a run with one owner and depth) into the open point above, only when no other block changes owner by it. Otherwise the key is not taken and focus moves on: never a keyboard trap.
+  - **D5, Shift+Tab:** Move Out on a point (its whole group, to just after its parent's; consecutive siblings together; nothing adopted). Writing outdents in place only when no other block changes owner by it, and is never moved. Otherwise focus moves back. The adopting outdent stays a toolbar action only; Alt+Shift+← is still Move Out.
+  - **D2:** Enter over a selection across blocks that touches a heading deletes it without joining a heading to another block. The boundary is the break, and identities and block types survive.
+  - **D3:** typing or Backspace over a selection from a heading into writing keeps the conventional join (the point survives).
+  - **D4:** deleted points and reparented blocks are reported; a refused change says so, never during a composition or for the editor's own follow-up changes.
+  - Implemented: modifier Backspace/Delete at a point's edge, drops within the document (same nodes and IDs), IME composition over a selection into a heading (checked in desktop Chromium), deletions the browser makes itself (`beforeinput`, plus a text check in the guard), and the depth limit on every command. Deleting a parent never repairs what survives it: depths stay, owners follow from order, and the change is reported.
 - **Open:**
   - §8.3's wording ("derived from the document's nested structure"): the labels are the same engine's, but the structure is no longer nested;
   - how the points under an introduction or conclusion are numbered (a policy, today counted on their own);
   - whether presentation is a document style or view state;
-  - the Tab decision;
   - typing markers (`I.`, `1.`) to make points;
   - production storage and migration of v3 documents.
 

@@ -321,10 +321,16 @@ export const editorLab: Untranslated<typeof english> = {
           : "El punto ahora es texto común. Deshacer lo recupera.",
       point_removed:
         "Se quitó el punto vacío, con su vínculo a un punto guardado o a una entrada del bosquejo. Deshacer lo recupera.",
-      points_deleted: (count: number) =>
-        count === 1
-          ? "Se eliminó 1 punto con su contenido."
-          : `Se eliminaron ${count} puntos con su contenido.`,
+      points_deleted: (count: number, reparented: number) => {
+        const deleted =
+          count === 1
+            ? "Se eliminó 1 punto con su contenido."
+            : `Se eliminaron ${count} puntos con su contenido.`;
+        if (reparented === 0) return deleted;
+        return reparented === 1
+          ? `${deleted} 1 bloque que estaba debajo ahora pertenece a otro punto.`
+          : `${deleted} ${reparented} bloques que estaban debajo ahora pertenecen a otro punto.`;
+      },
       ownership_changed: (count: number) =>
         count === 1
           ? "1 bloque ahora pertenece a otro punto."
@@ -333,6 +339,8 @@ export const editorLab: Untranslated<typeof english> = {
         role === "introduction"
           ? "El documento ya tiene una introducción, así que la pegada quedó como un punto común."
           : "El documento ya tiene una conclusión, así que la pegada quedó como un punto común.",
+      change_refused:
+        "Ese cambio habría partido un punto, así que no se hizo. Para cambiar el punto mismo, usa Quitar el punto o Eliminar el punto.",
     },
     structure: {
       title: "Estructura",
@@ -345,6 +353,6 @@ export const editorLab: Untranslated<typeof english> = {
       irregular: { skipped_level: "Nivel omitido", deeper_than_owner: "Más profundo que su punto" },
     },
     shortcuts:
-      "Intro, Retroceso, Suprimir y Mayús+Intro editan como siempre. Tab y Mayús+Tab: el nivel de un punto, o meter y sacar texto de un punto. Alt+Mayús+↑/↓: mover un punto con su contenido. Alt+Mayús+→: aumentar nivel. Alt+Mayús+←: sacar al nivel superior. Ctrl+Intro: nuevo punto. Ctrl+Mayús+Intro: nuevo subpunto.",
+      "Intro, Retroceso, Suprimir y Mayús+Intro editan como siempre. Tab: un punto baja un nivel, o el texto entra en el punto de arriba. Mayús+Tab: un punto sale con su contenido, o el texto sube un nivel. Donde nada de eso aplica, Tab pasa el foco. Alt+Mayús+↑/↓: mover un punto con su contenido. Alt+Mayús+→: aumentar nivel. Alt+Mayús+←: sacar al nivel superior. Ctrl+Intro: nuevo punto. Ctrl+Mayús+Intro: nuevo subpunto.",
   },
 };

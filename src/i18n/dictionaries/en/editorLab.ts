@@ -309,10 +309,16 @@ export const editorLab = {
           : "The point is now ordinary writing. Undo brings it back.",
       point_removed:
         "The empty point was removed, with its link to a saved point or outline entry. Undo brings it back.",
-      points_deleted: (count: number): string =>
-        count === 1
-          ? "1 point was deleted with its content."
-          : `${count} points were deleted with their content.`,
+      points_deleted: (count: number, reparented: number): string => {
+        const deleted =
+          count === 1
+            ? "1 point was deleted with its content."
+            : `${count} points were deleted with their content.`;
+        if (reparented === 0) return deleted;
+        return reparented === 1
+          ? `${deleted} 1 block that was under it now belongs to another point.`
+          : `${deleted} ${reparented} blocks that were under them now belong to another point.`;
+      },
       ownership_changed: (count: number): string =>
         count === 1
           ? "1 block now belongs to a different point."
@@ -321,6 +327,8 @@ export const editorLab = {
         role === "introduction"
           ? "The document already has an introduction, so the pasted one became an ordinary point."
           : "The document already has a conclusion, so the pasted one became an ordinary point.",
+      change_refused:
+        "That change would have broken a point apart, so it was not made. To change a point itself, use Remove point or Delete point.",
     },
     structure: {
       title: "Structure",
@@ -333,6 +341,6 @@ export const editorLab = {
       irregular: { skipped_level: "Skipped level", deeper_than_owner: "Deeper than its point" },
     },
     shortcuts:
-      "Enter, Backspace, Delete, and Shift+Enter edit as usual. Tab and Shift+Tab: a point's level, or writing into and out of a point. Alt+Shift+↑/↓: move a point with its content. Alt+Shift+→: increase level. Alt+Shift+←: move out. Ctrl+Enter: new point. Ctrl+Shift+Enter: new subpoint.",
+      "Enter, Backspace, Delete, and Shift+Enter edit as usual. Tab: a point one level down, or writing into the point above. Shift+Tab: a point moves out with its content, or writing comes up a level. Where neither applies, Tab moves focus on. Alt+Shift+↑/↓: move a point with its content. Alt+Shift+→: increase level. Alt+Shift+←: move out. Ctrl+Enter: new point. Ctrl+Shift+Enter: new subpoint.",
   },
 };
