@@ -41,6 +41,14 @@ export const editorLab: Untranslated<typeof english> = {
   numbering: "Numeración",
   customNumbering: "Personalizada (POINT I: / (a) / 1.1.1.)",
   customNumberingOwn: "Personalizada (la de este documento)",
+  appearance: {
+    label: "Apariencia",
+    presets: {
+      minimal: "Mínima",
+      balanced: "Equilibrada",
+      expressive: "Expresiva",
+    },
+  },
   editorLabel: "Documento del sermón",
   workspace: {
     back: "Volver a los bosquejos",

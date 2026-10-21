@@ -22,8 +22,8 @@ import {
   type FontKey,
   type NamedStyle,
 } from "../styles/model";
-import { documentStylesKey, presetInForce } from "../styles/plugin";
-import type { Preset } from "../styles/presets";
+import { documentStylesKey, presetIdOf } from "../styles/plugin";
+import { presets, type Preset } from "../styles/presets";
 import { readStyles, resolveNamed, type ResolvedBlock } from "../styles/resolve";
 import { ColorPicker } from "./formatting/color-control";
 
@@ -110,8 +110,6 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export function DocumentStylesPanel({ editor }: { editor: Editor }) {
   const t = useT("editorLab");
   const d = t.documentStyles;
-  // An option of the editor, the same for its whole life.
-  const preset = presetInForce(editor.state);
   const stored = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -124,6 +122,8 @@ export function DocumentStylesPanel({ editor }: { editor: Editor }) {
   const [target, setTarget] = useState<Target>("normal");
   const [message, setMessage] = useState<"applied" | "invalid" | null>(null);
   const dirty = !same(draft, stored?.styles ?? null);
+  // The preset the draft draws with: the outline chooses it (A1-UI.2B.1), so it can change.
+  const preset = presets[presetIdOf(draft, editor.state)];
 
   // Another document, an undo, or anything else that changed the styles while nothing is previewed: start again from them.
   const previewing = stored?.previewing ?? false;

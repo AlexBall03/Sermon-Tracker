@@ -2,6 +2,7 @@ import type { textAlignments } from "../schema/model";
 import type { ColorValue } from "./colors";
 import {
   documentStylesSchema,
+  type BorderStyle,
   type ComponentKind,
   type ComponentStyle,
   type DocumentStyles,
@@ -61,6 +62,10 @@ export type ResolvedComponent = Omit<ResolvedBlock, "align"> & {
   border?: ColorValue | null;
   fill?: ColorValue | null;
   accent?: ColorValue | null;
+  borderStyle?: BorderStyle;
+  borderWidth?: number;
+  accentWidth?: number;
+  radius?: number;
 };
 
 type BlockLayer = Partial<ResolvedBlock>;

@@ -28,8 +28,10 @@ export const appearanceSchemaFor: Record<string, z.ZodType> = {
   scripturePassage: appearanceSchemas.scripture,
   preacherNote: appearanceSchemas.preacherNote,
   script: appearanceSchemas.script,
-  // The experimental schema v4's flat point, at any depth and in any role (`v4/schema.ts`).
-  point: appearanceSchemas.point,
+  // The experimental schema v4's flat point, at any depth and in any role (`v4/schema.ts`). A
+  // section's contract holds a point's and its own lines and fill, so a copied introduction keeps
+  // its appearance; a point that is not a section is narrowed to its own (`narrowAppearance`).
+  point: appearanceSchemas.introduction,
 };
 
 /** An object attribute kept as JSON in a `data-` attribute, read back only when `schema` accepts it. */

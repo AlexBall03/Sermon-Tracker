@@ -149,19 +149,42 @@ export type ComponentKind = (typeof componentKinds)[number];
 const ink = inkColorSchema.nullable().optional();
 const fill = fillColorSchema.nullable().optional();
 
+/*
+ * A component's treatment (A1-UI.2B.1): how its lines are drawn, in bounded
+ * points and a closed list, never CSS. `0` turns a line off. Only components
+ * drawn with lines have them: a section (its opening rule is the accent, its
+ * closing hairline the border) and the containers (which also have corners).
+ * Points have none: their look is typography and numbering.
+ */
+export const borderStyles = ["solid", "dashed", "dotted", "double"] as const;
+export type BorderStyle = (typeof borderStyles)[number];
+export const treatmentLimits = {
+  borderWidth: { min: 0, max: 4 },
+  accentWidth: { min: 0, max: 6 },
+  radius: { min: 0, max: 12 },
+} as const;
+const limited = (name: keyof typeof treatmentLimits) =>
+  points(treatmentLimits[name].min, treatmentLimits[name].max).optional();
+const lines = {
+  borderStyle: z.enum(borderStyles).optional(),
+  borderWidth: limited("borderWidth"),
+  accentWidth: limited("accentWidth"),
+};
+const box = { ...lines, radius: limited("radius") };
+
 /**
  * The colors each component has (brief §7): only what its design shows, so
  * nothing gains a box just to have a setting. `null` turns a color off
  * (no fill, no border) or, for text colors, returns to the theme's.
  */
 const componentColors = {
-  introduction: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink },
-  conclusion: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink },
+  introduction: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink, ...lines },
+  conclusion: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink, ...lines },
   point: { titleColor: ink, notationColor: ink },
   subpoint: { titleColor: ink, notationColor: ink },
-  scripture: { referenceColor: ink, border: ink, fill, accent: ink },
-  preacherNote: { labelColor: ink, border: ink, fill, accent: ink },
-  script: { border: ink, fill, accent: ink },
+  scripture: { referenceColor: ink, border: ink, fill, accent: ink, ...box },
+  preacherNote: { labelColor: ink, border: ink, fill, accent: ink, ...box },
+  script: { border: ink, fill, accent: ink, ...box },
 } as const satisfies Record<ComponentKind, Record<string, z.ZodType>>;
 
 const componentShape = (kind: ComponentKind) => ({
@@ -179,6 +202,25 @@ export const componentStyleSchemas = Object.fromEntries(
   componentKinds.map((kind) => [kind, sparse(componentShape(kind))]),
 ) as unknown as Record<ComponentKind, z.ZodType<ComponentStyle>>;
 
+/** The properties a kind of component may set: what its own schema accepts. */
+export const componentFields = (kind: ComponentKind): readonly string[] =>
+  Object.keys(componentShape(kind));
+
+/**
+ * An appearance kept to what `kind` accepts, or null when nothing is left.
+ * For a point whose role was taken away: a section's fill and lines mean
+ * nothing on a plain point, and the outline must still validate.
+ */
+export function narrowAppearance(appearance: unknown, kind: ComponentKind): ComponentStyle | null {
+  if (!appearance || typeof appearance !== "object") return null;
+  const allowed = new Set(componentFields(kind));
+  const kept = Object.fromEntries(
+    Object.entries(appearance).filter(([key, value]) => allowed.has(key) && value !== undefined),
+  );
+  const parsed = componentStyleSchemas[kind].safeParse(kept);
+  return parsed.success ? parsed.data : null;
+}
+
 /** Any component's style, as one type: each kind's schema accepts only its own colors. */
 export type ComponentStyle = {
   [K in keyof ReturnType<typeof componentShape>]?: z.infer<ReturnType<typeof componentShape>[K]>;
@@ -190,6 +232,10 @@ export type ComponentStyle = {
   border?: ColorValue | null;
   fill?: ColorValue | null;
   accent?: ColorValue | null;
+  borderStyle?: BorderStyle;
+  borderWidth?: number;
+  accentWidth?: number;
+  radius?: number;
 };
 
 /** A component node's appearance override: the same properties as its style. */
@@ -216,11 +262,22 @@ export const paragraphFormatSchema = sparse(paragraphPropsShape);
 
 /* The document */
 
+/**
+ * The presentation presets a person may choose (A1-UI.2B.1). An outline keeps
+ * its choice as `styles.preset`; left out, the editor's default applies
+ * (Balanced in the sermon editor, the baseline in the v3 lab), so a document
+ * made before presets keeps its look. The baseline is the v3 lab's and is
+ * never stored.
+ */
+export const userPresetIds = ["minimal", "balanced", "expressive"] as const;
+export type UserPresetId = (typeof userPresetIds)[number];
+
 const blockStyle = sparse(blockStyleShape);
 
 export const documentStylesSchema = z
   .object({
     version: z.literal(1),
+    preset: z.enum(userPresetIds).optional(),
     defaults: blockStyle.optional(),
     named: z
       .object(Object.fromEntries(namedStyles.map((name) => [name, blockStyle.optional()])))

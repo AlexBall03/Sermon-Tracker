@@ -6,6 +6,7 @@ import { labSchema } from "../schema/extensions";
 import { validHighlight, validTextColor } from "../schema/formatting";
 import { pointPresentationSchema } from "../schema/model";
 import { referenceFrom } from "../schema/scripture";
+import { appearanceSchemaFor } from "../styles/attributes";
 import { appearanceSchemas, documentStylesSchema, namedStyles } from "../styles/model";
 import { rawProblems, restoreDocument, type DocumentProblem } from "../validate";
 import { v3ToV4 } from "./migrate";
@@ -93,6 +94,14 @@ function invariants(doc: ProseMirrorNode): DocumentProblem[] {
       if (appearance !== null && !contract.safeParse(appearance).success) {
         bad(path, "point.appearance");
       }
+    }
+    // A passage's, a note's, and a script's own appearance keep to their contracts (A1-UI.2B.1).
+    if (
+      (name === "scripturePassage" || name === "preacherNote" || name === "script") &&
+      node.attrs.appearance !== null &&
+      !appearanceSchemaFor[name].safeParse(node.attrs.appearance).success
+    ) {
+      bad(path, `${name}.appearance`);
     }
     if (
       (name === "scripturePassage" || name === "scriptureReference") &&

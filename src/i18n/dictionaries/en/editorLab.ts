@@ -41,6 +41,15 @@ export const editorLab = {
   numbering: "Numbering",
   customNumbering: "Custom (POINT I: / (a) / 1.1.1.)",
   customNumberingOwn: "Custom (this document's)",
+  /** How the whole outline looks (A1-UI.2B.1). Changes no words and no structure. */
+  appearance: {
+    label: "Appearance",
+    presets: {
+      minimal: "Minimal",
+      balanced: "Balanced",
+      expressive: "Expressive",
+    },
+  },
   editorLabel: "Sermon document",
   workspace: {
     back: "Back to Outlines",

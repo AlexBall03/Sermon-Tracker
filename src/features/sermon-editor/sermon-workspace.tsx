@@ -12,6 +12,7 @@ import { DocumentStylesPanel } from "@/features/editor-lab/components/document-s
 import { MarginRuler } from "@/features/editor-lab/components/margin-ruler";
 import { NumberingSelect } from "@/features/editor-lab/components/numbering-select";
 import { PageScaler } from "@/features/editor-lab/components/page-scaler";
+import { PresetSelect } from "@/features/editor-lab/components/preset-select";
 import {
   PrintPageStyle,
   usePageView,
@@ -100,7 +101,7 @@ export function SermonWorkspace({
     () =>
       labV4Extensions({
         locale,
-        // Balanced is the default presentation (A1-UI.1); choosing another is A1-UI.2.
+        // Balanced for an outline that chose no preset (A1-UI.1); the outline's own choice wins (A1-UI.2B.1).
         preset: "balanced",
         componentLabels,
         onNotice: (next) => {
@@ -171,6 +172,7 @@ export function SermonWorkspace({
         <div className="flex min-w-0 flex-1 basis-60 items-center gap-2">{headerStart}</div>
         {editor && view && (
           <div className="flex flex-wrap items-center gap-2">
+            <PresetSelect editor={editor} className="w-36" />
             <NumberingSelect editor={editor} className="w-44" />
             {headerEnd}
           </div>

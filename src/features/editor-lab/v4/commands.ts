@@ -12,6 +12,7 @@ import type { Mappable } from "@tiptap/pm/transform";
 import type { ScriptureReference } from "@/features/scripture/reference";
 
 import type { Command } from "../outline-commands";
+import { narrowAppearance } from "../styles/model";
 import { maxDepth, noticeMeta, structuralMeta, type PointRole, type V4Notice } from "./model";
 import {
   analyze,
@@ -778,7 +779,15 @@ export const duplicatePointGroup: Command = (state, dispatch) => {
     const { node } = structure.blocks[member];
     nodes.push(
       member === point && node.attrs.role
-        ? node.type.create({ ...node.attrs, role: null }, node.content, node.marks)
+        ? node.type.create(
+            {
+              ...node.attrs,
+              role: null,
+              appearance: narrowAppearance(node.attrs.appearance, "point"),
+            },
+            node.content,
+            node.marks,
+          )
         : node,
     );
   }
@@ -860,7 +869,12 @@ export function setRole(role: PointRole | null): Command {
     }
     if (dispatch) {
       const pos = state.selection.$from.before(1);
-      dispatch(structural(state.tr.setNodeAttribute(pos, "role", role)));
+      const tr = state.tr.setNodeAttribute(pos, "role", role);
+      // Without its role the heading is a point again, and keeps only a point's appearance.
+      if (role === null && node.attrs.appearance) {
+        tr.setNodeAttribute(pos, "appearance", narrowAppearance(node.attrs.appearance, "point"));
+      }
+      dispatch(structural(tr));
     }
     return true;
   };

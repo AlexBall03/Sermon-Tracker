@@ -762,9 +762,255 @@ The label-estimate test also gained the measured figure widths, and the decorati
   - **Substantially better mobile editing**, with controls for inserting components and formatting that work with the virtual keyboard.
 - **UI.4:** an **acceptance scenario** in which a first-time user goes from a blank outline to a complete sermon through the real user-facing controls, with no tour and no development inspector.
 
+## A1-UI.2B.1: Presets, customization foundation, and section boundaries (21 October 2026)
+
+**Starting point:** branch `dev`, HEAD `21befbb`, clean working tree. Nothing was committed or deployed.
+
+**Status:** implemented and tested, and checked in Chrome on the owner's dev server (port 3000, not started or stopped here). Minimal and Expressive are **visually reviewed by me only and provisional**; they need the owner's screenshot review. Nothing here is owner-approved or ready for production.
+
+### What was built
+
+- **Three presets a person may choose:** Minimal, Balanced (the default, unchanged), and Expressive (`styles/presets.ts`). The baseline stays the v3 lab's and is never offered.
+  - **Minimal:** the reading serif throughout, compact spacing, hairlines in the text's own tones, no fills, section headings in small capitals, notes in italic serif. The note kinds keep their shapes (rule, box, dashed box).
+  - **Expressive:** a stronger hierarchy (14pt points, 14.5pt sections, a Playfair Display title); sections and main-point numbers in the section ink; a 2.5px section rule; a 3px Scripture rule with a fuller wash; every note kind tinted in its own hue with a rule; a script between double rules; a quotation in italic with a heavier rule.
+- **One set of rules, three looks** (`v4/lab-v4.css`).
+  - Everything that was under `[data-preset="balanced"]` is now under `[data-studio]`, which the editor carries for every preset but the baseline. Specificity is unchanged.
+  - Treatments that were fixed values became `--k-*` tokens, with Balanced's values as the defaults: Scripture rule width and radius, section rule width, hairline, and spacing, label size, case, and tracking, notation color, quotation rule.
+  - Minimal and Expressive change only tokens, plus a few rules for treatments that have a different shape, under their own `data-preset`.
+- **The chooser:** `PresetSelect` (`editor-lab/components/preset-select.tsx`, Appearance), in the `SermonWorkspace` header beside the numbering. Words are in `editorLab.appearance`, in both languages. The v3 lab has no chooser.
+
+### Where the preset is stored (decision)
+
+- **Storage.** The outline's choice is `doc.attrs.styles.preset`: `"minimal" | "balanced" | "expressive"`, optional.
+- **How the schema changes.** It widens `documentStylesSchema` version 1, as the color objects did in B.2B: every earlier document keeps its meaning and no migration is needed. A reader older than this checkpoint refuses the field; the lab persists nothing, so no such reader holds one. The baseline can never be stored.
+- **When it is left out,** the editor's `preset` option applies: Balanced in `SermonWorkspace`, the baseline in the v3 lab. So every existing document keeps its look.
+- **It is an outline preference,** so changing it is a document change: one undoable transaction, through `setOutlinePreset`.
+- **Kept apart, per the brief:**
+  - the account's default for new outlines (later);
+  - view state such as layout, paper, and folding (never stored, unchanged).
+- **For A2:** when an outline is created from an account default, write `preset` explicitly. Otherwise a later change of the default would restyle old outlines.
+- **A saved personal style (UI.2B.3)** is exactly a `DocumentStyles` value, `preset` included: validated by the same schema, and applied with `applyDocumentStyles`. Its storage belongs to the account (A2 or later). Nothing is persisted now.
+
+### The style cascade and the new commands (`styles/plugin.ts`)
+
+**The order is unchanged:**
+
+1. the preset;
+2. the outline's defaults and its named or component-type styles;
+3. a node's own `appearance` (or its `format`);
+4. marks.
+
+**Rules each command follows.** Every command writes the smallest value that says what it means, as one undoable transaction, after validating against the existing schemas. An empty layer is removed, and the result is `null`, never `{}`.
+
+- **`setOutlinePreset(id)`:** keeps every other style and override.
+- **`resetOutlineToPreset()`:** "Restore the outline to its preset". Keeps only `version` and `preset`, and every node's own appearance.
+- **`setComponentStyle(kind, style | null)`:** null resets that component type.
+- **`setComponentAppearance(pos, appearance | null)`:** null resets that one component. A point with a role takes its section's contract.
+
+**The preset in force follows the document.** It is read from `stylesInForce(state)?.preset` with the option as fallback (`presetIdOf`, `presetIdInForce`), so a Document Styles preview also previews a preset. The editor's `data-preset` and `data-studio` follow it, and the sheet redraws.
+
+**Switching presets doesn't disturb editing:**
+
+- **The editor is not remounted.**
+- **Selection and focus are kept;** checked in Chrome and in the tests.
+- **History holds one step per switch;** Undo and Redo walk them.
+
+**Document Styles** now resolves inherited values under the draft's preset, not a fixed one.
+
+### Model extensions (`styles/model.ts`)
+
+- **Treatment properties.** All are bounded and from closed lists, and none is a CSS string:
+  - `borderStyle`: solid, dashed, dotted, or double;
+  - `borderWidth`: 0–4pt;
+  - `accentWidth`: 0–6pt;
+  - `radius`: 0–12pt.
+- **Which components have them:**
+  - sections: style, widths;
+  - Scripture, notes, and scripts: all four;
+  - points: none, since typography and numbering are their look.
+- **How they are drawn:** as `--ps-<component>-border-style`, `-border-w`, `-accent-w`, and `-radius`, which the studio CSS reads before its tokens. `0` turns a line off.
+- **`narrowAppearance`:** keeps an appearance to a kind's contract.
+- **`userPresetIds`:** the three presets a person may choose.
+
+### A single component's own appearance (level 3), now drawn
+
+- **How it is drawn.** A node decoration carries the inline style (`appearanceStyle`, `render.ts`), resolved with the whole cascade and the appearance last. It writes only the properties the appearance sets, so everything else stays inherited.
+  - Colors and treatments use the same `--ps-*` properties as the outline. Set inline on the node, they win by inheritance, with no specificity contest.
+  - Text properties are `--ps-<component>-i-*`, which every component rule in the sheet now reads first. The style's value is the fallback, so Balanced's computed values are unchanged; checked against a snapshot of the sheet taken before the change.
+- **Text on a fill** is judged with the node's own fill (`inkOn`).
+- **A point's own `format`** still wins, being inline on the element itself.
+- **A section's lines and fill** reach every block of the section (`roleFrames`).
+- **Drawn only in a preset that draws components.** The baseline never drew one, so the v3 lab is unchanged.
+- **Gaps closed in the same pass:**
+  - The toolbar (`resolveAt`) now reports a point's own appearance and title color.
+  - A passage's typography from `styles.components.scripture` is now drawn (studio presets only). It was validated but never rendered.
+  - The v4 validator now checks the `appearance` of passages, notes, and scripts. It checked points only.
+  - A copied section keeps its appearance on paste (the point parser accepts the section contract).
+  - Wherever a role is taken away (`setRole(null)`, a pasted role dropped in `rebase`, the role copy in `commands.ts`), the appearance is narrowed to a point's, so the outline still validates.
+
+### Section spacing: findings and fix
+
+**Measured in Chrome**, _When Idols Fall_, Balanced, Print Layout at 100%.
+
+- **Before:**
+  - The Introduction's rule stood **37px** under the subtitle's last line and **10px** over the heading's capitals.
+  - The rule sat 1.3px below the heading's box top. All of the section's space (the subtitle's 12pt space after, as padding, plus the frame's 14pt margin) was above it, and only 5pt plus the line's leading was below it.
+- **Ruled out:** the plan suspected that the style sheet's `spaceBefore` outranked the frame margin. It did not: spacing is padding (`paragraph-css.ts`), and the margin applied.
+- **Second defect, measured:** the closing hairline is `border-bottom` on the section's last block. The benchmark's Conclusion ends in a passage, and the passage's own `border` (transparent) drew over it, so that section had **no closing rule**.
+- **Fix:**
+  - **The rule's position.** It now stands at the top of the heading's box, lifted by the heading's own space before. The sheet writes it as `--x-space-before`. So the section's space is above the rule and the heading's below it, wherever the section stands.
+  - **The space above.** It is the frame's `--k-section-before`, 10pt in Balanced. It gets a little more after a container (margins collapse) and very little after the title or subtitle, whose space after is already large.
+  - **The closing hairline after a passage, note, or script** is drawn as a one-line shadow just under its box. A page gap still paints over it.
+- **After** (rule-to-previous-words, rule-to-capitals):
+
+  | Preset     | Introduction, after the subtitle | Conclusion, after prose |
+  | ---------- | -------------------------------- | ----------------------- |
+  | Balanced   | 19.7px, 13.6px                   | 18.7px, 13.6px          |
+  | Minimal    | 16.5px, 16.5px                   |                         |
+  | Expressive | 21.7px, 19.9px                   |                         |
+
+  The Conclusion's closing hairline now draws under its passage.
+
+- **Pagination.**
+  - **Checked.** A Conclusion pushed to the top of a page carries its rule with its first line, and nothing is left at the foot of the previous page.
+  - **Not changed.** Space before a block that starts a page still stays on the previous page (UI.2C, as before).
+- **Limitations:**
+  - **A container's closing hairline** is solid only and a few pixels shorter at each end; a section's own `borderStyle` reaches only a text block's hairline.
+  - **A section heading given a named style** keeps its component's `--x-space-before`, so the rule then follows the component's spacing.
+
+### Cursor behaviour: findings and fixes
+
+**Measured in Chrome** with selection probes: ProseMirror's selection, the DOM range's rects, and `coordsAtPos`. The fixture was _When Idols Fall_ in Print Layout.
+
+**Filled headings: no defect found.** Every case gave the same position with the mouse and the keyboard, and the drawn caret matched ProseMirror's selection exactly:
+
+- clicks at the heading's start and end, past its end, on the rule, and in the space above and below it;
+- ArrowUp and ArrowDown across the boundary, which keep their horizontal place;
+- ArrowLeft and ArrowRight across it;
+- Home and End.
+
+A click in the space above the rule goes to the nearer line (`ClickPlacement`). The plan's hypothesis about the atomic `::before` was refuted for text, so the rule mechanism was kept.
+
+**Defect 1 (confirmed): an empty Introduction or Conclusion had no visible caret, and its rule vanished.**
+
+- **Symptom.** In Print Layout (always, on a desktop) the empty heading's caret was drawn at **x = −444.8px**, off the page, and the rule shrank to a dot. Mouse and keyboard both reached the right position (offset 0), but nothing showed it.
+- **Cause.** Print Layout's empty-line mark (`lab.css`) styles the same `::before` with higher specificity and set `width: 1px`. The frame's rule kept its `margin-right: calc(1px - 100%)`, which pulled the trailing break, where the caret is drawn, a line's width to the left.
+- **Fix.** A more specific studio rule keeps the rule's own width for an empty heading. Its margin box is one pixel wide, so it still serves as the empty-line mark.
+- **After.** The caret is at x = 178.2px, the rule is full width, and keyboard and mouse both land there.
+
+**Defect 2 (confirmed): a structural key pressed straight after a click acted on the previous caret.**
+
+- **Cause.** ProseMirror reads a click's caret from `selectionchange`. Chrome delivered it **69ms after `mouseup`**, while the `keydown` came at 4ms. ProseMirror's keydown flushes the DOM observer only when a read is already pending.
+- **Effects observed:**
+  - a click at a heading's end, then Backspace, **converted the heading**, as if at its start;
+  - a click at its start, then Backspace, was refused by the guard ("would have broken a point apart") and moved the caret.
+- **Fix (`v4/keymap.ts`, `caughtUp`).** Before each v4 structural key, ProseMirror's own observer reads the browser's selection and dispatches it if the two differ. Nothing else changes; the guard, the schema, and the positions are untouched.
+- **After, checked in Chrome with no pause between click and key:**
+  - end, then Backspace, deletes one letter;
+  - start, then Backspace, converts the point with its notice, as designed.
+- **Caveat.** This reaches into `view.domObserver`, which is internal to `prosemirror-view` 1.42.6; it degrades to doing nothing if that ever disappears.
+
+Neither defect is necessarily the exact one the owner saw. Both are the boundary inconsistencies that measurement found, and both are fixed.
+
+### Tests
+
+- **Unit tests.**
+  - `vitest run src/features/editor-lab src/features/sermon-editor src/i18n "src/app/(app)/lab"`: **631 passed**.
+  - The new file `v4/appearance.test.ts` (31 tests) covers:
+    - every preset's resolution and hierarchy;
+    - `data-studio`;
+    - storage and refusal of the baseline;
+    - switching that keeps JSON, IDs, ownership, and selection;
+    - undo and redo;
+    - the three resets;
+    - treatment bounds;
+    - a node's appearance drawn, followed, and reset, with ink on its fill and a title color;
+    - the baseline not drawing them;
+    - section-wide parts;
+    - the new validator checks;
+    - section appearance through copied HTML;
+    - narrowing on `setRole(null)` and on a pasted role;
+    - the section CSS contracts;
+    - the stale-selection key fix (its wiring: jsdom cannot lay out a DOM selection).
+  - Four tests in `presentation.test.ts` were updated to the new sheet form. They are not looser: they still assert no outline property is set, and that every token is a studio preset's.
+- **The style sheets, compared with a snapshot taken before the change:**
+  - the baseline's: byte-identical, with and without styles;
+  - Balanced's: identical once the new `var()` hooks and the passage rule are removed.
+- **Static checks:** `tsc --noEmit`, ESLint on every changed file, and Prettier are clean.
+- **Browser (Chrome):**
+  - the matrix above;
+  - all three presets on _When Idols Fall_ and the component gallery;
+  - a passage given its own fill, rule, and radius beside an unchanged one;
+  - type style against instance;
+  - the three resets;
+  - a Conclusion at the top of a page;
+  - the v3 lab still `baseline` with no `--ps-` properties.
+  - Screenshots are in `C:\Users\alexa\AppData\Local\Temp\claude-chrome-screenshots-H2OQJJ\` (`…-43` to `…-58`).
+- **Not run:**
+  - the full test suite;
+  - a production build;
+  - the Playwright lab specs (no Clerk E2E user);
+  - print preview, PDF, or paper;
+  - the dark theme for the new presets;
+  - a phone-width frame or a real phone;
+  - Enter, Delete, Shift+selection, and Undo across a boundary in the browser, beyond the cases above (they are covered by the existing unit tests, not re-run by hand).
+
+### Provisional, for owner review
+
+- Minimal's reminder and script are both thin outlined boxes, told apart by the label and by italic against upright text. A different shape may be wanted.
+- Expressive's colors and weights are a first pass.
+- The section spacing values (10pt above, the heading's space below): Balanced's numbers in `presets.ts` are unchanged; the rule moved and the frame's space shrank.
+
+### Owner note: the sermon header (for UI.2C)
+
+The owner asked, during this checkpoint, that the header sit higher, as in Google Docs: the title and subtitle in the page's top-margin header region, so the body starts higher and has more room. This is recorded for **UI.2C** (the semantic sermon header, title storage, and per-page geometry) and was not built here.
+
+### Assigned onward (nothing dropped)
+
+- **UI.2B.2, the Appearance panel:**
+  - outline, component, and selection scopes, over `setOutlinePreset`, `setComponentStyle`, `setComponentAppearance`, and `resetOutlineToPreset`;
+  - discoverable plain-language controls for every existing property and the new treatment properties;
+  - the three resets as visible actions;
+  - accent position, internal padding, and space around a container, which are not in the model yet;
+  - per-label fonts (`--ps-<component>-label-font`, still unwritten).
+- **UI.2B.3:**
+  - typography and spacing by depth;
+  - per-level marker settings;
+  - saved personal styles (a `DocumentStyles` value; storage with A2);
+  - final preset review.
+- **UI.2C:** the header placement above; the rest is as before.
+- **UI.2D:** the dark-paper control, print color modes, final preset refinement (as before), and the dark theme for Minimal and Expressive.
+- **UI.4:** keep-with-next and keep-together, and the empty-sliver finding (as before).
+
+### Files changed
+
+- **Styles** (`src/features/editor-lab/styles/`): `model.ts`, `presets.ts`, `resolve.ts`, `render.ts`, `plugin.ts`, `context.ts`, `attributes.ts`.
+- **v4** (`src/features/editor-lab/v4/`):
+  - `lab-v4.css`;
+  - `keymap.ts`;
+  - `plugins.ts` (`rebase`, `roleFrames`);
+  - `commands.ts` (role narrowing);
+  - `validate.ts`;
+  - `presentation.test.ts`;
+  - the new `appearance.test.ts`.
+- **Components:**
+  - the new `src/features/editor-lab/components/preset-select.tsx`;
+  - `components/document-styles.tsx`;
+  - `src/features/sermon-editor/sermon-workspace.tsx`.
+- **Words:** `src/i18n/dictionaries/{en,es}/editorLab.ts`.
+- **Docs:** this file and `AGENTS.md`.
+- **Not touched:**
+  - the v3 lab and `lab.css`;
+  - pagination;
+  - the numbering engine;
+  - the guard's rules;
+  - migrations and the database.
+
 ## Boundary for A2
 
 A2 puts persistence around `SermonWorkspace`; it does not change the editor.
+
+- **Appearance (A1-UI.2B.1):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`) and are saved with it. There is nothing extra to persist. When an outline is created from an account's default preset, write it explicitly.
 
 - **Open:** pass the stored document as `document` with a stable `documentKey`. One sermon is one mount; another sermon is a new `key`.
 - **Save:** `onReady` hands over the editor. A2 reads `editor.getJSON()` on its own schedule (coalesced, never per keystroke) and owns revisioning, offline storage, and conflicts.

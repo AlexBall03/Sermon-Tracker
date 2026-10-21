@@ -143,8 +143,11 @@ describe("component colors", () => {
 
   it("are drawn only where set: unset gives no property, so the preset's own treatment applies", () => {
     expect(componentVariables(null, balanced)).toEqual([]);
-    // No color property; the structural face (A1-UI.2A) is not a color.
-    expect(styleSheet(null, scope, balanced)).not.toMatch(/--ps-(?!structure-font)/);
+    // No color property is set; the structural face (A1-UI.2A) is not a color. The rules only
+    // read a single node's own properties (`--ps-*-i-*`, A1-UI.2B.1), with the style's as fallback.
+    const sheet = styleSheet(null, scope, balanced);
+    expect(sheet).not.toMatch(/[{;]\s*--ps-(?!structure-font)[\w-]+\s*:/);
+    expect(sheet).not.toMatch(/var\(--ps-(?![a-z]+-i-|structure-font)/);
   });
 
   it("keep turned off apart from unset: no fill, no border, or no accent is transparent", () => {
@@ -182,7 +185,10 @@ describe("component colors", () => {
       balanced,
     );
     // The theme's light text would be unreadable on yellow in the dark theme: the note's text is dark there.
-    const dark = /\.dark [^{]*\.lab-note [^{]*\{ color: (#[0-9a-f]{6}); \}/.exec(sheet);
+    const dark =
+      /\.dark [^{]*\.lab-note [^{]*\{ color: var\(--ps-note-i-color-d, (#[0-9a-f]{6})\); \}/.exec(
+        sheet,
+      );
     expect(dark).not.toBeNull();
     expect(dark![1]).not.toBe("#efebe2");
     expect(sheet).toMatch(/--ps-note-ink-d: #[0-9a-f]{6}/);
@@ -195,7 +201,7 @@ describe("component colors", () => {
       balanced,
     );
     expect(sheet).toMatch(
-      /p\.lab-v4-point\[data-depth="1"\]:not\(\[data-role\]\) \{[^}]*color: #1e3a8a/,
+      /p\.lab-v4-point\[data-depth="1"\]:not\(\[data-role\]\) \{[^}]*color: var\(--ps-point-i-color, #1e3a8a\)/,
     );
   });
 });
@@ -392,10 +398,14 @@ describe("Balanced component colors (A1-UI.2A.1)", () => {
     }
   });
 
-  it("keeps the kinds' treatments under Balanced and draws a label for every kind", () => {
-    for (const rule of css.matchAll(/([^{}]+)\{[^}]*--k-[a-z-]+:/g)) {
-      expect(rule[1]).toContain('[data-preset="balanced"]');
+  it("keeps the kinds' treatments to the studio presets and draws a label for every kind", () => {
+    // Every token is the studio's (Balanced's values, A1-UI.2B.1) or one named preset's, never the baseline's.
+    // One rule body at a time, so a rule inside `@media` is read under its own selector.
+    for (const rule of css.matchAll(/([^{}]+)\{[^{}]*--k-[a-z-]+:/g)) {
+      expect(rule[1]).toMatch(/\[data-studio\]|\[data-preset="(minimal|expressive)"\]/);
     }
+    expect(css).not.toContain('[data-preset="baseline"]');
+    expect(css).not.toContain('[data-preset="balanced"]');
     for (const kind of ["question", "illustration", "application", "reminder", "cue", "task"]) {
       expect(css).toContain(`.lab-note[data-kind="${kind}"]`);
     }

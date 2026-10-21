@@ -124,26 +124,34 @@
 }
 
 /*
- * Balanced, the sermon editor's default presentation (A1-UI.1; `styles/presets.ts`).
- * Everything here is under `data-preset="balanced"`, so the v3 lab (the
- * baseline preset) never matches it. Typography and paragraph spacing come
- * from the preset through the style sheet (`styles/render.ts`); this adds what
- * the style model draws as containers: rules, fills, labels.
+ * The studio presets: Minimal, Balanced, and Expressive (A1-UI.1, A1-UI.2B.1;
+ * `styles/presets.ts`). Everything here is under `[data-studio]`, which the
+ * editor carries for every preset but the baseline (`styles/plugin.ts`), so
+ * the v3 lab (the baseline) never matches it. Typography and paragraph
+ * spacing come from the preset through the style sheet (`styles/render.ts`);
+ * this adds what the style model draws as containers: rules, fills, labels.
  *
- * Colors. Each component reads its colors on its own element, as `--x-*`:
- * the outline's own color (`--ps-<component>-<part>`, light and paper, and
- * `-d` for the dark theme on screen, from `render.ts`), else the preset's
- * token. Unset falls back; turned off arrives as `transparent`. A single
- * node's appearance (A1-UI.2) can set the same `--ps-*` properties inline on
- * the node and wins by inheritance, with no selector to outrank. The dark
- * variants are read on screen only, so printing always takes the paper ones.
+ * One set of rules, three looks. The rules read tokens (`--k-*`) whose
+ * defaults below are Balanced's, the approved look. Minimal and Expressive
+ * (at the end) change only tokens, and a few rules of their own where a
+ * treatment has a different shape, under their own `data-preset`.
+ *
+ * Colors and treatments. Each component reads them on its own element, as
+ * `--x-*`: the outline's own value (`--ps-<component>-<part>`, light and
+ * paper, and `-d` for the dark theme on screen, from `render.ts`), else the
+ * preset's token. Unset falls back; turned off arrives as `transparent` (or
+ * `0pt` for a line's width). A single node's own appearance sets the same
+ * `--ps-*` properties inline on the node (`styles/plugin.ts`) and wins by
+ * inheritance, with no selector to outrank. The dark variants are read on
+ * screen only, so printing always takes the paper ones.
  *
  * Containers set only `margin-block`: the depth's indent is `margin-left`.
- * Nothing here gives a block its own formatting context, so Print Layout's
- * page gaps still flow past every line.
+ * Nothing here gives a block its own formatting context or a position, so
+ * Print Layout's page gaps still flow past every line and paint over every
+ * box.
  */
 
-.lab-editor[data-preset="balanced"] {
+.lab-editor[data-studio] {
   /* The vertical rhythm of containers, in points like the styles' spacing, so it prints as shown. */
   --rhythm-1: 2pt;
   --rhythm-2: 4pt;
@@ -177,40 +185,72 @@
     var(--sermon-scripture) calc(var(--sermon-tint) * 0.8),
     transparent
   );
+  --k-scripture-accent: var(--sermon-scripture);
+  --k-scripture-accent-w: 2px;
+  --k-scripture-line: transparent;
+  --k-scripture-radius: 4px;
+  /*
+   * A section (A1-UI.2B.1): the space before its opening rule, the rule, and
+   * the space after its closing hairline. The space from the rule to the
+   * heading is the heading's own space before (`--x-space-before`, from the
+   * style sheet), so the rule always stands at the top of the heading's box:
+   * the section's space is above it, the heading's below it.
+   */
+  --k-section-before: 10pt;
+  --k-section-after-title: 2pt;
+  --k-section-accent: var(--sermon-section);
+  --k-section-accent-w: 1.5px;
+  --k-section-line: var(--border);
+  --k-section-line-w: 1px;
+  --k-section-line-style: solid;
+  --k-section-after: var(--rhythm-3);
+  /* The gap between a container that closes a section and the section's closing hairline. */
+  --k-section-end-gap: 4pt;
+  /* The words a note or a script is labelled with. */
+  --k-label-size: 0.65em;
+  --k-label-case: uppercase;
+  --k-label-track: 0.08em;
+  --k-label-weight: 700;
+  /* Point numbers are part of the heading, as in a word processor: its color and weight. */
+  --k-point-notation: currentColor;
+  --k-subpoint-notation: currentColor;
+  /* A quotation is not Scripture: a neutral rule. */
+  --k-quote-w: 2px;
+  --k-quote-line: var(--border);
 }
 
 /* The level each depth is drawn at (depth is meaning; this is only where it is drawn). */
-.lab-editor[data-preset="balanced"] > [data-depth] {
+.lab-editor[data-studio] > [data-depth] {
   --lvl: 8;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="1"] {
+.lab-editor[data-studio] > [data-depth="1"] {
   --lvl: 1;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="2"] {
+.lab-editor[data-studio] > [data-depth="2"] {
   --lvl: 2;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="3"] {
+.lab-editor[data-studio] > [data-depth="3"] {
   --lvl: 3;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="4"] {
+.lab-editor[data-studio] > [data-depth="4"] {
   --lvl: 4;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="5"] {
+.lab-editor[data-studio] > [data-depth="5"] {
   --lvl: 5;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="6"] {
+.lab-editor[data-studio] > [data-depth="6"] {
   --lvl: 6;
 }
-.lab-editor[data-preset="balanced"] > [data-depth="7"] {
+.lab-editor[data-studio] > [data-depth="7"] {
   --lvl: 7;
 }
 
 /* Writing, lists, quotations, passages, notes, and scripts align with the words of the point they belong to. */
-.lab-editor[data-preset="balanced"] > [data-depth] {
+.lab-editor[data-studio] > [data-depth] {
   --v4-indent: min(calc(var(--lvl) * var(--ps-step)), var(--ps-indent-max));
 }
 /* A point heading starts one step back: its number stands in the column its words hang from. */
-.lab-editor[data-preset="balanced"] > p.lab-v4-point[data-depth] {
+.lab-editor[data-studio] > p.lab-v4-point[data-depth] {
   --v4-indent: min(calc((var(--lvl) - 1) * var(--ps-step)), var(--ps-indent-max));
 }
 /*
@@ -218,10 +258,10 @@
  * out, so a role reads as a section of the sermon (its heading is not a
  * numbered point): its writing at the margin, its subpoints' numbers there too.
  */
-.lab-editor[data-preset="balanced"] > [data-frame][data-depth] {
+.lab-editor[data-studio] > [data-frame][data-depth] {
   --v4-indent: min(calc((var(--lvl) - 1) * var(--ps-step)), var(--ps-indent-max));
 }
-.lab-editor[data-preset="balanced"] > p.lab-v4-point[data-frame][data-depth] {
+.lab-editor[data-studio] > p.lab-v4-point[data-frame][data-depth] {
   --v4-indent: min(max(0pt, calc((var(--lvl) - 2) * var(--ps-step))), var(--ps-indent-max));
 }
 
@@ -239,12 +279,12 @@
  * keeps its level's column. A point with no number has no column. A node's
  * own first-line indent (inline) replaces the hang.
  */
-.lab-editor[data-preset="balanced"] > p.lab-v4-point.lab-numbered {
+.lab-editor[data-studio] > p.lab-v4-point.lab-numbered {
   /* One step, or the label and its gap when that is wider (`--x-label`, `numbering.ts`). */
   --x-hang: max(var(--ps-step), calc(var(--x-label, 0em) + 0.35em));
   padding-left: calc(var(--v4-indent) + var(--x-hang));
 }
-.lab-editor[data-preset="balanced"] p.lab-v4-point.lab-numbered::before {
+.lab-editor[data-studio] p.lab-v4-point.lab-numbered::before {
   display: inline-block;
   box-sizing: border-box;
   min-width: var(--x-hang, 0px);
@@ -255,40 +295,55 @@
 }
 
 /* A point's space above is its style's alone, so the spacing controls tell the truth. */
-.lab-editor[data-preset="balanced"] > .lab-v4-point {
+.lab-editor[data-studio] > .lab-v4-point {
   margin-top: 0;
 }
 
 /* Writing that returns to an outer level after a group (`plugins.ts`) is set a little apart from it. */
-.lab-editor[data-preset="balanced"] > .lab-v4-resume {
+.lab-editor[data-studio] > .lab-v4-resume {
   margin-top: var(--rhythm-3);
 }
 
-/* Point numbers are part of the heading, as in a word processor: its color and weight, not grey. */
-.lab-editor[data-preset="balanced"] p.lab-v4-point[data-depth="1"] {
-  --x-notation: var(--ps-point-notation, currentColor);
+.lab-editor[data-studio] p.lab-v4-point[data-depth="1"] {
+  --x-notation: var(--ps-point-notation, var(--k-point-notation));
 }
-.lab-editor[data-preset="balanced"] p.lab-v4-point:not([data-depth="1"]) {
-  --x-notation: var(--ps-subpoint-notation, currentColor);
+.lab-editor[data-studio] p.lab-v4-point:not([data-depth="1"]) {
+  --x-notation: var(--ps-subpoint-notation, var(--k-subpoint-notation));
 }
 
-/* The introduction and the conclusion: an accent rule above the role's heading, a hairline after all it owns. */
-.lab-editor[data-preset="balanced"] > [data-frame="introduction"] {
-  --x-frame-accent: var(--ps-intro-accent, var(--sermon-section));
-  --x-frame-border: var(--ps-intro-border, var(--border));
+/*
+ * The introduction and the conclusion: an accent rule above the role's
+ * heading, a hairline after all it owns (A1-UI.2B.1 measured and rebalanced
+ * them). Each part reads the section's own value first, else the preset's.
+ */
+.lab-editor[data-studio] > [data-frame="introduction"] {
+  --x-frame-accent: var(--ps-intro-accent, var(--k-section-accent));
+  --x-frame-accent-w: var(--ps-intro-accent-w, var(--k-section-accent-w));
+  --x-frame-border: var(--ps-intro-border, var(--k-section-line));
+  --x-frame-border-w: var(--ps-intro-border-w, var(--k-section-line-w));
+  --x-frame-border-style: var(--ps-intro-border-style, var(--k-section-line-style));
   --x-frame-fill: var(--ps-intro-fill, transparent);
 }
-.lab-editor[data-preset="balanced"] > [data-frame="conclusion"] {
-  --x-frame-accent: var(--ps-concl-accent, var(--sermon-section));
-  --x-frame-border: var(--ps-concl-border, var(--border));
+.lab-editor[data-studio] > [data-frame="conclusion"] {
+  --x-frame-accent: var(--ps-concl-accent, var(--k-section-accent));
+  --x-frame-accent-w: var(--ps-concl-accent-w, var(--k-section-accent-w));
+  --x-frame-border: var(--ps-concl-border, var(--k-section-line));
+  --x-frame-border-w: var(--ps-concl-border-w, var(--k-section-line-w));
+  --x-frame-border-style: var(--ps-concl-border-style, var(--k-section-line-style));
   --x-frame-fill: var(--ps-concl-fill, transparent);
 }
-.lab-editor[data-preset="balanced"] > [data-frame] {
+.lab-editor[data-studio] > [data-frame] {
   background-color: var(--x-frame-fill);
 }
-.lab-editor[data-preset="balanced"] > .lab-v4-frame-start {
-  margin-top: var(--rhythm-4);
-  padding-top: 0;
+/*
+ * The space before a section is its own, above its rule. It adds to the
+ * space after whatever comes before (a paragraph's space after is padding,
+ * `styles/paragraph-css.ts`), so it is kept small: measured on the benchmark,
+ * the rule stood 37px under the subtitle's words and 10px over the heading's
+ * before A1-UI.2B.1.
+ */
+.lab-editor[data-studio] > .lab-v4-frame-start {
+  margin-top: var(--k-section-before);
   border-top: 0;
 }
 /*
@@ -296,31 +351,75 @@
  * Layout moves lines, not boxes, past a page gap, so a border on the box
  * stayed behind on the previous page when the heading began a new one. The
  * rule takes no room in the line (its width is given back by its margin) and
- * sits a little above the words. A role's heading never has a number, so its
- * `::before` is free.
+ * stands at the top of the heading's box: lifted by the heading's own space
+ * before (`--x-space-before`, written with it by the style sheet), so the
+ * heading's space is under the rule wherever the section stands and however
+ * that space is set. A role's heading never has a number, so its `::before`
+ * is free.
  */
-.lab-editor[data-preset="balanced"] > p.lab-v4-point.lab-v4-frame-start::before {
+.lab-editor[data-studio] > p.lab-v4-point.lab-v4-frame-start::before {
   content: "";
   display: inline-block;
   position: relative;
-  top: -5pt;
+  top: calc(-1 * var(--x-space-before, 5pt));
   width: 100%;
   height: 0;
   /* One pixel is kept: a box of no width would fit beside a page gap and stay behind on its own line. */
   margin-right: calc(1px - 100%);
-  border-top: 1.5px solid var(--x-frame-accent);
+  border-top: var(--x-frame-accent-w) solid var(--x-frame-accent);
   vertical-align: top;
   pointer-events: none;
 }
-.lab-editor[data-preset="balanced"] > .lab-v4-frame-end {
-  margin-bottom: var(--rhythm-3);
-  padding-bottom: 0;
-  border-bottom: 1px solid var(--x-frame-border);
+/*
+ * An empty heading (only ProseMirror's trailing break). Print Layout's mark
+ * for an empty line (`lab.css`) also styles this `::before`, more
+ * specifically, and made it one pixel wide while this rule's margin still
+ * took the whole line back: the trailing break, where the caret is drawn,
+ * stood a line's width left of the page (x = -445px in the benchmark), so the
+ * caret was not seen and the rule shrank to a dot (A1-UI.2B.1). The rule is
+ * itself the mark (its margin box is one pixel wide), so here it keeps its
+ * own width and height.
+ */
+.lab-editor[data-studio]
+  > p.lab-v4-point.lab-v4-frame-start:has(> br.ProseMirror-trailingBreak:first-child)::before {
+  width: 100%;
+  height: 0;
 }
-.lab-editor[data-preset="balanced"] > .lab-v4-frame-start:first-child {
+.lab-editor[data-studio] > .lab-v4-frame-end {
+  margin-bottom: var(--k-section-after);
+  border-bottom: var(--x-frame-border-w) var(--x-frame-border-style) var(--x-frame-border);
+}
+/*
+ * A section that ends in a container (a passage, a note, a script, a list, a
+ * quotation): the container's own border drew over the closing hairline,
+ * which was lost (the benchmark's conclusion, A1-UI.2B.1). The hairline is
+ * drawn under the box instead, as a shadow one line high, a little below it
+ * (and a little shorter at each end, by the same gap). A shadow is painted
+ * with the box, so a page gap still covers it.
+ */
+.lab-editor[data-studio] > .lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script) {
+  margin-bottom: calc(var(--k-section-after) + var(--k-section-end-gap));
+  box-shadow: 0 var(--k-section-end-gap) 0 calc(var(--x-frame-border-w) - var(--k-section-end-gap))
+    var(--x-frame-border);
+}
+/*
+ * After a container its margin and the section's overlap (margins collapse),
+ * and a box's edge is a firmer line than words: the section keeps a little
+ * more. After the title or the subtitle, whose own space after is already
+ * large, it keeps very little, so the rule is not left floating between them.
+ */
+.lab-editor[data-studio] > :is(.lab-passage, .lab-note, .lab-script) + .lab-v4-frame-start {
+  margin-top: calc(var(--k-section-before) + var(--rhythm-2));
+}
+.lab-editor[data-studio]
+  > p:is([data-style-name="title"], [data-style-name="subtitle"])
+  + .lab-v4-frame-start {
+  margin-top: var(--k-section-after-title);
+}
+.lab-editor[data-studio] > .lab-v4-frame-start:first-child {
   margin-top: 0;
 }
-.lab-editor[data-preset="balanced"] > .lab-v4-frame-end:last-child {
+.lab-editor[data-studio] > .lab-v4-frame-end:last-child {
   margin-bottom: 0;
 }
 
@@ -330,17 +429,21 @@
  * reference in the hue's ink. The rule's side stays square; the other corners
  * are softened. Never a bordered card, so it does not read as an alert.
  */
-.lab-editor[data-preset="balanced"] .lab-passage {
-  --x-accent: var(--ps-scripture-accent, var(--sermon-scripture));
-  --x-border: var(--ps-scripture-border, transparent);
+.lab-editor[data-studio] .lab-passage {
+  --x-accent: var(--ps-scripture-accent, var(--k-scripture-accent));
+  --x-accent-w: var(--ps-scripture-accent-w, var(--k-scripture-accent-w));
+  --x-border: var(--ps-scripture-border, var(--k-scripture-line));
+  --x-border-w: var(--ps-scripture-border-w, 1px);
+  --x-border-style: var(--ps-scripture-border-style, solid);
+  --x-radius: var(--ps-scripture-radius, var(--k-scripture-radius));
   --x-fill: var(--ps-scripture-fill, var(--k-scripture-fill));
   --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   --x-label-font: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-2) 0.75rem;
-  border: 1px solid var(--x-border);
-  border-left: 2px solid var(--x-accent);
-  border-radius: 0 4px 4px 0;
+  border: var(--x-border-w) var(--x-border-style) var(--x-border);
+  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  border-radius: 0 var(--x-radius) var(--x-radius) 0;
   background-color: var(--x-fill);
   color: var(--foreground);
   font-family: inherit;
@@ -348,10 +451,10 @@
   font-weight: 400;
   print-color-adjust: exact;
 }
-.lab-editor[data-preset="balanced"] .lab-passage[data-print="hidden"] {
+.lab-editor[data-studio] .lab-passage[data-print="hidden"] {
   border-left-style: dashed;
 }
-.lab-editor[data-preset="balanced"] .lab-passage-label {
+.lab-editor[data-studio] .lab-passage-label {
   color: var(--x-reference);
   font-family: var(--x-label-font);
   font-size: 0.85em;
@@ -360,13 +463,13 @@
   line-height: 1.35;
 }
 /* Verse numbers in the structural face, small and quiet, so the verses read as one passage. */
-.lab-editor[data-preset="balanced"] .lab-passage-text sup {
+.lab-editor[data-studio] .lab-passage-text sup {
   color: var(--muted-foreground);
   font-family: var(--x-label-font);
   font-size: 0.62em;
   font-weight: 600;
 }
-.lab-editor[data-preset="balanced"] .lab-passage-text {
+.lab-editor[data-studio] .lab-passage-text {
   margin-top: var(--rhythm-1);
   font-family: inherit;
   font-size: 1em;
@@ -374,7 +477,7 @@
 }
 
 /* An inline reference: the passage's ink on a quiet tint of it, not the colour of actions. */
-.lab-editor[data-preset="balanced"] .lab-scripture {
+.lab-editor[data-studio] .lab-scripture {
   --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   padding: 0 0.25em;
   border-radius: 0.2em;
@@ -391,7 +494,8 @@
 /*
  * Preacher notes: one family, each kind drawn for what it is for (A1-UI.2A.1).
  * The kind's treatment is the preset's (`--k-*`, set per `data-kind`); the
- * outline's own note colors (`--ps-note-*`) come first and apply to every kind.
+ * outline's own note colors and lines (`--ps-note-*`) come first and apply to
+ * every kind.
  *
  *   - question, illustration, application, note: study notes. One neutral
  *     wash with soft corners and no rule; only the small label carries a
@@ -405,45 +509,50 @@
  * In grayscale the kinds stay apart by their label and their shape (wash, box,
  * rule, dashed box), never by hue alone.
  */
-.lab-editor[data-preset="balanced"] .lab-note {
+.lab-editor[data-studio] .lab-note {
   --k-hue: var(--sermon-neutral);
   --k-fill: color-mix(in oklab, var(--sermon-neutral) var(--sermon-wash), transparent);
   --k-line: transparent;
+  --k-line-w: 1px;
   --k-accent: var(--k-line);
   --k-accent-w: 1px;
   --k-line-style: solid;
   --k-radius: 5px;
   --k-label: color-mix(in oklab, var(--k-hue) var(--sermon-ink), var(--foreground));
   --x-accent: var(--ps-note-accent, var(--k-accent));
+  --x-accent-w: var(--ps-note-accent-w, var(--k-accent-w));
   --x-border: var(--ps-note-border, var(--k-line));
+  --x-border-w: var(--ps-note-border-w, var(--k-line-w));
+  --x-border-style: var(--ps-note-border-style, var(--k-line-style));
+  --x-radius: var(--ps-note-radius, var(--k-radius));
   --x-fill: var(--ps-note-fill, var(--k-fill));
   --x-ink: var(--ps-note-ink, var(--foreground));
   --x-label: var(--ps-note-label, var(--ps-note-ink, var(--k-label)));
   --x-label-font: var(--ps-note-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-2) 0.75rem;
-  border: 1px var(--k-line-style) var(--x-border);
-  border-left: var(--k-accent-w) var(--k-line-style) var(--x-accent);
-  border-radius: var(--k-radius);
+  border: var(--x-border-w) var(--x-border-style) var(--x-border);
+  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
   print-color-adjust: exact;
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="question"] {
+.lab-editor[data-studio] .lab-note[data-kind="question"] {
   --k-hue: var(--sermon-question);
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="illustration"] {
+.lab-editor[data-studio] .lab-note[data-kind="illustration"] {
   --k-hue: var(--sermon-illustration);
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="application"] {
+.lab-editor[data-studio] .lab-note[data-kind="application"] {
   --k-hue: var(--sermon-application);
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="reminder"] {
+.lab-editor[data-studio] .lab-note[data-kind="reminder"] {
   --k-hue: var(--sermon-reminder);
   --k-fill: color-mix(in oklab, var(--sermon-reminder) calc(var(--sermon-tint) * 1.4), transparent);
   --k-line: color-mix(in oklab, var(--sermon-reminder) var(--sermon-line), transparent);
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="cue"] {
+.lab-editor[data-studio] .lab-note[data-kind="cue"] {
   --k-hue: var(--sermon-cue);
   --k-fill: transparent;
   --k-accent: var(--sermon-cue);
@@ -452,7 +561,7 @@
   padding-block: var(--rhythm-1);
   padding-right: 0;
 }
-.lab-editor[data-preset="balanced"] .lab-note[data-kind="task"] {
+.lab-editor[data-studio] .lab-note[data-kind="task"] {
   --k-fill: transparent;
   --k-line: color-mix(in oklab, var(--sermon-neutral) calc(var(--sermon-line) * 1.6), transparent);
   --k-line-style: dashed;
@@ -463,21 +572,30 @@
  * the faintest slate wash, in the reading face. Its shape (outlined, not a
  * rule and not a note's wash) tells it apart in grayscale too.
  */
-.lab-editor[data-preset="balanced"] .lab-script {
+.lab-editor[data-studio] .lab-script {
   --k-line: color-mix(in oklab, var(--sermon-script) var(--sermon-line), transparent);
   --k-fill: color-mix(in oklab, var(--sermon-script) calc(var(--sermon-tint) * 0.7), transparent);
   --k-label: color-mix(in oklab, var(--sermon-script) var(--sermon-ink), var(--foreground));
-  --x-accent: var(--ps-script-accent, var(--k-line));
+  --k-accent: var(--k-line);
+  --k-accent-w: 1px;
+  --k-line-w: 1px;
+  --k-line-style: solid;
+  --k-radius: 5px;
+  --x-accent: var(--ps-script-accent, var(--k-accent));
+  --x-accent-w: var(--ps-script-accent-w, var(--k-accent-w));
   --x-border: var(--ps-script-border, var(--k-line));
+  --x-border-w: var(--ps-script-border-w, var(--k-line-w));
+  --x-border-style: var(--ps-script-border-style, var(--k-line-style));
+  --x-radius: var(--ps-script-radius, var(--k-radius));
   --x-fill: var(--ps-script-fill, var(--k-fill));
   --x-ink: var(--ps-script-ink, var(--foreground));
   --x-label: var(--ps-script-label, var(--ps-script-accent, var(--k-label)));
   --x-label-font: var(--ps-script-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-2) 0.875rem;
-  border: 1px solid var(--x-border);
-  border-left: 1px solid var(--x-accent);
-  border-radius: 5px;
+  border: var(--x-border-w) var(--x-border-style) var(--x-border);
+  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
   print-color-adjust: exact;
@@ -487,78 +605,73 @@
  * The label (`v4/labels.ts`): presentation, never the outline's text. The
  * same words reach assistive technology through the container's role.
  */
-.lab-editor[data-preset="balanced"] :is(.lab-note, .lab-script)[data-component-label]::before {
+.lab-editor[data-studio] :is(.lab-note, .lab-script)[data-component-label]::before {
   content: attr(data-component-label);
   display: block;
   margin-bottom: var(--rhythm-1);
   color: var(--x-label);
   font-family: var(--x-label-font);
-  font-size: 0.65em;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: var(--k-label-size);
+  font-weight: var(--k-label-weight);
+  letter-spacing: var(--k-label-track);
   line-height: 1.3;
-  text-transform: uppercase;
+  text-transform: var(--k-label-case);
   pointer-events: none;
   user-select: none;
 }
 
 /* Lists and quotations keep to the same rhythm; a quotation is not Scripture, so its rule is neutral. */
-.lab-editor[data-preset="balanced"] :is(ul, ol) {
+.lab-editor[data-studio] :is(ul, ol) {
   margin-block: var(--rhythm-1) var(--rhythm-2);
 }
 /* A top-level list's markers stand in the column its level's words start at, its items just after. */
-.lab-editor[data-preset="balanced"] > :is(ul, ol) {
+.lab-editor[data-studio] > :is(ul, ol) {
   padding-left: 1.25em;
 }
-.lab-editor[data-preset="balanced"] blockquote {
+.lab-editor[data-studio] blockquote {
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding-left: 0.875rem;
-  border-left-width: 2px;
+  border-left-width: var(--k-quote-w);
+  border-left-color: var(--k-quote-line);
   color: inherit;
 }
 
 @media screen {
-  .dark
-    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
-    p.lab-v4-point[data-depth="1"] {
-    --x-notation: var(--ps-point-notation-d, currentColor);
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point[data-depth="1"] {
+    --x-notation: var(--ps-point-notation-d, var(--k-point-notation));
   }
-  .dark
-    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
-    p.lab-v4-point:not([data-depth="1"]) {
-    --x-notation: var(--ps-subpoint-notation-d, currentColor);
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point:not([data-depth="1"]) {
+    --x-notation: var(--ps-subpoint-notation-d, var(--k-subpoint-notation));
   }
-  .dark
-    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
-    > [data-frame="introduction"] {
-    --x-frame-accent: var(--ps-intro-accent-d, var(--sermon-section));
-    --x-frame-border: var(--ps-intro-border-d, var(--border));
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) > [data-frame="introduction"] {
+    --x-frame-accent: var(--ps-intro-accent-d, var(--k-section-accent));
+    --x-frame-border: var(--ps-intro-border-d, var(--k-section-line));
     --x-frame-fill: var(--ps-intro-fill-d, transparent);
   }
-  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) > [data-frame="conclusion"] {
-    --x-frame-accent: var(--ps-concl-accent-d, var(--sermon-section));
-    --x-frame-border: var(--ps-concl-border-d, var(--border));
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) > [data-frame="conclusion"] {
+    --x-frame-accent: var(--ps-concl-accent-d, var(--k-section-accent));
+    --x-frame-border: var(--ps-concl-border-d, var(--k-section-line));
     --x-frame-fill: var(--ps-concl-fill-d, transparent);
   }
   /* The preset's fallbacks (`--k-*`) follow the theme by themselves; only the outline's own colors have a dark variant. */
-  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-passage {
-    --x-accent: var(--ps-scripture-accent-d, var(--sermon-scripture));
-    --x-border: var(--ps-scripture-border-d, transparent);
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-passage {
+    --x-accent: var(--ps-scripture-accent-d, var(--k-scripture-accent));
+    --x-border: var(--ps-scripture-border-d, var(--k-scripture-line));
     --x-fill: var(--ps-scripture-fill-d, var(--k-scripture-fill));
     --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
-  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-scripture {
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-scripture {
     --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
-  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-note {
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-note {
     --x-accent: var(--ps-note-accent-d, var(--k-accent));
     --x-border: var(--ps-note-border-d, var(--k-line));
     --x-fill: var(--ps-note-fill-d, var(--k-fill));
     --x-ink: var(--ps-note-ink-d, var(--foreground));
     --x-label: var(--ps-note-label-d, var(--ps-note-ink-d, var(--k-label)));
   }
-  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-script {
-    --x-accent: var(--ps-script-accent-d, var(--k-line));
+  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-script {
+    --x-accent: var(--ps-script-accent-d, var(--k-accent));
     --x-border: var(--ps-script-border-d, var(--k-line));
     --x-fill: var(--ps-script-fill-d, var(--k-fill));
     --x-ink: var(--ps-script-ink-d, var(--foreground));
@@ -573,18 +686,158 @@
  * painted over the blocks it crosses, so white hides them as the screen does.
  */
 @media print {
-  .lab-editor[data-preset="balanced"][data-layout="print"] :is(.lab-page-gap, .lab-page-end) {
+  .lab-editor[data-studio][data-layout="print"] :is(.lab-page-gap, .lab-page-end) {
     background: #fff;
   }
 }
 
 /* On a phone a container is drawn in less, as the levels are (Regular Layout only: pages are the paper's). */
 @media (max-width: 40rem) {
-  .lab-editor[data-preset="balanced"]:not([data-layout="print"]) {
+  .lab-editor[data-studio]:not([data-layout="print"]) {
     --ps-step: 1.25rem;
     --ps-indent-max: 6.25rem;
   }
-  .lab-editor[data-preset="balanced"]:not([data-layout="print"]) :is(.lab-note, .lab-script) {
+  .lab-editor[data-studio]:not([data-layout="print"]) :is(.lab-note, .lab-script) {
     padding-inline: 0.5rem;
+  }
+}
+
+/*
+ * Minimal (A1-UI.2B.1): a traditional printed outline. Hairlines in the
+ * text's own tones and no fills; the reading serif throughout
+ * (`styles/presets.ts`); a section's heading in small capitals. The kinds of
+ * note keep their shapes (a rule, a box, a dashed box), so they still tell
+ * apart in black and white. Only tokens change, so the outline's own colors
+ * and lines apply exactly as in Balanced.
+ */
+.lab-editor[data-preset="minimal"] {
+  --rhythm-3: 6pt;
+  --rhythm-4: 12pt;
+  --k-scripture-ink: color-mix(in oklab, var(--foreground) 78%, transparent);
+  --k-scripture-fill: transparent;
+  --k-scripture-accent: color-mix(in oklab, var(--foreground) 45%, transparent);
+  --k-scripture-accent-w: 1px;
+  --k-scripture-radius: 0;
+  --k-section-before: 8pt;
+  --k-section-accent: color-mix(in oklab, var(--foreground) 55%, transparent);
+  --k-section-accent-w: 0.75px;
+  --k-section-line: color-mix(in oklab, var(--foreground) 22%, transparent);
+  --k-section-line-w: 0.75px;
+  --k-label-size: 0.72em;
+  --k-label-case: none;
+  --k-label-track: 0.02em;
+  --k-label-weight: 600;
+  --k-quote-w: 1px;
+}
+.lab-editor[data-preset="minimal"] > p.lab-v4-point[data-role] {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+}
+.lab-editor[data-preset="minimal"] :is(.lab-note, .lab-script)[data-component-label]::before {
+  font-style: italic;
+}
+.lab-editor[data-preset="minimal"] .lab-note {
+  --k-fill: transparent;
+  --k-label: var(--muted-foreground);
+  --k-accent: color-mix(in oklab, var(--foreground) 30%, transparent);
+  --k-radius: 0;
+  padding-block: var(--rhythm-1);
+}
+.lab-editor[data-preset="minimal"] .lab-note[data-kind="reminder"] {
+  --k-fill: transparent;
+  --k-line: color-mix(in oklab, var(--foreground) 35%, transparent);
+  --k-radius: 2px;
+  padding-block: var(--rhythm-2);
+}
+.lab-editor[data-preset="minimal"] .lab-note[data-kind="cue"] {
+  --k-accent: color-mix(in oklab, var(--foreground) 60%, transparent);
+  --k-accent-w: 1.5px;
+}
+.lab-editor[data-preset="minimal"] .lab-note[data-kind="task"] {
+  --k-line: color-mix(in oklab, var(--foreground) 30%, transparent);
+  --k-radius: 2px;
+}
+.lab-editor[data-preset="minimal"] .lab-script {
+  --k-line: color-mix(in oklab, var(--foreground) 30%, transparent);
+  --k-fill: transparent;
+  --k-label: var(--muted-foreground);
+  --k-radius: 0;
+}
+.lab-editor[data-preset="minimal"] .lab-scripture {
+  background: transparent;
+  padding: 0;
+  font-weight: 600;
+}
+
+/*
+ * Expressive (A1-UI.2B.1): the same families with more evident treatments.
+ * Sections in their gold with a heavier rule and the heading in the section
+ * ink; main point numbers in it too; Scripture with a 3px rule and a fuller
+ * wash; every note kind tinted in its own hue with a rule of it; a script
+ * between double rules; a quotation in italic with a heavier rule. Each kind
+ * keeps its own shape, so grayscale still tells them apart.
+ */
+.lab-editor[data-preset="expressive"] {
+  --rhythm-3: 10pt;
+  --rhythm-4: 16pt;
+  --k-section-ink: color-mix(in oklab, var(--sermon-section) 72%, var(--foreground));
+  --k-scripture-fill: color-mix(
+    in oklab,
+    var(--sermon-scripture) calc(var(--sermon-tint) * 1.5),
+    transparent
+  );
+  --k-scripture-accent-w: 3px;
+  --k-scripture-radius: 6px;
+  --k-section-before: 12pt;
+  --k-section-accent-w: 2.5px;
+  --k-section-line: color-mix(in oklab, var(--sermon-section) 45%, transparent);
+  --k-point-notation: var(--k-section-ink);
+  /* A section heading in the section ink: the style sheet falls back to it when no title color is set (`render.ts`). */
+  --k-intro-text: var(--k-section-ink);
+  --k-concl-text: var(--k-section-ink);
+  --k-label-size: 0.68em;
+  --k-quote-w: 3px;
+  --k-quote-line: color-mix(in oklab, var(--sermon-neutral) 70%, transparent);
+}
+.lab-editor[data-preset="expressive"] .lab-note {
+  --k-fill: color-mix(in oklab, var(--k-hue) calc(var(--sermon-tint) * 1.3), transparent);
+  --k-accent: color-mix(in oklab, var(--k-hue) 70%, transparent);
+  --k-accent-w: 3px;
+  --k-radius: 0 6px 6px 0;
+}
+.lab-editor[data-preset="expressive"] .lab-note[data-kind="reminder"] {
+  --k-fill: color-mix(in oklab, var(--sermon-reminder) calc(var(--sermon-tint) * 2.2), transparent);
+  --k-line: color-mix(in oklab, var(--sermon-reminder) 55%, transparent);
+  --k-accent: var(--sermon-reminder);
+  --k-radius: 6px;
+}
+.lab-editor[data-preset="expressive"] .lab-note[data-kind="cue"] {
+  --k-fill: color-mix(in oklab, var(--sermon-cue) calc(var(--sermon-tint) * 0.8), transparent);
+  --k-accent: var(--sermon-cue);
+  --k-accent-w: 4px;
+  --k-radius: 0;
+}
+.lab-editor[data-preset="expressive"] .lab-note[data-kind="task"] {
+  --k-fill: transparent;
+  --k-accent: var(--k-line);
+  --k-accent-w: 1px;
+  --k-radius: 6px;
+}
+.lab-editor[data-preset="expressive"] .lab-script {
+  --k-line: color-mix(in oklab, var(--sermon-script) 55%, transparent);
+  --k-fill: color-mix(in oklab, var(--sermon-script) calc(var(--sermon-tint) * 1.2), transparent);
+  --k-accent: var(--k-line);
+  --k-accent-w: 4px;
+  --k-line-w: 0;
+  /* A double rule on the left (4px, so both lines show) and no other edge. */
+  --k-line-style: double;
+  --k-radius: 0;
+}
+.lab-editor[data-preset="expressive"] blockquote {
+  font-style: italic;
+}
+@media screen {
+  .dark .lab-editor[data-preset="expressive"]:not([data-paper="light"]) {
+    --k-section-ink: var(--sermon-section);
   }
 }

@@ -1,6 +1,6 @@
-import type { ResolvedPos } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 
-import type { ComponentKind, DocumentStyles, NamedStyle } from "./model";
+import type { ComponentKind, ComponentStyle, DocumentStyles, NamedStyle } from "./model";
 import {
   componentOf,
   namedStyleOf,
@@ -37,7 +37,14 @@ export function resolveAt(
         : block.attrs.depth === 1
           ? "point"
           : "subpoint";
-    return { ...resolveComponent(styles, kind, null, preset), ...own, align: "left" };
+    // Its own appearance comes before its own format, as they are drawn (`render.ts`).
+    const resolved = resolveComponent(styles, kind, ownAppearance(block, preset), preset);
+    // Where components are drawn, a heading's words are in its title color when it has one.
+    const color =
+      preset.componentColors && resolved.titleColor !== undefined
+        ? resolved.titleColor
+        : resolved.color;
+    return { ...resolved, color, ...own, align: "left" };
   }
   if (block.type.name === "pointTitle" || block.type.name === "sectionTitle") {
     let insidePoint = false;
@@ -50,9 +57,14 @@ export function resolveAt(
   }
   const format = (block.attrs.format ?? null) as Partial<ResolvedBlock> | null;
   for (let level = depth - 1; level > 0; level -= 1) {
-    const name = $pos.node(level).type.name;
+    const container = $pos.node(level);
+    const name = container.type.name;
     if (name === "preacherNote" || name === "script") {
-      return { ...resolveComponent(styles, name, null, preset), ...format, align: "left" };
+      return {
+        ...resolveComponent(styles, name, ownAppearance(container, preset), preset),
+        ...format,
+        align: "left",
+      };
     }
   }
   return resolveNamed(
@@ -61,6 +73,15 @@ export function resolveAt(
     format,
     preset,
   );
+}
+
+/**
+ * A component's own appearance, where it is drawn: in a preset that draws
+ * components (A1-UI.2B.1). The baseline never drew one, so it is not
+ * reported there either.
+ */
+function ownAppearance(node: ProseMirrorNode, preset: Preset): ComponentStyle | null {
+  return preset.componentColors ? ((node.attrs.appearance ?? null) as ComponentStyle | null) : null;
 }
 
 /** Whether a position is where component styles govern the text (a title, a note, a script). */

@@ -12,6 +12,9 @@ import { dropPoint, Mapping, ReplaceAroundStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import { isTextOnly } from "../changes";
+import { narrowAppearance } from "../styles/model";
+import { partDeclarations } from "../styles/render";
+import type { ResolvedComponent } from "../styles/resolve";
 import {
   backspaceInPoint,
   deleteBeforePoint,
@@ -217,7 +220,12 @@ export function rebase(
         taken.add(role);
       }
     }
-    const attrs = isPoint ? { ...node.attrs, depth, role } : { ...node.attrs, depth };
+    // A point that lands without a section's role keeps only a point's appearance (A1-UI.2B.1).
+    const appearance =
+      isPoint && !role && node.attrs.appearance
+        ? narrowAppearance(node.attrs.appearance, depth === 1 ? "point" : "subpoint")
+        : node.attrs.appearance;
+    const attrs = isPoint ? { ...node.attrs, depth, role, appearance } : { ...node.attrs, depth };
     return node.type.create(attrs, node.content, node.marks);
   });
   return new Slice(Fragment.fromArray(moved), slice.openStart, slice.openEnd);
@@ -421,9 +429,18 @@ function roleFrames(state: EditorState): DecorationSet {
   const structure = analyze(state.doc);
   const decorations: Decoration[] = [];
   structure.blocks.forEach((block, index) => {
-    const role = block.isPoint ? (block.node.attrs.role as string | null) : null;
+    const role = block.isPoint
+      ? (block.node.attrs.role as "introduction" | "conclusion" | null)
+      : null;
     if (!role) return;
     const end = structure.groupEnd[index];
+    /*
+     * The section's own lines and fill (its heading's appearance, A1-UI.2B.1)
+     * belong to the whole frame, so every member reads them. The heading has
+     * them already, with its text, from the styles (`styles/plugin.ts`).
+     */
+    const own = block.node.attrs.appearance as ResolvedComponent | null;
+    const parts = own ? partDeclarations(role, own, new Set(Object.keys(own))).join("; ") : "";
     for (let member = index; member < end; member += 1) {
       const { node, pos } = structure.blocks[member];
       const classes = ["lab-v4-framed"];
@@ -433,6 +450,7 @@ function roleFrames(state: EditorState): DecorationSet {
         Decoration.node(pos, pos + node.nodeSize, {
           class: classes.join(" "),
           "data-frame": role,
+          ...(parts && member !== index ? { style: parts } : {}),
         }),
       );
     }
