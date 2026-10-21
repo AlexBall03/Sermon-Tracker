@@ -106,5 +106,141 @@ export const writingFirst = documentV4([
   proseV4("And writing after it, the document's again.", 0),
 ]);
 
-export const v4Fixtures = { parentProse, rolesAnywhere, writingFirst } as const;
+/*
+ * The visual benchmark (A1-UI.2A): a sermon as a preacher would prepare and
+ * print it, with every component Balanced draws in realistic proportion.
+ * The Title- and Subtitle-styled paragraphs at the top are placeholders for
+ * the dedicated sermon header (A1-UI.2C): ordinary styled writing, not a
+ * second title system.
+ */
+const styledV4 = (styleName: "title" | "subtitle", text: string): JSONContent => ({
+  type: "paragraph",
+  attrs: { depth: 0, styleName },
+  content: words(text),
+});
+
+const proseWithRef = (
+  depth: number,
+  before: string,
+  id: string,
+  reference: ScriptureReference,
+  after: string,
+): JSONContent => ({
+  type: "paragraph",
+  attrs: { depth },
+  content: [
+    ...words(before),
+    {
+      type: "scriptureReference",
+      attrs: { id, ...reference, translation: null, display: "reference" },
+    },
+    ...words(after),
+  ],
+});
+
+const scriptV4 = (id: string, text: string, depth: number): JSONContent => ({
+  type: "script",
+  attrs: { id, depth },
+  content: [{ type: "paragraph", content: words(text) }],
+});
+
+const quoteV4 = (text: string, depth: number): JSONContent => ({
+  type: "blockquote",
+  attrs: { depth },
+  content: [{ type: "paragraph", content: words(text) }],
+});
+
+const bulletsV4 = (depth: number, ...list: string[]): JSONContent => ({
+  type: "bulletList",
+  attrs: { depth },
+  content: list.map((item) => ({
+    type: "listItem",
+    content: [{ type: "paragraph", content: words(item) }],
+  })),
+});
+
+const samuel1 = 9;
+const psalms = 19;
+const isaiah = 23;
+const john1 = 62;
+
+export const whenIdolsFall = documentV4([
+  styledV4("title", "When Idols Fall"),
+  styledV4("subtitle", "1 Samuel 5"),
+  pointV4("wif-intro", "Introduction", 1, { role: "introduction" }),
+  proseV4(
+    "Israel had lost the ark of God. The Philistines carried it home to Ashdod as a trophy and set it beside Dagon, as though the Lord were one more god to be added to their collection.",
+    1,
+  ),
+  passageV4("wif-s1", ref(samuel1, 5, 1, 5), 1),
+  proseV4(
+    "The Philistines thought they had captured God. By morning they learned that no one captures Him.",
+    1,
+  ),
+  pointV4("wif-1", "The Lord Will Not Share His Glory", 1),
+  proseV4(
+    "Dagon stood in his own house, in his own city, and still he fell on his face before the ark.",
+    1,
+  ),
+  pointV4("wif-1a", "Idols are set up beside God, not always in His place", 2),
+  proseWithRef(
+    2,
+    "The Philistines did not throw the ark out; they made room for it. ",
+    "wif-r1",
+    ref(isaiah, 42, 8),
+    " is the Lord's answer to every such arrangement.",
+  ),
+  pointV4("wif-1b", "What we bow to will eventually bow to Him", 2),
+  passageV4("wif-s2", ref(isaiah, 46, 1, 2), 2),
+  noteV4("wif-n1", "Pause here. Let the room picture Dagon face down on the floor.", 2),
+  pointV4("wif-2", "Propping Up an Idol Cannot Save It", 1),
+  proseV4(
+    "They took Dagon and set him in his place again. A god who has to be picked up off the floor is no god at all.",
+    1,
+  ),
+  pointV4("wif-2a", "The second morning was worse than the first", 2),
+  proseV4(
+    "His head and both his hands lay cut off upon the threshold; only the stump of Dagon was left to him.",
+    2,
+  ),
+  pointV4("wif-2a1", "The head: the wisdom they trusted", 3),
+  pointV4("wif-2a2", "The hands: the strength they relied on", 3),
+  pointV4("wif-2b", "We still prop up what God has already toppled", 2),
+  bulletsV4(
+    2,
+    "A career that has become our identity",
+    "A reputation we guard more than our integrity",
+    "A comfort we will not give up for obedience",
+  ),
+  proseV4(
+    "Every one of these needs us to hold it up. That is the surest sign it was never holding us.",
+    1,
+  ),
+  pointV4("wif-3", "The Hand of the Lord Is Heavy, and It Is Kind", 1),
+  passageV4("wif-s3", ref(samuel1, 5, 6, 7), 1),
+  proseV4(
+    "The same hand that broke Dagon pressed on Ashdod until its people could not keep the ark. God's heaviness was a mercy: it made them let go of what was destroying them.",
+    1,
+  ),
+  quoteV4(
+    "The idols of the heart are not destroyed by being ignored, but by being exposed to the presence of God.",
+    1,
+  ),
+  pointV4("wif-concl", "Conclusion", 1, { role: "conclusion" }),
+  proseWithRef(
+    1,
+    "John closes his first letter with one plain command: ",
+    "wif-r2",
+    ref(john1, 5, 21),
+    ".",
+  ),
+  scriptV4(
+    "wif-sc1",
+    "Whatever you have set up beside Him this week, you do not have to keep holding it up. Let it fall, and let the Lord stand alone in His house.",
+    1,
+  ),
+  passageV4("wif-s4", ref(psalms, 115, 4, 8), 1),
+]);
+
+export const v4Fixtures = { whenIdolsFall, parentProse, rolesAnywhere, writingFirst } as const;
 export type V4FixtureId = keyof typeof v4Fixtures;

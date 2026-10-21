@@ -39,7 +39,7 @@ const open = (id: FixtureId) => ({
  */
 export function EditorLabV4() {
   const t = useT("editorLab");
-  const [opening, setOpening] = useState(() => open("parentProse"));
+  const [opening, setOpening] = useState(() => open("whenIdolsFall"));
   const label = (id: FixtureId) =>
     isV4(id) ? t.v4.fixtures[id] : t.v4.migrated(t.fixtures[id as LabFixtureId]);
 

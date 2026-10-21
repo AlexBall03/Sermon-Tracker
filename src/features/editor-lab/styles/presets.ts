@@ -1,4 +1,4 @@
-import type { ComponentKind, ComponentStyle, NamedStyle } from "./model";
+import type { ComponentKind, ComponentStyle, FontKey, NamedStyle } from "./model";
 import type { ResolvedBlock } from "./resolve";
 
 /*
@@ -28,6 +28,20 @@ export type Preset = {
   components: Record<ComponentKind, ComponentStyle>;
   /** Whether component colors (fill, border, accent, labels) are drawn from the styles. */
   componentColors: boolean;
+  /**
+   * The shared face of the outline's structural words that no style sets: a
+   * passage's reference, verse numbers, a note's or script's label (A1-UI.2A).
+   * Drawn as `--ps-structure-font`; each of those reads its own
+   * `--ps-<component>-label-font` first, so it can be customized apart later
+   * (A1-UI.2B). Null draws nothing (the baseline).
+   */
+  structureFont: FontKey | null;
+  /**
+   * Whether a numbered point hangs its number (A1-UI.2A): the number in a
+   * column of its own, every line of the heading aligned after it, and the
+   * writing a point owns aligned with the heading's words (`v4/lab-v4.css`).
+   */
+  hangingNumbers: boolean;
 };
 
 export const presetIds = ["baseline", "balanced"] as const;
@@ -131,6 +145,8 @@ const baseline: Preset = {
     script: {},
   },
   componentColors: false,
+  structureFont: null,
+  hangingNumbers: false,
 };
 
 /*
@@ -232,6 +248,8 @@ const balanced: Preset = {
     script: { lineHeight: 1.5, spaceAfter: 3 },
   },
   componentColors: true,
+  structureFont: structure,
+  hangingNumbers: true,
 };
 
 export const presets: Record<PresetId, Preset> = { baseline, balanced };

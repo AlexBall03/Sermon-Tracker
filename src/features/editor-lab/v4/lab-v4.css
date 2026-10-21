@@ -75,33 +75,38 @@
   margin-bottom: 0;
 }
 
-/* On a phone each level is drawn in less, as v3 draws it there (`lab.css`, 0.75rem a level). */
+/*
+ * On a phone each level is drawn in less, as v3 draws it there (`lab.css`,
+ * 0.75rem a level). Regular Layout only: Print Layout's indentation is the
+ * paper's, never the window's, or a phone would break pages differently
+ * from the sheet it prints (A1-UI.2A).
+ */
 @media (max-width: 40rem) {
-  .lab-editor > [data-depth] {
+  .lab-editor:not([data-layout="print"]) > [data-depth] {
     --v4-indent: 5.25rem;
   }
-  .lab-editor > [data-depth="1"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="1"] {
     --v4-indent: 0rem;
   }
-  .lab-editor > [data-depth="2"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="2"] {
     --v4-indent: 0.75rem;
   }
-  .lab-editor > [data-depth="3"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="3"] {
     --v4-indent: 1.5rem;
   }
-  .lab-editor > [data-depth="4"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="4"] {
     --v4-indent: 2.25rem;
   }
-  .lab-editor > [data-depth="5"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="5"] {
     --v4-indent: 3rem;
   }
-  .lab-editor > [data-depth="6"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="6"] {
     --v4-indent: 3.75rem;
   }
-  .lab-editor > [data-depth="7"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="7"] {
     --v4-indent: 4.5rem;
   }
-  .lab-editor > [data-depth="8"] {
+  .lab-editor:not([data-layout="print"]) > [data-depth="8"] {
     --v4-indent: 5.25rem;
   }
 }
@@ -144,6 +149,89 @@
   --rhythm-2: 4pt;
   --rhythm-3: 8pt;
   --rhythm-4: 14pt;
+  /*
+   * Indentation (A1-UI.2A): one step a level, in points so Print Layout prints
+   * as it shows. A numbered point hangs its number in one step, so a
+   * subpoint's number stands under its main point's words, and the writing a
+   * point owns lines up with those words. `--ps-indent-max` caps how far a
+   * deep level is drawn in (eight levels here; fewer on a phone).
+   */
+  --ps-step: 22pt;
+  --ps-indent-max: 176pt;
+}
+
+/* The level each depth is drawn at (depth is meaning; this is only where it is drawn). */
+.lab-editor[data-preset="balanced"] > [data-depth] {
+  --lvl: 8;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="1"] {
+  --lvl: 1;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="2"] {
+  --lvl: 2;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="3"] {
+  --lvl: 3;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="4"] {
+  --lvl: 4;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="5"] {
+  --lvl: 5;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="6"] {
+  --lvl: 6;
+}
+.lab-editor[data-preset="balanced"] > [data-depth="7"] {
+  --lvl: 7;
+}
+
+/* Writing, lists, quotations, passages, notes, and scripts align with the words of the point they belong to. */
+.lab-editor[data-preset="balanced"] > [data-depth] {
+  --v4-indent: min(calc(var(--lvl) * var(--ps-step)), var(--ps-indent-max));
+}
+/* A point heading starts one step back: its number stands in the column its words hang from. */
+.lab-editor[data-preset="balanced"] > p.lab-v4-point[data-depth] {
+  --v4-indent: min(calc((var(--lvl) - 1) * var(--ps-step)), var(--ps-indent-max));
+}
+/*
+ * Inside the introduction and the conclusion everything is drawn one level
+ * out, so a role reads as a section of the sermon (its heading is not a
+ * numbered point): its writing at the margin, its subpoints' numbers there too.
+ */
+.lab-editor[data-preset="balanced"] > [data-frame][data-depth] {
+  --v4-indent: min(calc((var(--lvl) - 1) * var(--ps-step)), var(--ps-indent-max));
+}
+.lab-editor[data-preset="balanced"] > p.lab-v4-point[data-frame][data-depth] {
+  --v4-indent: min(max(0pt, calc((var(--lvl) - 2) * var(--ps-step))), var(--ps-indent-max));
+}
+
+/*
+ * The hanging number. The heading is drawn in by one more step and its first
+ * line starts that step back (`render.ts` writes `text-indent` as the style's
+ * first-line indent less `--x-hang`), so the number takes the column and
+ * every line of the words starts after it. The column is one step, or wider
+ * for a longer or custom label (`VIII.`, `2.1.1.`, `POINT I:`): the label's
+ * estimated width (`--x-label`, `numbering.ts`) widens that heading's column,
+ * so its wrapped lines still align with its words. The label is also a
+ * minimum width, never a fixed one, so an estimate that falls short moves
+ * the first words along and never overlaps them. The writing a point owns
+ * keeps its level's column. A point with no number has no column. A node's
+ * own first-line indent (inline) replaces the hang.
+ */
+.lab-editor[data-preset="balanced"] > p.lab-v4-point.lab-numbered {
+  /* One step, or the label and its gap when that is wider (`--x-label`, `numbering.ts`). */
+  --x-hang: max(var(--ps-step), calc(var(--x-label, 0em) + 0.35em));
+  padding-left: calc(var(--v4-indent) + var(--x-hang));
+}
+.lab-editor[data-preset="balanced"] p.lab-v4-point.lab-numbered::before {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: var(--x-hang, 0px);
+  margin-inline-end: 0;
+  padding-inline-end: 0.35em;
+  text-indent: 0;
+  color: var(--x-notation);
 }
 
 /* A point's space above is its style's alone, so the spacing controls tell the truth. */
@@ -163,10 +251,6 @@
 .lab-editor[data-preset="balanced"] p.lab-v4-point:not([data-depth="1"]) {
   --x-notation: var(--ps-subpoint-notation, currentColor);
 }
-.lab-editor[data-preset="balanced"] p.lab-v4-point.lab-numbered::before {
-  margin-inline-end: 0.4em;
-  color: var(--x-notation);
-}
 
 /* The introduction and the conclusion: an accent rule above the role's heading, a hairline after all it owns. */
 .lab-editor[data-preset="balanced"] > [data-frame="introduction"] {
@@ -185,10 +269,31 @@
 .lab-editor[data-preset="balanced"] > .lab-v4-frame-start {
   margin-top: var(--rhythm-4);
   padding-top: 0;
+  border-top: 0;
+}
+/*
+ * The accent rule is drawn in the heading's first line, not on its box: Print
+ * Layout moves lines, not boxes, past a page gap, so a border on the box
+ * stayed behind on the previous page when the heading began a new one. The
+ * rule takes no room in the line (its width is given back by its margin) and
+ * sits a little above the words. A role's heading never has a number, so its
+ * `::before` is free.
+ */
+.lab-editor[data-preset="balanced"] > p.lab-v4-point.lab-v4-frame-start::before {
+  content: "";
+  display: inline-block;
+  position: relative;
+  top: -5pt;
+  width: 100%;
+  height: 0;
+  /* One pixel is kept: a box of no width would fit beside a page gap and stay behind on its own line. */
+  margin-right: calc(1px - 100%);
   border-top: 1.5px solid var(--x-frame-accent);
+  vertical-align: top;
+  pointer-events: none;
 }
 .lab-editor[data-preset="balanced"] > .lab-v4-frame-end {
-  margin-bottom: var(--rhythm-4);
+  margin-bottom: var(--rhythm-3);
   padding-bottom: 0;
   border-bottom: 1px solid var(--x-frame-border);
 }
@@ -205,6 +310,7 @@
   --x-border: var(--ps-scripture-border, transparent);
   --x-fill: var(--ps-scripture-fill, transparent);
   --x-reference: var(--ps-scripture-reference, var(--foreground));
+  --x-label-font: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-1) 0 var(--rhythm-1) 0.75rem;
   border: 1px solid var(--x-border);
@@ -220,11 +326,18 @@
 }
 .lab-editor[data-preset="balanced"] .lab-passage-label {
   color: var(--x-reference);
-  font-family: var(--font-sans);
-  font-size: 0.875em;
+  font-family: var(--x-label-font);
+  font-size: 0.85em;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   line-height: 1.35;
+}
+/* Verse numbers in the structural face, small and quiet, so the verses read as one passage. */
+.lab-editor[data-preset="balanced"] .lab-passage-text sup {
+  color: var(--muted-foreground);
+  font-family: var(--x-label-font);
+  font-size: 0.62em;
+  font-weight: 600;
 }
 .lab-editor[data-preset="balanced"] .lab-passage-text {
   margin-top: var(--rhythm-1);
@@ -236,12 +349,15 @@
 /* An inline reference: the passage's color as a quiet tint, not the colour of actions. */
 .lab-editor[data-preset="balanced"] .lab-scripture {
   --x-reference: var(--ps-scripture-reference, var(--sermon-scripture));
-  padding: 0 0.3em;
-  border-radius: 0.25em;
-  background: color-mix(in oklab, var(--x-reference) 9%, transparent);
+  padding: 0 0.25em;
+  border-radius: 0.2em;
+  background: color-mix(in oklab, var(--x-reference) 8%, transparent);
   color: var(--x-reference);
-  font-size: 0.9em;
+  font-family: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
+  font-size: 0.88em;
   font-weight: 600;
+  /* Never taller than the line it sits in. */
+  line-height: 1.2;
 }
 
 /* A preacher note: a restrained tinted container with an accent and its kind as a label. */
@@ -251,6 +367,7 @@
   --x-fill: var(--ps-note-fill, var(--sermon-note-fill));
   --x-ink: var(--ps-note-ink, var(--foreground));
   --x-label: var(--ps-note-label, var(--ps-note-ink, var(--sermon-note-ink)));
+  --x-label-font: var(--ps-note-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-2) 0.75rem;
   border: 1px solid var(--x-border);
@@ -268,6 +385,7 @@
   --x-fill: var(--ps-script-fill, transparent);
   --x-ink: var(--ps-script-ink, var(--foreground));
   --x-label: var(--ps-script-label, var(--ps-script-accent, var(--sermon-script)));
+  --x-label-font: var(--ps-script-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-1) 0 var(--rhythm-1) 0.875rem;
   border: 1px solid var(--x-border);
@@ -285,7 +403,7 @@
   display: block;
   margin-bottom: var(--rhythm-1);
   color: var(--x-label);
-  font-family: var(--font-sans);
+  font-family: var(--x-label-font);
   font-size: 0.65em;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -298,6 +416,10 @@
 /* Lists and quotations keep to the same rhythm; a quotation is not Scripture, so its rule is neutral. */
 .lab-editor[data-preset="balanced"] :is(ul, ol) {
   margin-block: var(--rhythm-1) var(--rhythm-2);
+}
+/* A top-level list's markers stand in the column its level's words start at, its items just after. */
+.lab-editor[data-preset="balanced"] > :is(ul, ol) {
+  padding-left: 1.25em;
 }
 .lab-editor[data-preset="balanced"] blockquote {
   margin-block: var(--rhythm-2) var(--rhythm-3);
@@ -354,8 +476,24 @@
   }
 }
 
+/*
+ * Printing: a page gap is blank paper. Print Layout draws it transparent
+ * (`lab.css`), which let a passage's rule, a note's fill, or a frame's
+ * fill that runs across a page show through the margins. A gap is a float,
+ * painted over the blocks it crosses, so white hides them as the screen does.
+ */
+@media print {
+  .lab-editor[data-preset="balanced"][data-layout="print"] :is(.lab-page-gap, .lab-page-end) {
+    background: #fff;
+  }
+}
+
 /* On a phone a container is drawn in less, as the levels are (Regular Layout only: pages are the paper's). */
 @media (max-width: 40rem) {
+  .lab-editor[data-preset="balanced"]:not([data-layout="print"]) {
+    --ps-step: 1.25rem;
+    --ps-indent-max: 6.25rem;
+  }
   .lab-editor[data-preset="balanced"]:not([data-layout="print"]) :is(.lab-note, .lab-script) {
     padding-inline: 0.5rem;
   }

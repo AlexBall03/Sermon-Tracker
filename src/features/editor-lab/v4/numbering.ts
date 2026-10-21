@@ -88,6 +88,33 @@ export function documentLabelsV4(
   return byId;
 }
 
+/*
+ * How wide a label is, in em of its heading, estimated from its characters
+ * and on the generous side (A1-UI.2A). A preset that hangs its numbers
+ * (`lab-v4.css`) widens a heading's number column to it, so a long or custom
+ * label (`VIII.`, `2.1.1.`, `POINT I:`) keeps every line of the heading
+ * aligned after it. Never measured: nothing waits on fonts or layout. Too wide
+ * leaves a little more space before the words; too narrow, the first line's
+ * words start a little after the others, and they never overlap the number.
+ */
+const narrow = /[\s.,:;'’()[\]|!Iijl1]/;
+const wide = /[MWmw]/;
+const capital = /\p{Lu}/u;
+
+export function labelEm(label: string): number {
+  let em = 0;
+  for (const character of label) {
+    em += narrow.test(character)
+      ? 0.32
+      : wide.test(character)
+        ? 0.9
+        : capital.test(character)
+          ? 0.64
+          : 0.62;
+  }
+  return Math.round(em * 100) / 100;
+}
+
 type NumberingState = { decorations: DecorationSet };
 
 export const numberingV4Key = new PluginKey<NumberingState>("labV4Numbering");
@@ -102,6 +129,7 @@ function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
     if (label) {
       attrs["data-label"] = label;
       attrs.class = "lab-numbered";
+      attrs.style = `--x-label: ${labelEm(label)}em`;
     }
     const irregular = structure.irregular[index];
     if (irregular) attrs["data-irregular"] = irregular;

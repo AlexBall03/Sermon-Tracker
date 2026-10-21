@@ -21,7 +21,8 @@ import {
   resolveNamed,
 } from "../styles/resolve";
 import { labV4Extensions, loadV4 } from "./extensions";
-import { documentV4, noteV4, passageV4, pointV4, proseV4 } from "./fixtures";
+import { documentV4, noteV4, passageV4, pointV4, proseV4, whenIdolsFall } from "./fixtures";
+import { labelEm } from "./numbering";
 import { paperMeta } from "./paper";
 import { caret, ownership } from "./testing";
 
@@ -132,7 +133,8 @@ describe("component colors", () => {
 
   it("are drawn only where set: unset gives no property, so the preset's own treatment applies", () => {
     expect(componentVariables(null, balanced)).toEqual([]);
-    expect(styleSheet(null, scope, balanced)).not.toContain("--ps-");
+    // No color property; the structural face (A1-UI.2A) is not a color.
+    expect(styleSheet(null, scope, balanced)).not.toMatch(/--ps-(?!structure-font)/);
   });
 
   it("keep turned off apart from unset: no fill, no border, or no accent is transparent", () => {
@@ -258,5 +260,70 @@ describe("layout and paper (A1-UI.1)", () => {
     const dark = /@media screen { (.*) }/.exec(sheet)![1];
     expect(dark).toContain(`.dark ${scope}:not([data-paper="light"])`);
     expect(dark).not.toMatch(/.dark .lab-editor[data-sheet='t'] /);
+  });
+});
+
+/*
+ * A1-UI.2A: hanging point numbers, the shared structural face, and the
+ * realistic benchmark sermon. All of it is presentation: decorations and
+ * the generated sheet, never the document.
+ */
+describe("Balanced, A1-UI.2A", () => {
+  it("hangs a point's number: its first line starts the column back, after its own first-line indent", () => {
+    const sheet = styleSheet(null, scope, presets.balanced);
+    expect(sheet).toMatch(
+      /p\.lab-v4-point\[data-depth="1"\]:not\(\[data-role\]\) \{[^}]*text-indent: calc\(0pt - var\(--x-hang, 0px\)\)/,
+    );
+    const styles: DocumentStyles = { version: 1, components: { point: { indentFirst: 9 } } };
+    expect(styleSheet(styles, scope, presets.balanced)).toContain(
+      "text-indent: calc(9pt - var(--x-hang, 0px))",
+    );
+    // Prose keeps a plain first-line indent, and the baseline hangs nothing.
+    expect(sheet).toMatch(/p:not\(\.lab-title\)[^{]*\{[^}]*text-indent: 0pt/);
+    expect(styleSheet(null, scope)).not.toContain("--x-hang");
+  });
+
+  it("draws the structural face once, as a shared default each label can override", () => {
+    const editorRule = styleSheet(null, scope, presets.balanced).split("\n")[0];
+    expect(editorRule.startsWith(`${scope} {`)).toBe(true);
+    expect(editorRule).toContain("--ps-structure-font: var(--lab-font-source-sans-3");
+    expect(styleSheet(null, scope)).not.toContain("--ps-structure-font");
+    expect(presets.baseline.structureFont).toBeNull();
+    expect(presets.baseline.hangingNumbers).toBe(false);
+  });
+
+  it("estimates a label's width generously, wider for longer and custom labels", () => {
+    expect(labelEm("I.")).toBeLessThan(labelEm("III."));
+    expect(labelEm("III.")).toBeLessThan(labelEm("VIII."));
+    expect(labelEm("1.")).toBeLessThan(labelEm("2.1.1."));
+    expect(labelEm("POINT VIII:")).toBeGreaterThan(4);
+    // Every built-in main-point label up to VIII fits the one-step column at 13pt (22pt ≈ 1.7em) with its gap…
+    expect(labelEm("IV.") + 0.35).toBeLessThan(22 / 13);
+    // …and a parenthesised letter is never estimated narrower than it is drawn (about 1.29em).
+    expect(labelEm("(b)")).toBeGreaterThanOrEqual(1.25);
+  });
+
+  it("puts each label's estimate on its point as a decoration, never in the outline", () => {
+    const editor = open(sermon);
+    const heading = editor.view.dom.querySelector<HTMLElement>('[data-id="p-1"]')!;
+    expect(heading.getAttribute("data-label")).toBe("I.");
+    expect(heading.style.getPropertyValue("--x-label")).toBe(`${labelEm("I.")}em`);
+    expect(JSON.stringify(editor.getJSON())).not.toContain("--x-label");
+    expect(editor.getHTML()).not.toContain("--x-label");
+  });
+
+  it("opens the benchmark sermon unchanged, with the same outline under either preset", () => {
+    const balanced = open(whenIdolsFall);
+    const baseline = new Editor({
+      element: document.createElement("div"),
+      extensions: labV4Extensions({ preset: "baseline" }),
+    });
+    editors.push(baseline);
+    expect(loadV4(baseline, whenIdolsFall, "doc-b").ok).toBe(true);
+    expect(balanced.getJSON()).toEqual(baseline.getJSON());
+    expect(ownership(balanced)).toEqual(ownership(baseline));
+    // Its title and subtitle are styled writing (placeholders for the A1-UI.2C header), not attributes.
+    expect(balanced.state.doc.attrs.subtitle ?? null).toBeNull();
+    expect(balanced.state.doc.child(0).attrs.styleName).toBe("title");
   });
 });

@@ -508,7 +508,7 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 
 Phases may be subdivided where dependencies or rollout risk justify it. This list is not an instruction to build them now.
 
-**Integration program (20 October 2026).** The owner moved from lab-only validation to integrating the editor for the product, in checkpoints A1, A2, and so on. A1 (unified editor workspace, §15.10; [handoff](HANDOFF-PS-A1.md)) is integrated but not yet accepted: its UI/UX checkpoints (A1-UI.1, .2, .3; §15.10) come first. A2 then adds persistence around it. The PS-2/PS-3b/PS-4 rows above still govern the data model, synchronization, and the workspace shell those checkpoints reach.
+**Integration program (20 October 2026).** The owner moved from lab-only validation to integrating the editor for the product, in checkpoints A1, A2, and so on. A1 (unified editor workspace, §15.10; [handoff](HANDOFF-PS-A1.md)) is integrated but not yet accepted: its UI/UX checkpoints (A1-UI.1, .2A–.2D, .3, .4; §15.10) come first. A2 then adds persistence around it. The PS-2/PS-3b/PS-4 rows above still govern the data model, synchronization, and the workspace shell those checkpoints reach.
 
 ---
 
@@ -708,14 +708,35 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - A phone starts in Regular Layout, which fills the width and follows the theme, and can choose Print.
         - Print Layout's paper is white in either theme, while the interface follows the theme. Printed output never depends on the theme.
         - **Approved:** an optional dark-paper display preference, like Word's Switch Background. It is never saved or printed and is independent of the presets; its control is built in A1-UI.2.
-    - **A1-UI.2:**
-      - the dark-paper control;
-      - the preset chooser, and Minimal and Expressive;
-      - component customization and saved personal styles;
-      - drawing a node's own appearance.
-      - **Open decision:** where a chosen preset is kept.
-    - **A1-UI.3, required for A1:** inserting and converting Preacher Notes, Scripts, and Page Breaks, and Scripture from the editor's own UI.
-  - **Then (A2):** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2").
+    - **A1-UI.2, split by the owner (21 October 2026) into four parts.** Nothing earlier assigned to A1-UI.2 was dropped; the mapping is in the [handoff](HANDOFF-PS-A1.md#checkpoint-plan-reconciled).
+      - **A1-UI.2A, Balanced visual refinement (implemented; ready for visual review; [handoff](HANDOFF-PS-A1.md#a1-ui2a-balanced-visual-refinement-21-october-2026)):**
+        - a realistic benchmark sermon;
+        - hanging point numbers that adapt to long and custom labels;
+        - indentation aligned with the outline;
+        - one structural face for labels;
+        - fixes: the phone Print Layout pagination defect, and an introduction or conclusion rule lost at a page top.
+        - The header and footer feasibility review found them feasible in principle, not verified.
+      - **A1-UI.2B:**
+        - Minimal and Expressive, and the preset chooser;
+        - outline-wide and per-component customization, and drawing a node's own appearance;
+        - formatting inheritance, reset and restore, and saved personal styles.
+        - **Open decision:** where a chosen preset is kept.
+      - **A1-UI.2C:**
+        - the dedicated sermon header (title and optional subtitle), the optional footer (off by default), and first-page and later-page treatments, integrated with pagination.
+        - **Open decision:** canonical title storage (the handoff lists the options).
+      - **A1-UI.2D:**
+        - the dark-paper control, final preset refinement, print independence, and print color modes.
+    - **A1-UI.3, required for A1:**
+      - inserting and converting Preacher Notes, Scripts, and Page Breaks, and Scripture from the editor's own UI;
+      - the improved desktop toolbar and the mobile editing interface;
+      - header and footer editing, context menus, shortcuts, and discoverability.
+    - **A1-UI.4:** final visual acceptance, workflow and structural regression checks, long sermons, pagination and print, mobile, browsers, accessibility, and integrity. A1 is accepted only after it.
+  - **Then:**
+    - **A2:** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2"), with revisions and data protection.
+    - **A3:** full signed-in editor integration.
+    - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
+    - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.
+    - The PS-phase rows above still govern the data model, synchronization, and the workspace shell these checkpoints reach.
 - **Open:**
   - §8.3's wording ("derived from the document's nested structure"): the labels are the same engine's, but the structure is no longer nested;
   - how the points under an introduction or conclusion are numbered (a policy, today counted on their own);

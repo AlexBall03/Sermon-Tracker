@@ -291,6 +291,7 @@ export const editorLab = {
     baseline: "Open the v3 lab",
     fixture: "Document",
     fixtures: {
+      whenIdolsFall: "When Idols Fall (a realistic sermon)",
       parentProse: "Writing that belongs to a parent point",
       rolesAnywhere: "Introduction and conclusion as roles",
       writingFirst: "Writing first, structure later",

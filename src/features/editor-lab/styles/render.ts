@@ -50,6 +50,8 @@ type Rule = {
   block: Omit<ResolvedBlock, "align"> & { align?: string };
   /** Text colors judged on the component's fill, in place of the color's own variants. */
   onFill?: { light: string; dark: string } | null;
+  /** A point heading whose number hangs (`Preset.hangingNumbers`): its first line starts a number's width back. */
+  hang?: boolean;
 };
 
 /** Ordinary paragraphs, not titles and not a passage's verses (drawn by its node view). */
@@ -92,7 +94,7 @@ const componentSelectors = (scope: string): [ComponentKind, string][] => [
 const pointNamedSelector = (scope: string, name: NamedStyle) =>
   `${scope} p.lab-v4-point[data-depth][data-style-name="${name}"]`;
 
-function declarations(block: Rule["block"]): string[] {
+function declarations(block: Rule["block"], hang = false): string[] {
   const lines = [
     `font-family: ${fontStack(block.fontFamily)}`,
     `font-size: ${block.fontSize}pt`,
@@ -103,7 +105,10 @@ function declarations(block: Rule["block"]): string[] {
     paragraphCss.spaceBefore(block.spaceBefore),
     paragraphCss.spaceAfter(block.spaceAfter),
     paragraphCss.indentLeft(block.indentLeft),
-    paragraphCss.indentFirst(block.indentFirst),
+    // A hanging number (`lab-v4.css`, `--x-hang`, set only on a numbered point) takes its column back from the first line.
+    hang
+      ? `text-indent: calc(${block.indentFirst}pt - var(--x-hang, 0px))`
+      : paragraphCss.indentFirst(block.indentFirst),
   ];
   if (block.align) lines.push(`text-align: ${block.align}`);
   return lines;
@@ -118,11 +123,12 @@ function componentRule(
   resolved: ResolvedComponent,
   preset: Preset,
 ): Rule {
-  if (!preset.componentColors) return { selector, block: resolved };
+  const hang = preset.hangingNumbers && titled.has(kind);
+  if (!preset.componentColors) return { selector, block: resolved, hang };
   const { titleColor, fill, ...rest } = resolved;
   const color = titled.has(kind) && titleColor !== undefined ? titleColor : rest.color;
   const block = { ...rest, color };
-  if (titled.has(kind) || !fill) return { selector, block };
+  if (titled.has(kind) || !fill) return { selector, block, hang };
   const light = inkOn(color, fill, "light");
   const dark = inkOn(color, fill, "dark");
   return { selector, block, onFill: light && dark ? { light, dark } : null };
@@ -142,6 +148,7 @@ function rules(styles: DocumentStyles | null, scope: string, preset: Preset): Ru
     ...(Object.keys(named) as NamedStyle[]).map((name) => ({
       selector: pointNamedSelector(scope, name),
       block: resolveNamed(styles, name, null, preset),
+      hang: preset.hangingNumbers,
     })),
   ];
 }
@@ -217,6 +224,8 @@ export function styleSheet(
     `font-family: ${fontStack(normal.fontFamily)}`,
     `font-size: ${normal.fontSize}pt`,
     `line-height: ${normal.lineHeight}`,
+    // The shared structural face (`Preset.structureFont`); each label reads its own property first.
+    ...(preset.structureFont ? [`--ps-structure-font: ${fontStack(preset.structureFont)}`] : []),
     ...componentVariables(styles, preset),
   ];
   const css: string[] = [`${scope} { ${own.join("; ")}; }`];
@@ -225,8 +234,8 @@ export function styleSheet(
   const darkSelectors = rules(styles, `${scope}:not([data-paper="light"])`, preset).map(
     (rule) => rule.selector,
   );
-  for (const [index, { selector, block, onFill }] of rules(styles, scope, preset).entries()) {
-    const lines = declarations(block);
+  for (const [index, { selector, block, onFill, hang }] of rules(styles, scope, preset).entries()) {
+    const lines = declarations(block, hang);
     const variants =
       onFill !== undefined
         ? onFill

@@ -302,6 +302,7 @@ export const editorLab: Untranslated<typeof english> = {
     baseline: "Abrir el laboratorio v3",
     fixture: "Documento",
     fixtures: {
+      whenIdolsFall: "When Idols Fall (un sermón realista)",
       parentProse: "Texto que pertenece al punto padre",
       rolesAnywhere: "Introducción y conclusión como funciones",
       writingFirst: "Primero el texto, después la estructura",

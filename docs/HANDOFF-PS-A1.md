@@ -292,6 +292,242 @@ These are not optional for A1's completion:
   - print preview on paper;
   - a production build.
 
+## A1-UI.2A: Balanced visual refinement (21 October 2026)
+
+**Status: READY FOR VISUAL REVIEW.** The work is implemented and checked in screenshots, but the owner has not accepted it. **A1 is not complete.**
+
+### What changed
+
+- **A realistic benchmark sermon.**
+  - `whenIdolsFall` in `v4/fixtures.ts` ("When Idols Fall", 1 Samuel 5) is the lab's opening document.
+  - It contains:
+    - an introduction;
+    - three main points with subpoints, one of them three levels deep;
+    - four full passages and two inline references;
+    - a note, a list, a quotation, a script;
+    - a conclusion.
+  - **Its title and subtitle are placeholders.** They are ordinary paragraphs styled Title and Subtitle, standing in for the dedicated sermon header (A1-UI.2C). They are not a title system.
+- **Hanging point numbers (Balanced only).**
+  - A numbered point's number sits in a column of its own, and every line of the heading aligns after it.
+  - **Width.** The column is one step (22pt), or wider for a longer label: `max(step, label + gap)`.
+    - The label's width is a generous estimate from its characters (`labelEm`, `v4/numbering.ts`), put on the heading as `--x-label` by the numbering decoration. Nothing is measured, so nothing waits on fonts or layout.
+    - The label is also a minimum width, never a fixed one, so an estimate that falls short moves the first words along and never overlaps them.
+  - **First-line indent.** `render.ts` writes a point's first-line indent as `calc(<style's indent> − var(--x-hang))`, so a style's own first-line indent still adds. A node's inline `format` still wins outright.
+  - **Checked in the browser:**
+    - Traditional, Numeric, and Decimal (`2.1.1.`);
+    - a custom `POINT VIII:` / `(a)` / `II.a.1.` style;
+    - wrapped headings at large sizes;
+    - six levels;
+    - numbering off.
+- **Indentation follows the outline (Balanced only).**
+  - One step per level, in points, so Print Layout prints as it shows.
+  - A subpoint's number stands under its parent's words. Writing, lists, passages, notes, and scripts align with the words of the point they belong to.
+  - Inside the introduction and conclusion everything is drawn one level out, so a role reads as a section.
+  - **Limits:** eight levels at most (176pt). On a phone in Regular Layout, the step is 1.25rem with at most 6.25rem.
+  - A top-level list's bullets stand in the column of their level's words.
+  - It is all CSS in `lab-v4.css` over `--v4-indent`. Depth, ownership, and numbering are untouched.
+- **One structural face for labels.**
+  - These now use the outline's structural face (Source Sans 3) instead of the app's interface font:
+    - passage references;
+    - verse numbers;
+    - inline references;
+    - note and script labels.
+  - The face is the preset's `structureFont`, drawn as `--ps-structure-font`.
+  - Each label reads its own property first (`--ps-scripture-label-font`, `--ps-note-label-font`, `--ps-script-label-font`; none is written yet), so A1-UI.2B can customize each apart from the others and from the points.
+- **Introduction and conclusion rule at a page top.**
+  - **Before:** a role heading that began a new page lost its accent rule, which stayed on the box at the bottom of the previous page. Print Layout moves lines, not boxes, past a page gap.
+  - **Now:** the rule is drawn inside the heading's first line, so it moves with the words.
+  - **Cost:** the rule keeps 1px of width, without which it would sit alone beside the gap. The heading is therefore 1px to the right; this is not visible at reading size.
+- **Smaller refinements.**
+  - A section ends with 8pt after its hairline, not 14pt.
+  - An inline reference is never taller than its line.
+  - A passage reference is slightly smaller and letter-spaced.
+  - Verse numbers are quieter.
+- **The type scale is unchanged.** Sizes, weights, and spacing in `presets.ts` stayed at A1-UI.1's values: they read well once the indentation was fixed, so the toolbar's reported values did not change.
+
+### Defects fixed
+
+- **A phone in Print Layout broke pages differently from the paper.**
+  - **Cause:** `lab-v4.css`'s phone indents applied in Print Layout too. v3 guards against this; v4 did not.
+  - **Fix:** they are now Regular Layout only.
+  - **Verified:** in a 412px frame, a subpoint's indent is 58.67px, the desktop value, where it was 40.96px. The lines and the first page break match the desktop sheet.
+- **Printing showed rules and fills through the page margins.**
+  - **Cause:** the page gaps print transparent (`lab.css`). A passage's rule, or a note's or frame's fill, that runs across a page showed through the margins.
+  - **Fix:** under Balanced, the gaps print white and cover them, as the screen does.
+  - **Not yet verified on paper.** This is reasoned from paint order.
+
+### Files changed
+
+- **Styles:**
+  - `src/features/editor-lab/styles/presets.ts`: `structureFont` and `hangingNumbers`; the baseline sets neither.
+  - `src/features/editor-lab/styles/render.ts`: the hang-aware first-line indent, and `--ps-structure-font`. Both are off for the baseline.
+- **Editor:**
+  - `src/features/editor-lab/v4/lab-v4.css`;
+  - `src/features/editor-lab/v4/numbering.ts`: `labelEm` and the `--x-label` decoration.
+- **Lab:**
+  - `src/features/editor-lab/v4/fixtures.ts`;
+  - `src/features/editor-lab/v4/components/editor-lab-v4.tsx`: opens the benchmark.
+- **Words:** `src/i18n/dictionaries/{en,es}/editorLab.ts`, the benchmark's label.
+- **Tests:** `src/features/editor-lab/v4/presentation.test.ts`.
+- **Not touched:** the schema, ownership, commands, the guard, pagination, and the v3 lab.
+
+### Tests
+
+**Passed:**
+
+- **Unit tests:** `vitest run src/features/editor-lab src/i18n "src/app/(app)/lab"` passed **595**. That is 589 plus the benchmark's runs in the existing workspace tests, plus 5 new tests in `presentation.test.ts`:
+  - the hanging first-line indent, and the baseline without it;
+  - the structural face, drawn only by Balanced;
+  - label estimates for longer and custom labels;
+  - the estimate is a decoration, never in the JSON or HTML;
+  - the benchmark opens unchanged, with identical JSON and ownership under either preset.
+- **Changed assertion:** one existing assertion now allows the structural face, which is not a color: "unset draws no component property".
+- **Static checks:** `tsc --noEmit` and ESLint are clean; Prettier was applied.
+- **Browser:** the owner's dev server on port 3000 (a second `next dev` is refused; it was not stopped), in the owner's signed-in Chrome.
+  - Covered:
+    - desktop Print Layout: the benchmark, `rolesAnywhere`, "Six levels deep", and "Styles and Script" (the outline's own colors and styles still win);
+    - a 412px frame: Regular, and Print chosen from the toolbar;
+    - a narrower window in Regular, dark theme;
+    - a grayscale filter;
+    - the v3 lab still `baseline`, with no `--ps-` or `--x-hang`.
+
+**Not run:**
+
+- the Playwright lab specs (`E2E_CLERK_USER_EMAIL` is not set here);
+- print preview or a PDF;
+- a real phone;
+- a production build.
+
+### Remaining visual issues (for owner review)
+
+| Issue                                                                                                                                                                        | Status  | Belongs to                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------- |
+| Points deeper than a subpoint share the subpoint's type and are told apart by indentation and number only.                                                                   | Pending | UI.2B (typography by depth needs a style level) |
+| A custom label's column is estimated, so a few pixels of extra space can show after a long label.                                                                            | Pending | UI.2B (per-level marker settings)               |
+| A heading can be left alone at the foot of a page (no keep-with-next), and a passage can split after one line.                                                               | Pending | UI.2C / UI.4 (pagination)                       |
+| Space before a block that starts a new page stays at the foot of the previous page. It is harmless, but the gap at a page's foot varies.                                     | Pending | UI.2C (pagination)                              |
+| White page gaps in print are reasoned, not yet seen on paper.                                                                                                                | Pending | UI.4 (print verification)                       |
+| The Title and Subtitle in the benchmark are styled paragraphs.                                                                                                               | Pending | UI.2C (sermon header)                           |
+| A quotation is told from Scripture only by its rule's color and the passage's reference line. This holds in grayscale, but a quotation could be more distinct in Expressive. | Pending | UI.2B / UI.2D                                   |
+
+### Header and footer: feasibility (read-only; nothing was changed)
+
+**Conclusion:** architecturally feasible in principle, **not verified.** The float-based pagination needs real browser and printing tests before this approach is accepted.
+
+**What exists today:**
+
+1. **The title.**
+   - It is the sermon's own, the idea's title, outside the document (`schema/nodes.ts`: "never stored here").
+   - Lab documents also put body paragraphs styled Title or Subtitle in the content. These are freeform writing, not a title.
+2. **The subtitle.** `doc.attrs.subtitle` is a validated plain string (`subtitleSchema`, `styles/model.ts`). Nothing draws it.
+3. **Sources of title information:** three, besides the header contracts:
+   - the idea's title;
+   - `doc.attrs.subtitle`;
+   - styled body paragraphs.
+   - The header contracts are `doc.attrs.page.runningHeader` (`{ enabled, subtitle }`) and `styles.runningHeader` (`{ fontSize, color }`). Both are validated; nothing draws either.
+4. **Page configuration.**
+   - `doc.attrs.page` (`pageSetupSchema`: paper, margins in points, running header, page numbers) is validated only.
+   - Pagination runs on the device's `PageSetup` in px (`pagination/preferences.ts`, `geometry.ts`).
+   - **Page numbers already exist** as generated text: `.lab-page-number` in each gap and in the end element. They are always on and **they print**. That conflicts with "footer off by default", which UI.2C must decide.
+
+**How pagination works:**
+
+5. **Pages and breaks** (`pagination/plugin.ts`, `geometry.ts`):
+   - Each page is a zero-width float spacer the height of the text area, then a full-width gap float (bottom margin + desk + top margin) that lines cannot sit beside.
+   - An explicit break is given the height that reaches the next page (`breakFill`).
+   - The geometry assumes **every page is alike** (one `stride`).
+6. **A different first page.**
+   - Only page 0 differs, so `pageAt`, `intoPage`, `breakFill`, and `pagesFor` extend with a page-0 offset, not per-page arrays.
+   - The changes:
+     - the first spacer takes its own height;
+     - the editor's `padding-top` becomes top margin + first header;
+     - each gap becomes bottom margin + footer + desk + top margin + later header.
+7. **Footer space.** Reserve it in the gap and in the end element, which are already full-width, positioned, non-editable, and `aria-hidden`.
+8. **Genuine repeated headers and footers** fit: non-editable copies drawn in the gaps are real reserved geometry, not an overlay on content.
+9. **Changes needed:**
+   - page-0 geometry;
+   - header and footer regions;
+   - their heights measured (ResizeObserver → CSS variables → re-paginate).
+   - **The recommended model is Word's:** a header or footer lives inside its margin and pushes the text only when taller than it, so ordinary pages do not reflow.
+   - The editable first-page header sits in the reserved top region, outside the ProseMirror body. Ownership, depth, and the guard therefore never see it.
+
+**Phasing, verification, and risks:**
+
+10. **What goes where:**
+    - **UI.2C:** the geometry, the regions, the copies in the gaps, the page-number default and first-page suppression, and wiring the device setup with `doc.attrs.page` in the lab.
+    - **UI.3:** the editing interactions (header click-to-edit, the footer options menu).
+    - **UI.4:** multi-page and print verification.
+11. **Tests:**
+    - geometry unit tests with an unlike first page;
+    - `tests/lab/pagination.spec.ts` extended, checking that no line's rectangle intersects a header or footer rectangle on any page;
+    - `page.pdf()` checks of page count and text positions with the existing `tests/lab/pdf-text.ts`.
+12. **Blockers:** none found. **Risks:**
+    - re-measuring when a header's height changes;
+    - fonts arriving after the first measurement;
+    - long unbreakable blocks;
+    - printing from Regular Layout is not the paginated path;
+    - the float technique itself across browsers, which only PDF and real printing will settle.
+
+**Canonical title storage: options, not decided here (owner's decision for UI.2C/A2).** Existing title and subtitle data is preserved under every option.
+
+- **(a) The title stays the idea's** (`ideas.title`), and the header shows and edits it.
+  - Strength: one source, as today.
+  - Cost: title edits live outside the document's undo history and its revisions, and A2 saves two things.
+- **(b) The document holds the title** (a new attribute, beside `subtitle`), synchronized with `ideas.title`.
+  - Strength: undo and revisions cover it.
+  - Cost: two copies, needing a rule for which wins.
+- **(c) The document holds it, and the idea's title becomes derived.**
+  - Strength: one source inside the document.
+  - Cost: it touches the library, search, and every list of ideas.
+
+**Either way:**
+
+- the subtitle stays `doc.attrs.subtitle`;
+- header and footer options extend `pageSetupSchema` with a new version, never by repurposing version 1;
+- legacy title-styled body paragraphs stay writing, never converted silently. UI.3 may offer "move to header".
+
+### Checkpoint plan, reconciled
+
+The A1-UI.1 section above deferred items to "A1-UI.2". The owner's A1-UI.2A brief splits that into four parts and adds UI.4, so each item moves without being dropped:
+
+- **UI.2B:**
+  - Minimal and Expressive;
+  - the preset chooser, and where the choice is kept (open);
+  - outline-wide and per-component customization;
+  - drawing a node's own `appearance`;
+  - formatting inheritance;
+  - reset and restore;
+  - saved personal styles.
+- **UI.2C:**
+  - the dedicated sermon header, with its title and subtitle;
+  - the optional footer;
+  - first and later pages;
+  - pagination integration;
+  - the page-number default.
+- **UI.2D:**
+  - the dark-paper control;
+  - final preset refinement;
+  - print independence;
+  - print color modes (grayscale, black and white), which C1 may extend.
+- **UI.3:** unchanged and required for A1. Also adds the header and footer editing interactions, context menus, shortcuts, and discoverability.
+- **UI.4:**
+  - final visual acceptance;
+  - component workflows;
+  - structural regressions;
+  - long sermons;
+  - pagination and print;
+  - mobile, browsers, and accessibility;
+  - integrity.
+- **Later:**
+  - A2: persistence and revisions;
+  - A3: signed-in editor integration;
+  - B1: the Workspace Panel;
+  - B2: KJV/RVG resources and dictionaries;
+  - B3: My Outlines and templates;
+  - C1: advanced printing and export;
+  - C2: offline and PWA;
+  - C3: production migration and release.
+
 ## Boundary for A2
 
 A2 puts persistence around `SermonWorkspace`; it does not change the editor.
