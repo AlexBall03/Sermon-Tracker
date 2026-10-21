@@ -1,5 +1,4 @@
 import { Extension, isMacOS } from "@tiptap/core";
-import type { EditorView } from "@tiptap/pm/view";
 
 import { run, type Command } from "../outline-commands";
 import {
@@ -34,31 +33,13 @@ import {
  * changes nothing else. Where nothing applies, the browser moves focus.
  * Alt+Shift+→ and Alt+Shift+← are the level change and Move out without Tab.
  */
-/**
- * Brings the selection up to the caret the browser shows, before a key that
- * changes structure acts on it (A1-UI.2B.1). ProseMirror reads a click's
- * caret from `selectionchange`, which Chrome delivers a task or more after
- * the click (69ms after `mouseup` in the lab, measured). A key pressed in
- * that gap found the old selection: Backspace just after a click at a
- * heading's start was refused as if in the middle of the heading, and just
- * after a click at its end converted the heading as if at its start.
- * ProseMirror's own observer reads the browser's selection and dispatches it
- * when the two differ; nothing else is changed.
- */
-function caughtUp(view: EditorView) {
-  const observer = (view as unknown as { domObserver?: { flush?: () => void } }).domObserver;
-  observer?.flush?.();
-}
-
 export const V4Keymap = Extension.create({
   name: "v4Keymap",
   // Before StarterKit's paragraph, list, and history keys.
   priority: 200,
   addKeyboardShortcuts() {
-    const on = (command: Command) => () => {
-      caughtUp(this.editor.view);
-      return run(this.editor, command);
-    };
+    // The selection is already the browser's caret here (`caret-sync.ts`).
+    const on = (command: Command) => () => run(this.editor, command);
     const backspace = on(firstOf(deleteSelection, backspaceInPoint));
     const forward = on(firstOf(deleteSelection, deleteBeforePoint));
     // The macOS variants the built-in keymap has (Tiptap's `Keymap`); elsewhere they are not deletion keys.

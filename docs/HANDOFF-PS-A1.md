@@ -878,6 +878,20 @@ The label-estimate test also gained the measured figure widths, and the decorati
   - **A container's closing hairline** is solid only and a few pixels shorter at each end; a section's own `borderStyle` reaches only a text block's hairline.
   - **A section heading given a named style** keeps its component's `--x-space-before`, so the rule then follows the component's spacing.
 
+### Follow-up: the closing hairline (owner review, same day)
+
+- **What the owner reported.** The Introduction's closing hairline looked pressed against the section's last words.
+- **Measured.** The hairline was **5.3px** under the last line (the paragraph's own 4pt space after) and **25.9px** above the next point's words.
+- **Second case.** Writing after a section stood **11.5px** under the hairline (the Conclusion in _rolesAnywhere_), because only a point brings its own space above.
+- **Fix:**
+  - **The space before the hairline.** A block that closes a section now keeps the section's closing space, `--k-section-close` (Balanced 9pt, Minimal 8pt, Expressive 10pt), in place of its space after. A paragraph's own inline `format` still wins.
+  - **The space after it.** Whatever follows a section, other than a point or another section, keeps the space a section keeps above its opening rule.
+- **After** (Balanced):
+  - 12px from the last line to the hairline, then 25.9px before a point or 19.5px before writing;
+  - Minimal: 11.1px and 21.3px;
+  - Expressive: 14.1px and 31.2px.
+- Screenshots: `…-59` to `…-63`.
+
 ### Cursor behaviour: findings and fixes
 
 **Measured in Chrome** with selection probes: ProseMirror's selection, the DOM range's rects, and `coordsAtPos`. The fixture was _When Idols Fall_ in Print Layout.
@@ -904,13 +918,64 @@ A click in the space above the rule goes to the nearer line (`ClickPlacement`). 
 - **Effects observed:**
   - a click at a heading's end, then Backspace, **converted the heading**, as if at its start;
   - a click at its start, then Backspace, was refused by the guard ("would have broken a point apart") and moved the caret.
-- **Fix (`v4/keymap.ts`, `caughtUp`).** Before each v4 structural key, ProseMirror's own observer reads the browser's selection and dispatches it if the two differ. Nothing else changes; the guard, the schema, and the positions are untouched.
+- **Fix (`v4/caret-sync.ts`, `CaretSync`; revised in the reliability review below).** Before any key reaches a handler, the selection is brought up to the browser's caret, using public API only. Nothing else changes; the guard, the schema, and the positions are untouched.
 - **After, checked in Chrome with no pause between click and key:**
   - end, then Backspace, deletes one letter;
   - start, then Backspace, converts the point with its notice, as designed.
-- **Caveat.** This reaches into `view.domObserver`, which is internal to `prosemirror-view` 1.42.6; it degrades to doing nothing if that ever disappears.
 
 Neither defect is necessarily the exact one the owner saw. Both are the boundary inconsistencies that measurement found, and both are fixed.
+
+### Final reliability review (owner's request, before commit)
+
+**1. The caret fix no longer uses ProseMirror internals.**
+
+- **The first fix** called `view.domObserver.flush()`. `domObserver` and `domSelectionRange()` are not in `prosemirror-view`'s public types (1.42.6), so the fix depended on an internal, unstable implementation.
+- **The replacement** is `CaretSync` (`v4/caret-sync.ts`). It is a `handleKeyDown` at priority 1000, so it runs before every keymap, and it never consumes a key. It reads `document.getSelection()` through `view.posAtDOM` (public API) and, when the two differ, dispatches a plain `TextSelection` with an ordinary transaction.
+- **It fails safely.** It does nothing, and the key goes on exactly as before, whenever:
+  - the editor has no focus;
+  - a composition is under way;
+  - the browser's selection is outside the editor's text, or inside a `contenteditable="false"` node view or widget;
+  - ProseMirror's selection is a gap cursor or a selected node (these are not drawn as a browser selection, so they cannot be compared);
+  - `posAtDOM` throws;
+  - either end does not land in a text block.
+- **It is wider than before.** The first fix covered only the v4 structural keys. ProseMirror's own `keypress` and the guard's `handleTextInput` also replace a selection that spans blocks, so typing at once after clicking away from a selection could have replaced text that was no longer selected. `CaretSync` runs before every key, so that is covered too. A unit test covers it.
+- **The internal hook is removed.** `domObserver` appears nowhere in `src`.
+
+**2. The interaction matrix in Chrome, every key at once after the click, compared with the same key after a pause.** The two always matched.
+
+- **Introduction (filled):**
+  - click at the end, then type: the letter lands in the heading;
+  - click at the end, then Backspace: deletes one letter, with no conversion;
+  - click at the start, then Backspace: converts, the designed edge, with its Undo notice;
+  - click at the end, then Delete: joins the next paragraph into the heading, which stays the same point. That is the approved PS-ER1 behavior ("join a heading's first line of writing into the heading, which stays the point").
+  - click at the end, then Enter: a new line under the heading;
+  - click at the end of the line before, then Delete: the caret moves to the heading's start, with no merge.
+- **Introduction (empty):**
+  - click, then type: fills the heading;
+  - click, then Backspace: converts it to writing with its notice, since the heading still owns writing (designed).
+- **Selections dragged with the mouse:**
+  - from the subtitle into the heading, then typing: removes only what was selected, and the Introduction keeps its ID, role, and remaining words;
+  - from the heading into the body, then Backspace: joins the rest into the heading, which stays the point;
+  - Undo restored the exact JSON both times.
+- **Conclusion:** end and Backspace, start and typing, and end and Enter, all as for the Introduction.
+- **The rule followed throughout:** a structural conversion happened only where the person pressed Backspace at a heading's start, the designed command, and never because of where the caret had been before.
+
+**3. Appearance integrity (unit test).** The sequence was: a preset change, a component style, two single-node appearances, both resets, and another preset change.
+
+- **Steps:** they made only `DocAttrStep` and `AttrStep`, with no structural step.
+- **Kept:** text and marks, IDs, and ownership were unchanged.
+- **The guard:** sent no notice.
+- **History:** Undo and Redo each restored every intermediate document exactly.
+
+**4. Visual checks.**
+
+- **The dark theme with light paper (desktop Print Layout).** All three presets draw the paper colors: text `#17181b` on white, and Expressive's section ink in its light-paper variant. The dark overrides exclude light paper as intended.
+- **The phone width.** A 412px frame, the method A1-UI.2A.1 used, because the window could not be resized. It opens in Regular Layout on the dark screen in all three presets: no horizontal scroll, the section spacing and closing hairline hold, and Expressive's section ink switches to its dark variant.
+- **Screenshots:** `…-64` to `…-69`.
+
+**Tests (focused).** `vitest run src/features/editor-lab/v4 src/features/sermon-editor`: **222 passed**. That includes `appearance.test.ts`, now 36 tests: caret sync at a heading's start and end, typing after a gone selection, no action when unsure, no history, and the attribute-only integrity test. `tsc`, ESLint, and Prettier are clean on the changed files.
+
+**Result:** no unresolved defect was found. UI.2B.1 is ready for owner approval, with the limitations below.
 
 ### Tests
 
@@ -951,13 +1016,13 @@ Neither defect is necessarily the exact one the owner saw. Both are the boundary
   - a production build;
   - the Playwright lab specs (no Clerk E2E user);
   - print preview, PDF, or paper;
-  - the dark theme for the new presets;
-  - a phone-width frame or a real phone;
-  - Enter, Delete, Shift+selection, and Undo across a boundary in the browser, beyond the cases above (they are covered by the existing unit tests, not re-run by hand).
+  - a real phone, or a resized browser window (a 412px frame instead);
+  - Shift+Arrow selection across a boundary by hand (mouse selection was tested; keyboard selection is covered by the existing unit tests).
 
 ### Provisional, for owner review
 
-- Minimal's reminder and script are both thin outlined boxes, told apart by the label and by italic against upright text. A different shape may be wanted.
+- **Minimal's component similarity:** its reminder and script are both thin outlined boxes, told apart by the label and by italic against upright text. A different shape may be wanted. **Assigned to UI.2B.3** (final preset review).
+- **Section-border fragmentation:** after a passage, note, or script, a section's closing hairline is a solid shadow a few pixels shorter at each end, so a section's own `borderStyle` reaches only a text block's hairline. Across a page, a bordered or filled container can leave an empty sliver (A1-UI.2A.1). **The hairline's form is assigned to UI.2B.2**, where the section's lines become editable; **the page behaviour to UI.4** (keep-together).
 - Expressive's colors and weights are a first pass.
 - The section spacing values (10pt above, the heading's space below): Balanced's numbers in `presets.ts` are unchanged; the rule moved and the frame's space shrank.
 
@@ -965,9 +1030,19 @@ Neither defect is necessarily the exact one the owner saw. Both are the boundary
 
 The owner asked, during this checkpoint, that the header sit higher, as in Google Docs: the title and subtitle in the page's top-margin header region, so the body starts higher and has more room. This is recorded for **UI.2C** (the semantic sermon header, title storage, and per-page geometry) and was not built here.
 
+**Owner's decision (after the reliability review):**
+
+- **Order.** The roadmap order stands: UI.2B.2 (the Appearance interface) comes next, and no header implementation or related architectural change is made before UI.2C.
+- **When the title decision is made.** The canonical title-storage decision is taken when UI.2C begins.
+- **What UI.2C keeps.** Every documented header and footer requirement stands for it:
+  - the directly editable Sermon Title and optional Subtitle, in the dedicated header;
+  - first-page and later-page presentation;
+  - the optional footer, off by default.
+
 ### Assigned onward (nothing dropped)
 
 - **UI.2B.2, the Appearance panel:**
+  - the closing hairline's form after a container (see Provisional);
   - outline, component, and selection scopes, over `setOutlinePreset`, `setComponentStyle`, `setComponentAppearance`, and `resetOutlineToPreset`;
   - discoverable plain-language controls for every existing property and the new treatment properties;
   - the three resets as visible actions;
@@ -977,9 +1052,9 @@ The owner asked, during this checkpoint, that the header sit higher, as in Googl
   - typography and spacing by depth;
   - per-level marker settings;
   - saved personal styles (a `DocumentStyles` value; storage with A2);
-  - final preset review.
+  - final preset review, including Minimal's reminder and script.
 - **UI.2C:** the header placement above; the rest is as before.
-- **UI.2D:** the dark-paper control, print color modes, final preset refinement (as before), and the dark theme for Minimal and Expressive.
+- **UI.2D:** the dark-paper control, print color modes, and final preset refinement (as before). Minimal and Expressive were checked on the dark screen in the review; dark paper itself waits for its control.
 - **UI.4:** keep-with-next and keep-together, and the empty-sliver finding (as before).
 
 ### Files changed
@@ -987,7 +1062,8 @@ The owner asked, during this checkpoint, that the header sit higher, as in Googl
 - **Styles** (`src/features/editor-lab/styles/`): `model.ts`, `presets.ts`, `resolve.ts`, `render.ts`, `plugin.ts`, `context.ts`, `attributes.ts`.
 - **v4** (`src/features/editor-lab/v4/`):
   - `lab-v4.css`;
-  - `keymap.ts`;
+  - `keymap.ts` (the first fix, since removed);
+  - the new `caret-sync.ts` and its entry in `extensions.ts`;
   - `plugins.ts` (`rebase`, `roleFrames`);
   - `commands.ts` (role narrowing);
   - `validate.ts`;

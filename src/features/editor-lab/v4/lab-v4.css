@@ -204,6 +204,14 @@
   --k-section-line-w: 1px;
   --k-section-line-style: solid;
   --k-section-after: var(--rhythm-3);
+  /*
+   * The space between a section's last words and its closing hairline, about
+   * what the opening rule keeps to the heading, so the section is closed as it
+   * is opened. Measured before A1-UI.2B.1's follow-up: 5.3px (the last
+   * paragraph's own space after), against 25.9px from the hairline to the next
+   * point's words, so the line was pressed against the writing.
+   */
+  --k-section-close: 9pt;
   /* The gap between a container that closes a section and the section's closing hairline. */
   --k-section-end-gap: 4pt;
   /* The words a note or a script is labelled with. */
@@ -388,6 +396,25 @@
 .lab-editor[data-studio] > .lab-v4-frame-end {
   margin-bottom: var(--k-section-after);
   border-bottom: var(--x-frame-border-w) var(--x-frame-border-style) var(--x-frame-border);
+}
+/*
+ * Writing, a heading, a list, or a quotation that closes a section: the
+ * section's own closing space replaces its space after, so the hairline is
+ * not pressed against the words. It outranks the style sheet's space after
+ * (`render.ts`); a paragraph's own spacing (`format`, inline) still wins.
+ */
+.lab-editor[data-studio]
+  > .lab-v4-frame-end.lab-v4-framed:not(.lab-passage, .lab-note, .lab-script) {
+  padding-bottom: var(--k-section-close);
+}
+/*
+ * What follows a section keeps from its closing hairline the space a section
+ * keeps above its opening rule. A point brings its own space above; writing
+ * or a container has none, and stood 11.5px under the hairline (measured).
+ * Margins collapse, so this replaces the section's own space after.
+ */
+.lab-editor[data-studio] > .lab-v4-frame-end + :not(.lab-v4-point, .lab-v4-frame-start) {
+  margin-top: calc(var(--k-section-before) + var(--rhythm-2));
 }
 /*
  * A section that ends in a container (a passage, a note, a script, a list, a
@@ -719,6 +746,7 @@
   --k-scripture-accent-w: 1px;
   --k-scripture-radius: 0;
   --k-section-before: 8pt;
+  --k-section-close: 8pt;
   --k-section-accent: color-mix(in oklab, var(--foreground) 55%, transparent);
   --k-section-accent-w: 0.75px;
   --k-section-line: color-mix(in oklab, var(--foreground) 22%, transparent);
@@ -789,6 +817,7 @@
   --k-scripture-accent-w: 3px;
   --k-scripture-radius: 6px;
   --k-section-before: 12pt;
+  --k-section-close: 10pt;
   --k-section-accent-w: 2.5px;
   --k-section-line: color-mix(in oklab, var(--sermon-section) 45%, transparent);
   --k-point-notation: var(--k-section-ink);

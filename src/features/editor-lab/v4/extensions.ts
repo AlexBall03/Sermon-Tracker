@@ -15,6 +15,7 @@ import { ScripturePassageNode, ScriptureReferenceNode } from "../schema/scriptur
 import { StyleAttributes } from "../styles/attributes";
 import { DocumentStylesExtension } from "../styles/plugin";
 import type { PresetId } from "../styles/presets";
+import { CaretSync } from "./caret-sync";
 import { V4Keymap } from "./keymap";
 import { ComponentLabelsV4, type ComponentLabels } from "./labels";
 import { PaperV4 } from "./paper";
@@ -85,6 +86,7 @@ export function labV4Extensions({
     NodeIdentity.configure({ newId: ids }),
     DocumentClipboard.configure({ newId: ids, onNotice: onClipboardNotice }),
     V4Plugins.configure({ onNotice }),
+    CaretSync,
     V4Keymap,
     ComponentLabelsV4.configure({ labels: componentLabels ?? null }),
     PaperV4,

@@ -20,6 +20,7 @@ import { resolveAt } from "../styles/context";
 import { resolveComponent } from "../styles/resolve";
 import { setRole } from "./commands";
 import { rebase } from "./plugins";
+import { catchUp } from "./caret-sync";
 import { labV4Extensions, loadV4 } from "./extensions";
 import { documentV4, noteV4, passageV4, pointV4, proseV4, whenIdolsFall } from "./fixtures";
 import { ref } from "../fixtures";
@@ -282,6 +283,57 @@ describe("resets", () => {
   });
 });
 
+describe("appearance changes are attribute changes only", () => {
+  it("make no structural step, keep marks, IDs, and ownership, trip no guard, and undo and redo exactly", () => {
+    const notices: unknown[] = [];
+    const element = document.createElement("div");
+    const editor = new Editor({
+      element,
+      extensions: labV4Extensions({ onNotice: (notice) => notices.push(notice) }),
+    });
+    editors.push(editor);
+    loadV4(editor, whenIdolsFall, "doc-a");
+    const start = editor.state.doc;
+    const ids = allIds(editor);
+    const owned = owners(editor);
+    const steps: string[] = [];
+    editor.on("transaction", ({ transaction }) =>
+      transaction.steps.forEach((step) => steps.push(step.constructor.name)),
+    );
+    const passage = posOf(editor, "scripturePassage");
+    const point = posOf(editor, "point", "wif-intro");
+    const changes = [
+      () => editor.commands.setOutlinePreset("expressive"),
+      () => editor.commands.setComponentStyle("preacherNote", { fill: "green", radius: 2 }),
+      () => editor.commands.setComponentAppearance(passage, { fill: "blue", accentWidth: 3 }),
+      () => editor.commands.setComponentAppearance(point, { fill: "yellow", titleColor: "red" }),
+      () => editor.commands.setComponentAppearance(passage, null),
+      () => editor.commands.setComponentStyle("preacherNote", null),
+      () => editor.commands.resetOutlineToPreset(),
+      () => editor.commands.setOutlinePreset("minimal"),
+    ];
+    const docs = [start];
+    for (const change of changes) {
+      expect(change()).toBe(true);
+      docs.push(editor.state.doc);
+      expect(allIds(editor)).toEqual(ids);
+      expect(owners(editor)).toEqual(owned);
+      // Words and marks are untouched: only attributes differ.
+      expect(editor.state.doc.textContent).toBe(start.textContent);
+    }
+    expect(new Set(steps)).toEqual(new Set(["DocAttrStep", "AttrStep"]));
+    expect(notices).toEqual([]);
+    for (let index = docs.length - 2; index >= 0; index -= 1) {
+      undo(editor.state, editor.view.dispatch);
+      expect(editor.state.doc.eq(docs[index])).toBe(true);
+    }
+    for (let index = 1; index < docs.length; index += 1) {
+      redo(editor.state, editor.view.dispatch);
+      expect(editor.state.doc.eq(docs[index])).toBe(true);
+    }
+  });
+});
+
 describe("treatment properties", () => {
   it("are bounded, from a closed list, and only on components drawn with lines", () => {
     const note = componentStyleSchemas.preacherNote;
@@ -528,33 +580,85 @@ describe("section boundaries (A1-UI.2B.1)", () => {
 });
 
 describe("a key pressed before the browser's selectionchange arrives (A1-UI.2B.1)", () => {
-  /*
-   * jsdom lays nothing out, so ProseMirror cannot read a DOM selection there:
-   * this checks the wiring, with the observer standing in for the browser.
-   * The behavior itself was checked in Chrome (`docs/HANDOFF-PS-A1.md`).
-   */
-  it("reads the browser's selection before a structural key acts", () => {
-    const editor = open(sermon);
+  // A focused editor scrolls a change into view, and jsdom lays nothing out: give it empty boxes.
+  const rect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0 });
+  for (const proto of [Range.prototype, Text.prototype] as unknown as Record<string, unknown>[]) {
+    proto.getClientRects ??= () => [];
+    proto.getBoundingClientRect ??= rect;
+  }
+
+  /** The browser's caret moved (as a click moves it) without ProseMirror hearing of it yet. */
+  function browserCaret(editor: Editor, name: string, offset: number, focusOffset = offset) {
     const view = editor.view;
-    const observer = (view as unknown as { domObserver: { flush: () => void } }).domObserver;
-    // ProseMirror saw the caret at the heading's end; the browser's, after a click, is at its start.
+    view.dom.setAttribute("tabindex", "0");
+    view.focus();
+    const at = (o: number) => view.domAtPos(textStart(editor, name) + o);
+    const anchor = at(offset);
+    const focus = at(focusOffset);
+    view.dom.ownerDocument
+      .getSelection()!
+      .setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+  }
+
+  it("acts on the caret the browser shows: a click at a heading's start, then Backspace", () => {
+    const editor = open(sermon);
     caret(editor, "intro", "Introduction".length);
-    const original = observer.flush.bind(observer);
-    let read = 0;
-    observer.flush = () => {
-      read += 1;
-      const start = textStart(editor, "intro");
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start)));
-      original();
-    };
-    try {
-      expect(press(editor, "Backspace")).toBe(true);
-    } finally {
-      observer.flush = original;
-    }
-    expect(read).toBe(1);
-    // Backspace at a heading's start makes it writing (the designed edge), as the caret showed.
+    browserCaret(editor, "intro", 0);
+    expect(editor.state.selection.$head.parentOffset).toBe("Introduction".length);
+    expect(press(editor, "Backspace")).toBe(true);
+    // The designed edge: the heading becomes writing, because that is where the caret was.
     expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
     expect(editor.state.doc.firstChild!.textContent).toBe("Introduction");
+  });
+
+  it("never converts a heading the caret has left: a click at its end, then Backspace", () => {
+    const editor = open(sermon);
+    caret(editor, "intro", 0);
+    browserCaret(editor, "intro", "Introduction".length);
+    // The v4 keys leave a plain Backspace inside a heading to the browser.
+    expect(press(editor, "Backspace")).toBe(false);
+    expect(editor.state.doc.firstChild!.type.name).toBe("point");
+    expect(editor.state.selection.$head.parentOffset).toBe("Introduction".length);
+  });
+
+  it("does not replace a selection that is gone: a click away from it, then typing", () => {
+    const editor = open(sermon);
+    const from = textStart(editor, "intro") + 2;
+    const to = textStart(editor, "Why this psalm.") + 3;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)),
+    );
+    browserCaret(editor, "p-1", 3);
+    press(editor, "x");
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBe(textStart(editor, "p-1") + 3);
+    expect(editor.state.doc.textContent).toContain("IntroductionWhy this psalm.");
+  });
+
+  it("does nothing when unsure: no focus, or a selection outside the editor", () => {
+    const editor = open(sermon);
+    caret(editor, "intro", 4);
+    const before = editor.state.selection.head;
+    expect(catchUp(editor.view)).toBe(false);
+    const outside = document.createElement("p");
+    outside.textContent = "elsewhere";
+    document.body.append(outside);
+    editor.view.dom.setAttribute("tabindex", "0");
+    editor.view.focus();
+    document.getSelection()!.collapse(outside.firstChild!, 2);
+    expect(catchUp(editor.view)).toBe(false);
+    expect(editor.state.selection.head).toBe(before);
+    outside.remove();
+  });
+
+  it("changes nothing but the selection, and adds no history", () => {
+    const editor = open(sermon);
+    caret(editor, "intro", 0);
+    const doc = editor.state.doc;
+    browserCaret(editor, "p-1", 2);
+    expect(catchUp(editor.view)).toBe(true);
+    expect(editor.state.doc).toBe(doc);
+    undo(editor.state, editor.view.dispatch);
+    expect(editor.state.doc).toBe(doc);
   });
 });
