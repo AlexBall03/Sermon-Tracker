@@ -575,7 +575,11 @@ describe("section boundaries (A1-UI.2B.1)", () => {
 
   it("close a section that ends in a container under its box, where its own border cannot cover it", () => {
     expect(css).toContain(".lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script)");
-    expect(css).toMatch(/box-shadow: 0 var\(--k-section-end-gap\) 0/);
+    // A real border on `::after` (A1-UI.2B.2), so the section's style reaches it, as a text block's.
+    expect(css).toMatch(
+      /\.lab-v4-frame-end:is\(\.lab-passage, \.lab-note, \.lab-script\)::after \{[^}]*border-top: var\(--x-frame-border-w\) var\(--x-frame-border-style\) var\(--x-frame-border\);/,
+    );
+    expect(css).not.toMatch(/box-shadow: 0 var\(--k-section-end-gap\)/);
   });
 });
 

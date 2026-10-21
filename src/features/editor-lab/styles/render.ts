@@ -266,6 +266,11 @@ const treatmentParts = [
   ["borderWidth", "border-w", "pt"],
   ["accentWidth", "accent-w", "pt"],
   ["radius", "radius", "pt"],
+  // A container's space inside and outside it (A1-UI.2B.2).
+  ["paddingBlock", "pad-block", "pt"],
+  ["paddingInline", "pad-inline", "pt"],
+  ["outsideBefore", "out-before", "pt"],
+  ["outsideAfter", "out-after", "pt"],
 ] as const;
 
 /**
@@ -303,6 +308,10 @@ export function partDeclarations(
     if (only && !only.has(field)) continue;
     const value = resolved[field];
     if (value !== undefined) lines.push(`${prefix}-${part}: ${value}${unit}`);
+  }
+  // A container's label in its own face (A1-UI.2B.2): a registry key, drawn as its stack.
+  if (resolved.labelFont !== undefined && (!only || only.has("labelFont"))) {
+    lines.push(`${prefix}-label-font: ${fontStack(resolved.labelFont)}`);
   }
   // Text on the fill, judged with it: what the container's own words (its label) are drawn in.
   if (resolved.fill && (!only || only.has("fill") || only.has("color"))) {

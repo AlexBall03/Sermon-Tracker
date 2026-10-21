@@ -2,17 +2,15 @@
 
 import { undo } from "@tiptap/pm/history";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
-import { ArrowLeft, SlidersHorizontal, TextQuote, X } from "lucide-react";
+import { ArrowLeft, Palette, SlidersHorizontal, TextQuote } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { ClipboardNotice } from "@/features/editor-lab/clipboard";
-import { DocumentStylesPanel } from "@/features/editor-lab/components/document-styles";
 import { MarginRuler } from "@/features/editor-lab/components/margin-ruler";
 import { NumberingSelect } from "@/features/editor-lab/components/numbering-select";
 import { PageScaler } from "@/features/editor-lab/components/page-scaler";
-import { PresetSelect } from "@/features/editor-lab/components/preset-select";
 import {
   PrintPageStyle,
   usePageView,
@@ -29,10 +27,18 @@ import {
 } from "@/features/editor-lab/components/toolbar";
 import { WorkspaceFrame } from "@/features/editor-lab/components/workspace-frame";
 import { pageMetrics } from "@/features/editor-lab/pagination/geometry";
+import { namedStyleOf } from "@/features/editor-lab/styles/resolve";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
 import type { V4Notice } from "@/features/editor-lab/v4/model";
 import type { DocumentProblem } from "@/features/editor-lab/validate";
 import { useLocale, useT } from "@/i18n/client";
+import { cn } from "@/lib/utils";
+import {
+  AppearancePanel,
+  type AppearanceScope,
+  type OutlineTarget,
+} from "./appearance/appearance-panel";
+import { useSheetViewport } from "./appearance/sheet";
 import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
 import { noticeText } from "./notice";
 import { StructureTools } from "./structure-tools";
@@ -54,7 +60,7 @@ export type SermonWorkspaceProps = {
   headerStart?: React.ReactNode;
   /** The header's end, after the numbering. */
   headerEnd?: React.ReactNode;
-  /** More of the side column, under Document Styles when it is open. */
+  /** More of the side column, under Appearance when it is open. */
   aside?: (editor: Editor) => React.ReactNode;
   /** Called once the editor exists and holds the document. */
   onReady?: (editor: Editor) => void;
@@ -63,7 +69,7 @@ export type SermonWorkspaceProps = {
 /**
  * The sermon editor's workspace (A1): one schema v4 document, freeform first
  * with structure on demand, in the full editing workspace: the formatting
- * toolbar, the structure tools, Document Styles, the numbering, Regular and
+ * toolbar, the structure tools, Appearance, the numbering, Regular and
  * editable Print Layout with paper and margins.
  *
  * Depth is always drawn as an outline. A sermon, however fully it is written
@@ -94,7 +100,11 @@ export function SermonWorkspace({
   const [clipboardNotice, setClipboardNotice] = useState<ClipboardNotice | null>(null);
   const [refused, setRefused] = useState<DocumentProblem[] | null>(null);
   const [ready, setReady] = useState(false);
-  const [stylesOpen, setStylesOpen] = useState(false);
+  // Appearance (A1-UI.2B.2): open or not, and where; its draft is the panel's own.
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [scope, setScope] = useState<AppearanceScope>("outline");
+  const [outlineTarget, setOutlineTarget] = useState<OutlineTarget>("normal");
+  const sheet = useSheetViewport(appearanceOpen);
   const page = usePageView();
   const componentLabels = t.v4.components;
   const extensions = useMemo(
@@ -155,7 +165,15 @@ export function SermonWorkspace({
   useEffect(() => {
     if (ready) followWindow(desktop);
   }, [desktop, ready]);
-  const showAside = Boolean(editor && (stylesOpen || aside));
+  const showAside = Boolean(editor && (appearanceOpen || aside));
+  const openAppearance = (at: AppearanceScope) => {
+    setScope(at);
+    if (at === "outline" && editor) {
+      const { parent } = editor.state.selection.$from;
+      setOutlineTarget(namedStyleOf(parent.type.name, parent.attrs) ?? "normal");
+    }
+    setAppearanceOpen(true);
+  };
 
   return (
     <WorkspaceFrame testId="sermon-workspace" ready={Boolean(editor && ready)}>
@@ -172,7 +190,20 @@ export function SermonWorkspace({
         <div className="flex min-w-0 flex-1 basis-60 items-center gap-2">{headerStart}</div>
         {editor && view && (
           <div className="flex flex-wrap items-center gap-2">
-            <PresetSelect editor={editor} className="w-36" />
+            <Button
+              type="button"
+              variant={appearanceOpen ? "secondary" : "outline"}
+              aria-pressed={appearanceOpen}
+              aria-label={t.appearance.open}
+              title={t.appearance.open}
+              data-testid="appearance-open"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => (appearanceOpen ? setAppearanceOpen(false) : openAppearance(scope))}
+              className="pointer-coarse:h-11"
+            >
+              <Palette aria-hidden />
+              <span className="max-sm:sr-only">{t.appearance.open}</span>
+            </Button>
             <NumberingSelect editor={editor} className="w-44" />
             {headerEnd}
           </div>
@@ -188,12 +219,16 @@ export function SermonWorkspace({
           >
             <HistoryGroup editor={editor} />
             <StyleGroup editor={editor}>
-              {/* Beside the style menu it belongs to: how each named style looks in this sermon. */}
+              {/* Beside the style menu it belongs to: Appearance, on the text style in use. */}
               <Tool
                 label={t.toolbar.documentStyles}
                 icon={SlidersHorizontal}
-                pressed={stylesOpen}
-                onPress={() => setStylesOpen(!stylesOpen)}
+                pressed={appearanceOpen && scope === "outline"}
+                onPress={() =>
+                  appearanceOpen && scope === "outline"
+                    ? setAppearanceOpen(false)
+                    : openAppearance("outline")
+                }
               />
             </StyleGroup>
             <InlineGroup editor={editor} />
@@ -201,7 +236,7 @@ export function SermonWorkspace({
             <ListGroup editor={editor}>
               <QuoteTool editor={editor} />
             </ListGroup>
-            <StructureTools editor={editor} />
+            <StructureTools editor={editor} onAppearance={() => openAppearance("selected")} />
           </ToolbarRow>
         </div>
       )}
@@ -209,11 +244,13 @@ export function SermonWorkspace({
       {/* The writing area (the desk, in Print Layout) and, beside it on wide screens, the side column. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain lg:flex-row lg:overflow-hidden">
         <main
-          className={
+          className={cn(
             print
               ? "lab-desk min-w-0 flex-1 px-3 pb-10 sm:px-6 lg:overflow-auto lg:overscroll-contain"
-              : "min-w-0 flex-1 bg-surface pb-10 lg:overflow-auto lg:overscroll-contain"
-          }
+              : "min-w-0 flex-1 bg-surface pb-10 lg:overflow-auto lg:overscroll-contain",
+            // Under the sheet on a small screen the outline's end can still be scrolled into view.
+            appearanceOpen && "max-lg:pb-[60dvh]",
+          )}
         >
           {refused && (
             <div
@@ -248,28 +285,35 @@ export function SermonWorkspace({
           </PageScaler>
         </main>
         {showAside && editor && (
-          <div className="flex shrink-0 flex-col gap-3 border-t bg-background p-3 lg:w-[23rem] lg:overflow-auto lg:border-t-0 lg:border-l">
-            {stylesOpen && (
-              <section
-                aria-label={t.toolbar.documentStyles}
-                className="relative rounded-xl border bg-surface p-4 shadow-card"
+          <div
+            className={cn(
+              "flex shrink-0 flex-col gap-3 border-t bg-background p-3 lg:w-[23rem] lg:overflow-auto lg:border-t-0 lg:border-l",
+              // With nothing else in the column, a small screen shows only the sheet.
+              !aside && "max-lg:contents",
+            )}
+          >
+            {appearanceOpen && (
+              /*
+               * Docked in the side column on a wide screen; below it, a sheet at
+               * the foot of the window that the outline stays usable above (not
+               * modal), kept above the on-screen keyboard (`useSheetViewport`).
+               */
+              <div
+                style={sheet}
+                className="fixed inset-x-0 bottom-[var(--sheet-bottom,0px)] z-40 flex max-h-[var(--sheet-max,60dvh)] flex-col rounded-t-2xl border-t bg-surface shadow-[0_-8px_24px_rgb(0_0_0/0.12)] lg:static lg:z-auto lg:h-full lg:max-h-none lg:min-h-[28rem] lg:shrink-0 lg:rounded-xl lg:border lg:shadow-card"
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t.toolbar.closeStyles}
-                  title={t.toolbar.closeStyles}
-                  className="absolute top-2 right-2"
-                  onClick={() => {
-                    setStylesOpen(false);
+                <AppearancePanel
+                  editor={editor}
+                  scope={scope}
+                  onScope={setScope}
+                  outlineTarget={outlineTarget}
+                  onOutlineTarget={setOutlineTarget}
+                  onClose={() => {
+                    setAppearanceOpen(false);
                     editor.commands.focus();
                   }}
-                >
-                  <X aria-hidden />
-                </Button>
-                <DocumentStylesPanel editor={editor} />
-              </section>
+                />
+              </div>
             )}
             {aside?.(editor)}
           </div>

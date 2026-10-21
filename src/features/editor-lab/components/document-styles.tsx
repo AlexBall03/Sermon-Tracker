@@ -5,14 +5,11 @@ import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select } from "@/components/ui/select";
-import { formatNumber } from "@/i18n";
-import { useLocale, useT } from "@/i18n/client";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { textAlignments } from "../schema/model";
-import { renderColor, type ColorValue } from "../styles/colors";
+import type { ColorValue } from "../styles/colors";
 import {
   documentStylesSchema,
   fontRegistry,
@@ -25,7 +22,7 @@ import {
 import { documentStylesKey, presetIdOf } from "../styles/plugin";
 import { presets, type Preset } from "../styles/presets";
 import { readStyles, resolveNamed, type ResolvedBlock } from "../styles/resolve";
-import { ColorPicker } from "./formatting/color-control";
+import { ColorField, NumberField } from "./style-fields";
 
 /*
  * Document Styles (PS-1B.2B.2B): the document's defaults and its named
@@ -323,7 +320,9 @@ function FieldControl({
     );
   }
   if (field === "color") {
-    return <ColorField value={value as ColorValue | null} own={own} onChange={onChange} />;
+    return (
+      <ColorField label={label} value={value as ColorValue | null} own={own} onChange={onChange} />
+    );
   }
   return (
     <NumberField
@@ -338,100 +337,5 @@ function FieldControl({
       onChange={onChange}
       onInvalid={onInvalid}
     />
-  );
-}
-
-/** A number, applied to the draft when it is left or Enter is pressed. */
-function NumberField({
-  label,
-  value,
-  own,
-  valid,
-  onChange,
-  onInvalid,
-}: {
-  label: string;
-  value: number;
-  own: boolean;
-  valid: (value: number) => boolean;
-  onChange: (value: number) => void;
-  onInvalid: () => void;
-}) {
-  const locale = useLocale();
-  const shown = formatNumber(locale, value);
-  // What is typed, only while it is being typed: leaving an untouched field changes nothing.
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft === null) return;
-    setDraft(null);
-    const number = Number(draft.replace(",", ".").trim());
-    if (draft.trim() === "" || !Number.isFinite(number) || !valid(number)) {
-      if (draft.trim() !== "") onInvalid();
-      return;
-    }
-    if (number !== value || !own) onChange(number);
-  };
-  return (
-    <Input
-      aria-label={label}
-      inputMode="decimal"
-      value={draft ?? shown}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commit();
-        }
-      }}
-      className={cn("h-9 tabular-nums", !own && "text-muted-foreground")}
-    />
-  );
-}
-
-function ColorField({
-  value,
-  own,
-  onChange,
-}: {
-  value: ColorValue | null;
-  own: boolean;
-  onChange: (value: ColorValue | null) => void;
-}) {
-  const t = useT("editorLab").format;
-  const [open, setOpen] = useState(false);
-  const swatch = value === null ? null : renderColor(value, "ink", "light");
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        aria-label={t.textColor}
-        className={cn(
-          "flex h-9 items-center gap-2 rounded-lg border border-input bg-surface px-3 text-left shadow-card",
-          !own && "text-muted-foreground",
-        )}
-      >
-        <span
-          className="size-4 rounded-full border"
-          style={{ background: swatch ?? "var(--foreground)" }}
-        />
-        <span className="truncate">
-          {value === null
-            ? t.themeColor
-            : typeof value === "string" && value in t.colors
-              ? t.colors[value as keyof typeof t.colors]
-              : (swatch ?? "")}
-        </span>
-      </PopoverTrigger>
-      <PopoverContent className="w-80">
-        <ColorPicker
-          kind="ink"
-          value={value}
-          onPick={(next) => {
-            setOpen(false);
-            onChange(next);
-          }}
-        />
-      </PopoverContent>
-    </Popover>
   );
 }

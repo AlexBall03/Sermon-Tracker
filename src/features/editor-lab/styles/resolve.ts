@@ -2,6 +2,7 @@ import type { textAlignments } from "../schema/model";
 import type { ColorValue } from "./colors";
 import {
   documentStylesSchema,
+  type AccentPosition,
   type BorderStyle,
   type ComponentKind,
   type ComponentStyle,
@@ -66,6 +67,12 @@ export type ResolvedComponent = Omit<ResolvedBlock, "align"> & {
   borderWidth?: number;
   accentWidth?: number;
   radius?: number;
+  accentPosition?: AccentPosition;
+  paddingBlock?: number;
+  paddingInline?: number;
+  outsideBefore?: number;
+  outsideAfter?: number;
+  labelFont?: FontKey;
 };
 
 type BlockLayer = Partial<ResolvedBlock>;
@@ -105,6 +112,58 @@ export function readStyles(stored: unknown): DocumentStyles | null {
 
 const read = new WeakMap<object, DocumentStyles | null>();
 
+/**
+ * Where a layer of the cascade comes from: the preset's defaults, the
+ * outline's defaults, the preset's own named or component style, the
+ * outline's version of it, or the node's own override. The Appearance panel
+ * names the last layer that sets a property as where it is inherited from.
+ */
+export type LayerSource = "presetDefaults" | "defaults" | "presetStyle" | "style" | "own";
+export type Layer = { source: LayerSource; values: Record<string, unknown> | null | undefined };
+
+/** The layers a named style's text is resolved from, first to last. */
+export function namedLayers(
+  styles: DocumentStyles | null,
+  name: NamedStyle,
+  override?: Partial<ResolvedBlock> | null,
+  preset: Preset = presets.baseline,
+): Layer[] {
+  return [
+    { source: "presetDefaults", values: preset.defaults },
+    { source: "defaults", values: styles?.defaults },
+    { source: "presetStyle", values: preset.named[name] },
+    { source: "style", values: styles?.named?.[name] },
+    { source: "own", values: override },
+  ];
+}
+
+/** The layers a component is resolved from, first to last. */
+export function componentLayers(
+  styles: DocumentStyles | null,
+  kind: ComponentKind,
+  appearance?: ComponentStyle | null,
+  preset: Preset = presets.baseline,
+): Layer[] {
+  return [
+    { source: "presetDefaults", values: preset.defaults },
+    { source: "defaults", values: styles?.defaults },
+    { source: "presetStyle", values: preset.components[kind] },
+    { source: "style", values: styles?.components?.[kind] },
+    { source: "own", values: appearance },
+  ];
+}
+
+/** The last layer that sets `field`, or null when none does (the preset's CSS draws it). */
+export function sourceOf(layers: Layer[], field: string): LayerSource | null {
+  for (let index = layers.length - 1; index >= 0; index -= 1) {
+    if (layers[index].values?.[field] !== undefined) return layers[index].source;
+  }
+  return null;
+}
+
+const cascadeOf = <T extends object>(layers: Layer[]) =>
+  cascade<T>(...layers.map((layer) => layer.values as Partial<T> | null | undefined));
+
 /** A block of ordinary text in a named style, with its own `format` (and `textAlign`) last. */
 export function resolveNamed(
   styles: DocumentStyles | null,
@@ -112,13 +171,7 @@ export function resolveNamed(
   override?: Partial<ResolvedBlock> | null,
   preset: Preset = presets.baseline,
 ): ResolvedBlock {
-  return cascade<ResolvedBlock>(
-    preset.defaults,
-    styles?.defaults as BlockLayer | undefined,
-    preset.named[name],
-    styles?.named?.[name] as BlockLayer | undefined,
-    override,
-  ) as ResolvedBlock;
+  return cascadeOf<ResolvedBlock>(namedLayers(styles, name, override, preset)) as ResolvedBlock;
 }
 
 /** A semantic component, with one node's `appearance` last. */
@@ -128,12 +181,8 @@ export function resolveComponent(
   appearance?: ComponentStyle | null,
   preset: Preset = presets.baseline,
 ): ResolvedComponent {
-  const { align: _align, ...resolved } = cascade<ResolvedBlock & ComponentStyle>(
-    preset.defaults,
-    styles?.defaults as BlockLayer | undefined,
-    preset.components[kind],
-    styles?.components?.[kind],
-    appearance,
+  const { align: _align, ...resolved } = cascadeOf<ResolvedBlock & ComponentStyle>(
+    componentLayers(styles, kind, appearance, preset),
   ) as ResolvedBlock & ComponentStyle;
   void _align;
   return resolved as ResolvedComponent;

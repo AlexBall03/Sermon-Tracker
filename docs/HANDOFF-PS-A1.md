@@ -1082,11 +1082,280 @@ The owner asked, during this checkpoint, that the header sit higher, as in Googl
   - the guard's rules;
   - migrations and the database.
 
+## A1-UI.2B.2: The Appearance interface (21 October 2026)
+
+**Starting point:** branch `dev`, HEAD `fd0911e`, clean working tree, matching the approved and committed A1-UI.2B.1. Nothing was committed or deployed, and there is no migration.
+
+**Status:** implemented and tested, and checked in Chrome on the owner's dev server (port 3000, not started or stopped here). Ready for owner review; not owner-approved.
+
+### The workflow
+
+**One entry point: Appearance.** It is a labelled button in the `SermonWorkspace` header and replaces the preset dropdown (`PresetSelect` is deleted, by the owner's choice). Two other doors open the same panel:
+
+- the toolbar's "Edit styles", beside the style menu, opens the Outline scope on the text style the caret is in;
+- the structure tools' More menu has "Appearance of this component…", which opens Selected.
+
+Document Styles is no longer in the sermon editor; the v3 lab keeps it unchanged.
+
+**Three scopes over one draft:**
+
+| Scope          | What it changes                                                                                                                                            | Where it is stored                                 |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **Outline**    | The preset (three cards, each with one line describing it), the shared defaults ("All text"), and the named styles (Normal, Title, Subtitle, Headings 1–4) | `styles.preset`, `styles.defaults`, `styles.named` |
+| **Components** | Every component of one type: Introduction, Conclusion, Main points, Subpoints, Scripture passages, Preacher notes, Scripts                                 | `styles.components[kind]`                          |
+| **Selected**   | One component only                                                                                                                                         | that node's `appearance`                           |
+
+**Choosing the Selected component.** The target is the component's ID and the kind it was when chosen, never a position.
+
+- **A passage** is chosen by clicking it: it is an atom, so a click selects it whole.
+- **A note or a script** is chosen by a caret anywhere in its writing.
+- **A point or section** is chosen by a caret in its heading.
+- **Nothing else retargets.** Ordinary writing, a selection across components, and the title or subtitle leave the target where it was, and the panel says so ("Still customizing…"). Writing under a point never makes the point the target.
+- **How it is shown.** The component is named in a card (kind, then its first words or a passage's reference), with "Show in outline". It also carries a quiet focus ring in the outline (`data-appearance-target`), which is view state, outside history, on screen only.
+- **Focus.** Moving focus into the panel never changes the editor's selection, so the target holds while controls are used.
+
+**Draft, preview, Apply, Cancel** (`styles/draft.ts`):
+
+1. **Opening** reads what is committed. The draft is empty.
+2. **Every adjustment** is one edit to one property, in any scope. Each edit keeps the committed value it started from (its base). Switching scope, component type, text style, or preset keeps the whole draft.
+3. **The preview is the real outline.** It is `setStylesPreview({ draft })`: a meta-only transaction, kept out of history, that changes no document JSON. The plugin lays the draft over whatever is committed _at each moment_, so an Undo made while the panel is open shows through at once. A single component's preview goes through the same decoration and the same `roleFrames` as when committed (`appearanceInForce`). The merged styles are memoized per (committed styles, draft), so typing never redraws the sheet.
+4. **Apply** is `applyAppearanceDraft(draft)`. The whole plan is checked first:
+   - no conflict;
+   - no orphan;
+   - `documentStylesSchema`;
+   - every component's appearance against its kind's schema.
+
+   Only then is anything written: one transaction of `DocAttrStep` and `AttrStep`, marked `closeHistory` so it never joins the typing before it. It is undone in one step, or nothing is written at all.
+
+5. **Cancel** discards the draft and ends the preview.
+6. **Close (×)** discards the draft and closes the panel.
+7. **Escape** works in layers. An open picker or menu closes first; otherwise focus goes back to the outline, and the panel and draft stay.
+
+**Changes made elsewhere are never written over:**
+
+- **A conflict** is a property whose committed value changed since it was edited, for example by an Undo or another change to the same property. It blocks Apply. The field says "Changed elsewhere since you began", with **Keep mine** or **Use current**, and the footer offers both for every conflict at once.
+- **A change to a different property** of the same style is not a conflict, and Apply keeps it.
+- **Resets are edits with bases too.** A reset names only the properties its layer sets at that moment, so a property set meanwhile by something else is left alone.
+- **An orphan** is a single component's edit whose component is gone, or has become another kind (a main point indented into a subpoint, a role removed). Orphans block Apply, the panel says why, and **Discard those changes** removes them. They are never sent to another component.
+- **A component that only moved** is still found by its ID and gets its edits.
+
+**Values:** each property shows the value in force, and either **Customized** (with a reset) or **From** where it is inherited:
+
+- "the preset";
+- "shared defaults";
+- "the Main points style" (in Selected).
+
+The source is the last layer that sets it, read from `componentLayers` and `namedLayers` (`styles/resolve.ts`). The resolvers now cascade over those same lists, so there is still only one resolver.
+
+Three kinds of value are always kept apart:
+
+- **Use inherited setting** (the reset beside a field) removes the property from this layer.
+- **None** (for a fill, a border, or an accent) and **Theme color** (for a text color) are `null`: values of their own.
+- **A concrete value.**
+
+A treatment no layer sets is drawn by the preset's CSS and shows as **Preset design**. No computed browser style is read.
+
+**Resets:**
+
+- **Property:** "Use inherited setting" on any customized field.
+- **Selected:** "Reset this component" clears that node's appearance.
+- **Components:** "Reset the ‹type› style" clears `styles.components[kind]`.
+- **Outline:** two resets.
+  - "Reset this text style" clears one named style, or the defaults.
+  - "Restore outline to ‹preset›" does exactly what `resetOutlineToPreset` does: it keeps `preset` and every single component's own appearance, and clears the defaults, named styles, component styles, and `runningHeader`. A test proves the two give the same JSON.
+
+### Properties offered (`sermon-editor/appearance/fields.ts`)
+
+Less common ones are under **More options** in their group. A coverage test holds the list to the schema: for every kind, what is offered plus `notDrawn` equals `componentFields(kind)`.
+
+| Layer                    | Typography                                                       | Spacing                                                         | Colors and fills   | Borders                            | Accents                   | Label                           | Box spacing                                              |
+| ------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------------- | ------------------ | ---------------------------------- | ------------------------- | ------------------------------- | -------------------------------------------------------- |
+| Defaults, named styles   | font, size, bold, italic, underline*, color                      | line spacing, before, after, left indent, first line, alignment |                    |                                    |                           |                                 |                                                          |
+| Introduction, Conclusion | font, size, bold, italic, underline*, text color, heading color* | line spacing, before, after, indents*                           | section background | closing line color, width, style   | opening rule color, width |                                 |                                                          |
+| Main points, Subpoints   | the same, plus number color                                      | the same                                                        |                    |                                    |                           |                                 |                                                          |
+| Scripture passages       | font, size, bold, italic, underline*, color, line spacing        |                                                                 | background         | color, width, style, corner radius | color, width, side        | reference color, reference font | inside (top and bottom, sides), space above, space below |
+| Preacher notes           | the same                                                         | paragraph spacing before and after, indents*                    | background         | the same                           | the same                  | label color, label font         | the same                                                 |
+| Scripts                  | the same                                                         | the same                                                        | background         | the same                           | the same                  | label font                      | the same                                                 |
+
+\* Under More options.
+
+**Not offered, because they draw nothing:**
+
+- a section's `notationColor`, since a section is never numbered;
+- a passage's paragraph spacing and indents, since its place is its box's.
+
+Resetting the whole style or component still clears them.
+
+### Model and command extensions
+
+All new fields are bounded and from closed lists. They widen schema v3/v4 `version: 1` as the 2B.1 fields did: every earlier document keeps its meaning, and no migration is needed. A reader older than this checkpoint refuses the new fields; the lab persists nothing, so none holds one.
+
+**Containers only** (scripture, preacherNote, script). Points and sections are not made into boxes.
+
+| Field                            | Values                                                                                       | Drawn as                                                                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accentPosition`                 | `left` (the presets' design), `top`, `right`; no bottom, which would meet a closing hairline | `data-accent` on the container, from the appearance decoration, added only where the resolved side is not left; the studio CSS swaps two sides |
+| `paddingBlock` / `paddingInline` | 0–24pt / 0–36pt                                                                              | `--ps-<c>-pad-block` / `-pad-inline`                                                                                                           |
+| `outsideBefore` / `outsideAfter` | 0–48pt each                                                                                  | `--ps-<c>-out-before` / `-out-after` (the container's margin)                                                                                  |
+| `labelFont`                      | font registry keys                                                                           | `--ps-<c>-label-font: <stack>` (the hook the CSS already read, now written)                                                                    |
+
+**Commands** (`styles/plugin.ts`):
+
+- **`applyAppearanceDraft(draft)`:** described above. It is the only new way appearance is written; the four earlier commands are unchanged.
+- **`setAppearanceTarget(id | null)`:** view state only.
+- **`setStylesPreview`** now also takes `{ draft }`. The v3 lab's `{ styles }` is unchanged.
+
+**New modules:**
+
+- **`styles/draft.ts`:** the draft, its merge, conflicts, orphans, resets, and the apply plan. It is pure.
+- **`styles/component-node.ts`:** `componentOfNode` (moved here, still exported from the plugin) and `findComponent(doc, id)`.
+- **`editor-lab/components/style-fields.tsx`:** `NumberField` and `ColorField`, shared by Document Styles and Appearance. `ColorPicker` gains an optional `noneLabel`.
+- **`sermon-editor/appearance/`:** the panel, its fields, the target hook, and the phone sheet.
+
+### CSS: one mechanism each
+
+**A container's edges** (`lab-v4.css`). Each container's border is four side properties (`--x-top-w`/`--x-top` … `--x-left-w`/`--x-left`), set from its border and its accent. The accent is on the left unless `data-accent` swaps a side.
+
+- One `border-width`, one `border-color`, and one `border-style` draw all four sides.
+- Padding and margin read `--x-pad-*` and `--x-out-*`. The preset's own values became `--k-pad-*` tokens (the cue, Minimal's notes, and the phone width), so the outline's values come first everywhere.
+- Balanced's computed padding, margins, and borders are unchanged when nothing is set.
+
+**The closing hairline after a container** (assigned here by 2B.1). It was a solid `box-shadow`, a few pixels short at each end, which no section `borderStyle` could reach. It is now a real `border-top` on the container's `::after`, which no container uses:
+
+- absolutely placed one `--k-section-end-gap` below the box;
+- spanning the whole box, accent included;
+- drawn in the section's closing-line width, style, and color, as a text block's hairline is.
+
+A page gap is positioned and comes after every block in the tree, so it still paints over the line, as it did over the shadow. Checked in Chrome: the benchmark Conclusion ends in a passage, and set to 2pt dashed, it drew a 2pt dashed line across the full box.
+
+**Not touched:** the page-fragment and keep-together behaviour stays with UI.4.
+
+### Layout
+
+- **Wide screens (`lg` and up):** the panel is docked in the side column, filling its height. The body scrolls; the footer (status, Apply, Cancel) stays put. The writing area and its scroll position are untouched.
+- **Below `lg`:** the same panel is a fixed, non-modal sheet at the foot of the window (`role="dialog"`, `aria-modal="false"`). It is at most 60% of the _visual_ viewport and is lifted above the on-screen keyboard (`useSheetViewport`, `visualViewport`), so Apply and Cancel stay in reach while a value is typed. The outline above stays scrollable and selectable, so tapping another component retargets, and it gains bottom padding so its end can scroll clear of the sheet.
+- **Controls:** at least 44px tall on touch screens (`pointer-coarse`). Numbers use `inputMode="decimal"`.
+- **Checked in a 412px frame:** sheet at 60% height, Apply visible, no sideways scroll.
+
+### Tests
+
+- **New: `v4/appearance-draft.test.ts`** (28 tests):
+  - the preview across all scopes changes no JSON or history;
+  - the preview follows an Undo;
+  - the preview is a stable object while typing;
+  - Cancel;
+  - Apply is one transaction of attribute steps only, with ids, text, and ownership kept, and exact Undo and Redo;
+  - Apply is its own history step after typing, and ends the preview;
+  - all-or-nothing on an invalid part;
+  - unset, null, and a value kept apart;
+  - restoring the outline equals `resetOutlineToPreset`;
+  - type and instance resets;
+  - a reset that respects later and concurrent changes;
+  - overrides kept across a preset change;
+  - conflict refusal and Keep mine;
+  - a concurrent change to another property kept;
+  - a moved target still found, and deleted or retyped targets refused;
+  - selection targeting (point, section, prose, note, passage, a span across two);
+  - the target mark by ID, outside history;
+  - the new fields' bounds and closed lists;
+  - type-level and instance drawing;
+  - the CSS contract;
+  - field coverage against the schema, for components and text styles.
+- **New: `sermon-editor/appearance/appearance-panel.test.tsx`** (9 tests, React Testing Library):
+  - the scopes in English and Spanish;
+  - preview, Cancel, and Apply;
+  - the draft kept across scopes and presets;
+  - "Use inherited setting" resets one field;
+  - the target held while a control has focus, and not taken by prose;
+  - retargeting with an earlier component's edit kept;
+  - a deleted target with Apply disabled and its changes discarded;
+  - Escape returns to the outline with the panel and draft kept;
+  - an Escape a popup already handled is left alone;
+  - Close discards.
+- **Changed:** the 2B.1 CSS contract for the closing line now asserts the `::after` border and no shadow.
+- **Run:**
+  - `vitest run src/features/editor-lab src/features/sermon-editor src/i18n "src/app/(app)/lab"`: **673 passed** (22 files);
+  - `tsc --noEmit`, ESLint, and Prettier: clean on every changed file.
+- **Browser (Chrome, `/lab/editor/v4`, owner's dev server):**
+  - the docked panel;
+  - Components → Scripture passages, accent side Top, previewed (`data-accent="top"`, the accent drawn on top, corners following);
+  - Conclusion closing line set to 2pt dashed under its final passage;
+  - Apply ("Applied…"), then one toolbar Undo restored both;
+  - clicking a passage targeted it ("Scripture passage · 1 Samuel 5:1–5", marked in the outline);
+  - Escape closed the color picker first, then returned focus to the outline with the panel, target, and mark kept;
+  - the phone sheet in a 412px frame.
+- **Not run:**
+  - the whole unit suite;
+  - a production build;
+  - the Playwright lab specs (no Clerk E2E user);
+  - print preview, PDF, or paper;
+  - a real phone with an on-screen keyboard: `useSheetViewport` is untested on a device, and the window could not be resized, so a frame was used;
+  - Minimal and Expressive with the new container properties;
+  - the dark theme with the panel open;
+  - a screen reader.
+
+### Limitations and provisional choices
+
+- **Three properties are named but not drawn as a value.** A treatment set by no layer (for example the preset's Scripture radius) shows as "Preset design" rather than a number or swatch, because its value lives in the preset's CSS tokens and reading computed styles would make a second source of truth. Its accent side shows Left, the known default.
+- **A point's or section's "Text color" and "Heading color" overlap.** A heading is drawn in its heading color when set, else its text color. Both are offered, the heading color under More options, labelled as overriding.
+- **Expressive's note corners** (`0 6px 6px 0`) assume a left accent. With the accent on top they keep that shape until the outline sets a radius.
+- **A passage left out of print** dashes its accent on whichever side it is.
+- **The section's opening rule is always solid.** Only its color and width are offered; the closing line has a style.
+- **The running header's style fields** (`styles.runningHeader`) are not offered: nothing draws them yet, as the header is UI.2C. Restoring the outline still clears them, as the command always did.
+- **The phone sheet** is non-modal by design. While a field in it is focused on a phone, the keyboard and the sheet together leave little of the outline in view.
+
+### Explicitly not built (unchanged assignments)
+
+Nothing below was started; every documented requirement for it stands:
+
+- **UI.2B.3:**
+  - per-depth typography;
+  - per-level marker and numbering presentation;
+  - saved personal styles (storage with A2);
+  - the final preset review, including Minimal's reminder and script.
+- **UI.2C:**
+  - the semantic sermon header, title storage, and the header placement the owner asked for;
+  - the optional footer.
+- **UI.2D:** the dark-paper control, print color and grayscale modes, and final preset refinement.
+- **UI.3:** the Insert workflow and better mobile editing.
+- **UI.4:** keep-with-next and keep-together, and the empty-sliver finding.
+- **A2 / A3:** persistence and signed-in integration.
+- No database change.
+
+### Files changed
+
+- **Styles** (`src/features/editor-lab/styles/`):
+  - `model.ts`, `resolve.ts`, `render.ts`, `plugin.ts`;
+  - new: `draft.ts`, `component-node.ts`.
+- **v4** (`src/features/editor-lab/v4/`):
+  - `plugins.ts` (`roleFrames` reads the previewed appearance);
+  - `lab-v4.css`;
+  - `appearance.test.ts`;
+  - new: `appearance-draft.test.ts`.
+- **Components** (`src/features/editor-lab/components/`):
+  - `document-styles.tsx` (shared fields);
+  - `formatting/color-control.tsx` (`noneLabel`);
+  - new: `style-fields.tsx`;
+  - deleted: `preset-select.tsx`.
+- **Sermon editor** (`src/features/sermon-editor/`):
+  - `sermon-workspace.tsx`;
+  - `structure-tools.tsx`;
+  - new: `appearance/` (`appearance-panel.tsx`, `fields.ts`, `target.ts`, `sheet.ts`, `appearance-panel.test.tsx`).
+- **Words:** `src/i18n/dictionaries/{en,es}/editorLab.ts`. `appearance` is expanded; the unused `appearance.label` and `toolbar.closeStyles` were removed.
+- **Docs:** this file, `AGENTS.md`, `docs/ROADMAP.md`.
+- **Not touched:**
+  - the v3 lab's look;
+  - pagination;
+  - the numbering engine;
+  - the guard;
+  - `CaretSync`;
+  - migrations and the database.
+
 ## Boundary for A2
 
 A2 puts persistence around `SermonWorkspace`; it does not change the editor.
 
-- **Appearance (A1-UI.2B.1):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`) and are saved with it. There is nothing extra to persist. When an outline is created from an account's default preset, write it explicitly.
+- **Appearance (A1-UI.2B.1, 2B.2):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`), and each component's own appearance is on its node; both are saved with it. The Appearance panel's draft is never persisted: Apply makes it a document change. There is nothing extra to persist. When an outline is created from an account's default preset, write it explicitly.
 
 - **Open:** pass the stored document as `document` with a stable `documentKey`. One sermon is one mount; another sermon is a new `key`.
 - **Save:** `onReady` hands over the editor. A2 reads `editor.getJSON()` on its own schedule (coalesced, never per keystroke) and owns revisioning, offline storage, and conflicts.

@@ -13,6 +13,7 @@ import {
   ListIndentIncrease,
   ListTree,
   PanelBottom,
+  Palette,
   PanelTop,
   Plus,
   Trash,
@@ -44,6 +45,7 @@ import {
   setRole,
 } from "@/features/editor-lab/v4/commands";
 import { useT } from "@/i18n/client";
+import { componentAtSelection } from "./appearance/target";
 
 /*
  * The structure of the sermon, on demand (schema v4). Every control is one
@@ -56,7 +58,14 @@ import { useT } from "@/i18n/client";
  * the keys Tab and Shift+Tab also do); moving, duplicating, the roles, and
  * deleting are in "More", under headings that say what each affects.
  */
-export function StructureTools({ editor }: { editor: Editor }) {
+export function StructureTools({
+  editor,
+  onAppearance,
+}: {
+  editor: Editor;
+  /** Opens Appearance on the selected component (A1-UI.2B.2). */
+  onAppearance?: () => void;
+}) {
   const t = useT("editorLab");
   const a = t.v4.actions;
   const keeper = useKeptSelection(editor);
@@ -80,6 +89,7 @@ export function StructureTools({ editor }: { editor: Editor }) {
         introduction: check(setRole("introduction")),
         conclusion: check(setRole("conclusion")),
         clearRole: check(setRole(null)),
+        component: componentAtSelection(e.state) !== null,
       };
     },
   });
@@ -165,6 +175,12 @@ export function StructureTools({ editor }: { editor: Editor }) {
               {item(a.introduction, PanelTop, can.introduction, setRole("introduction"))}
               {item(a.conclusion, PanelBottom, can.conclusion, setRole("conclusion"))}
               {item(a.clearRole, CircleSlash, can.clearRole, setRole(null))}
+              {onAppearance && (
+                <DropdownMenuItem disabled={!can.component} onClick={onAppearance}>
+                  <Palette aria-hidden />
+                  {t.appearance.structureAction}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

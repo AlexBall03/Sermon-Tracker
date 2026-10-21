@@ -417,17 +417,28 @@
   margin-top: calc(var(--k-section-before) + var(--rhythm-2));
 }
 /*
- * A section that ends in a container (a passage, a note, a script, a list, a
- * quotation): the container's own border drew over the closing hairline,
- * which was lost (the benchmark's conclusion, A1-UI.2B.1). The hairline is
- * drawn under the box instead, as a shadow one line high, a little below it
- * (and a little shorter at each end, by the same gap). A shadow is painted
- * with the box, so a page gap still covers it.
+ * A section that ends in a container (a passage, a note, or a script): the
+ * container's own border would draw over the closing hairline (the
+ * benchmark's conclusion lost it, A1-UI.2B.1). The hairline is drawn a little
+ * under the box instead, as a real border on the container's `::after` (no
+ * container uses its `::after`), so the section's width, style, and color
+ * all reach it, as they reach a text block's (A1-UI.2B.2; it was a solid
+ * shadow, a few pixels short at each end). It spans the whole box, its
+ * accent included. A page gap is positioned and comes after every block, so
+ * it still paints over the line, as it did over the shadow.
  */
 .lab-editor[data-studio] > .lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script) {
+  position: relative;
   margin-bottom: calc(var(--k-section-after) + var(--k-section-end-gap));
-  box-shadow: 0 var(--k-section-end-gap) 0 calc(var(--x-frame-border-w) - var(--k-section-end-gap))
-    var(--x-frame-border);
+}
+.lab-editor[data-studio] > .lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script)::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + var(--x-bottom-w) + var(--k-section-end-gap));
+  left: calc(-1 * var(--x-left-w));
+  right: calc(-1 * var(--x-right-w));
+  border-top: var(--x-frame-border-w) var(--x-frame-border-style) var(--x-frame-border);
+  pointer-events: none;
 }
 /*
  * After a container its margin and the section's overlap (margins collapse),
@@ -466,10 +477,11 @@
   --x-fill: var(--ps-scripture-fill, var(--k-scripture-fill));
   --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   --x-label-font: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
-  margin-block: var(--rhythm-2) var(--rhythm-3);
-  padding: var(--rhythm-2) 0.75rem;
-  border: var(--x-border-w) var(--x-border-style) var(--x-border);
-  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  --x-pad-block: var(--ps-scripture-pad-block, var(--rhythm-2));
+  --x-pad-inline: var(--ps-scripture-pad-inline, 0.75rem);
+  --x-out-before: var(--ps-scripture-out-before, var(--rhythm-2));
+  --x-out-after: var(--ps-scripture-out-after, var(--rhythm-3));
+  /* The accent's side stays square; the other corners are softened. */
   border-radius: 0 var(--x-radius) var(--x-radius) 0;
   background-color: var(--x-fill);
   color: var(--foreground);
@@ -478,8 +490,25 @@
   font-weight: 400;
   print-color-adjust: exact;
 }
+.lab-editor[data-studio] .lab-passage[data-accent="top"] {
+  border-radius: 0 0 var(--x-radius) var(--x-radius);
+}
+.lab-editor[data-studio] .lab-passage[data-accent="right"] {
+  border-radius: var(--x-radius) 0 0 var(--x-radius);
+}
+/* A passage left out of print: its accent dashed, on whichever side it is. */
 .lab-editor[data-studio] .lab-passage[data-print="hidden"] {
   border-left-style: dashed;
+}
+.lab-editor[data-studio]
+  .lab-passage[data-print="hidden"]:is([data-accent="top"], [data-accent="right"]) {
+  border-left-style: var(--x-border-style);
+}
+.lab-editor[data-studio] .lab-passage[data-print="hidden"][data-accent="top"] {
+  border-top-style: dashed;
+}
+.lab-editor[data-studio] .lab-passage[data-print="hidden"][data-accent="right"] {
+  border-right-style: dashed;
 }
 .lab-editor[data-studio] .lab-passage-label {
   color: var(--x-reference);
@@ -545,6 +574,8 @@
   --k-accent-w: 1px;
   --k-line-style: solid;
   --k-radius: 5px;
+  --k-pad-block: var(--rhythm-2);
+  --k-pad-inline: 0.75rem;
   --k-label: color-mix(in oklab, var(--k-hue) var(--sermon-ink), var(--foreground));
   --x-accent: var(--ps-note-accent, var(--k-accent));
   --x-accent-w: var(--ps-note-accent-w, var(--k-accent-w));
@@ -556,10 +587,11 @@
   --x-ink: var(--ps-note-ink, var(--foreground));
   --x-label: var(--ps-note-label, var(--ps-note-ink, var(--k-label)));
   --x-label-font: var(--ps-note-label-font, var(--ps-structure-font, var(--font-sans)));
-  margin-block: var(--rhythm-2) var(--rhythm-3);
-  padding: var(--rhythm-2) 0.75rem;
-  border: var(--x-border-w) var(--x-border-style) var(--x-border);
-  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  --x-pad-block: var(--ps-note-pad-block, var(--k-pad-block));
+  --x-pad-inline: var(--ps-note-pad-inline, var(--k-pad-inline));
+  --x-pad-right: var(--ps-note-pad-inline, var(--k-pad-right, var(--k-pad-inline)));
+  --x-out-before: var(--ps-note-out-before, var(--rhythm-2));
+  --x-out-after: var(--ps-note-out-after, var(--rhythm-3));
   border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
@@ -585,8 +617,8 @@
   --k-accent: var(--sermon-cue);
   --k-accent-w: 2px;
   --k-radius: 0;
-  padding-block: var(--rhythm-1);
-  padding-right: 0;
+  --k-pad-block: var(--rhythm-1);
+  --k-pad-right: 0;
 }
 .lab-editor[data-studio] .lab-note[data-kind="task"] {
   --k-fill: transparent;
@@ -608,6 +640,7 @@
   --k-line-w: 1px;
   --k-line-style: solid;
   --k-radius: 5px;
+  --k-pad-inline: 0.875rem;
   --x-accent: var(--ps-script-accent, var(--k-accent));
   --x-accent-w: var(--ps-script-accent-w, var(--k-accent-w));
   --x-border: var(--ps-script-border, var(--k-line));
@@ -618,14 +651,52 @@
   --x-ink: var(--ps-script-ink, var(--foreground));
   --x-label: var(--ps-script-label, var(--ps-script-accent, var(--k-label)));
   --x-label-font: var(--ps-script-label-font, var(--ps-structure-font, var(--font-sans)));
-  margin-block: var(--rhythm-2) var(--rhythm-3);
-  padding: var(--rhythm-2) 0.875rem;
-  border: var(--x-border-w) var(--x-border-style) var(--x-border);
-  border-left: var(--x-accent-w) var(--x-border-style) var(--x-accent);
+  --x-pad-block: var(--ps-script-pad-block, var(--rhythm-2));
+  --x-pad-inline: var(--ps-script-pad-inline, var(--k-pad-inline));
+  --x-out-before: var(--ps-script-out-before, var(--rhythm-2));
+  --x-out-after: var(--ps-script-out-after, var(--rhythm-3));
   border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
   print-color-adjust: exact;
+}
+
+/*
+ * A container's edges and space (A1-UI.2B.2). Its border on every side and
+ * its accent on one: the left, the presets' design, unless the outline puts
+ * it elsewhere (`data-accent`, `styles/plugin.ts`). Each side's width and
+ * color is a property, so moving the accent swaps two sides and nothing else
+ * changes; the closing hairline reads the same sides (above). Padding and the
+ * space outside are each container's (`--x-pad-*`, `--x-out-*`), from the
+ * outline's own values (`--ps-<component>-pad-*`, `-out-*`) or the preset's.
+ */
+.lab-editor[data-studio] :is(.lab-passage, .lab-note, .lab-script) {
+  --x-top-w: var(--x-border-w);
+  --x-top: var(--x-border);
+  --x-right-w: var(--x-border-w);
+  --x-right: var(--x-border);
+  --x-bottom-w: var(--x-border-w);
+  --x-bottom: var(--x-border);
+  --x-left-w: var(--x-accent-w);
+  --x-left: var(--x-accent);
+  margin-block: var(--x-out-before) var(--x-out-after);
+  padding: var(--x-pad-block) var(--x-pad-right, var(--x-pad-inline)) var(--x-pad-block)
+    var(--x-pad-inline);
+  border-style: var(--x-border-style);
+  border-width: var(--x-top-w) var(--x-right-w) var(--x-bottom-w) var(--x-left-w);
+  border-color: var(--x-top) var(--x-right) var(--x-bottom) var(--x-left);
+}
+.lab-editor[data-studio] :is(.lab-passage, .lab-note, .lab-script)[data-accent="top"] {
+  --x-top-w: var(--x-accent-w);
+  --x-top: var(--x-accent);
+  --x-left-w: var(--x-border-w);
+  --x-left: var(--x-border);
+}
+.lab-editor[data-studio] :is(.lab-passage, .lab-note, .lab-script)[data-accent="right"] {
+  --x-right-w: var(--x-accent-w);
+  --x-right: var(--x-accent);
+  --x-left-w: var(--x-border-w);
+  --x-left: var(--x-border);
 }
 
 /*
@@ -725,7 +796,7 @@
     --ps-indent-max: 6.25rem;
   }
   .lab-editor[data-studio]:not([data-layout="print"]) :is(.lab-note, .lab-script) {
-    padding-inline: 0.5rem;
+    --k-pad-inline: 0.5rem;
   }
 }
 
@@ -769,13 +840,13 @@
   --k-label: var(--muted-foreground);
   --k-accent: color-mix(in oklab, var(--foreground) 30%, transparent);
   --k-radius: 0;
-  padding-block: var(--rhythm-1);
+  --k-pad-block: var(--rhythm-1);
 }
 .lab-editor[data-preset="minimal"] .lab-note[data-kind="reminder"] {
   --k-fill: transparent;
   --k-line: color-mix(in oklab, var(--foreground) 35%, transparent);
   --k-radius: 2px;
-  padding-block: var(--rhythm-2);
+  --k-pad-block: var(--rhythm-2);
 }
 .lab-editor[data-preset="minimal"] .lab-note[data-kind="cue"] {
   --k-accent: color-mix(in oklab, var(--foreground) 60%, transparent);
@@ -868,5 +939,18 @@
 @media screen {
   .dark .lab-editor[data-preset="expressive"]:not([data-paper="light"]) {
     --k-section-ink: var(--sermon-section);
+  }
+}
+
+/*
+ * The component the Appearance panel's Selected scope customizes
+ * (A1-UI.2B.2): a quiet focus ring outside its box, on screen only. View
+ * state (`appearanceTargetKey`), never the document's, never printed.
+ */
+@media screen {
+  .lab-editor [data-appearance-target] {
+    outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+    outline-offset: 3px;
+    border-radius: 2px;
   }
 }

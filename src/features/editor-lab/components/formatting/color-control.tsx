@@ -95,11 +95,14 @@ export function ColorPicker({
   kind,
   value,
   onPick,
+  noneLabel,
 }: {
   kind: ColorKind;
   value: Shown;
   /** null: the theme's color (ink) or no highlight (fill). */
   onPick: (value: ColorValue | null) => void;
+  /** What null is called where it turns a part off (a border, an accent: "None"), instead of the theme color. */
+  noneLabel?: string;
 }) {
   const t = useT("editorLab").format;
   const id = useId();
@@ -137,9 +140,11 @@ export function ColorPicker({
       >
         <span
           className="size-5 rounded-full border"
-          style={{ background: kind === "ink" ? "var(--foreground)" : "transparent" }}
+          style={{ background: kind === "ink" && !noneLabel ? "var(--foreground)" : "transparent" }}
         />
-        <span className="flex-1">{kind === "ink" ? t.themeColor : t.noHighlight}</span>
+        <span className="flex-1">
+          {noneLabel ?? (kind === "ink" ? t.themeColor : t.noHighlight)}
+        </span>
         {value === null && <Check className="size-4 text-primary" aria-hidden />}
       </button>
       <div

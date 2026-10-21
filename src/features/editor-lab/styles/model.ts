@@ -158,10 +158,21 @@ const fill = fillColorSchema.nullable().optional();
  */
 export const borderStyles = ["solid", "dashed", "dotted", "double"] as const;
 export type BorderStyle = (typeof borderStyles)[number];
+/**
+ * Which side of a container its accent rule is on (A1-UI.2B.2). Left is the
+ * presets' design; there is no bottom, which would meet a section's closing
+ * hairline. Drawn as `data-accent` on the container (`plugin.ts`), never CSS.
+ */
+export const accentPositions = ["left", "top", "right"] as const;
+export type AccentPosition = (typeof accentPositions)[number];
 export const treatmentLimits = {
   borderWidth: { min: 0, max: 4 },
   accentWidth: { min: 0, max: 6 },
   radius: { min: 0, max: 12 },
+  paddingBlock: { min: 0, max: 24 },
+  paddingInline: { min: 0, max: 36 },
+  outsideBefore: { min: 0, max: 48 },
+  outsideAfter: { min: 0, max: 48 },
 } as const;
 const limited = (name: keyof typeof treatmentLimits) =>
   points(treatmentLimits[name].min, treatmentLimits[name].max).optional();
@@ -170,7 +181,22 @@ const lines = {
   borderWidth: limited("borderWidth"),
   accentWidth: limited("accentWidth"),
 };
-const box = { ...lines, radius: limited("radius") };
+/*
+ * A container (a passage, a note, a script) also has corners, the side of
+ * its accent, the space inside it, the space outside it, and the font of its
+ * label (A1-UI.2B.2). Padding and the space outside are points, as every
+ * other spacing is.
+ */
+const box = {
+  ...lines,
+  radius: limited("radius"),
+  accentPosition: z.enum(accentPositions).optional(),
+  paddingBlock: limited("paddingBlock"),
+  paddingInline: limited("paddingInline"),
+  outsideBefore: limited("outsideBefore"),
+  outsideAfter: limited("outsideAfter"),
+  labelFont: z.enum(fontKeys).optional(),
+};
 
 /**
  * The colors each component has (brief §7): only what its design shows, so
@@ -236,6 +262,12 @@ export type ComponentStyle = {
   borderWidth?: number;
   accentWidth?: number;
   radius?: number;
+  accentPosition?: AccentPosition;
+  paddingBlock?: number;
+  paddingInline?: number;
+  outsideBefore?: number;
+  outsideAfter?: number;
+  labelFont?: FontKey;
 };
 
 /** A component node's appearance override: the same properties as its style. */

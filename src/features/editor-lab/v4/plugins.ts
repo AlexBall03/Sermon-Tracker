@@ -13,6 +13,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import { isTextOnly } from "../changes";
 import { narrowAppearance } from "../styles/model";
+import { appearanceInForce, previewChanged } from "../styles/plugin";
 import { partDeclarations } from "../styles/render";
 import type { ResolvedComponent } from "../styles/resolve";
 import {
@@ -439,7 +440,7 @@ function roleFrames(state: EditorState): DecorationSet {
      * belong to the whole frame, so every member reads them. The heading has
      * them already, with its text, from the styles (`styles/plugin.ts`).
      */
-    const own = block.node.attrs.appearance as ResolvedComponent | null;
+    const own = appearanceInForce(state, block.node) as ResolvedComponent | null;
     const parts = own ? partDeclarations(role, own, new Set(Object.keys(own))).join("; ") : "";
     for (let member = index; member < end; member += 1) {
       const { node, pos } = structure.blocks[member];
@@ -591,7 +592,9 @@ export const V4Plugins = Extension.create<V4PluginOptions>({
         key: frameKey,
         state: {
           init: (_, state) => roleFrames(state),
-          apply: (tr, previous, _old, state) => (tr.docChanged ? roleFrames(state) : previous),
+          // A previewed appearance (the Appearance panel, A1-UI.2B.2) reaches every member too.
+          apply: (tr, previous, old, state) =>
+            tr.docChanged || previewChanged(old, state) ? roleFrames(state) : previous,
         },
         props: { decorations: (state) => frameKey.getState(state) },
       }),
