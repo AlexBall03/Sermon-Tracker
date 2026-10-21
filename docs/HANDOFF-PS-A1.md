@@ -400,15 +400,15 @@ These are not optional for A1's completion:
 
 ### Remaining visual issues (for owner review)
 
-| Issue                                                                                                                                                                        | Status  | Belongs to                                      |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------- |
-| Points deeper than a subpoint share the subpoint's type and are told apart by indentation and number only.                                                                   | Pending | UI.2B (typography by depth needs a style level) |
-| A custom label's column is estimated, so a few pixels of extra space can show after a long label.                                                                            | Pending | UI.2B (per-level marker settings)               |
-| A heading can be left alone at the foot of a page (no keep-with-next), and a passage can split after one line.                                                               | Pending | UI.2C / UI.4 (pagination)                       |
-| Space before a block that starts a new page stays at the foot of the previous page. It is harmless, but the gap at a page's foot varies.                                     | Pending | UI.2C (pagination)                              |
-| White page gaps in print are reasoned, not yet seen on paper.                                                                                                                | Pending | UI.4 (print verification)                       |
-| The Title and Subtitle in the benchmark are styled paragraphs.                                                                                                               | Pending | UI.2C (sermon header)                           |
-| A quotation is told from Scripture only by its rule's color and the passage's reference line. This holds in grayscale, but a quotation could be more distinct in Expressive. | Pending | UI.2B / UI.2D                                   |
+| Issue                                                                                                                                                                        | Status                                                                                                       | Belongs to                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| Points deeper than a subpoint share the subpoint's type and are told apart by indentation and number only.                                                                   | Pending                                                                                                      | UI.2B (typography by depth needs a style level)    |
+| A custom label's column is estimated, so a few pixels of extra space can show after a long label.                                                                            | Partly resolved in A1-UI.2A.1 (figures recalibrated, one column per depth); per-level marker settings remain | UI.2B (per-level marker settings)                  |
+| A heading can be left alone at the foot of a page (no keep-with-next), and a passage can split after one line.                                                               | Deferred with acceptance criteria (A1-UI.2A.1)                                                               | UI.4 (pagination), after UI.2C's per-page geometry |
+| Space before a block that starts a new page stays at the foot of the previous page. It is harmless, but the gap at a page's foot varies.                                     | Pending                                                                                                      | UI.2C (pagination)                                 |
+| White page gaps in print are reasoned, not yet seen on paper.                                                                                                                | Pending                                                                                                      | UI.4 (print verification)                          |
+| The Title and Subtitle in the benchmark are styled paragraphs.                                                                                                               | Pending                                                                                                      | UI.2C (sermon header)                              |
+| A quotation is told from Scripture only by its rule's color and the passage's reference line. This holds in grayscale, but a quotation could be more distinct in Expressive. | Pending                                                                                                      | UI.2B / UI.2D                                      |
 
 ### Header and footer: feasibility (read-only; nothing was changed)
 
@@ -455,7 +455,7 @@ These are not optional for A1's completion:
 
 10. **What goes where:**
     - **UI.2C:** the geometry, the regions, the copies in the gaps, the page-number default and first-page suppression, and wiring the device setup with `doc.attrs.page` in the lab.
-    - **UI.3:** the editing interactions (header click-to-edit, the footer options menu).
+    - **UI.3:** the editing interactions (header click-to-edit, the footer options menu). _Superseded in part: basic title and subtitle editing and basic footer settings are now UI.2C ([First-time-user requirement](#first-time-user-requirement-owner-21-october-2026))._
     - **UI.4:** multi-page and print verification.
 11. **Tests:**
     - geometry unit tests with an unlike first page;
@@ -509,7 +509,7 @@ The A1-UI.1 section above deferred items to "A1-UI.2". The owner's A1-UI.2A brie
   - final preset refinement;
   - print independence;
   - print color modes (grayscale, black and white), which C1 may extend.
-- **UI.3:** unchanged and required for A1. Also adds the header and footer editing interactions, context menus, shortcuts, and discoverability.
+- **UI.3:** unchanged and required for A1. Also adds the header and footer editing interactions, context menus, shortcuts, and discoverability. _Basic header and footer editing has since moved to UI.2C ([First-time-user requirement](#first-time-user-requirement-owner-21-october-2026))._
 - **UI.4:**
   - final visual acceptance;
   - component workflows;
@@ -527,6 +527,240 @@ The A1-UI.1 section above deferred items to "A1-UI.2". The owner's A1-UI.2A brie
   - C1: advanced printing and export;
   - C2: offline and PWA;
   - C3: production migration and release.
+
+## A1-UI.2A.1: Balanced color refinement, numbering, and pagination review (21 October 2026)
+
+**Status: APPROVED for checkpoint completion by the owner (21 October 2026),** subject to the verification not run (listed under Tests). **A1 is not complete.** Started from `dev` at `6dd3556` with a clean tree.
+
+### The palette
+
+The owner found Balanced's component colors too vivid in places, the dark screen above all (its hues were pastels). Every hue is now muted. Each has a paper value and a softened mid-tone for the dark screen (`-bright`). They are raw values in `globals.css` only:
+
+| Hue                | Component                                  | Paper                           | Dark screen                                      |
+| ------------------ | ------------------------------------------ | ------------------------------- | ------------------------------------------------ |
+| burgundy           | Scripture                                  | `#7d3a40`                       | `#c4868c`                                        |
+| slate              | Script                                     | `#45607f`                       | `#8fa5c2`                                        |
+| amber (ochre)      | Reminder                                   | `#94661f`                       | `#c29a58`                                        |
+| copper             | Cue                                        | `#985a35`                       | `#c4886a`                                        |
+| violet, sage, teal | Question, Illustration, Application labels | `#5e5a85`, `#5b6e4c`, `#3d6b66` | `#a29ec8`, `#9fb08e`, `#8db3ad`                  |
+| stone              | Note, Task, and the study notes' wash      | `#6e675d`                       | `#aaa398`                                        |
+| gold               | Introduction and Conclusion                | unchanged                       | `--brand-gold-bright`, taken 18% toward charcoal |
+
+- **Semantic tokens.** The semantic tokens are a hue per component (`--sermon-scripture`, `-script`, `-reminder`, `-cue`, `-question`, `-illustration`, `-application`, `-neutral`, `-section`) plus four strengths per theme:
+  - `--sermon-tint`: 5% on paper, 9% dark;
+  - `--sermon-line` (hairline): 24% / 26%;
+  - `--sermon-wash` (the study notes' neutral fill): 3.5% / 4.5%;
+  - `--sermon-ink` (how far a label is taken toward the text on paper): 80% / 100%.
+- **Derived colors.** Fills, hairlines, and label inks are worked out from these on the editor itself (`--k-*` in `lab-v4.css`). Light paper (`[data-paper="light"]`) and printing (the paper block in `lab.css`) therefore swap only the hues.
+- **Removed.** `--sermon-note`, `--sermon-note-ink`, and `--sermon-note-fill`. Nothing else read them.
+
+### Treatment per component
+
+A box is used where it helps the component, and a rule or plain typography where that serves it better. **In grayscale, the kinds are told apart by their label and their shape, never by hue alone.**
+
+| Component                                 | Treatment                                                                                                                    | Why                                                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Scripture passage                         | A 2px burgundy rule, a faint burgundy wash (4%), right corners rounded 4px, the reference in burgundy ink                    | The rule is what says Scripture. The wash makes the verses one unit. No bordered card, so it never reads as an alert. |
+| Inline reference                          | The pill, with a 7% tint and burgundy ink                                                                                    | The passage's family, quiet in a line                                                                                 |
+| Script                                    | A closed box: slate hairline all round, the faintest slate wash (3.5%), 5px radius, "SCRIPT" in slate ink, the reading serif | Words to be said are set apart by shape (outlined) as well as hue                                                     |
+| Reminder                                  | A soft ochre box: tint (7%) and its hairline, 5px radius, ochre label                                                        | Seen at a glance in the pulpit, never bright yellow                                                                   |
+| Cue                                       | No fill: a 2px copper rule, copper label, square                                                                             | Same warm family as a reminder, a different shape and hue                                                             |
+| Task                                      | A dashed stone hairline, no fill                                                                                             | Something still to do; the dash holds in grayscale                                                                    |
+| Question, Illustration, Application, Note | One neutral stone wash, 5px radius, no rule. Only the small label carries a quiet hue of its own.                            | One family, so the page never turns into a rainbow. The label word gives the kind.                                    |
+| Introduction, Conclusion                  | Unchanged: the in-line gold accent rule and its page-crossing mechanism. Only the dark gold is softened.                     | Already elegant                                                                                                       |
+| Points, subpoints, prose                  | Unchanged                                                                                                                    | Structure and numbering are the cue                                                                                   |
+
+**How a kind gets its treatment.** `.lab-note[data-kind="…"]` sets preset-only variables (`--k-hue`, `--k-fill`, `--k-line`, `--k-accent`, `--k-accent-w`, `--k-line-style`, `--k-radius`). The shared rule reads them only as fallbacks, so **the cascade is unchanged**:
+
+- every drawn color (`--x-*`) reads the outline's own `--ps-*` first, and its `-d` variant on the dark screen;
+- an outline's note colors recolor every kind and nothing else;
+- a node's inline `--ps-*` still wins by inheritance.
+
+**Checked in the browser.** The migrated "Styles and Script" fixture still draws its own note fill (on a cue, whose default has none) and its own teal script accent.
+
+**Printing.** Passages, scripts, and inline references now print their fills (`print-color-adjust: exact`), as notes already did.
+
+**Recorded for UI.2B; no schema change now.** Customization so far is by color only. These are style-model extensions:
+
+- choosing a component's treatment (box, rule, outline, none);
+- its corner radius;
+- its border style;
+- where its accent is drawn.
+
+Today an outline can recolor a box's accent, but on a box that accent is its 1px edge.
+
+### Review fixture
+
+`componentGallery` ("Component gallery", lab only, in both languages) contains:
+
+- all seven note kinds;
+- two scripts and two passages;
+- an inline reference;
+- different components next to each other;
+- a long reminder, passage, and script placed to cross pages in Print Layout.
+
+`noteV4` gained an optional `kind`, with `reminder` still the default. `whenIdolsFall` is unchanged as the benchmark.
+
+### Numbering review
+
+Measured in Chrome against Source Sans 3 bold at 13pt (column = 22pt = 29.3px):
+
+- **No overlap anywhere.** The label is a minimum width, never a fixed one. True for:
+  - Traditional to `XII.`;
+  - letters and figures;
+  - `2.1.1.`;
+  - `POINT VIII:`;
+  - `(a)`;
+  - `II.a.1.`.
+- **Defect 1: figures were counted as narrow.** `labelEm` gave `1` the width of `I`, so `2.1.1.` drew 4.6px wider than its estimate. Its words nearly touched the number, and its first line started to the right of its wrapped lines.
+  - **Fix:** figures are now 0.58em. Measured: 0.55–0.58em.
+- **Defect 2: siblings had different columns.** Each heading had its own column, so point VIII's words started about 10px right of point I's.
+  - **Fix:** `columnsByDepth` gives every numbered point at one depth the column of that depth's widest label. It stays deterministic: no DOM measuring and nothing waits on fonts. Still a decoration, never in the outline.
+  - **Checked:** Traditional and Decimal on the benchmark. Words at each depth start at one x, and `2.1.1.`/`2.1.2.` keep clear space after the number.
+- **Trade-off, kept on purpose.** When a depth's column is wider than one step, its headings' words stand a little right of the writing the point owns, which keeps its level's column. In Decimal, `2.1.` is about 5px. Per-level marker settings remain UI.2B.
+
+### Pagination review
+
+**Keep with next: deferred to A1-UI.4, not fixable narrowly here.**
+
+- **Why.** `geometry.ts` assumes every page has the same stride (`pageAt`, `intoPage`, `breakFill`, `pagesFor`). Moving a stranded heading means ending that page short, so pages are no longer alike.
+  - That needs per-page offsets, the same generalization UI.2C makes for the first-page header, which is its prerequisite.
+  - A heading is also a plain paragraph with no node view, so the paginator cannot safely write a style on it.
+- **Acceptance criteria:**
+  1. A point heading's last line is never the last line on a page when its first owned block starts on the next.
+  2. The same holds for an introduction or conclusion heading.
+  3. Explicit page breaks still land exactly.
+  4. Measurement still converges within `maxPasses`.
+  5. The screen and the PDF agree.
+- **Proposed tests:**
+  - `geometry.test.ts` cases for an unlike page;
+  - a `tests/lab/pagination.spec.ts` case with a heading at the foot of a page;
+  - a `page.pdf()` check with `tests/lab/pdf-text.ts`.
+
+**Rules and fills across pages (screen).** Checked in desktop Print Layout with the gallery:
+
+- The Psalm 119:1–16 passage crosses page 2 to 3: its wash and rule stop at the bottom margin and resume under the next top margin, and the words stay clear of the gap. The gap floats are painted over in-flow backgrounds and borders.
+- **New finding: an empty sliver.** When a container's first line moves to the next page, the part of its box above the gap stays on the previous page as a sliver with no words.
+  - Seen with a cue at the foot of page 1: a few pixels of its copper rule.
+  - Every bordered or filled container behaves this way, because pagination moves lines, not boxes. A container's top cannot be moved with its first line by CSS alone.
+  - It belongs to the same "keep together, keep with next" work: **UI.4**.
+
+**Printing.** Print preview, a PDF, and paper were not checked. The white page gaps in print are still reasoned, not seen.
+
+**Mobile Print Layout.** In a 412px frame the subpoint indent is 58.67px, the desktop value, and page 2 starts at the same block as on the desktop.
+
+### Grayscale and color printing
+
+- **Grayscale (screen filter).** Every kind is told apart by its label and its shape: wash, ochre box, rule, outlined script, dashed task. The fills stay visible as light grays, and the labels read.
+- **The reminder and the script.** Both are outlined boxes in gray. They also differ in their face (sans note against serif script), size, and label.
+- **Print color modes** remain UI.2D/C1.
+
+### Contrast (computed in Chrome, label against its own fill)
+
+- **Paper.** Every label and reference is at least 6.0:1 (the reminder is the lowest).
+- **Dark screen.**
+  - Every label is at least 5.6:1.
+  - The Scripture reference and the inline reference measured 4.6:1 at first. The dark burgundy was lifted to `#c4868c`, and they now measure 5.4:1 and 5.5:1.
+- **Body text on every fill:** at least 12:1.
+
+### Files changed
+
+- `src/app/globals.css`: muted and new hues, and the per-theme semantic tokens and strengths.
+- `src/features/editor-lab/lab.css`: the print block's paper tokens only.
+- `src/features/editor-lab/v4/lab-v4.css`: the derived `--k-*` colors, and the passage, reference, note-kind, script, and dark rules.
+- `src/features/editor-lab/v4/numbering.ts`: figure width in `labelEm`, and `columnsByDepth`.
+- `src/features/editor-lab/v4/fixtures.ts`: `componentGallery`, and `noteV4`'s `kind`.
+- `src/i18n/dictionaries/{en,es}/editorLab.ts`: the gallery's label.
+- `src/features/editor-lab/v4/presentation.test.ts`.
+
+**Not touched:**
+
+- the schema, ownership, commands, the guard, undo, clipboard, and migration;
+- pagination code;
+- `presets.ts`, `render.ts`, and `resolve.ts`;
+- the v3 lab (still `baseline`, which reads no `--sermon-*` or `--k-*`).
+
+### Tests
+
+**Unit tests.** `vitest run src/features/editor-lab src/i18n "src/app/(app)/lab"` passed **600** (595 plus 5 new). The 5 new tests:
+
+- every component color in `lab-v4.css` reads the outline's `--ps-*` first;
+- the dark block reads only the `-d` variants;
+- the kinds' treatments live only under Balanced, and each kind is styled;
+- the gallery opens with identical JSON under either preset, and holds all seven kinds;
+- every point at one depth shares its widest label's column.
+
+The label-estimate test also gained the measured figure widths, and the decoration test now asserts the per-depth column.
+
+**Static checks.** `tsc --noEmit`, ESLint on the changed TypeScript, and Prettier are clean.
+
+**Browser.** The owner's dev server on port 3000 (not started or stopped here), in Chrome. Turbopack twice kept serving an older `globals.css` after quick successive edits, and a later content change refreshed it. Screenshots, in `C:\Users\alexa\AppData\Local\Temp\claude-chrome-screenshots-H2OQJJ\`:
+
+| File       | Shows                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `…-35.jpg` | The gallery, Regular Layout, dark                                                       |
+| `…-36.jpg` | The gallery's study notes, Print Layout, light paper                                    |
+| `…-37.jpg` | Reminder, cue, script, and passage on paper, and the cue's sliver at the foot of page 1 |
+| `…-38.jpg` | A passage crossing a page                                                               |
+| `…-39.jpg` | The benchmark in desktop Print Layout, color                                            |
+| `…-40.jpg` | The gallery in grayscale                                                                |
+| `…-41.jpg` | Decimal numbering                                                                       |
+| `…-42.jpg` | The benchmark in a 412px frame, Regular, dark                                           |
+
+**Not run:**
+
+- the full test suite;
+- a production build;
+- the Playwright lab specs (no Clerk E2E user);
+- print preview, a PDF, or paper;
+- a real phone.
+
+### Outstanding, by checkpoint
+
+- **UI.2B:**
+  - Minimal and Expressive;
+  - the preset chooser;
+  - outline-wide and per-component customization, now including treatment, radius, border style, and accent placement;
+  - local appearance overrides;
+  - inheritance and reset;
+  - personal styles;
+  - per-level marker settings;
+  - typography by depth;
+  - a more distinct quotation in Expressive;
+  - plain-language, discoverable appearance controls (below).
+- **UI.2C:**
+  - the sermon header and title/subtitle (the title-storage decision is still open), directly editable (below);
+  - the optional footer and the page-number default, functional with basic settings (below);
+  - first and later pages;
+  - per-page geometry, which keep-with-next needs.
+- **UI.2D:**
+  - the dark-paper control;
+  - final preset refinement;
+  - print independence, including printing from Regular Layout in the dark theme, which still takes the dark hues;
+  - print color modes.
+- **UI.3:** as before, plus the insertion, creation, and mobile requirements below.
+- **UI.4:**
+  - keep-with-next and keep-together, including the empty-sliver finding, against the criteria above;
+  - print and PDF verification of the gaps and fills;
+  - long sermons;
+  - mobile, browsers, and accessibility;
+  - the first-time-user acceptance scenario (below).
+- **Later:** A2, A3, B1, B2, B3, C1, C2, and C3 are unchanged.
+
+## First-time-user requirement (owner, 21 October 2026)
+
+**Critical product requirement:** a first-time user can create a complete, attractive sermon outline from a blank editor without having used the application or taken a tour. Recorded only; nothing is built here. Every earlier approved requirement stands; where this moves work between checkpoints, it says so.
+
+- **UI.2B:** the appearance controls are discoverable and understandable without knowing what presets, semantic styles, or component schemas are.
+- **UI.2C:**
+  - **Sermon Title and optional Subtitle**, dedicated and directly editable in the semantic sermon header. Basic header editing is not postponed to UI.3. There is one canonical source; the title-storage decision (options above) is made in UI.2C, coordinated with A2 and A3.
+  - **A functional optional footer** (still off by default), with discoverable basic configuration and correct pagination. Advanced interaction polish may wait for UI.3.
+- **UI.3:**
+  - **A prominently discoverable Insert workflow** for every semantic sermon component, with no reliance on the lab inspector.
+  - **Intuitive creation** of main points, subpoints, Scripture references and passages, Preacher Notes, Scripts, and Page Breaks, with contextual actions and sensible keyboard behavior.
+  - **Slash commands**, optional, as an extra convenience only: never the primary or the only way to insert anything.
+  - **Substantially better mobile editing**, with controls for inserting components and formatting that work with the virtual keyboard.
+- **UI.4:** an **acceptance scenario** in which a first-time user goes from a blank outline to a complete sermon through the real user-facing controls, with no tour and no development inspector.
 
 ## Boundary for A2
 

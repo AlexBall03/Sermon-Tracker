@@ -292,6 +292,7 @@ export const editorLab = {
     fixture: "Document",
     fixtures: {
       whenIdolsFall: "When Idols Fall (a realistic sermon)",
+      componentGallery: "Component gallery (every note, script, and passage)",
       parentProse: "Writing that belongs to a parent point",
       rolesAnywhere: "Introduction and conclusion as roles",
       writingFirst: "Writing first, structure later",

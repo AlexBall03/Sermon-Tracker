@@ -158,6 +158,25 @@
    */
   --ps-step: 22pt;
   --ps-indent-max: 176pt;
+  /*
+   * The preset's component colors (A1-UI.2A.1), worked out here from the
+   * hues and strengths in force on this editor (`globals.css` `--sermon-*`;
+   * light paper and printing swap only the hues). A tint is the hue laid thin,
+   * a line its hairline, an ink its label color: on paper taken a little
+   * towards the text so a small label reads, on the dark screen the hue itself.
+   * They are only the preset's fallbacks: every component reads the outline's
+   * own `--ps-*` first.
+   */
+  --k-scripture-ink: color-mix(
+    in oklab,
+    var(--sermon-scripture) var(--sermon-ink),
+    var(--foreground)
+  );
+  --k-scripture-fill: color-mix(
+    in oklab,
+    var(--sermon-scripture) calc(var(--sermon-tint) * 0.8),
+    transparent
+  );
 }
 
 /* The level each depth is drawn at (depth is meaning; this is only where it is drawn). */
@@ -211,9 +230,10 @@
  * line starts that step back (`render.ts` writes `text-indent` as the style's
  * first-line indent less `--x-hang`), so the number takes the column and
  * every line of the words starts after it. The column is one step, or wider
- * for a longer or custom label (`VIII.`, `2.1.1.`, `POINT I:`): the label's
- * estimated width (`--x-label`, `numbering.ts`) widens that heading's column,
- * so its wrapped lines still align with its words. The label is also a
+ * for a longer or custom label (`VIII.`, `2.1.1.`, `POINT I:`): the widest
+ * label's estimated width at that depth (`--x-label`, `numbering.ts`) widens
+ * the column for every point at the depth, so wrapped lines align with their
+ * words and the words of point VIII with those of point I. The label is also a
  * minimum width, never a fixed one, so an estimate that falls short moves
  * the first words along and never overlaps them. The writing a point owns
  * keeps its level's column. A point with no number has no column. A node's
@@ -304,22 +324,29 @@
   margin-bottom: 0;
 }
 
-/* A Scripture passage: no card, a thin rule and its reference, the verses in the reading face. */
+/*
+ * A Scripture passage: its burgundy rule (what says Scripture at a glance), a
+ * faint wash of the same hue that makes the verses one unit, and its
+ * reference in the hue's ink. The rule's side stays square; the other corners
+ * are softened. Never a bordered card, so it does not read as an alert.
+ */
 .lab-editor[data-preset="balanced"] .lab-passage {
   --x-accent: var(--ps-scripture-accent, var(--sermon-scripture));
   --x-border: var(--ps-scripture-border, transparent);
-  --x-fill: var(--ps-scripture-fill, transparent);
-  --x-reference: var(--ps-scripture-reference, var(--foreground));
+  --x-fill: var(--ps-scripture-fill, var(--k-scripture-fill));
+  --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   --x-label-font: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
-  padding: var(--rhythm-1) 0 var(--rhythm-1) 0.75rem;
+  padding: var(--rhythm-2) 0.75rem;
   border: 1px solid var(--x-border);
   border-left: 2px solid var(--x-accent);
+  border-radius: 0 4px 4px 0;
   background-color: var(--x-fill);
   color: var(--foreground);
   font-family: inherit;
   font-size: 1em;
   font-weight: 400;
+  print-color-adjust: exact;
 }
 .lab-editor[data-preset="balanced"] .lab-passage[data-print="hidden"] {
   border-left-style: dashed;
@@ -346,12 +373,13 @@
   line-height: 1.45;
 }
 
-/* An inline reference: the passage's color as a quiet tint, not the colour of actions. */
+/* An inline reference: the passage's ink on a quiet tint of it, not the colour of actions. */
 .lab-editor[data-preset="balanced"] .lab-scripture {
-  --x-reference: var(--ps-scripture-reference, var(--sermon-scripture));
+  --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   padding: 0 0.25em;
   border-radius: 0.2em;
-  background: color-mix(in oklab, var(--x-reference) 8%, transparent);
+  background: color-mix(in oklab, var(--x-reference) 7%, transparent);
+  print-color-adjust: exact;
   color: var(--x-reference);
   font-family: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
   font-size: 0.88em;
@@ -360,38 +388,99 @@
   line-height: 1.2;
 }
 
-/* A preacher note: a restrained tinted container with an accent and its kind as a label. */
+/*
+ * Preacher notes: one family, each kind drawn for what it is for (A1-UI.2A.1).
+ * The kind's treatment is the preset's (`--k-*`, set per `data-kind`); the
+ * outline's own note colors (`--ps-note-*`) come first and apply to every kind.
+ *
+ *   - question, illustration, application, note: study notes. One neutral
+ *     wash with soft corners and no rule; only the small label carries a
+ *     quiet hue of its own, so the page never turns into a rainbow.
+ *   - reminder: a soft ochre box (a tint and its hairline), to be seen at a
+ *     glance in the pulpit without shouting.
+ *   - cue: the same warm family as a reminder but a different shape: a copper
+ *     rule and no fill, a quick mark in the margin of the words.
+ *   - task: a dashed hairline and no fill: something still to do.
+ *
+ * In grayscale the kinds stay apart by their label and their shape (wash, box,
+ * rule, dashed box), never by hue alone.
+ */
 .lab-editor[data-preset="balanced"] .lab-note {
-  --x-accent: var(--ps-note-accent, var(--sermon-note));
-  --x-border: var(--ps-note-border, transparent);
-  --x-fill: var(--ps-note-fill, var(--sermon-note-fill));
+  --k-hue: var(--sermon-neutral);
+  --k-fill: color-mix(in oklab, var(--sermon-neutral) var(--sermon-wash), transparent);
+  --k-line: transparent;
+  --k-accent: var(--k-line);
+  --k-accent-w: 1px;
+  --k-line-style: solid;
+  --k-radius: 5px;
+  --k-label: color-mix(in oklab, var(--k-hue) var(--sermon-ink), var(--foreground));
+  --x-accent: var(--ps-note-accent, var(--k-accent));
+  --x-border: var(--ps-note-border, var(--k-line));
+  --x-fill: var(--ps-note-fill, var(--k-fill));
   --x-ink: var(--ps-note-ink, var(--foreground));
-  --x-label: var(--ps-note-label, var(--ps-note-ink, var(--sermon-note-ink)));
+  --x-label: var(--ps-note-label, var(--ps-note-ink, var(--k-label)));
   --x-label-font: var(--ps-note-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
   padding: var(--rhythm-2) 0.75rem;
-  border: 1px solid var(--x-border);
-  border-left: 3px solid var(--x-accent);
-  border-radius: 0 0.25rem 0.25rem 0;
+  border: 1px var(--k-line-style) var(--x-border);
+  border-left: var(--k-accent-w) var(--k-line-style) var(--x-accent);
+  border-radius: var(--k-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
   print-color-adjust: exact;
 }
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="question"] {
+  --k-hue: var(--sermon-question);
+}
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="illustration"] {
+  --k-hue: var(--sermon-illustration);
+}
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="application"] {
+  --k-hue: var(--sermon-application);
+}
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="reminder"] {
+  --k-hue: var(--sermon-reminder);
+  --k-fill: color-mix(in oklab, var(--sermon-reminder) calc(var(--sermon-tint) * 1.4), transparent);
+  --k-line: color-mix(in oklab, var(--sermon-reminder) var(--sermon-line), transparent);
+}
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="cue"] {
+  --k-hue: var(--sermon-cue);
+  --k-fill: transparent;
+  --k-accent: var(--sermon-cue);
+  --k-accent-w: 2px;
+  --k-radius: 0;
+  padding-block: var(--rhythm-1);
+  padding-right: 0;
+}
+.lab-editor[data-preset="balanced"] .lab-note[data-kind="task"] {
+  --k-fill: transparent;
+  --k-line: color-mix(in oklab, var(--sermon-neutral) calc(var(--sermon-line) * 1.6), transparent);
+  --k-line-style: dashed;
+}
 
-/* A script, words to be said aloud: no fill (it is not a note), a double rule, the reading face. */
+/*
+ * A script, words to be said aloud: a closed box with a slate hairline and
+ * the faintest slate wash, in the reading face. Its shape (outlined, not a
+ * rule and not a note's wash) tells it apart in grayscale too.
+ */
 .lab-editor[data-preset="balanced"] .lab-script {
-  --x-accent: var(--ps-script-accent, var(--sermon-script));
-  --x-border: var(--ps-script-border, transparent);
-  --x-fill: var(--ps-script-fill, transparent);
+  --k-line: color-mix(in oklab, var(--sermon-script) var(--sermon-line), transparent);
+  --k-fill: color-mix(in oklab, var(--sermon-script) calc(var(--sermon-tint) * 0.7), transparent);
+  --k-label: color-mix(in oklab, var(--sermon-script) var(--sermon-ink), var(--foreground));
+  --x-accent: var(--ps-script-accent, var(--k-line));
+  --x-border: var(--ps-script-border, var(--k-line));
+  --x-fill: var(--ps-script-fill, var(--k-fill));
   --x-ink: var(--ps-script-ink, var(--foreground));
-  --x-label: var(--ps-script-label, var(--ps-script-accent, var(--sermon-script)));
+  --x-label: var(--ps-script-label, var(--ps-script-accent, var(--k-label)));
   --x-label-font: var(--ps-script-label-font, var(--ps-structure-font, var(--font-sans)));
   margin-block: var(--rhythm-2) var(--rhythm-3);
-  padding: var(--rhythm-1) 0 var(--rhythm-1) 0.875rem;
+  padding: var(--rhythm-2) 0.875rem;
   border: 1px solid var(--x-border);
-  border-left: 4px double var(--x-accent);
+  border-left: 1px solid var(--x-accent);
+  border-radius: 5px;
   background-color: var(--x-fill);
   color: var(--x-ink);
+  print-color-adjust: exact;
 }
 
 /*
@@ -451,28 +540,29 @@
     --x-frame-border: var(--ps-concl-border-d, var(--border));
     --x-frame-fill: var(--ps-concl-fill-d, transparent);
   }
+  /* The preset's fallbacks (`--k-*`) follow the theme by themselves; only the outline's own colors have a dark variant. */
   .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-passage {
     --x-accent: var(--ps-scripture-accent-d, var(--sermon-scripture));
     --x-border: var(--ps-scripture-border-d, transparent);
-    --x-fill: var(--ps-scripture-fill-d, transparent);
-    --x-reference: var(--ps-scripture-reference-d, var(--foreground));
+    --x-fill: var(--ps-scripture-fill-d, var(--k-scripture-fill));
+    --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
   .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-scripture {
-    --x-reference: var(--ps-scripture-reference-d, var(--sermon-scripture));
+    --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
   .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-note {
-    --x-accent: var(--ps-note-accent-d, var(--sermon-note));
-    --x-border: var(--ps-note-border-d, transparent);
-    --x-fill: var(--ps-note-fill-d, var(--sermon-note-fill));
+    --x-accent: var(--ps-note-accent-d, var(--k-accent));
+    --x-border: var(--ps-note-border-d, var(--k-line));
+    --x-fill: var(--ps-note-fill-d, var(--k-fill));
     --x-ink: var(--ps-note-ink-d, var(--foreground));
-    --x-label: var(--ps-note-label-d, var(--ps-note-ink-d, var(--sermon-note-ink)));
+    --x-label: var(--ps-note-label-d, var(--ps-note-ink-d, var(--k-label)));
   }
   .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-script {
-    --x-accent: var(--ps-script-accent-d, var(--sermon-script));
-    --x-border: var(--ps-script-border-d, transparent);
-    --x-fill: var(--ps-script-fill-d, transparent);
+    --x-accent: var(--ps-script-accent-d, var(--k-line));
+    --x-border: var(--ps-script-border-d, var(--k-line));
+    --x-fill: var(--ps-script-fill-d, var(--k-fill));
     --x-ink: var(--ps-script-ink-d, var(--foreground));
-    --x-label: var(--ps-script-label-d, var(--ps-script-accent-d, var(--sermon-script)));
+    --x-label: var(--ps-script-label-d, var(--ps-script-accent-d, var(--k-label)));
   }
 }
 

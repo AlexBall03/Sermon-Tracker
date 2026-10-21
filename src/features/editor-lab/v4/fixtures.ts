@@ -3,6 +3,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { ScriptureReference } from "@/features/scripture/reference";
 import { ref } from "../fixtures";
 import { defaultLayout } from "../layout";
+import type { NoteKind } from "../schema/model";
 import type { PointRole } from "./model";
 
 /*
@@ -48,9 +49,14 @@ export const passageV4 = (
   },
 });
 
-export const noteV4 = (id: string, text: string, depth: number): JSONContent => ({
+export const noteV4 = (
+  id: string,
+  text: string,
+  depth: number,
+  kind: NoteKind = "reminder",
+): JSONContent => ({
   type: "preacherNote",
-  attrs: { id, kind: "reminder", print: null, depth },
+  attrs: { id, kind, print: null, depth },
   content: [{ type: "paragraph", content: words(text) }],
 });
 
@@ -242,5 +248,60 @@ export const whenIdolsFall = documentV4([
   passageV4("wif-s4", ref(psalms, 115, 4, 8), 1),
 ]);
 
-export const v4Fixtures = { whenIdolsFall, parentProse, rolesAnywhere, writingFirst } as const;
+/*
+ * Every component Balanced draws, side by side (A1-UI.2A.1): all seven note
+ * kinds, a script, passages, an inline reference, and, in the last point,
+ * a long reminder, passage, and script that run across the first pages in
+ * Print Layout, to review the colored boxes where a page breaks them.
+ */
+const filler =
+  "A paragraph of ordinary writing, long enough to fill the page the way a sermon's own explanation does: it says what the text says, why it matters, and where it is going next, so the components after it fall where a page ends.";
+
+export const componentGallery = documentV4([
+  pointV4("cg-1", "Study Notes", 1),
+  proseV4("Notes made while studying, kept beside the writing they belong to.", 1),
+  noteV4("cg-n1", "Why did the Philistines keep the ark for seven months?", 1, "question"),
+  noteV4("cg-n2", "The statue in the old town square that the storm toppled.", 1, "illustration"),
+  noteV4("cg-n3", "What have we set up beside God this week?", 1, "application"),
+  noteV4("cg-n4", "Compare with Isaiah 46 and Psalm 115.", 1, "note"),
+  noteV4("cg-n5", "Check the Hebrew of “threshold” in verse 5.", 1, "task"),
+  pointV4("cg-2", "In the Pulpit", 1),
+  proseWithRef(1, "Read ", "cg-r1", ref(samuel1, 5, 3), " slowly, then stop."),
+  noteV4("cg-n6", "Slow down. Let the silence do the work.", 1, "reminder"),
+  noteV4("cg-n7", "Step out from the pulpit.", 1, "cue"),
+  scriptV4(
+    "cg-sc1",
+    "Some of you came in this morning holding something up with both hands. You can put it down.",
+    1,
+  ),
+  passageV4("cg-s1", ref(psalms, 115, 4, 8), 1),
+  noteV4("cg-n8", "Look up from the notes for the last line.", 1, "cue"),
+  pointV4("cg-3", "Across a Page", 1),
+  proseV4(filler, 1),
+  proseV4(filler, 1),
+  proseV4(filler, 1),
+  noteV4(
+    "cg-n9",
+    "This reminder is long on purpose. It runs across the foot of a page in Print Layout, so its tint, its hairline, and its rounded corners can be checked where the page cuts it: the fill must stop at the margin, the words must stay clear of the gap, and the box must close again on the next page.",
+    1,
+    "reminder",
+  ),
+  proseV4(filler, 1),
+  passageV4("cg-s2", ref(psalms, 119, 1, 16), 1),
+  proseV4(filler, 1),
+  scriptV4(
+    "cg-sc2",
+    "This script is long on purpose too. Whatever you have set up beside Him this week, you do not have to keep holding it up. Let it fall, and let the Lord stand alone in His house. He has never needed us to prop Him up; it is we who need Him to hold us. So let it fall, and let Him stand.",
+    1,
+  ),
+  proseV4(filler, 1),
+]);
+
+export const v4Fixtures = {
+  whenIdolsFall,
+  componentGallery,
+  parentProse,
+  rolesAnywhere,
+  writingFirst,
+} as const;
 export type V4FixtureId = keyof typeof v4Fixtures;

@@ -49,13 +49,27 @@
   --brand-paper: #f7f5f0;
   --brand-ivory: #efebe2;
   --brand-charcoal: #0e0f11;
-  /* Sermon component hues (A1-UI.1): document presentation only, never interface surfaces. */
-  --brand-burgundy: #8c3b3b;
-  --brand-burgundy-bright: #d98b8b;
-  --brand-amber: #a8701a;
-  --brand-amber-bright: #e0b25c;
-  --brand-slate: #3f5f8a;
-  --brand-slate-bright: #9db7de;
+  /*
+   * Sermon component hues (A1-UI.1, muted in A1-UI.2A.1): document
+   * presentation only, never interface surfaces. Each has a paper value and a
+   * `-bright` value for the dark screen: a softened mid-tone, not a pastel.
+   */
+  --brand-burgundy: #7d3a40;
+  --brand-burgundy-bright: #c4868c;
+  --brand-amber: #94661f;
+  --brand-amber-bright: #c29a58;
+  --brand-copper: #985a35;
+  --brand-copper-bright: #c4886a;
+  --brand-slate: #45607f;
+  --brand-slate-bright: #8fa5c2;
+  --brand-violet: #5e5a85;
+  --brand-violet-bright: #a29ec8;
+  --brand-sage: #5b6e4c;
+  --brand-sage-bright: #9fb08e;
+  --brand-teal: #3d6b66;
+  --brand-teal-bright: #8db3ad;
+  --brand-stone: #6e675d;
+  --brand-stone-bright: #aaa398;
 
   --radius: 0.5rem;
   /* Height of the fixed bar. Shells offset `main` by it. */
@@ -110,13 +124,26 @@
   --lamp: var(--brand-lamp);
   --gold: var(--brand-gold);
   --gold-ink: #7d5f24;
-  /* The sermon editor's Balanced presentation: section frame, Scripture, preacher note, script. */
+  /*
+   * The sermon editor's Balanced presentation: one hue per component, and how
+   * strongly it is laid on. Fills, hairlines, and label inks are worked out
+   * from these on the editor itself (`v4/lab-v4.css`), so a sheet of light
+   * paper or a printout only has to swap the hues.
+   */
   --sermon-section: var(--brand-gold);
   --sermon-scripture: var(--brand-burgundy);
-  --sermon-note: var(--brand-amber);
-  --sermon-note-ink: #7a5212;
-  --sermon-note-fill: color-mix(in oklab, var(--brand-amber) 8%, transparent);
   --sermon-script: var(--brand-slate);
+  --sermon-reminder: var(--brand-amber);
+  --sermon-cue: var(--brand-copper);
+  --sermon-question: var(--brand-violet);
+  --sermon-illustration: var(--brand-sage);
+  --sermon-application: var(--brand-teal);
+  --sermon-neutral: var(--brand-stone);
+  /* A component's tint, its hairline, a neutral note's wash, and how far a label's ink is taken towards the text. */
+  --sermon-tint: 5%;
+  --sermon-line: 24%;
+  --sermon-wash: 3.5%;
+  --sermon-ink: 80%;
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --ring: var(--brand-emerald);
@@ -165,12 +192,20 @@
   --lamp: var(--brand-lamp-bright);
   --gold: var(--brand-gold-bright);
   --gold-ink: var(--brand-gold-bright);
-  --sermon-section: var(--brand-gold-bright);
+  --sermon-section: color-mix(in oklab, var(--brand-gold-bright) 82%, var(--brand-charcoal));
   --sermon-scripture: var(--brand-burgundy-bright);
-  --sermon-note: var(--brand-amber-bright);
-  --sermon-note-ink: var(--brand-amber-bright);
-  --sermon-note-fill: color-mix(in oklab, var(--brand-amber-bright) 9%, transparent);
   --sermon-script: var(--brand-slate-bright);
+  --sermon-reminder: var(--brand-amber-bright);
+  --sermon-cue: var(--brand-copper-bright);
+  --sermon-question: var(--brand-violet-bright);
+  --sermon-illustration: var(--brand-sage-bright);
+  --sermon-application: var(--brand-teal-bright);
+  --sermon-neutral: var(--brand-stone-bright);
+  /* On charcoal a tint must be a little stronger to be seen at all; labels keep their hue. */
+  --sermon-tint: 9%;
+  --sermon-line: 26%;
+  --sermon-wash: 4.5%;
+  --sermon-ink: 100%;
   --destructive: #f97066;
   --destructive-foreground: #230806;
   --ring: var(--brand-lamp-bright);

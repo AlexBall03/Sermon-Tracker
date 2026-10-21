@@ -502,10 +502,17 @@
     /* The sermon components' paper colors (A1-UI.1, `v4/lab-v4.css`), whatever the screen's theme. */
     --sermon-section: var(--brand-gold);
     --sermon-scripture: var(--brand-burgundy);
-    --sermon-note: var(--brand-amber);
-    --sermon-note-ink: color-mix(in oklab, var(--brand-amber) 70%, var(--brand-ink));
-    --sermon-note-fill: color-mix(in oklab, var(--brand-amber) 8%, transparent);
     --sermon-script: var(--brand-slate);
+    --sermon-reminder: var(--brand-amber);
+    --sermon-cue: var(--brand-copper);
+    --sermon-question: var(--brand-violet);
+    --sermon-illustration: var(--brand-sage);
+    --sermon-application: var(--brand-teal);
+    --sermon-neutral: var(--brand-stone);
+    --sermon-tint: 5%;
+    --sermon-line: 24%;
+    --sermon-wash: 3.5%;
+    --sermon-ink: 80%;
     color: var(--foreground);
     background: none;
     box-shadow: none;

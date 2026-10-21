@@ -91,13 +91,18 @@ export function documentLabelsV4(
 /*
  * How wide a label is, in em of its heading, estimated from its characters
  * and on the generous side (A1-UI.2A). A preset that hangs its numbers
- * (`lab-v4.css`) widens a heading's number column to it, so a long or custom
- * label (`VIII.`, `2.1.1.`, `POINT I:`) keeps every line of the heading
- * aligned after it. Never measured: nothing waits on fonts or layout. Too wide
- * leaves a little more space before the words; too narrow, the first line's
- * words start a little after the others, and they never overlap the number.
+ * (`lab-v4.css`) widens the number column to it, so a long or custom label
+ * (`VIII.`, `2.1.1.`, `POINT I:`) keeps every line of the heading aligned
+ * after it. Never measured: nothing waits on fonts or layout. Too wide leaves
+ * a little more space before the words; too narrow, the first line's words
+ * start a little after the others, and they never overlap the number.
+ *
+ * Checked against Source Sans 3 bold in the browser (A1-UI.2A.1): figures are
+ * as wide as most letters (about 0.56em), not narrow, or a decimal label such
+ * as `2.1.1.` ran past its estimate and its words touched the number.
  */
-const narrow = /[\s.,:;'’()[\]|!Iijl1]/;
+const narrow = /[\s.,:;'’()[\]|!Iijl]/;
+const figure = /\p{Nd}/u;
 const wide = /[MWmw]/;
 const capital = /\p{Lu}/u;
 
@@ -106,13 +111,31 @@ export function labelEm(label: string): number {
   for (const character of label) {
     em += narrow.test(character)
       ? 0.32
-      : wide.test(character)
-        ? 0.9
-        : capital.test(character)
-          ? 0.64
-          : 0.62;
+      : figure.test(character)
+        ? 0.58
+        : wide.test(character)
+          ? 0.9
+          : capital.test(character)
+            ? 0.64
+            : 0.62;
   }
   return Math.round(em * 100) / 100;
+}
+
+/**
+ * The width of each depth's number column, in em: its widest label's
+ * estimate (A1-UI.2A.1). Every point at one depth takes the same column, so
+ * the words of point VIII line up with the words of point I, as the lines of
+ * one heading line up with each other.
+ */
+export function columnsByDepth(structure: Structure, labels: Map<number, string>) {
+  const columns = new Map<number, number>();
+  for (const [index, label] of labels) {
+    if (!label) continue;
+    const depth = structure.blocks[index].node.attrs.depth as number;
+    columns.set(depth, Math.max(columns.get(depth) ?? 0, labelEm(label)));
+  }
+  return columns;
 }
 
 type NumberingState = { decorations: DecorationSet };
@@ -122,6 +145,7 @@ export const numberingV4Key = new PluginKey<NumberingState>("labV4Numbering");
 function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
   const structure = analyze(doc);
   const labels = labelsByIndex(structure, layoutNumbering(doc.attrs.layout), roles);
+  const columns = columnsByDepth(structure, labels);
   const decorations: Decoration[] = [];
   structure.blocks.forEach((block, index) => {
     const attrs: Record<string, string> = {};
@@ -129,7 +153,7 @@ function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
     if (label) {
       attrs["data-label"] = label;
       attrs.class = "lab-numbered";
-      attrs.style = `--x-label: ${labelEm(label)}em`;
+      attrs.style = `--x-label: ${columns.get(block.node.attrs.depth as number) ?? labelEm(label)}em`;
     }
     const irregular = structure.irregular[index];
     if (irregular) attrs["data-irregular"] = irregular;

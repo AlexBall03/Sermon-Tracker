@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { Editor, type JSONContent } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,7 +23,15 @@ import {
   resolveNamed,
 } from "../styles/resolve";
 import { labV4Extensions, loadV4 } from "./extensions";
-import { documentV4, noteV4, passageV4, pointV4, proseV4, whenIdolsFall } from "./fixtures";
+import {
+  componentGallery,
+  documentV4,
+  noteV4,
+  passageV4,
+  pointV4,
+  proseV4,
+  whenIdolsFall,
+} from "./fixtures";
 import { labelEm } from "./numbering";
 import { paperMeta } from "./paper";
 import { caret, ownership } from "./testing";
@@ -301,13 +311,36 @@ describe("Balanced, A1-UI.2A", () => {
     expect(labelEm("IV.") + 0.35).toBeLessThan(22 / 13);
     // …and a parenthesised letter is never estimated narrower than it is drawn (about 1.29em).
     expect(labelEm("(b)")).toBeGreaterThanOrEqual(1.25);
+    // Figures are as wide as letters in Source Sans 3 bold (measured at 13pt, A1-UI.2A.1):
+    // `2.1.1.` draws 2.48em and `10.` 1.36em, so neither may be estimated narrower.
+    expect(labelEm("2.1.1.")).toBeGreaterThanOrEqual(2.48);
+    expect(labelEm("10.")).toBeGreaterThanOrEqual(1.36);
   });
 
-  it("puts each label's estimate on its point as a decoration, never in the outline", () => {
+  it("gives every point at one depth the column of its widest label, as a decoration only", () => {
     const editor = open(sermon);
+    const labelled = [
+      ...editor.view.dom.querySelectorAll<HTMLElement>("p.lab-v4-point[data-label]"),
+    ];
+    const byDepth = new Map<string, Set<string>>();
+    const widest = new Map<string, number>();
+    for (const heading of labelled) {
+      const depth = heading.getAttribute("data-depth")!;
+      byDepth.set(
+        depth,
+        (byDepth.get(depth) ?? new Set()).add(heading.style.getPropertyValue("--x-label")),
+      );
+      widest.set(
+        depth,
+        Math.max(widest.get(depth) ?? 0, labelEm(heading.getAttribute("data-label")!)),
+      );
+    }
+    expect(byDepth.size).toBeGreaterThan(0);
+    for (const [depth, columns] of byDepth) {
+      expect([...columns]).toEqual([`${widest.get(depth)}em`]);
+    }
     const heading = editor.view.dom.querySelector<HTMLElement>('[data-id="p-1"]')!;
     expect(heading.getAttribute("data-label")).toBe("I.");
-    expect(heading.style.getPropertyValue("--x-label")).toBe(`${labelEm("I.")}em`);
     expect(JSON.stringify(editor.getJSON())).not.toContain("--x-label");
     expect(editor.getHTML()).not.toContain("--x-label");
   });
@@ -325,5 +358,63 @@ describe("Balanced, A1-UI.2A", () => {
     // Its title and subtitle are styled writing (placeholders for the A1-UI.2C header), not attributes.
     expect(balanced.state.doc.attrs.subtitle ?? null).toBeNull();
     expect(balanced.state.doc.child(0).attrs.styleName).toBe("title");
+  });
+});
+
+/*
+ * A1-UI.2A.1: Balanced's refined component colors are the preset's defaults
+ * only. Each component's drawn color (`--x-*`) reads the outline's own
+ * property first (`--ps-*`, its `-d` variant on the dark screen), so the
+ * cascade still runs preset, outline, node; and the per-kind treatments
+ * (`--k-*`) live only under Balanced, never reaching the v3 baseline.
+ */
+describe("Balanced component colors (A1-UI.2A.1)", () => {
+  const css = readFileSync("src/features/editor-lab/v4/lab-v4.css", "utf8");
+  const colorParts =
+    /^\s*(--x-(?:accent|border|fill|ink|label|reference|notation|frame-[a-z]+)):\s*([^;]+);/gm;
+  const darkStart = css.indexOf("@media screen {");
+  const darkEnd = css.indexOf("@media print", darkStart);
+
+  it("draws every component color from the outline's own property first", () => {
+    const found = [...css.matchAll(colorParts)];
+    expect(found.length).toBeGreaterThan(20);
+    for (const [, name, value] of found) {
+      expect(value, name).toMatch(/^var\(--ps-/);
+    }
+  });
+
+  it("gives the dark screen only the outline's dark variants, over the same fallbacks", () => {
+    expect(darkStart).toBeGreaterThan(0);
+    const darkParts = [...css.slice(darkStart, darkEnd).matchAll(colorParts)];
+    expect(darkParts.length).toBeGreaterThan(10);
+    for (const [, name, value] of darkParts) {
+      expect(value, name).toMatch(/^var\(--ps-[a-z-]+-d,/);
+    }
+  });
+
+  it("keeps the kinds' treatments under Balanced and draws a label for every kind", () => {
+    for (const rule of css.matchAll(/([^{}]+)\{[^}]*--k-[a-z-]+:/g)) {
+      expect(rule[1]).toContain('[data-preset="balanced"]');
+    }
+    for (const kind of ["question", "illustration", "application", "reminder", "cue", "task"]) {
+      expect(css).toContain(`.lab-note[data-kind="${kind}"]`);
+    }
+  });
+
+  it("opens the component gallery unchanged under either preset", () => {
+    const balanced = open(componentGallery);
+    const baseline = new Editor({
+      element: document.createElement("div"),
+      extensions: labV4Extensions({ preset: "baseline" }),
+    });
+    editors.push(baseline);
+    expect(loadV4(baseline, componentGallery, "doc-g").ok).toBe(true);
+    expect(balanced.getJSON()).toEqual(baseline.getJSON());
+    const kinds = [...balanced.view.dom.querySelectorAll<HTMLElement>(".lab-note")].map(
+      (note) => note.dataset.kind,
+    );
+    expect(new Set(kinds)).toEqual(
+      new Set(["question", "illustration", "application", "note", "task", "reminder", "cue"]),
+    );
   });
 });

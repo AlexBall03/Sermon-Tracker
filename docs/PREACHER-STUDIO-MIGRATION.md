@@ -716,21 +716,29 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - one structural face for labels;
         - fixes: the phone Print Layout pagination defect, and an introduction or conclusion rule lost at a page top.
         - The header and footer feasibility review found them feasible in principle, not verified.
+      - **A1-UI.2A.1, Balanced color refinement, numbering, and pagination review (approved by the owner for checkpoint completion, 21 October 2026, subject to its unrun verification; [handoff](HANDOFF-PS-A1.md#a1-ui2a1-balanced-color-refinement-numbering-and-pagination-review-21-october-2026)).**
+      - **Approved requirement (owner, 21 October 2026):** a first-time user can create a complete, attractive sermon outline from a blank editor, with no prior use and no tour. It is spread over the checkpoints below; details in the [handoff](HANDOFF-PS-A1.md#first-time-user-requirement-owner-21-october-2026).
       - **A1-UI.2B:**
         - Minimal and Expressive, and the preset chooser;
         - outline-wide and per-component customization, and drawing a node's own appearance;
-        - formatting inheritance, reset and restore, and saved personal styles.
+        - formatting inheritance, reset and restore, and saved personal styles;
+        - appearance controls discoverable and understandable without knowledge of presets, semantic styles, or component schemas.
         - **Open decision:** where a chosen preset is kept.
       - **A1-UI.2C:**
-        - the dedicated sermon header (title and optional subtitle), the optional footer (off by default), and first-page and later-page treatments, integrated with pagination.
-        - **Open decision:** canonical title storage (the handoff lists the options).
+        - the dedicated sermon header with a directly editable Sermon Title and optional Subtitle (basic header editing is not postponed to UI.3);
+        - a functional optional footer (off by default) with discoverable basic configuration and correct pagination;
+        - first-page and later-page treatments, integrated with pagination.
+        - **Open decision, made in UI.2C:** canonical title storage, one source, coordinated with A2 and A3 (the handoff lists the options).
       - **A1-UI.2D:**
         - the dark-paper control, final preset refinement, print independence, and print color modes.
     - **A1-UI.3, required for A1:**
       - inserting and converting Preacher Notes, Scripts, and Page Breaks, and Scripture from the editor's own UI;
-      - the improved desktop toolbar and the mobile editing interface;
-      - header and footer editing, context menus, shortcuts, and discoverability.
-    - **A1-UI.4:** final visual acceptance, workflow and structural regression checks, long sermons, pagination and print, mobile, browsers, accessibility, and integrity. A1 is accepted only after it.
+      - a prominently discoverable Insert workflow for every semantic component, with no reliance on the lab inspector;
+      - intuitive creation of main points, subpoints, Scripture references and passages, Preacher Notes, Scripts, and Page Breaks, with contextual actions and sensible keyboard behavior;
+      - optional slash commands as an extra convenience, never the primary or only way to insert;
+      - the improved desktop toolbar, and a substantially improved mobile editing interface whose insertion and formatting controls work with the virtual keyboard;
+      - header and footer interaction polish, context menus, shortcuts, and discoverability.
+    - **A1-UI.4:** final visual acceptance, workflow and structural regression checks, long sermons, pagination and print, mobile, browsers, accessibility, and integrity, and a first-time-user scenario from a blank outline to a complete sermon through the real controls, with no tour and no development inspector. A1 is accepted only after it.
   - **Then:**
     - **A2:** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2"), with revisions and data protection.
     - **A3:** full signed-in editor integration.
