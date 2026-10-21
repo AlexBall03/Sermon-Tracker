@@ -4,7 +4,7 @@ import { undo } from "@tiptap/pm/history";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { ArrowLeft, SlidersHorizontal, TextQuote, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { ClipboardNotice } from "@/features/editor-lab/clipboard";
@@ -28,11 +28,11 @@ import {
 } from "@/features/editor-lab/components/toolbar";
 import { WorkspaceFrame } from "@/features/editor-lab/components/workspace-frame";
 import { pageMetrics } from "@/features/editor-lab/pagination/geometry";
-import { initialPrintLayout } from "@/features/editor-lab/pagination/preferences";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
 import type { V4Notice } from "@/features/editor-lab/v4/model";
 import type { DocumentProblem } from "@/features/editor-lab/validate";
 import { useLocale, useT } from "@/i18n/client";
+import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
 import { noticeText } from "./notice";
 import { StructureTools } from "./structure-tools";
 import "@/features/editor-lab/v4/lab-v4.css";
@@ -95,10 +95,14 @@ export function SermonWorkspace({
   const [ready, setReady] = useState(false);
   const [stylesOpen, setStylesOpen] = useState(false);
   const page = usePageView();
+  const componentLabels = t.v4.components;
   const extensions = useMemo(
     () =>
       labV4Extensions({
         locale,
+        // Balanced is the default presentation (A1-UI.1); choosing another is A1-UI.2.
+        preset: "balanced",
+        componentLabels,
         onNotice: (next) => {
           setClipboardNotice(null);
           setNotice(next);
@@ -107,9 +111,9 @@ export function SermonWorkspace({
           setNotice(null);
           setClipboardNotice(next);
         },
-        printLayout: { initial: initialPrintLayout },
+        printLayout: { initial: initialWorkspaceLayout },
       }),
-    [locale],
+    [locale, componentLabels],
   );
 
   const editor = useEditor({
@@ -141,6 +145,15 @@ export function SermonWorkspace({
   });
 
   const { view, print } = page;
+
+  // A desktop shows Print Layout only; a smaller window starts in Regular (`layout.ts`).
+  const desktop = useDesktop();
+  const followWindow = useEffectEvent((isDesktopNow: boolean) => {
+    page.switchLayout(workspaceLayout(isDesktopNow), false);
+  });
+  useEffect(() => {
+    if (ready) followWindow(desktop);
+  }, [desktop, ready]);
   const showAside = Boolean(editor && (stylesOpen || aside));
 
   return (
@@ -154,7 +167,8 @@ export function SermonWorkspace({
         >
           <ArrowLeft className="size-5" aria-hidden />
         </Link>
-        <div className="flex min-w-0 flex-1 items-center gap-2">{headerStart}</div>
+        {/* At least 15rem, so on a narrow screen the numbering wraps below instead of overlapping. */}
+        <div className="flex min-w-0 flex-1 basis-60 items-center gap-2">{headerStart}</div>
         {editor && view && (
           <div className="flex flex-wrap items-center gap-2">
             <NumberingSelect editor={editor} className="w-44" />
@@ -166,7 +180,10 @@ export function SermonWorkspace({
       {/* One toolbar row: writing and structure on the left, the view at its end. */}
       {editor && view && !refused && (
         <div className="border-b bg-surface">
-          <ToolbarRow label={t.toolbar.label} end={<ViewControls page={page} pageSetup="menu" />}>
+          <ToolbarRow
+            label={t.toolbar.label}
+            end={<ViewControls page={page} pageSetup="menu" layoutSwitch={!desktop} />}
+          >
             <HistoryGroup editor={editor} />
             <StyleGroup editor={editor}>
               {/* Beside the style menu it belongs to: how each named style looks in this sermon. */}

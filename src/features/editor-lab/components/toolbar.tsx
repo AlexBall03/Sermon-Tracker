@@ -151,11 +151,14 @@ export function ToolbarRow({
   end?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  // `relative`: a control's visually hidden input (a radio's `sr-only`, absolutely positioned) stays
+  // inside this row's own sideways scroll. Without it, focusing one off screen on a phone scrolled the
+  // whole workspace sideways and left it blank (A1-UI.1).
   return (
     <div
       role="toolbar"
       aria-label={label}
-      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 md:flex-wrap md:overflow-visible"
+      className="relative flex items-center gap-1 overflow-x-auto px-2 py-1.5 md:flex-wrap md:overflow-visible"
     >
       {children}
       {end && <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">{end}</div>}

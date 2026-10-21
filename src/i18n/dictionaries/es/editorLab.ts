@@ -296,7 +296,7 @@ export const editorLab: Untranslated<typeof english> = {
       "No guarda, sincroniza ni pone en cola nada, y nunca toca un sermón ni un bosquejo reales. La persistencia es el siguiente paso (A2).",
       "El esquema v4 está aprobado como dirección, pero todavía no para el almacenamiento en producción.",
       "Todavía no se pueden insertar puntos guardados; sí pasajes de las Escrituras y referencias en línea (Inspeccionar → Insertar).",
-      "La apariencia de los componentes y los modos de color de impresión aún no están hechos.",
+      "Se dibuja la presentación Equilibrada, con los colores de componente propios del bosquejo. Elegir un estilo predefinido, personalizar componentes y los modos de color de impresión llegan más adelante.",
       "Al abrir un documento v3 se convierte a v4; el laboratorio v3 se conserva como referencia.",
     ],
     baseline: "Abrir el laboratorio v3",
@@ -309,6 +309,18 @@ export const editorLab: Untranslated<typeof english> = {
     migrated: (name: string) => `${name} (v3, migrado)`,
     presentation: "Presentación",
     presentations: { outline: "Bosquejo", manuscript: "Manuscrito" },
+    components: {
+      script: "Guion",
+      notes: {
+        question: "Pregunta",
+        reminder: "Recordatorio",
+        cue: "Indicación",
+        illustration: "Ilustración",
+        task: "Tarea",
+        note: "Nota",
+        application: "Aplicación",
+      },
+    },
     actionsLabel: "Estructura",
     actions: {
       point: "Nuevo punto",

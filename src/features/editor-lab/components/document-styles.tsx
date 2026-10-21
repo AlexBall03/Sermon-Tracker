@@ -22,14 +22,9 @@ import {
   type FontKey,
   type NamedStyle,
 } from "../styles/model";
-import { documentStylesKey } from "../styles/plugin";
-import {
-  builtInDefaults,
-  builtInNamed,
-  readStyles,
-  resolveNamed,
-  type ResolvedBlock,
-} from "../styles/resolve";
+import { documentStylesKey, presetInForce } from "../styles/plugin";
+import type { Preset } from "../styles/presets";
+import { readStyles, resolveNamed, type ResolvedBlock } from "../styles/resolve";
 import { ColorPicker } from "./formatting/color-control";
 
 /*
@@ -101,13 +96,13 @@ function withLayer(
   return Object.keys(rest).length ? (next as DocumentStyles) : null;
 }
 
-/** What a property would be if this style did not set it, and where that comes from. */
-function inheritedOf(styles: DocumentStyles | null, target: Target, field: Field) {
-  if (target === "defaults") return { value: builtInDefaults[field], fromDefaults: false };
+/** What a property would be if this style did not set it, and where that comes from (the preset's built-in values are level 1). */
+function inheritedOf(styles: DocumentStyles | null, target: Target, field: Field, preset: Preset) {
+  if (target === "defaults") return { value: preset.defaults[field], fromDefaults: false };
   const without = withLayer(styles, target, { ...layerOf(styles, target), [field]: undefined });
-  const builtIn = builtInNamed[target][field] !== undefined;
+  const builtIn = preset.named[target][field] !== undefined;
   const fromDefaults = !builtIn && layerOf(styles, "defaults")[field] !== undefined;
-  return { value: resolveNamed(without, target)[field], fromDefaults };
+  return { value: resolveNamed(without, target, null, preset)[field], fromDefaults };
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -115,6 +110,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export function DocumentStylesPanel({ editor }: { editor: Editor }) {
   const t = useT("editorLab");
   const d = t.documentStyles;
+  // An option of the editor, the same for its whole life.
+  const preset = presetInForce(editor.state);
   const stored = useEditorState({
     editor,
     selector: ({ editor: current }) => ({
@@ -161,7 +158,9 @@ export function DocumentStylesPanel({ editor }: { editor: Editor }) {
 
   const layer = layerOf(draft, target);
   const resolved =
-    target === "defaults" ? { ...builtInDefaults, ...layer } : resolveNamed(draft, target);
+    target === "defaults"
+      ? { ...preset.defaults, ...layer }
+      : resolveNamed(draft, target, null, preset);
 
   return (
     <div className="flex flex-col gap-4 text-sm" data-testid="lab-document-styles">
@@ -181,7 +180,7 @@ export function DocumentStylesPanel({ editor }: { editor: Editor }) {
       <div className="flex flex-col divide-y">
         {fields.map((field) => {
           const own = layer[field] !== undefined;
-          const inherited = inheritedOf(draft, target, field);
+          const inherited = inheritedOf(draft, target, field, preset);
           return (
             <div key={field} className="flex flex-col gap-1 py-2" data-field={field}>
               <div className="flex items-center justify-between gap-2">

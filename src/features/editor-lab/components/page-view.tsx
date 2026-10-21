@@ -39,6 +39,59 @@ import { Tool } from "./toolbar";
 
 export type PageViewState = { layout: LayoutMode; setup: PageSetup };
 
+/** The nearest ancestor that scrolls the writing area (the desk, or the window). */
+function scrollerOf(element: HTMLElement): HTMLElement {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+  }
+  return document.scrollingElement as HTMLElement;
+}
+
+/**
+ * Runs a change of layout and keeps the place in view: the caret when the
+ * editor has focus, else the block at the top of the writing area, stays
+ * where it was on screen. Without this, a short outline switched to Print
+ * Layout could leave the old scroll position over blank paper.
+ */
+function keepingPlace(editor: Editor, change: () => void) {
+  const { view } = editor;
+  const scroller = scrollerOf(view.dom);
+  const top = () => scroller.getBoundingClientRect().top;
+  const head = view.state.selection.head;
+  const block = editor.isFocused
+    ? null
+    : (Array.from(view.dom.children).find(
+        (child) =>
+          child instanceof HTMLElement &&
+          !child.classList.contains("lab-pages") &&
+          child.getBoundingClientRect().bottom > top(),
+      ) as HTMLElement | undefined);
+  const where = () =>
+    block ? block.getBoundingClientRect().top - top() : view.coordsAtPos(head).top - top();
+  let before: number;
+  try {
+    before = where();
+  } catch {
+    change();
+    return;
+  }
+  change();
+  // After the new layout is drawn and the pages are measured.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (view.isDestroyed) return;
+      try {
+        scroller.scrollTop += where() - before;
+      } catch {
+        // The place is gone (nothing to keep): the scroll stays as it is.
+      }
+    }),
+  );
+}
+
 /** The view of one editor: what its controls show, and the changes they make. */
 export function usePageView() {
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -52,12 +105,17 @@ export function usePageView() {
     if (current) setView({ layout: current.layout, setup: current.setup });
   }, []);
 
-  const switchLayout = (layout: LayoutMode) => {
-    if (!editor || !view) return;
-    editor.commands.setLayout(layout);
-    // This tab only (§C.9); the default is never written from here.
-    writeTabLayout(layout);
-    setView({ ...view, layout });
+  /**
+   * Regular or Print Layout, keeping the place in view. `remember`: this
+   * tab's choice (§C.9); a layout the workspace sets by itself (a window
+   * that became a desktop) is not a choice and is not remembered.
+   */
+  const switchLayout = (layout: LayoutMode, remember = true) => {
+    if (!editor || printLayoutOf(editor.state)?.layout === layout) return;
+    keepingPlace(editor, () => editor.commands.setLayout(layout));
+    // The default is never written from here.
+    if (remember) writeTabLayout(layout);
+    setView((current) => (current ? { ...current, layout } : current));
   };
 
   /** Paper and margins: applied to the pages at once, remembered for the next document when settled. */
@@ -105,23 +163,28 @@ export type PageView = ReturnType<typeof usePageView>;
 export function ViewControls({
   page,
   pageSetup = "inline",
+  layoutSwitch = true,
 }: {
   page: PageView;
   pageSetup?: "inline" | "menu";
+  /** Whether Regular and Print can be chosen here (the sermon editor's desktop is Print only, A1-UI.1). */
+  layoutSwitch?: boolean;
 }) {
   const t = useT("editorLab");
   const { view } = page;
   if (!view) return null;
   return (
     <>
-      <Segmented
-        label={t.print.layout}
-        hideLabel
-        name="lab-layout"
-        value={view.layout}
-        onChange={page.switchLayout}
-        options={layoutModes.map((mode) => ({ value: mode, label: t.print.layouts[mode] }))}
-      />
+      {layoutSwitch && (
+        <Segmented
+          label={t.print.layout}
+          hideLabel
+          name="lab-layout"
+          value={view.layout}
+          onChange={(layout) => page.switchLayout(layout)}
+          options={layoutModes.map((mode) => ({ value: mode, label: t.print.layouts[mode] }))}
+        />
+      )}
       {pageSetup === "menu" && <PageSetupMenu page={page} />}
       {/* Always shown: the paper is what the sermon prints on, in either layout. */}
       {pageSetup === "inline" && (
@@ -138,20 +201,23 @@ export function ViewControls({
       {/*
         Expansion is Regular Layout's: in Print Layout a passage shows as it
         prints, so the button rests there, saying why. Its icon shows what a
-        press does; it is not coloured as "on".
+        press does; it is not coloured as "on". Where Print Layout is the
+        only layout, the button would never act, so it is not shown.
       */}
-      <Tool
-        label={
-          page.print
-            ? t.print.expandInPrint
-            : page.expanded
-              ? t.print.collapsePassages
-              : t.print.expandPassages
-        }
-        disabled={page.print}
-        icon={page.expanded ? ChevronsDownUp : ChevronsUpDown}
-        onPress={page.toggleExpanded}
-      />
+      {layoutSwitch && (
+        <Tool
+          label={
+            page.print
+              ? t.print.expandInPrint
+              : page.expanded
+                ? t.print.collapsePassages
+                : t.print.expandPassages
+          }
+          disabled={page.print}
+          icon={page.expanded ? ChevronsDownUp : ChevronsUpDown}
+          onPress={page.toggleExpanded}
+        />
+      )}
       {pageSetup === "inline" && (
         <Tool
           label={t.print.resetMargins}

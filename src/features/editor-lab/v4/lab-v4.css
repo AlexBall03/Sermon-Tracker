@@ -117,3 +117,246 @@
     outline: none;
   }
 }
+
+/*
+ * Balanced, the sermon editor's default presentation (A1-UI.1; `styles/presets.ts`).
+ * Everything here is under `data-preset="balanced"`, so the v3 lab (the
+ * baseline preset) never matches it. Typography and paragraph spacing come
+ * from the preset through the style sheet (`styles/render.ts`); this adds what
+ * the style model draws as containers: rules, fills, labels.
+ *
+ * Colors. Each component reads its colors on its own element, as `--x-*`:
+ * the outline's own color (`--ps-<component>-<part>`, light and paper, and
+ * `-d` for the dark theme on screen, from `render.ts`), else the preset's
+ * token. Unset falls back; turned off arrives as `transparent`. A single
+ * node's appearance (A1-UI.2) can set the same `--ps-*` properties inline on
+ * the node and wins by inheritance, with no selector to outrank. The dark
+ * variants are read on screen only, so printing always takes the paper ones.
+ *
+ * Containers set only `margin-block`: the depth's indent is `margin-left`.
+ * Nothing here gives a block its own formatting context, so Print Layout's
+ * page gaps still flow past every line.
+ */
+
+.lab-editor[data-preset="balanced"] {
+  /* The vertical rhythm of containers, in points like the styles' spacing, so it prints as shown. */
+  --rhythm-1: 2pt;
+  --rhythm-2: 4pt;
+  --rhythm-3: 8pt;
+  --rhythm-4: 14pt;
+}
+
+/* A point's space above is its style's alone, so the spacing controls tell the truth. */
+.lab-editor[data-preset="balanced"] > .lab-v4-point {
+  margin-top: 0;
+}
+
+/* Writing that returns to an outer level after a group (`plugins.ts`) is set a little apart from it. */
+.lab-editor[data-preset="balanced"] > .lab-v4-resume {
+  margin-top: var(--rhythm-3);
+}
+
+/* Point numbers are part of the heading, as in a word processor: its color and weight, not grey. */
+.lab-editor[data-preset="balanced"] p.lab-v4-point[data-depth="1"] {
+  --x-notation: var(--ps-point-notation, currentColor);
+}
+.lab-editor[data-preset="balanced"] p.lab-v4-point:not([data-depth="1"]) {
+  --x-notation: var(--ps-subpoint-notation, currentColor);
+}
+.lab-editor[data-preset="balanced"] p.lab-v4-point.lab-numbered::before {
+  margin-inline-end: 0.4em;
+  color: var(--x-notation);
+}
+
+/* The introduction and the conclusion: an accent rule above the role's heading, a hairline after all it owns. */
+.lab-editor[data-preset="balanced"] > [data-frame="introduction"] {
+  --x-frame-accent: var(--ps-intro-accent, var(--sermon-section));
+  --x-frame-border: var(--ps-intro-border, var(--border));
+  --x-frame-fill: var(--ps-intro-fill, transparent);
+}
+.lab-editor[data-preset="balanced"] > [data-frame="conclusion"] {
+  --x-frame-accent: var(--ps-concl-accent, var(--sermon-section));
+  --x-frame-border: var(--ps-concl-border, var(--border));
+  --x-frame-fill: var(--ps-concl-fill, transparent);
+}
+.lab-editor[data-preset="balanced"] > [data-frame] {
+  background-color: var(--x-frame-fill);
+}
+.lab-editor[data-preset="balanced"] > .lab-v4-frame-start {
+  margin-top: var(--rhythm-4);
+  padding-top: 0;
+  border-top: 1.5px solid var(--x-frame-accent);
+}
+.lab-editor[data-preset="balanced"] > .lab-v4-frame-end {
+  margin-bottom: var(--rhythm-4);
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--x-frame-border);
+}
+.lab-editor[data-preset="balanced"] > .lab-v4-frame-start:first-child {
+  margin-top: 0;
+}
+.lab-editor[data-preset="balanced"] > .lab-v4-frame-end:last-child {
+  margin-bottom: 0;
+}
+
+/* A Scripture passage: no card, a thin rule and its reference, the verses in the reading face. */
+.lab-editor[data-preset="balanced"] .lab-passage {
+  --x-accent: var(--ps-scripture-accent, var(--sermon-scripture));
+  --x-border: var(--ps-scripture-border, transparent);
+  --x-fill: var(--ps-scripture-fill, transparent);
+  --x-reference: var(--ps-scripture-reference, var(--foreground));
+  margin-block: var(--rhythm-2) var(--rhythm-3);
+  padding: var(--rhythm-1) 0 var(--rhythm-1) 0.75rem;
+  border: 1px solid var(--x-border);
+  border-left: 2px solid var(--x-accent);
+  background-color: var(--x-fill);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 400;
+}
+.lab-editor[data-preset="balanced"] .lab-passage[data-print="hidden"] {
+  border-left-style: dashed;
+}
+.lab-editor[data-preset="balanced"] .lab-passage-label {
+  color: var(--x-reference);
+  font-family: var(--font-sans);
+  font-size: 0.875em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+}
+.lab-editor[data-preset="balanced"] .lab-passage-text {
+  margin-top: var(--rhythm-1);
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1.45;
+}
+
+/* An inline reference: the passage's color as a quiet tint, not the colour of actions. */
+.lab-editor[data-preset="balanced"] .lab-scripture {
+  --x-reference: var(--ps-scripture-reference, var(--sermon-scripture));
+  padding: 0 0.3em;
+  border-radius: 0.25em;
+  background: color-mix(in oklab, var(--x-reference) 9%, transparent);
+  color: var(--x-reference);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+/* A preacher note: a restrained tinted container with an accent and its kind as a label. */
+.lab-editor[data-preset="balanced"] .lab-note {
+  --x-accent: var(--ps-note-accent, var(--sermon-note));
+  --x-border: var(--ps-note-border, transparent);
+  --x-fill: var(--ps-note-fill, var(--sermon-note-fill));
+  --x-ink: var(--ps-note-ink, var(--foreground));
+  --x-label: var(--ps-note-label, var(--ps-note-ink, var(--sermon-note-ink)));
+  margin-block: var(--rhythm-2) var(--rhythm-3);
+  padding: var(--rhythm-2) 0.75rem;
+  border: 1px solid var(--x-border);
+  border-left: 3px solid var(--x-accent);
+  border-radius: 0 0.25rem 0.25rem 0;
+  background-color: var(--x-fill);
+  color: var(--x-ink);
+  print-color-adjust: exact;
+}
+
+/* A script, words to be said aloud: no fill (it is not a note), a double rule, the reading face. */
+.lab-editor[data-preset="balanced"] .lab-script {
+  --x-accent: var(--ps-script-accent, var(--sermon-script));
+  --x-border: var(--ps-script-border, transparent);
+  --x-fill: var(--ps-script-fill, transparent);
+  --x-ink: var(--ps-script-ink, var(--foreground));
+  --x-label: var(--ps-script-label, var(--ps-script-accent, var(--sermon-script)));
+  margin-block: var(--rhythm-2) var(--rhythm-3);
+  padding: var(--rhythm-1) 0 var(--rhythm-1) 0.875rem;
+  border: 1px solid var(--x-border);
+  border-left: 4px double var(--x-accent);
+  background-color: var(--x-fill);
+  color: var(--x-ink);
+}
+
+/*
+ * The label (`v4/labels.ts`): presentation, never the outline's text. The
+ * same words reach assistive technology through the container's role.
+ */
+.lab-editor[data-preset="balanced"] :is(.lab-note, .lab-script)[data-component-label]::before {
+  content: attr(data-component-label);
+  display: block;
+  margin-bottom: var(--rhythm-1);
+  color: var(--x-label);
+  font-family: var(--font-sans);
+  font-size: 0.65em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Lists and quotations keep to the same rhythm; a quotation is not Scripture, so its rule is neutral. */
+.lab-editor[data-preset="balanced"] :is(ul, ol) {
+  margin-block: var(--rhythm-1) var(--rhythm-2);
+}
+.lab-editor[data-preset="balanced"] blockquote {
+  margin-block: var(--rhythm-2) var(--rhythm-3);
+  padding-left: 0.875rem;
+  border-left-width: 2px;
+  color: inherit;
+}
+
+@media screen {
+  .dark
+    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
+    p.lab-v4-point[data-depth="1"] {
+    --x-notation: var(--ps-point-notation-d, currentColor);
+  }
+  .dark
+    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
+    p.lab-v4-point:not([data-depth="1"]) {
+    --x-notation: var(--ps-subpoint-notation-d, currentColor);
+  }
+  .dark
+    .lab-editor[data-preset="balanced"]:not([data-paper="light"])
+    > [data-frame="introduction"] {
+    --x-frame-accent: var(--ps-intro-accent-d, var(--sermon-section));
+    --x-frame-border: var(--ps-intro-border-d, var(--border));
+    --x-frame-fill: var(--ps-intro-fill-d, transparent);
+  }
+  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) > [data-frame="conclusion"] {
+    --x-frame-accent: var(--ps-concl-accent-d, var(--sermon-section));
+    --x-frame-border: var(--ps-concl-border-d, var(--border));
+    --x-frame-fill: var(--ps-concl-fill-d, transparent);
+  }
+  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-passage {
+    --x-accent: var(--ps-scripture-accent-d, var(--sermon-scripture));
+    --x-border: var(--ps-scripture-border-d, transparent);
+    --x-fill: var(--ps-scripture-fill-d, transparent);
+    --x-reference: var(--ps-scripture-reference-d, var(--foreground));
+  }
+  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-scripture {
+    --x-reference: var(--ps-scripture-reference-d, var(--sermon-scripture));
+  }
+  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-note {
+    --x-accent: var(--ps-note-accent-d, var(--sermon-note));
+    --x-border: var(--ps-note-border-d, transparent);
+    --x-fill: var(--ps-note-fill-d, var(--sermon-note-fill));
+    --x-ink: var(--ps-note-ink-d, var(--foreground));
+    --x-label: var(--ps-note-label-d, var(--ps-note-ink-d, var(--sermon-note-ink)));
+  }
+  .dark .lab-editor[data-preset="balanced"]:not([data-paper="light"]) .lab-script {
+    --x-accent: var(--ps-script-accent-d, var(--sermon-script));
+    --x-border: var(--ps-script-border-d, transparent);
+    --x-fill: var(--ps-script-fill-d, transparent);
+    --x-ink: var(--ps-script-ink-d, var(--foreground));
+    --x-label: var(--ps-script-label-d, var(--ps-script-accent-d, var(--sermon-script)));
+  }
+}
+
+/* On a phone a container is drawn in less, as the levels are (Regular Layout only: pages are the paper's). */
+@media (max-width: 40rem) {
+  .lab-editor[data-preset="balanced"]:not([data-layout="print"]) :is(.lab-note, .lab-script) {
+    padding-inline: 0.5rem;
+  }
+}

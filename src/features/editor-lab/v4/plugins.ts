@@ -437,6 +437,20 @@ function roleFrames(state: EditorState): DecorationSet {
       );
     }
   });
+  /*
+   * Writing that comes back to an outer level after a group (a point's
+   * writing after its subpoints, the document's after a point) is marked, so
+   * the presentation can set it a little apart from the group it follows
+   * (`lab-v4.css`, A1-UI.1). Read from ownership; it decides nothing.
+   */
+  structure.blocks.forEach((block, index) => {
+    if (index === 0 || block.isPoint) return;
+    const owner = structure.owner[index];
+    if (owner === index - 1 || owner === structure.owner[index - 1]) return;
+    decorations.push(
+      Decoration.node(block.pos, block.pos + block.node.nodeSize, { class: "lab-v4-resume" }),
+    );
+  });
   return DecorationSet.create(state.doc, decorations);
 }
 

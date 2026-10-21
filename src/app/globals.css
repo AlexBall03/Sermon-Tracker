@@ -49,6 +49,13 @@
   --brand-paper: #f7f5f0;
   --brand-ivory: #efebe2;
   --brand-charcoal: #0e0f11;
+  /* Sermon component hues (A1-UI.1): document presentation only, never interface surfaces. */
+  --brand-burgundy: #8c3b3b;
+  --brand-burgundy-bright: #d98b8b;
+  --brand-amber: #a8701a;
+  --brand-amber-bright: #e0b25c;
+  --brand-slate: #3f5f8a;
+  --brand-slate-bright: #9db7de;
 
   --radius: 0.5rem;
   /* Height of the fixed bar. Shells offset `main` by it. */
@@ -60,7 +67,13 @@
   --bar-lift: max(0.625rem, calc(env(safe-area-inset-bottom) - 0.75rem));
 }
 
-:root {
+/*
+ * The light theme's colors. A document's light paper (`data-paper="light"`,
+ * the sermon editor's Print Layout) takes them too, in either theme: the page
+ * shows as it prints while everything around it follows the theme.
+ */
+:root,
+[data-paper="light"] {
   --background: var(--brand-paper);
   --foreground: var(--brand-ink);
   --surface: #ffffff;
@@ -97,6 +110,13 @@
   --lamp: var(--brand-lamp);
   --gold: var(--brand-gold);
   --gold-ink: #7d5f24;
+  /* The sermon editor's Balanced presentation: section frame, Scripture, preacher note, script. */
+  --sermon-section: var(--brand-gold);
+  --sermon-scripture: var(--brand-burgundy);
+  --sermon-note: var(--brand-amber);
+  --sermon-note-ink: #7a5212;
+  --sermon-note-fill: color-mix(in oklab, var(--brand-amber) 8%, transparent);
+  --sermon-script: var(--brand-slate);
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --ring: var(--brand-emerald);
@@ -145,6 +165,12 @@
   --lamp: var(--brand-lamp-bright);
   --gold: var(--brand-gold-bright);
   --gold-ink: var(--brand-gold-bright);
+  --sermon-section: var(--brand-gold-bright);
+  --sermon-scripture: var(--brand-burgundy-bright);
+  --sermon-note: var(--brand-amber-bright);
+  --sermon-note-ink: var(--brand-amber-bright);
+  --sermon-note-fill: color-mix(in oklab, var(--brand-amber-bright) 9%, transparent);
+  --sermon-script: var(--brand-slate-bright);
   --destructive: #f97066;
   --destructive-foreground: #230806;
   --ring: var(--brand-lamp-bright);

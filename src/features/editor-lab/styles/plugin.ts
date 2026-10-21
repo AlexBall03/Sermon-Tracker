@@ -6,6 +6,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { touchedBlocks } from "../pagination/plugin";
 import { inkOn, type ColorValue } from "./colors";
 import { documentStylesSchema, type DocumentStyles } from "./model";
+import { presets, type Preset, type PresetId } from "./presets";
 import { styleSheet } from "./render";
 import { resolveAt } from "./context";
 import { readStyles } from "./resolve";
@@ -24,12 +25,15 @@ import { readStyles } from "./resolve";
  * - text on a highlight, judged together (`colors.ts`, `inkOn`): an inline
  *   decoration on each highlighted run gives its text the color that reads on
  *   that fill, in each theme. An exact or per-theme text color is drawn as
- *   chosen. Only the blocks a change touched are looked at again.
+ *   chosen. Only the blocks a change touched are looked at again;
+ * - the presentation preset (`presets.ts`, A1-UI.1), the cascade's first
+ *   level: an option of the editor, never the document's, shown on the editor
+ *   as `data-preset` for the preset's own CSS.
  */
 
 /** The styles previewed (null inside: every default), or null for no preview. */
 export type Preview = { styles: DocumentStyles | null } | null;
-type StylesState = { preview: Preview };
+type StylesState = { preview: Preview; preset: PresetId };
 
 export const documentStylesKey = new PluginKey<StylesState>("labDocumentStyles");
 const pairsKey = new PluginKey<DecorationSet>("labColorPairs");
@@ -51,10 +55,19 @@ export function stylesInForce(state: EditorState): DocumentStyles | null {
   return preview ? preview.styles : readStyles(state.doc.attrs.styles);
 }
 
+/** The presentation preset the editor draws with (the baseline when it has none). */
+export function presetInForce(state: EditorState): Preset {
+  return presets[documentStylesKey.getState(state)?.preset ?? "baseline"];
+}
+
 let sheets = 0;
 
-export const DocumentStylesExtension = Extension.create({
+export const DocumentStylesExtension = Extension.create<{ preset: PresetId }>({
   name: "documentStyles",
+
+  addOptions() {
+    return { preset: "baseline" };
+  },
 
   addCommands() {
     return {
@@ -80,17 +93,18 @@ export const DocumentStylesExtension = Extension.create({
   addProseMirrorPlugins() {
     const id = String((sheets += 1));
     const scope = `.lab-editor[data-sheet="${id}"]`;
+    const preset = this.options.preset;
     return [
       new Plugin<StylesState>({
         key: documentStylesKey,
         state: {
-          init: () => ({ preview: null }),
+          init: () => ({ preview: null, preset }),
           apply(tr, previous) {
             const meta = tr.getMeta(documentStylesKey) as Preview | undefined;
-            return meta === undefined ? previous : { preview: meta };
+            return meta === undefined ? previous : { preview: meta, preset };
           },
         },
-        props: { attributes: { "data-sheet": id } },
+        props: { attributes: { "data-sheet": id, "data-preset": preset } },
         view(view) {
           const element = view.dom.ownerDocument.createElement("style");
           element.dataset.labSheet = id;
@@ -100,7 +114,7 @@ export const DocumentStylesExtension = Extension.create({
             const styles = stylesInForce(state);
             if (styles === shown) return;
             shown = styles;
-            element.textContent = styleSheet(styles, scope);
+            element.textContent = styleSheet(styles, scope, presets[preset]);
           };
           draw(view.state);
           return { update: (next) => draw(next.state), destroy: () => element.remove() };
@@ -146,7 +160,7 @@ function pairs(state: EditorState, from: number, to: number, set: DecorationSet)
       ColorValue | null | undefined;
     // A color the person fixed is theirs: drawn as chosen by its own mark, never adapted.
     if (marked && typeof marked !== "string") return false;
-    const ink = marked ?? resolveAt(styles, state.doc.resolve(pos)).color;
+    const ink = marked ?? resolveAt(styles, state.doc.resolve(pos), presetInForce(state)).color;
     if (ink && typeof ink !== "string") return false;
     const light = inkOn(ink, fill, "light");
     const dark = inkOn(ink, fill, "dark");

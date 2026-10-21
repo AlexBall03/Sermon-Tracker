@@ -285,7 +285,7 @@ export const editorLab = {
       "It does not save, sync, or queue anything, and never touches a real sermon or outline. Persistence is the next checkpoint (A2).",
       "Schema v4 is approved as the direction but not yet for production storage.",
       "Saved points cannot be inserted yet; Scripture passages and inline references can (Inspect → Insert).",
-      "Component appearance and print color modes are not built yet.",
+      "The Balanced presentation is drawn, with an outline's own component colors. Choosing a preset, customizing components, and print color modes come later.",
       "Opening a v3 document converts it to v4 as it opens; the v3 lab stays as the baseline.",
     ],
     baseline: "Open the v3 lab",
@@ -298,6 +298,19 @@ export const editorLab = {
     migrated: (name: string): string => `${name} (v3, migrated)`,
     presentation: "Presentation",
     presentations: { outline: "Outline", manuscript: "Manuscript" },
+    /** What a preacher note (by its kind) or a script is: drawn above it and given to assistive technology. */
+    components: {
+      script: "Script",
+      notes: {
+        question: "Question",
+        reminder: "Reminder",
+        cue: "Cue",
+        illustration: "Illustration",
+        task: "Task",
+        note: "Note",
+        application: "Application",
+      },
+    },
     actionsLabel: "Structure",
     actions: {
       point: "New point",

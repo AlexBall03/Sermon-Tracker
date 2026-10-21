@@ -8,13 +8,14 @@ import {
   type FontKey,
   type NamedStyle,
 } from "./model";
+import { presets, type Preset } from "./presets";
 
 /*
  * How a piece of the document looks, worked out one property at a time
- * (PS-1B.2B.2 B.2A). The order is fixed, and later wins:
+ * (PS-1B.2B.2 B.2A; presets A1-UI.1). The order is fixed, and later wins:
  *
- *   built-in defaults → the document's defaults
- *     → a built-in named or component style → the document's own version of it
+ *   the preset's defaults → the document's defaults
+ *     → the preset's named or component style → the document's own version of it
  *     → the node's override (`format` or `appearance`)
  *
  * Marks inside the text come after all of this and are the editor's to draw.
@@ -23,9 +24,9 @@ import {
  * size. `null` is a value, not a gap: on a fill, border, or accent it turns
  * that color off; on a text color it is the theme's text color.
  *
- * The built-in values below are code, never stored: changing them changes
- * every document that did not choose otherwise, and stores nothing. They are
- * provisional until B.2B draws them and tunes them in the lab.
+ * A preset's values (`presets.ts`) are code, never stored: changing them
+ * changes every document that did not choose otherwise, and stores nothing.
+ * Without a preset, the baseline (the v3 lab's look) is used.
  */
 
 export type Alignment = (typeof textAlignments)[number];
@@ -64,105 +65,10 @@ export type ResolvedComponent = Omit<ResolvedBlock, "align"> & {
 
 type BlockLayer = Partial<ResolvedBlock>;
 
-export const builtInDefaults: ResolvedBlock = {
-  fontFamily: "lora",
-  fontSize: 12,
-  bold: false,
-  italic: false,
-  underline: false,
-  color: null,
-  lineHeight: 1.5,
-  spaceBefore: 0,
-  spaceAfter: 6,
-  indentLeft: 0,
-  indentFirst: 0,
-  align: "left",
-};
-
-export const builtInNamed: Record<NamedStyle, BlockLayer> = {
-  normal: {},
-  title: {
-    fontFamily: "playfair-display",
-    fontSize: 26,
-    bold: true,
-    lineHeight: 1.2,
-    spaceAfter: 4,
-  },
-  subtitle: { fontSize: 14, italic: true, color: "gray", spaceAfter: 12 },
-  heading1: {
-    fontFamily: "figtree",
-    fontSize: 20,
-    bold: true,
-    lineHeight: 1.25,
-    spaceBefore: 18,
-    spaceAfter: 6,
-  },
-  heading2: {
-    fontFamily: "figtree",
-    fontSize: 16,
-    bold: true,
-    lineHeight: 1.3,
-    spaceBefore: 14,
-    spaceAfter: 4,
-  },
-  heading3: {
-    fontFamily: "figtree",
-    fontSize: 14,
-    bold: true,
-    lineHeight: 1.3,
-    spaceBefore: 12,
-    spaceAfter: 4,
-  },
-  heading4: {
-    fontFamily: "figtree",
-    fontSize: 12,
-    bold: true,
-    lineHeight: 1.3,
-    spaceBefore: 10,
-    spaceAfter: 2,
-  },
-};
-
-/** The look of each component when the document chooses nothing. Its colors are the theme's (unset). */
-export const builtInComponents: Record<ComponentKind, ComponentStyle> = {
-  // A section's and a point's values are its title's; tuned in B.2B to the lab's earlier look.
-  introduction: {
-    fontFamily: "playfair-display",
-    fontSize: 15,
-    bold: true,
-    lineHeight: 1.3,
-    spaceBefore: 4,
-    spaceAfter: 4,
-  },
-  conclusion: {
-    fontFamily: "playfair-display",
-    fontSize: 15,
-    bold: true,
-    lineHeight: 1.3,
-    spaceBefore: 4,
-    spaceAfter: 4,
-  },
-  point: {
-    fontFamily: "figtree",
-    fontSize: 13.5,
-    bold: true,
-    lineHeight: 1.35,
-    spaceBefore: 10,
-    spaceAfter: 3,
-  },
-  subpoint: {
-    fontFamily: "figtree",
-    fontSize: 12.5,
-    bold: true,
-    lineHeight: 1.35,
-    spaceBefore: 8,
-    spaceAfter: 2,
-  },
-  scripture: {},
-  // A note's and a script's values are their paragraphs'.
-  preacherNote: { fontFamily: "figtree", fontSize: 11, spaceAfter: 3 },
-  script: {},
-};
+/** The baseline preset (`presets.ts`), under its earlier names. */
+export const builtInDefaults: ResolvedBlock = presets.baseline.defaults;
+export const builtInNamed: Record<NamedStyle, BlockLayer> = presets.baseline.named;
+export const builtInComponents: Record<ComponentKind, ComponentStyle> = presets.baseline.components;
 
 /** Later layers win, property by property; a property a layer leaves out (undefined) is inherited. */
 function cascade<T extends object>(...layers: (Partial<T> | null | undefined)[]): Partial<T> {
@@ -199,11 +105,12 @@ export function resolveNamed(
   styles: DocumentStyles | null,
   name: NamedStyle,
   override?: Partial<ResolvedBlock> | null,
+  preset: Preset = presets.baseline,
 ): ResolvedBlock {
   return cascade<ResolvedBlock>(
-    builtInDefaults,
+    preset.defaults,
     styles?.defaults as BlockLayer | undefined,
-    builtInNamed[name],
+    preset.named[name],
     styles?.named?.[name] as BlockLayer | undefined,
     override,
   ) as ResolvedBlock;
@@ -214,11 +121,12 @@ export function resolveComponent(
   styles: DocumentStyles | null,
   kind: ComponentKind,
   appearance?: ComponentStyle | null,
+  preset: Preset = presets.baseline,
 ): ResolvedComponent {
   const { align: _align, ...resolved } = cascade<ResolvedBlock & ComponentStyle>(
-    builtInDefaults,
+    preset.defaults,
     styles?.defaults as BlockLayer | undefined,
-    builtInComponents[kind],
+    preset.components[kind],
     styles?.components?.[kind],
     appearance,
   ) as ResolvedBlock & ComponentStyle;

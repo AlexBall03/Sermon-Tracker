@@ -57,11 +57,12 @@
  * only which rule applies: the document and its history are untouched.
  */
 @media screen {
-  .dark .lab-editor .lab-ink {
+  /* Light paper (`v4/paper.ts`) shows the light variants in either theme. */
+  .dark .lab-editor:not([data-paper="light"]) .lab-ink {
     color: var(--ink-d) !important;
   }
 
-  .dark .lab-editor .lab-fill {
+  .dark .lab-editor:not([data-paper="light"]) .lab-fill {
     background-color: var(--fill-d) !important;
   }
 }
@@ -286,7 +287,7 @@
   background: linear-gradient(
     to bottom,
     var(--surface) 0 var(--mb),
-    var(--background) var(--mb) calc(var(--mb) + var(--desk)),
+    var(--lab-desk, var(--background)) var(--mb) calc(var(--mb) + var(--desk)),
     var(--surface) calc(var(--mb) + var(--desk)) 100%
   );
 }
@@ -347,6 +348,8 @@
  */
 /* The desk the sheets lie on, in Print Layout. */
 .lab-desk {
+  /* Taken here, in the theme, so the desk between sheets stays the theme's on light paper. */
+  --lab-desk: var(--background);
   background: var(--background);
 }
 
@@ -496,6 +499,13 @@
     --secondary: transparent;
     --primary: var(--brand-emerald);
     --primary-soft: color-mix(in oklab, var(--brand-emerald) 9%, transparent);
+    /* The sermon components' paper colors (A1-UI.1, `v4/lab-v4.css`), whatever the screen's theme. */
+    --sermon-section: var(--brand-gold);
+    --sermon-scripture: var(--brand-burgundy);
+    --sermon-note: var(--brand-amber);
+    --sermon-note-ink: color-mix(in oklab, var(--brand-amber) 70%, var(--brand-ink));
+    --sermon-note-fill: color-mix(in oklab, var(--brand-amber) 8%, transparent);
+    --sermon-script: var(--brand-slate);
     color: var(--foreground);
     background: none;
     box-shadow: none;

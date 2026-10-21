@@ -508,7 +508,7 @@ No synchronization change is made in PS-0B. PS-1B.1 adds the compatibility invar
 
 Phases may be subdivided where dependencies or rollout risk justify it. This list is not an instruction to build them now.
 
-**Integration program (20 October 2026).** The owner moved from lab-only validation to integrating the editor for the product, in checkpoints A1, A2, and so on. A1 (unified editor workspace, §15.10; [handoff](HANDOFF-PS-A1.md)) is complete pending the owner's review. A2 adds persistence around it. The PS-2/PS-3b/PS-4 rows above still govern the data model, synchronization, and the workspace shell those checkpoints reach.
+**Integration program (20 October 2026).** The owner moved from lab-only validation to integrating the editor for the product, in checkpoints A1, A2, and so on. A1 (unified editor workspace, §15.10; [handoff](HANDOFF-PS-A1.md)) is integrated but not yet accepted: its UI/UX checkpoints (A1-UI.1, .2, .3; §15.10) come first. A2 then adds persistence around it. The PS-2/PS-3b/PS-4 rows above still govern the data model, synchronization, and the workspace shell those checkpoints reach.
 
 ---
 
@@ -692,7 +692,30 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - **Superseded:**
     - further feature work in the v3 lab (§15.9 "Next"): v3 is now the frozen baseline;
     - the v4 lab as a validation-only prototype: it is now the integrated editor's development host.
-  - **Next (A2):** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2").
+  - **A1's UI/UX checkpoints (owner, 21 October 2026).** A1 is accepted only after them.
+    - **A1-UI.1, Component Presentation and Spacing (implemented; [handoff](HANDOFF-PS-A1.md#a1-ui1-component-presentation-and-spacing-21-october-2026)).**
+      - **Approved:**
+        - three presentation presets, Minimal, Balanced (the default), and Expressive. They are appearance only, never modes or schemas, and change no content or structure.
+        - **Precedence:** preset, then the outline's component and named styles, then a node's own overrides, then marks.
+      - **Built:**
+        - the preset as the resolver's first level;
+        - the Balanced typography, rhythm, and component treatments;
+        - outline-level component colors drawn for the first time;
+        - labels for notes and scripts, given to assistive technology too.
+      - The v3 lab keeps the baseline look.
+      - **Layout and paper (owner, after reviewing Word mobile):**
+        - A desktop uses editable Print Layout only, with no Regular/Print switch.
+        - A phone starts in Regular Layout, which fills the width and follows the theme, and can choose Print.
+        - Print Layout's paper is white in either theme, while the interface follows the theme. Printed output never depends on the theme.
+        - **Approved:** an optional dark-paper display preference, like Word's Switch Background. It is never saved or printed and is independent of the presets; its control is built in A1-UI.2.
+    - **A1-UI.2:**
+      - the dark-paper control;
+      - the preset chooser, and Minimal and Expressive;
+      - component customization and saved personal styles;
+      - drawing a node's own appearance.
+      - **Open decision:** where a chosen preset is kept.
+    - **A1-UI.3, required for A1:** inserting and converting Preacher Notes, Scripts, and Page Breaks, and Scripture from the editor's own UI.
+  - **Then (A2):** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2").
 - **Open:**
   - §8.3's wording ("derived from the document's nested structure"): the labels are the same engine's, but the structure is no longer nested;
   - how the points under an introduction or conclusion are numbered (a policy, today counted on their own);

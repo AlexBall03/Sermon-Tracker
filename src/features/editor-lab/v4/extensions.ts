@@ -14,7 +14,10 @@ import { PageBreak, Script } from "../schema/nodes";
 import { ScripturePassageNode, ScriptureReferenceNode } from "../schema/scripture";
 import { StyleAttributes } from "../styles/attributes";
 import { DocumentStylesExtension } from "../styles/plugin";
+import type { PresetId } from "../styles/presets";
 import { V4Keymap } from "./keymap";
+import { ComponentLabelsV4, type ComponentLabels } from "./labels";
+import { PaperV4 } from "./paper";
 import type { V4Notice } from "./model";
 import { NumberingV4, type RoleNumbering } from "./numbering";
 import { V4Plugins } from "./plugins";
@@ -28,6 +31,10 @@ export type V4ExtensionOptions = {
   onClipboardNotice?: (notice: ClipboardNotice) => void;
   printLayout?: Partial<PrintLayoutOptions>;
   roles?: RoleNumbering;
+  /** The presentation preset (A1-UI.1); Balanced unless another is named. */
+  preset?: PresetId;
+  /** The words that say what a note or a script is (drawn and given to assistive technology); none when left out. */
+  componentLabels?: ComponentLabels;
 };
 
 /**
@@ -47,6 +54,8 @@ export function labV4Extensions({
   onClipboardNotice,
   printLayout,
   roles,
+  preset = "balanced",
+  componentLabels,
 }: V4ExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
@@ -68,7 +77,7 @@ export function labV4Extensions({
     PreacherNoteV4,
     Script,
     StyleAttributes,
-    DocumentStylesExtension,
+    DocumentStylesExtension.configure({ preset }),
     PageBreak,
     ScriptureReferenceNode.configure({ locale }),
     ScripturePassageNode.configure({ locale }),
@@ -77,6 +86,8 @@ export function labV4Extensions({
     DocumentClipboard.configure({ newId: ids, onNotice: onClipboardNotice }),
     V4Plugins.configure({ onNotice }),
     V4Keymap,
+    ComponentLabelsV4.configure({ labels: componentLabels ?? null }),
+    PaperV4,
     GapCaret,
     ClickPlacement,
     PassageExpansion,

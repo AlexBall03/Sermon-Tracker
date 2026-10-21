@@ -8,7 +8,6 @@ import { SermonWorkspace } from "@/features/sermon-editor/sermon-workspace";
 import { useT } from "@/i18n/client";
 import { routes } from "@/lib/site";
 import { PrototypeBadge } from "../../components/editor-lab";
-import { DefaultLayoutSelect } from "../../components/page-view";
 import { labFixture, labFixtureIds, type LabFixtureId } from "../../load";
 import { v4Fixtures, type V4FixtureId } from "../fixtures";
 import { LabInspector } from "./inspector";
@@ -31,8 +30,9 @@ const open = (id: FixtureId) => ({
  * The development lab around the sermon editor (A1, /lab/editor/v4): the
  * editor itself is `SermonWorkspace` (`src/features/sermon-editor`); the
  * lab adds only what is the lab's: the fixture picker, the prototype badge,
- * the device's default layout (a stand-in for Settings), a way to the v3
- * baseline, and the inspector. Nothing is saved, synced, or sent.
+ * a way to the v3 baseline, and the inspector. Its layout follows the
+ * editor's own rule (desktop: Print Layout; smaller: Regular, A1-UI.1), so
+ * the v3 lab's default-layout select is not here. Nothing is saved, synced, or sent.
  *
  * Opening another fixture mounts a new workspace (its `key`), as opening
  * another sermon would.
@@ -69,7 +69,6 @@ export function EditorLabV4() {
           </Link>
         </>
       }
-      headerEnd={<DefaultLayoutSelect className="w-44" />}
       aside={(editor) => <LabInspector editor={editor} />}
     />
   );

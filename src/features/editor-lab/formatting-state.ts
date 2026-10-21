@@ -9,7 +9,7 @@ import {
 import type { ColorValue } from "./styles/colors";
 import { resolveAt } from "./styles/context";
 import { namedStyles, type FontKey, type NamedStyle } from "./styles/model";
-import { stylesInForce } from "./styles/plugin";
+import { presetInForce, stylesInForce } from "./styles/plugin";
 import { namedStyleOf } from "./styles/resolve";
 
 /*
@@ -50,6 +50,7 @@ function agree<T>(values: T[]): Maybe<T> {
 
 export function textState(state: EditorState): TextState {
   const styles = stylesInForce(state);
+  const preset = presetInForce(state);
   const runs: {
     fontFamily: FontKey;
     fontSize: number;
@@ -61,7 +62,7 @@ export function textState(state: EditorState): TextState {
     marks: readonly { type: { name: string }; attrs: Record<string, unknown> }[],
     $pos: Parameters<typeof resolveAt>[1],
   ) => {
-    const block = resolveAt(styles, $pos);
+    const block = resolveAt(styles, $pos, preset);
     const style = marks.find((mark) => mark.type.name === "textStyle")?.attrs;
     const highlight = marks.find((mark) => mark.type.name === "highlight")?.attrs.color;
     runs.push({
@@ -134,6 +135,7 @@ export type BlockState = {
 
 export function blockState(state: EditorState): BlockState {
   const styles = stylesInForce(state);
+  const preset = presetInForce(state);
   const blocks: {
     name: NamedStyle | typeof componentLook | null;
     resolved: ReturnType<typeof resolveAt>;
@@ -145,7 +147,7 @@ export function blockState(state: EditorState): BlockState {
       if (!node.isTextblock) return true;
       const point = node.type.name === "point";
       if (point || node.type.name === "paragraph" || node.type.name === "heading") {
-        const resolved = resolveAt(styles, state.doc.resolve(pos + 1));
+        const resolved = resolveAt(styles, state.doc.resolve(pos + 1), preset);
         if (point) points = true;
         blocks.push({
           name: point

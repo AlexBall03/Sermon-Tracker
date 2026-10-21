@@ -8,6 +8,7 @@ import {
   resolveNamed,
   type ResolvedBlock,
 } from "./resolve";
+import { presets, type Preset } from "./presets";
 
 /*
  * What a position's text looks like before its own marks (PS-1B.2B.2B), as
@@ -18,21 +19,25 @@ import {
  * highlight pairs (`plugin.ts`) read the color.
  */
 
-export function resolveAt(styles: DocumentStyles | null, $pos: ResolvedPos): ResolvedBlock {
+export function resolveAt(
+  styles: DocumentStyles | null,
+  $pos: ResolvedPos,
+  preset: Preset = presets.baseline,
+): ResolvedBlock {
   const block = $pos.parent;
   const depth = $pos.depth;
   // The experimental schema v4's point heading: its named style if it has one, else its component's.
   if (block.type.name === "point") {
     const own = (block.attrs.format ?? null) as Partial<ResolvedBlock> | null;
     const named = block.attrs.styleName as NamedStyle | null;
-    if (named) return resolveNamed(styles, named, own);
+    if (named) return resolveNamed(styles, named, own, preset);
     const kind: ComponentKind =
       block.attrs.role === "introduction" || block.attrs.role === "conclusion"
         ? block.attrs.role
         : block.attrs.depth === 1
           ? "point"
           : "subpoint";
-    return { ...resolveComponent(styles, kind), ...own, align: "left" };
+    return { ...resolveComponent(styles, kind, null, preset), ...own, align: "left" };
   }
   if (block.type.name === "pointTitle" || block.type.name === "sectionTitle") {
     let insidePoint = false;
@@ -41,16 +46,21 @@ export function resolveAt(styles: DocumentStyles | null, $pos: ResolvedPos): Res
     }
     const owner = $pos.node(depth - 1);
     const kind = componentOf(owner.type.name, owner.attrs, insidePoint);
-    if (kind) return { ...resolveComponent(styles, kind), align: "left" };
+    if (kind) return { ...resolveComponent(styles, kind, null, preset), align: "left" };
   }
   const format = (block.attrs.format ?? null) as Partial<ResolvedBlock> | null;
   for (let level = depth - 1; level > 0; level -= 1) {
     const name = $pos.node(level).type.name;
     if (name === "preacherNote" || name === "script") {
-      return { ...resolveComponent(styles, name), ...format, align: "left" };
+      return { ...resolveComponent(styles, name, null, preset), ...format, align: "left" };
     }
   }
-  return resolveNamed(styles, namedStyleOf(block.type.name, block.attrs) ?? "normal", format);
+  return resolveNamed(
+    styles,
+    namedStyleOf(block.type.name, block.attrs) ?? "normal",
+    format,
+    preset,
+  );
 }
 
 /** Whether a position is where component styles govern the text (a title, a note, a script). */
