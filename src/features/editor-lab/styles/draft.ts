@@ -1,6 +1,6 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
-import { findComponent } from "./component-node";
+import { componentOfNode, findComponent } from "./component-node";
 import {
   appearanceSchemas,
   componentKinds,
@@ -210,6 +210,69 @@ export function restoreOutline(
   }
   // Outline-wide too, though not drawn yet (the header is UI.2C): the command clears it, so this does.
   return resetLayer(next, styles, doc, { layer: "runningHeader" });
+}
+
+/**
+ * "Reset all components to outline defaults": every single component's own
+ * appearance taken away (committed or drafted), so each one inherits its
+ * type's style again, dynamically. The preset, the shared defaults, the text
+ * styles, and the component-type styles are kept. One walk of the document,
+ * made when the person asks, never per render.
+ */
+export function resetAllComponents(
+  draft: Draft,
+  styles: DocumentStyles | null,
+  doc: ProseMirrorNode,
+): Draft {
+  const layers = new Map<string, LayerPath>();
+  doc.descendants((node) => {
+    const kind = componentOfNode(node);
+    const id = node.attrs.id as string | null | undefined;
+    if (kind && id && node.attrs.appearance) layers.set(id, { layer: "instance", id, kind });
+    return !node.isTextblock;
+  });
+  // An edit drafted for a component that sets nothing yet is taken back too.
+  for (const { path } of draft.edits.values()) {
+    if (path.layer === "instance" && !layers.has(path.id)) {
+      layers.set(path.id, { layer: "instance", id: path.id, kind: path.kind });
+    }
+  }
+  let next = draft;
+  for (const layer of layers.values()) next = resetLayer(next, styles, doc, layer);
+  return next;
+}
+
+/**
+ * "Restore current preset": the outline looks as its chosen preset draws it.
+ * Every outline-wide style (`restoreOutline`) and every single component's own
+ * appearance (`resetAllComponents`) is taken away; the chosen preset is kept.
+ */
+export const restorePreset = (
+  draft: Draft,
+  styles: DocumentStyles | null,
+  doc: ProseMirrorNode,
+): Draft => resetAllComponents(restoreOutline(draft, styles, doc), styles, doc);
+
+/** The built-in preset Preacher Studio starts every outline in. */
+export const originalPreset: UserPresetId = "balanced";
+
+/**
+ * "Restore original Preacher Studio defaults": `restorePreset`, and the
+ * preset set to Balanced, written explicitly (never left to whatever default
+ * the editor or a future account preference supplies).
+ */
+export function restoreOriginal(
+  draft: Draft,
+  styles: DocumentStyles | null,
+  doc: ProseMirrorNode,
+): Draft {
+  const next = restorePreset(draft, styles, doc);
+  return setEdit(
+    next,
+    { layer: "preset" },
+    originalPreset,
+    committedAt(styles, doc, { layer: "preset" }),
+  );
 }
 
 /** A layer with its edits laid over it, kept sparse: undefined when nothing is left. */

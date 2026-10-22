@@ -29,6 +29,12 @@ const placements = {
     "inset-x-0 bottom-0 max-h-[78dvh] rounded-t-2xl border-x-0 border-b-0 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] data-closed:slide-out-to-bottom-8 data-open:slide-in-from-bottom-8",
   side: "inset-y-0 right-0 w-[30rem] max-w-full rounded-none border-y-0 border-r-0 pr-[env(safe-area-inset-right)] data-closed:slide-out-to-right-8 data-open:slide-in-from-right-8",
   full: "inset-x-0 top-[var(--vv-top,0px)] h-[var(--vv-h,100dvh)] rounded-none border-0 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] data-closed:slide-out-to-bottom-4 data-open:slide-in-from-bottom-4",
+  /*
+   * A settings workspace: the whole of a narrow screen (as `full`), and from
+   * `md` a large centered window with room for its controls and a preview.
+   */
+  settings:
+    "inset-x-0 top-[var(--vv-top,0px)] h-[var(--vv-h,100dvh)] rounded-none border-0 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] data-closed:slide-out-to-bottom-4 data-open:slide-in-from-bottom-4 md:inset-x-auto md:top-1/2 md:left-1/2 md:h-[min(52rem,calc(var(--vv-h,100dvh)-3rem))] md:w-[min(72rem,calc(100%-3rem))] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:border md:p-0 md:data-closed:slide-out-to-bottom-0 md:data-closed:zoom-out-95 md:data-open:slide-in-from-bottom-0 md:data-open:zoom-in-95",
 } as const;
 
 function DialogContent({

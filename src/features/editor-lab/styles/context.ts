@@ -19,10 +19,17 @@ import { presets, type Preset } from "./presets";
  * highlight pairs (`plugin.ts`) read the color.
  */
 
+/** A component node's own appearance as drawn now: the committed one, or a preview's (`appearanceInForce`). */
+export type AppearanceOf = (node: ProseMirrorNode) => ComponentStyle | null;
+
+const committedAppearance: AppearanceOf = (node) =>
+  (node.attrs.appearance ?? null) as ComponentStyle | null;
+
 export function resolveAt(
   styles: DocumentStyles | null,
   $pos: ResolvedPos,
   preset: Preset = presets.baseline,
+  appearanceOf: AppearanceOf = committedAppearance,
 ): ResolvedBlock {
   const block = $pos.parent;
   const depth = $pos.depth;
@@ -38,7 +45,12 @@ export function resolveAt(
           ? "point"
           : "subpoint";
     // Its own appearance comes before its own format, as they are drawn (`render.ts`).
-    const resolved = resolveComponent(styles, kind, ownAppearance(block, preset), preset);
+    const resolved = resolveComponent(
+      styles,
+      kind,
+      ownAppearance(block, preset, appearanceOf),
+      preset,
+    );
     // Where components are drawn, a heading's words are in its title color when it has one.
     const color =
       preset.componentColors && resolved.titleColor !== undefined
@@ -61,7 +73,7 @@ export function resolveAt(
     const name = container.type.name;
     if (name === "preacherNote" || name === "script") {
       return {
-        ...resolveComponent(styles, name, ownAppearance(container, preset), preset),
+        ...resolveComponent(styles, name, ownAppearance(container, preset, appearanceOf), preset),
         ...format,
         align: "left",
       };
@@ -80,8 +92,12 @@ export function resolveAt(
  * components (A1-UI.2B.1). The baseline never drew one, so it is not
  * reported there either.
  */
-function ownAppearance(node: ProseMirrorNode, preset: Preset): ComponentStyle | null {
-  return preset.componentColors ? ((node.attrs.appearance ?? null) as ComponentStyle | null) : null;
+function ownAppearance(
+  node: ProseMirrorNode,
+  preset: Preset,
+  appearanceOf: AppearanceOf,
+): ComponentStyle | null {
+  return preset.componentColors ? appearanceOf(node) : null;
 }
 
 /** Whether a position is where component styles govern the text (a title, a note, a script). */

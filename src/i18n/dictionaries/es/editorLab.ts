@@ -53,18 +53,33 @@ export const editorLab: Untranslated<typeof english> = {
       balanced: "Jerarquía clara con color moderado. La predeterminada.",
       expressive: "Encabezados más fuertes y más color para cada tipo de nota.",
     },
-    open: "Apariencia",
-    close: "Cerrar Apariencia y descartar los cambios no aplicados",
-    title: "Apariencia",
-    hint: "Los cambios se ven en el bosquejo mientras los hace. Nada se guarda hasta que lo aplique.",
-    scope: "Qué personalizar",
-    scopes: { outline: "Bosquejo", components: "Componentes", selected: "Seleccionado" },
-    scopeHints: {
+    open: "Ajustes del bosquejo",
+    close: "Cerrar",
+    settingsTitle: "Ajustes del bosquejo",
+    settingsHint:
+      "Ajustes solo de este bosquejo. Los cambios se ven en la vista previa; nada cambia hasta que los aplique.",
+    categoriesLabel: "Categorías de ajustes",
+    categories: { appearance: "Apariencia" },
+    tabsLabel: "Qué personalizar",
+    tabs: { outline: "Bosquejo", components: "Componentes" },
+    tabHints: {
       outline: "El estilo predefinido y los estilos de texto de todo el bosquejo.",
       components:
         "Todos los componentes de un tipo, como todos los puntos principales o todos los pasajes.",
-      selected: "Solo el componente que elija en el bosquejo.",
     },
+    componentTitle: "Personalizar apariencia",
+    componentHint:
+      "Los cambios afectan solo a este componente. Lo que no cambie sigue el estilo del bosquejo para su tipo.",
+    onlyThis: "Solo cambia este componente.",
+    previewOutline: "Vista previa",
+    previewKind: (kinds: string): string => `Vista previa · ${kinds}`,
+    previewComponent: "Vista previa · este componente",
+    showPreview: "Mostrar vista previa",
+    hidePreview: "Ocultar vista previa",
+    discardTitle: "¿Descartar los cambios de apariencia?",
+    discardDetail: "Se perderán los cambios que no ha aplicado. El bosquejo queda como estaba.",
+    keepEditing: "Seguir editando",
+    discard: "Descartar",
     preset: "Estilo predefinido",
     textStyle: "Estilo de texto",
     sharedDefaults: "Todo el texto (valores comunes)",
@@ -87,13 +102,7 @@ export const editorLab: Untranslated<typeof english> = {
       preacherNote: "Nota del predicador",
       script: "Guion",
     },
-    noTarget:
-      "Haga clic en un punto, un pasaje bíblico, una nota o un guion del bosquejo para personalizar solo ese.",
-    keptTarget:
-      "Sigue personalizando el componente de abajo. Haga clic en otro componente del bosquejo para cambiar.",
-    customizing: "Personalizando",
     untitled: "(vacío)",
-    showTarget: "Mostrar en el bosquejo",
     targetGone: "Este componente se eliminó, así que no se puede personalizar.",
     targetChanged:
       "Este componente ahora es de otro tipo, así que no se puede personalizar como antes.",
@@ -172,8 +181,35 @@ export const editorLab: Untranslated<typeof english> = {
     resetSelected: "Restablecer este componente",
     resetComponent: (kinds: string): string => `Restablecer el estilo de ${kinds}`,
     resetTextStyle: "Restablecer este estilo de texto",
-    restoreOutline: (preset: string): string => `Restaurar el bosquejo a ${preset}`,
-    restoreHint: "Conserva el estilo predefinido y cada componente que personalizó por separado.",
+    resetsMenu: "Restablecer…",
+    resetsScope: "Todo el bosquejo",
+    resetsReview: "Puede revisar el resultado en la vista previa antes de aplicarlo, o cancelarlo.",
+    resetsConfirm: "Restablecer",
+    resets: {
+      allComponents: {
+        label: (): string => "Restablecer todos los componentes a los valores del bosquejo",
+        title: (): string => "¿Restablecer todos los componentes a los valores del bosquejo?",
+        removes: "Quita la apariencia propia de cada componente individual en todo este bosquejo.",
+        keeps:
+          "Conserva el estilo predefinido, los valores comunes, los estilos de texto y el estilo de cada tipo de componente. Cada componente vuelve a seguir el estilo de su tipo.",
+      },
+      preset: {
+        label: (preset: string): string => `Restaurar el estilo actual (${preset})`,
+        title: (preset: string): string => `¿Restaurar el estilo ${preset}?`,
+        removes:
+          "Quita las personalizaciones de estilo de este bosquejo: valores comunes, estilos de texto, estilos de tipo de componente y la apariencia de cada componente individual.",
+        keeps:
+          "Conserva el estilo predefinido elegido. Sus palabras, la estructura y el formato del texto no se tocan.",
+      },
+      original: {
+        label: (): string => "Restaurar los valores originales de Preacher Studio",
+        title: (): string => "¿Restaurar los valores originales de Preacher Studio?",
+        removes:
+          "Vuelve al estilo Equilibrada y quita toda personalización de apariencia de este bosquejo, incluidos los componentes individuales.",
+        keeps:
+          "Sus palabras, la estructura, los puntos, los roles y el formato del texto no se tocan.",
+      },
+    },
     pending: (parts: string): string => `Sin aplicar todavía: ${parts}`,
     pendingParts: {
       outline: "bosquejo",
@@ -196,7 +232,21 @@ export const editorLab: Untranslated<typeof english> = {
       "Un componente que cambió se eliminó o pasó a ser de otro tipo. Sus cambios no se pueden aplicar.",
     discardOrphans: "Descartar esos cambios",
     refused: "No se aplicó nada: el bosquejo cambió. Revise los ajustes e inténtelo de nuevo.",
-    structureAction: "Apariencia de este componente…",
+    structureAction: "Personalizar apariencia…",
+    sample: {
+      title: "La lámpara y el camino",
+      subtitle: "Salmo 119:105",
+      introduction: "Introducción",
+      introductionText: "Todo viajero necesita luz para el siguiente paso.",
+      point: "La Palabra de Dios alumbra",
+      pointText: "La Escritura nos muestra dónde estamos y adónde ir.",
+      subpoint: "Alumbra el siguiente paso",
+      subpointText: "No todo el camino a la vez, sino lo suficiente para andar.",
+      note: "Haga una pausa y pregunte quién camina en la oscuridad.",
+      script: "Permítame preguntarle: ¿qué lámpara lleva usted esta noche?",
+      conclusion: "Conclusión",
+      conclusionText: "Ande en la luz que se le ha dado.",
+    },
   },
   editorLabel: "Documento del sermón",
   workspace: {

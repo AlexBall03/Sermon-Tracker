@@ -4,7 +4,7 @@ import type { ComponentKind } from "@/features/editor-lab/styles/model";
  * What the Appearance panel offers for each layer (A1-UI.2B.2): every
  * property the layer's schema accepts that changes what is drawn, grouped
  * as a person thinks of them, the less common under "More options". The
- * coverage test (`appearance-panel.test.ts`) holds this list to the schema:
+ * coverage test (`v4/appearance-draft.test.ts`) holds this list to the schema:
  * a property is either offered here or named in `notDrawn` with why.
  */
 

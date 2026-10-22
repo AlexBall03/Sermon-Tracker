@@ -1232,7 +1232,7 @@ A page gap is positioned and comes after every block in the tree, so it still pa
 
 ### Layout
 
-- **Wide screens (`lg` and up):** the panel is docked in the side column, filling its height. The body scrolls; the footer (status, Apply, Cancel) stays put. The writing area and its scroll position are untouched.
+- **Wide screens (`lg` and up):** the panel was docked in the side column, filling its height. **Superseded by the finalization** (below): it now floats over the writing area. The body scrolls; the footer (status, Apply, Cancel) stays put. The writing area and its scroll position are untouched.
 - **Below `lg`:** the same panel is a fixed, non-modal sheet at the foot of the window (`role="dialog"`, `aria-modal="false"`). It is at most 60% of the _visual_ viewport and is lifted above the on-screen keyboard (`useSheetViewport`, `visualViewport`), so Apply and Cancel stay in reach while a value is typed. The outline above stays scrollable and selectable, so tapping another component retargets, and it gains bottom padding so its end can scroll clear of the sheet.
 - **Controls:** at least 44px tall on touch screens (`pointer-coarse`). Numbers use `inputMode="decimal"`.
 - **Checked in a 412px frame:** sheet at 60% height, Apply visible, no sideways scroll.
@@ -1351,11 +1351,332 @@ Nothing below was started; every documented requirement for it stands:
   - `CaretSync`;
   - migrations and the database.
 
+## A1-UI.2B.2 finalization (22 October 2026)
+
+**Starting point:** branch `dev`, HEAD `2daabf5`, clean working tree. UI.2B.2 was already committed there (the brief expected it uncommitted on `fd0911e`); this pass is uncommitted on top of it. Nothing was committed or deployed, and there is no migration or database change.
+
+**Status:** finalized and checked. **Its presentation (the floating panel, side button, and phone sheet) is superseded by the [final UX](#a1-ui2b2-final-ux-outline-settings-and-component-appearance-22-october-2026) below**; its toolbar color bars, Expressive corners, and Workspace Panel decision stand.
+
+### Owner decision: Appearance is not part of the Workspace Panel
+
+**Appearance is an outline-editor-specific formatting tool, completely independent of the global Workspace Panel.**
+
+- The Workspace Panel (B1) holds Bible and Scripture resources, the Dictionary, and approved research and AI tools. Appearance is never registered there, never one of its tabs, and keeps its own entry point, session, preview, Apply, and Cancel.
+- The two coexist on the outline editor's screen. The Workspace Panel is the one docked region beside the writing area (`HANDOFF-PS-1B.1.md` §I). Appearance floats over the writing area that remains, so there is never a second docked column.
+- The Workspace Panel itself is not built here; it stays B1.
+
+### The presentation: a floating, modeless panel
+
+**Evidence (Chrome, `/lab/editor/v4`, a dev server started for this pass on port 3100 and stopped after):**
+
+- The docked panel took a 23rem column (about 368px) from the writing area whenever it opened. Where the writing area was narrower than the page, Print Layout scaled the page down; Regular Layout reflowed.
+- In the lab the column was shared with the diagnostics and squeezed them.
+
+**Chosen:**
+
+- **From `lg` up,** the panel floats over the writing area's top right (22rem, clear of the scroll bar). Opening it changed neither the page's scale nor its position (checked: page width and left edge identical before and after, at 1536px and in a 1100px frame). It is modeless: the outline stays visible, scrollable, and editable, and clicking a component retargets Selected as before.
+- **A side button** in its header ("Move Appearance to the left side", and back) moves it to the other side of the writing area. It is view state only (React state in `SermonWorkspace`, not stored), shown only where the panel floats. It was built because the inspection showed real overlap:
+  - with the lab's column at 1536px, the panel covered about 190px of the page's right side, text included;
+  - in a 1100px frame, about half of the scaled page;
+  - without a side column, about 16px of margin at 1536px and about 140px at 1280px (worked out from the same geometry).
+- There is no dragging and no resizing.
+- **Below `lg`:** the same sheet as before (60% of the visual viewport, above the keyboard). Checked in a 412px frame:
+  - the sheet is 382 of 637px;
+  - Apply is in reach;
+  - the side button is hidden;
+  - there is no sideways scroll.
+- **The lab's side column** (`aside`) now holds only the lab's diagnostics.
+
+**A defect found and fixed while floating it:**
+
+- **What happened:** the panel's absolutely placed parts (the screen-reader-only inputs of its segmented controls) took the floating frame as their containing block. They escaped the body's scroll and made the writing area's container taller than the screen; a scroll into view then moved the whole workspace up.
+- **The fix:** the panel's scrolling body is `relative`, and the floating frame clips (`lg:overflow-hidden`). The wrapper then measured 494 of 494px with the panel open, against 843 before.
+
+**Focus and keyboard (unchanged behaviour, re-checked):**
+
+- Focus goes to the panel's heading on open.
+- Escape in the panel returns to the outline and keeps the panel and draft; an open picker closes first.
+- Clicking the outline keeps the panel open.
+- × and Cancel discard.
+- **Gap assigned to UI.4:** there is no keyboard way from the outline back into an open panel. The editor takes Tab, and the toolbar has the same gap. It is application-wide keyboard access, not Appearance's alone (owner's decision: no shortcut now).
+
+### The toolbar's color bars
+
+**Investigation (Chrome, then code):**
+
+1. **Unreadable bars (predates 2B.2).** A text color of `null` (the theme's, which is most text) and no highlight both drew a transparent bar with a 9% border, nearly invisible, and a mixed selection drew the same. This dates from PS-1B.2B.2B (`ColorControl`).
+2. **The Selected preview never reached the toolbar (came with 2B.2).** `resolveAt` read a component's committed `appearance`, never its previewed one. Outline and Components previews already showed, through `stylesInForce`.
+3. **Wrong variant on light paper (predates 2B.2).** In the dark theme, Print Layout on light paper, the bar showed the dark variant of a color while the text is drawn in the light one (subtitle gray: `#7a8190` shown, `#6b7280` drawn).
+
+Explicit colors and the subtitle's inherited gray were already shown correctly.
+
+**Fix:**
+
+- **`resolveAt` takes the component's appearance as drawn.** It has an optional `appearanceOf`, defaulting to the committed attribute. `resolveInForce(state, $pos)` (`styles/plugin.ts`) passes `appearanceInForce`, and the toolbar (`textState`, `blockState`) and the highlight pairs use it. There is still one resolver and no new rerender: `useEditorState` compares deeply, so a control redraws only when what it shows changes.
+- **Four states for the bar** (`barStateOf`, `data-state`):
+  - **color:** the swatch;
+  - **theme:** the theme's text color, drawn (`lab-swatch-theme`);
+  - **none:** a hollow outline, for no highlight;
+  - **mixed:** a striped bar, never one of its colors (`lab-swatch-mixed`).
+- **Edges and light paper:** a color and the theme bar carry a faint edge so a dark color shows on a dark toolbar. On light paper (`data-surface="paper"`, read from `paperKey` and Print Layout) the bar shows the light variant and the paper's ink, edged in the paper's white.
+- **Words:** the trigger keeps its name ("Text color", "Highlight color") and says its state as its description and tooltip ("Theme color", "Mixed", "No highlight", a preset's name, or "Custom color"), from existing strings.
+
+**Checked in Chrome, dark theme, light paper:**
+
+- **plain prose:** theme, then no highlight;
+- **a note with Selected → Text color Red previewed:** the bar shows Red, as drawn on the paper; Cancel returns it to theme;
+- **select all:** Mixed;
+- **light theme:** a black theme bar and a hollow highlight bar.
+
+### Known limitations reviewed
+
+- **Expressive note corners (fixed).** The note's `0 6px 6px 0` corners assumed a left accent. With the accent on top or right they now square on the accent's side (`0 0 6px 6px`, `6px 0 0 6px`); the reminder, cue, and task keep their even corners. A CSS contract test holds it.
+- **"Preset design" (kept).** A value only the preset's CSS draws (for example the passage's radius) shows as "Preset design" with "From the preset". Checked in Chrome: it reads sensibly, and typing a value customizes it. Moving those values into code, so they can be shown as numbers, is preset work for **UI.2B.3**.
+- **Text color and heading color (kept).** The label already says "Heading color (overrides text color)", in both languages.
+- **The section's opening rule is solid only (kept),** for UI.2B.3.
+- **Running-header styles (kept)** for UI.2C.
+
+### Contract re-checked in Chrome on the floating panel
+
+- **Selected:**
+  - a preacher note targeted from a caret in its writing ("Preacher note · Pause here…");
+  - a text color previewed on that note alone, then Cancel restored it exactly.
+- **Components:** Main points' text color set to blue, Apply ("Applied. Undo reverses it in one step."), then one toolbar Undo restored the theme color.
+- **Other checks:**
+  - Escape and outline clicks, as above;
+  - the scope control, both themes.
+
+### Files changed
+
+- `src/features/sermon-editor/sermon-workspace.tsx`: the floating frame, the side state, and the side column for `aside` only.
+- `src/features/sermon-editor/appearance/appearance-panel.tsx`: the side button and the body's `relative`.
+- `src/features/editor-lab/styles/context.ts`, `styles/plugin.ts`, `formatting-state.ts`: `resolveInForce`.
+- `src/features/editor-lab/components/formatting/color-control.tsx`, `components/toolbar.tsx`, `lab.css`: the bar's states, edges, and light paper.
+- `src/features/editor-lab/v4/lab-v4.css`: Expressive note corners.
+- `src/i18n/dictionaries/{en,es}/editorLab.ts`: `appearance.moveLeft` and `moveRight`.
+- **Tests:**
+  - new `src/features/editor-lab/v4/toolbar-color.test.ts` (7);
+  - `appearance-panel.test.tsx` (2 new);
+  - `appearance-draft.test.ts` (corner contract).
+- **Docs:** this file, `AGENTS.md`, `docs/ROADMAP.md`.
+- **Not touched:**
+  - schema, migrations, the database;
+  - pagination;
+  - `CaretSync`;
+  - the numbering engine;
+  - the v3 lab's look (its toolbar gains only the clearer bars);
+  - the Workspace Panel.
+
+### Verification
+
+- `vitest run src/features/editor-lab src/features/sermon-editor src/i18n "src/app/(app)/lab"`: **682 passed** (673 before, plus 9).
+- `tsc --noEmit`: clean. ESLint and Prettier: clean on every changed file.
+- **Not run:**
+  - the whole unit suite;
+  - a production build;
+  - the Playwright lab specs (no Clerk E2E user);
+  - a real phone and on-screen keyboard;
+  - a screen reader;
+  - print and PDF;
+  - the window itself at 1280px (it could not be resized; same-origin frames at 1100px and 412px were used, and the 1280px overlap is computed).
+
+### Assigned onward (nothing dropped, nothing started)
+
+- **UI.2B.3:**
+  - advanced appearance and the final Minimal and Expressive preset review;
+  - per-depth typography;
+  - per-level markers;
+  - saved personal styles;
+  - preset values shown as numbers;
+  - the opening rule's style.
+- **UI.2C:**
+  - the canonical Sermon Title and optional Subtitle in the dedicated header;
+  - the header placement the owner asked for;
+  - first-page and later-page presentation;
+  - the optional footer;
+  - running-header styles.
+- **UI.2D:** dark editing paper and print color modes.
+- **UI.3:** the complete Insert workflow.
+- **UI.4:**
+  - final structural, pagination, print, browser, and device acceptance;
+  - keyboard access from the outline to the toolbar and an open Appearance panel;
+  - keep-with-next and keep-together.
+- **A2:** persistence and revision handling.
+- **A3:** full signed-in integration.
+- **B1–C3:**
+  - the Workspace Panel (B1) and the rest of the application;
+  - public release.
+
+## A1-UI.2B.2 final UX: Outline Settings and Component Appearance (22 October 2026)
+
+**Starting point:** branch `dev`, HEAD `2daabf5` (UI.2B.2 committed), with the finalization pass above still uncommitted on top (16 modified files and `v4/toolbar-color.test.ts`). This pass is uncommitted on top of both. Nothing was committed or deployed; no migration, no schema change, no database change, no new package.
+
+**Status:** implemented and checked; ready for owner approval. Not owner-approved. It **supersedes the floating, modeless panel** described in the finalization section: that panel, its side button, and the phone sheet are gone.
+
+### Owner decisions recorded
+
+Three independent systems:
+
+1. **Outline Settings**: the home of everything configured for the open outline (never the account). Appearance is its first and, today, only category. Page Setup, Numbering, Header & Footer, and Printing will join it in their checkpoints.
+2. **Component Appearance**: a focused window for one component, opened from that component. It shows nothing else of the outline's settings.
+3. **The Workspace Panel** (B1): Bible, dictionaries, AI, and research tools. Neither window is part of it, registered in it, or docked beside it. Not built here.
+
+### How it works
+
+**Opening** (`sermon-editor/appearance/dialogs.tsx`). `SermonWorkspace` owns `AppearanceDialogsProvider`. Anything inside the workspace opens the windows through `useAppearanceDialogs()`:
+
+- `openOutlineSettings({ tab?, textStyle?, kind? })`: from the header's **Outline Settings** button (gear), and from the toolbar's "Edit styles" (Appearance → Outline, on the text style the caret is in).
+- `openComponentAppearance(id?)`: by ID, or the component the selection is in (`componentAtSelection`, same rules as before: a caret in a point's heading is that point, a caret in a note is the note, a click on a passage is the passage; ordinary writing opens nothing and never means its point). It returns `false` and opens nothing for no or an unknown component. Today it is called from the structure tools' More menu ("Customize Appearance…"). **UI.3's right-click "Customize Appearance…" and the mobile component action menu call this same function.**
+
+Only one window is open at a time; each is its own editing session.
+
+**The window** (`modal.tsx`, the Base UI dialog's new `settings` placement in `components/ui/dialog.tsx`):
+
+- a modal dialog: focus is trapped inside, the page behind is inert, and on close focus goes back to the outline (`finalFocus`, checked in a test and in Chrome);
+- from `md`, a centered window up to 72rem × 52rem (Component Appearance up to 60rem); below `md`, the whole visual viewport (as the `full` placement, so it stays above an on-screen keyboard);
+- pointer dismissal is off. **Closing never applies.** With nothing pending, × and Escape close at once; with a draft they ask "Discard appearance changes?" (Keep editing / Discard). Cancel discards the draft and keeps the window open.
+- An open picker or menu inside still takes Escape first (Base UI's nested layers).
+
+**Outline Settings** (`outline-settings.tsx`):
+
+- a category rail from `md` (a row on a phone) listing `outlineSettingsCategories` (`["appearance"]`): only working categories, no placeholders;
+- Appearance → **Outline** tab: the preset cards, the text style (shared defaults or a named style), its fields, "Reset this text style";
+- Appearance → **Components** tab: the component type, its fields, "Reset the ‹type› style";
+- the preview beside the settings from `md`; above them on a phone, where "Hide preview" folds it;
+- the footer: the **Reset…** menu (whole outline), the pending summary or status, Cancel, Apply.
+
+Page Setup and Numbering keep their current toolbar and header controls, which still work. When they move into Outline Settings they reuse the same commands and state (`usePageView`, `NumberingSelect`), never a second system.
+
+**Component Appearance** (`component-appearance.tsx`):
+
+- title "Customize Appearance"; a card naming the kind and its first words (or a passage's reference), and "Only this component changes";
+- only that kind's fields (`componentGroups[kind]`) over its type's style, inherited dynamically; no tabs, no categories;
+- a prominent **Reset this component**;
+- the preview of the component itself; the footer as above, with the outline-wide Reset… menu.
+- The target is fixed by ID and kind when it opens (`useComponentTarget`). If it is removed or becomes another kind, the window says so, hides the fields, blocks Apply, and offers "Discard those changes". It is marked in the outline while open (`setAppearanceTarget`, view state).
+
+### Shared infrastructure (one of each)
+
+- **`session.ts`, `useAppearanceSession(editor)`**: the draft, what is committed, conflicts, orphans, set, reset, apply, discard. It was lifted unchanged out of the old panel and is used by both windows. The outline behind still previews the draft (so the toolbar's color bars stay right), and the session leaves no preview behind when it ends.
+- **`controls.tsx`**: `FieldList`/`FieldRow`/`Control`, `PresetChooser`, `ConflictLine`, `SessionFooter`, moved unchanged.
+- **Unchanged:** `fields.ts` (with its schema coverage test), `styles/draft.ts`'s merge, conflicts, orphans, and plan, `applyAppearanceDraft`, `setStylesPreview`, the one resolver (`componentLayers`/`namedLayers`), and the CSS.
+
+### The previews (`preview.tsx`): drawn by the editor's own rules
+
+**Owner's decision: a read-only mini editor.** The editor's look is the generated sheet plus plugin output: numbering labels, section frames, note and script labels, root attributes, and the passage node view with its verses. A static copy would have duplicated all of it. So the preview is one Tiptap editor with the same `labV4Extensions`:
+
+- `editable: false`; the picture is `inert` and `aria-hidden`, inside a scrollable, focusable box with a visible caption;
+- created when the window opens and destroyed when it closes, never remounted per change;
+- given the live editor's paper (`data-paper`) and the outline's own document attributes (numbering style, translation, committed styles);
+- shown the session's draft through `setStylesPreview({ draft })`, the same view-state command as the outline, so the sheet, decorations, and single-component styles are computed by the same code;
+- an Undo underneath is followed (the committed styles are copied in, outside history).
+
+What it shows:
+
+- **Outline tab:** a short sample sermon (`sampleOutline`, words from the `appearance.sample` dictionary in both languages): title, subtitle, Introduction, a main point with Psalm 119:105 expanded, a subpoint, a preacher note, a script, and the Conclusion.
+- **Components tab:** the same sample, the chosen kind marked and scrolled into view.
+- **Component Appearance:** a copy of the component with the headings that own it (`componentExcerpt`), so a subpoint keeps its depth and a note in the Introduction keeps the section's frame.
+
+The person's document is never touched by the preview; its history stays empty. CSS: one `.lab-appearance-preview` rule in `lab-v4.css` sizes the editor for a window and gives it the page's ground (`--surface`, which light paper makes white); nothing else differs.
+
+Tests prove the preview's generated sheet equals the outline's for the same draft (before and after a change), that it follows an Undo, that it marks the chosen kind, and that a single component's inline style equals the live node's decoration. They also prove the sample and every kind's excerpt load as valid v4 documents.
+
+### Resets: exact semantics
+
+Every reset is a set of draft edits with bases (`styles/draft.ts`). So it is previewed first, Cancel takes it back, a change made underneath is a conflict and is never overwritten, and Apply writes it in one transaction undone in one step. None touches the words, inline marks, component identities, depth, roles, or ownership (tested by comparing the document's JSON without `styles`/`appearance`).
+
+| Reset                                     | Function                                                                     | Removes                                                                                                                         | Keeps                                                                     | Where                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------- |
+| Reset this component                      | `resetLayer({ layer: "instance" })` (existing)                               | that node's `appearance`                                                                                                        | everything else; the component then inherits its type's style dynamically | Component Appearance (prominent button) |
+| Reset all components to outline defaults  | `resetAllComponents` (new)                                                   | every node's `appearance`, and drafted instance edits                                                                           | preset, defaults, named styles, component-type styles                     | both windows' Reset… menu               |
+| Restore current preset (‹name›)           | `restorePreset` = `restoreOutline` + `resetAllComponents` (new)              | defaults, named styles, component-type styles, `runningHeader`, every node's `appearance`                                       | the chosen preset                                                         | Outline Settings' Reset… menu           |
+| Restore original Preacher Studio defaults | `restoreOriginal` = `restorePreset` + preset `"balanced"` (`originalPreset`) | all of the above, and the preset becomes Balanced, **written explicitly** (never left to an editor or a future account default) | content and structure                                                     | both windows' Reset… menu               |
+
+- The three outline-wide resets sit in a **Reset…** menu kept apart from the contextual ones. Each asks first, with what it removes and what it keeps, and then appears as a draft to review.
+- **Unchanged semantics:** `restoreOutline` and the `resetOutlineToPreset` command still keep single components' appearance (their equality test is unchanged). They are simply no longer offered as a button: "Restore current preset" now also clears single components, as the owner asked.
+
+### Personal presets: approved, not built (UI.2B.3 with A2)
+
+Approved future contract, recorded so the Appearance category can take it without a redesign:
+
+- **What a person can do:** save the outline's appearance as a named preset; apply it to any outline; rename, duplicate, delete, and update it; choose any built-in or saved preset as the default for new outlines; explicitly reapply an updated preset to an existing outline.
+- **Built-in presets** (Minimal, Balanced, Expressive) are immutable code.
+- **What a saved preset holds:** reusable appearance only: the outline-wide layers (preset base, defaults, named styles, component-type styles, later per-depth and numbering presentation). It never holds sermon content or component identities, so never a node's own `appearance`.
+- **Applying a preset makes an independent snapshot** in `doc.attrs.styles`. Updating the saved preset never changes outlines made with it; reapplying is explicit. Applying to an outline and updating the stored preset are separate actions.
+- **Where it goes in the UI:** a "My presets" group beside the built-in cards, with save and manage actions in the same Appearance category; apply goes through the same draft (previewed, one Apply, one Undo).
+- **Storage:** account persistence with A2. A new account default is written into a new outline explicitly (see Boundary for A2).
+- **Not built now:** no Save Preset button, no management screen, no persistence, no migration.
+
+### Files changed
+
+- **New** (`src/features/sermon-editor/appearance/`):
+  - `session.ts`, `controls.tsx`, `modal.tsx`;
+  - `outline-settings.tsx`, `component-appearance.tsx`, `dialogs.tsx`;
+  - `preview.tsx`, `resets-menu.tsx`;
+  - `appearance-dialogs.test.tsx`.
+- **Deleted:** `appearance-panel.tsx`, `sheet.ts`, `appearance-panel.test.tsx` (its 11 cases are carried into the new test file, adapted to the modal).
+- **Changed:**
+  - `target.ts` (`useComponentTarget` for a fixed target; long excerpts end in "…");
+  - `fields.ts` (comment);
+  - `sermon-workspace.tsx` (provider, Outline Settings button, Edit styles, structure tools; the floating frame and side state removed);
+  - `styles/draft.ts` (`resetAllComponents`, `restorePreset`, `restoreOriginal`, `originalPreset`);
+  - `v4/lab-v4.css` (preview rule);
+  - `components/ui/dialog.tsx` (`settings` placement);
+  - `v4/appearance-draft.test.ts` (6 tests);
+  - `i18n/dictionaries/{en,es}/editorLab.ts`: `appearance` gains the settings, tabs, component window, preview, discard, resets, and sample words; it loses `moveLeft`/`moveRight`, `title`, `hint`, `scope`, `scopes`, `scopeHints`, `noTarget`, `keptTarget`, `customizing`, `showTarget`, `restoreOutline`, `restoreHint`. `open` is now "Outline Settings", and `structureAction` is "Customize Appearance…".
+- **Docs:** this file, `AGENTS.md`, `docs/ROADMAP.md`.
+- **Not touched:** schema, commands and their semantics, structural guards, pagination, the numbering engine, `CaretSync`, the v3 lab, the Workspace Panel, the database.
+
+### Verification
+
+- `vitest run src/features/editor-lab src/features/sermon-editor src/i18n "src/app/(app)/lab"`: **698 passed** (23 files). The earlier 682 were reduced by the 11 cases of the deleted panel test, plus 6 new reset tests and 21 in `appearance-dialogs.test.tsx`.
+  - The new component tests cover: modal and categories, Outline and Components tabs, type customization, Apply/Cancel, one Undo step, discard confirmation on Escape and ×, focus trapped and returned, targeting by ID and never the parent, nothing opened for prose, gone target, reset this component, the reset menus with confirmation, preview accuracy, and English and Spanish.
+- `tsc --noEmit`: clean. ESLint and Prettier: clean on every changed file.
+- **Browser** (Chrome, `/lab/editor/v4`, a dev server started on port 3100 for this pass and stopped after):
+  - **Outline Settings at 1536px:** the preview showed numbering, the Introduction frame, and Psalm 119:105's verse.
+  - **Expressive and Main points at 22pt:** previewed in the window. After Apply the outline drew 29.3px (22pt) and focus was back in the outline; one Ctrl+Z restored Balanced and the old size.
+  - **Component Appearance on a preacher note** (from the More menu): it opened on the note, not its subpoint. A 3pt border showed in its preview; Escape asked first, and Discard left the note unchanged.
+  - **A 412px frame:** the window filled the screen with nothing past the right edge, and Apply was in reach.
+  - **Fixed during the pass:** on light paper, the preview's text sat on the dark window (now the page's ground).
+  - **Fixed after owner review:** the preview could not be scrolled. Its scroll box itself was `inert`, and an inert element takes no wheel or touch scrolling. Now only the picture inside is `inert` and `aria-hidden`; the box is a labelled, focusable region that scrolls by wheel, touch, or arrow keys. Checked in Chrome on the owner's dev server: a wheel scroll moved it 330px, to the Conclusion. A test holds that the box is not inert.
+- **Not run:**
+  - the whole unit suite;
+  - a production build;
+  - the Playwright lab specs (no Clerk E2E user);
+  - a real phone and on-screen keyboard;
+  - a screen reader;
+  - print and PDF;
+  - the light theme in this pass;
+  - Component Appearance in the 412px frame (same shell as Outline Settings);
+  - a resized real window (the window could not be resized; a same-origin 412px frame was used, as before).
+- One console error was seen: a Next.js dev notice about `readAppSettings` outside `<Suspense>` on this route. It is unrelated to this pass.
+
+### Remaining risks and limitations
+
+- **The preview is a second, read-only editor while a window is open.** It is small, created once, and destroyed on close, but it holds its own style sheet and loads one chapter for its passage (through the cached `loadChapter`).
+- **A main point's number in Component Appearance** is its number in the excerpt (often "I."), not in the outline.
+- **"Preset design" values** are still shown as words, not numbers (UI.2B.3).
+- **There is still no keyboard path from the outline into the toolbar** (UI.4). The windows themselves are fully keyboard-operable once open.
+
+### Assigned onward (nothing dropped, nothing started)
+
+- **UI.2B.3:** advanced typography; per-depth formatting; numbering presentation; personal presets (model and UX, contract above); Minimal and Expressive refinement; preset values shown as numbers; the opening rule's style.
+- **UI.2C:** the dedicated sermon header with the canonical Sermon Title and optional Subtitle; first-page and later-page presentation; the optional footer; header and footer pagination geometry; running-header styles. Header & Footer will be an Outline Settings category.
+- **UI.2D:** optional dark editing paper; grayscale and black-and-white print modes (Printing category).
+- **UI.3:**
+  - the complete Insert workflow;
+  - creating and converting semantic components;
+  - right-click and touch component action menus, calling `openComponentAppearance(id)`;
+  - mobile editor controls.
+- **UI.4:** final A1 acceptance: long outlines, printing and pagination, browsers and devices, accessibility (including keyboard access to the toolbar), structural integrity.
+- **A2:** outline persistence, revisions, conflicts, account-level preset persistence. **A3:** full signed-in integration.
+- **B1–C3:** the Workspace Panel, Bible and dictionaries, navigation, outline management, export, offline/PWA, production migration, and public release.
+
 ## Boundary for A2
 
 A2 puts persistence around `SermonWorkspace`; it does not change the editor.
 
-- **Appearance (A1-UI.2B.1, 2B.2):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`), and each component's own appearance is on its node; both are saved with it. The Appearance panel's draft is never persisted: Apply makes it a document change. There is nothing extra to persist. When an outline is created from an account's default preset, write it explicitly.
+- **Appearance (A1-UI.2B.1, 2B.2):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`), and each component's own appearance is on its node; both are saved with it. An Appearance session's draft (Outline Settings, Component Appearance) is never persisted: Apply makes it a document change. There is nothing extra to persist. When an outline is created from an account's default preset (built-in or personal, UI.2B.3), write it explicitly.
 
 - **Open:** pass the stored document as `document` with a stable `documentKey`. One sermon is one mount; another sermon is a new `key`.
 - **Save:** `onReady` hands over the editor. A2 reads `editor.getJSON()` on its own schedule (coalesced, never per keystroke) and owns revisioning, offline storage, and conflicts.

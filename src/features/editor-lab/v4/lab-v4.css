@@ -905,6 +905,13 @@
   --k-accent-w: 3px;
   --k-radius: 0 6px 6px 0;
 }
+/* The square corners follow the accent to its side (`data-accent`); a kind below with even corners keeps them. */
+.lab-editor[data-preset="expressive"] .lab-note[data-accent="top"] {
+  --k-radius: 0 0 6px 6px;
+}
+.lab-editor[data-preset="expressive"] .lab-note[data-accent="right"] {
+  --k-radius: 6px 0 0 6px;
+}
 .lab-editor[data-preset="expressive"] .lab-note[data-kind="reminder"] {
   --k-fill: color-mix(in oklab, var(--sermon-reminder) calc(var(--sermon-tint) * 2.2), transparent);
   --k-line: color-mix(in oklab, var(--sermon-reminder) 55%, transparent);
@@ -953,4 +960,29 @@
     outline-offset: 3px;
     border-radius: 2px;
   }
+}
+
+/*
+ * The Appearance preview (A1-UI.2B.2, `sermon-editor/appearance/preview.tsx`):
+ * a read-only editor drawn by every rule above, in a window. Only its size
+ * and frame differ from the outline's; it is never focused or printed.
+ */
+.lab-appearance-preview {
+  display: flex;
+  flex-direction: column;
+}
+.lab-appearance-preview > .lab-surface {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.lab-appearance-preview .lab-editor {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  padding: 1rem clamp(0.75rem, 3vw, 1.75rem) 1.5rem;
+  caret-color: transparent;
+  /* The page's own ground, as Print Layout draws it: light paper's white, else the theme's surface. */
+  background: var(--surface);
 }

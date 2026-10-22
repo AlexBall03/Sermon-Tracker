@@ -231,6 +231,20 @@ export function ColorPicker({
   );
 }
 
+/**
+ * What the bar under a toolbar color button shows (A1-UI.2B.2 finalization):
+ * a color in force, the theme's own text color (drawn, since it is what the
+ * text is in), no highlight (an empty outline), or a selection of more than
+ * one (a split bar, never one of its colors).
+ */
+export type BarState = "color" | "theme" | "none" | "mixed";
+
+export function barStateOf(kind: ColorKind, value: Shown): BarState {
+  if (value === mixed) return "mixed";
+  if (value === null) return kind === "ink" ? "theme" : "none";
+  return "color";
+}
+
 /** The toolbar's color button: the color in force under the icon, the picker in a popover. */
 export function ColorControl({
   kind,
@@ -239,6 +253,7 @@ export function ColorControl({
   onOpen,
   onPick,
   finalFocus,
+  lightPaper = false,
 }: {
   kind: ColorKind;
   value: Shown;
@@ -246,10 +261,16 @@ export function ColorControl({
   onOpen: () => void;
   onPick: (value: ColorValue | null) => void;
   finalFocus: () => boolean;
+  /**
+   * Whether the text is on light paper (Print Layout, `v4/paper.ts`): the bar
+   * then shows the color as the paper draws it, in either theme.
+   */
+  lightPaper?: boolean;
 }) {
   const t = useT("editorLab").format;
   const [open, setOpen] = useState(false);
   const label = kind === "ink" ? t.textColor : t.highlight;
+  const state = barStateOf(kind, value);
   const bar =
     value && value !== mixed
       ? {
@@ -257,6 +278,16 @@ export function ColorControl({
           ["--swatch-d" as string]: renderColor(value, kind, "dark") ?? "",
         }
       : undefined;
+  const shown =
+    state === "mixed"
+      ? t.mixed
+      : state === "theme"
+        ? t.themeColor
+        : state === "none"
+          ? t.noHighlight
+          : typeof value === "string" && value in t.colors
+            ? t.colors[value as keyof typeof t.colors]
+            : t.custom;
   return (
     <Popover
       open={open}
@@ -267,7 +298,8 @@ export function ColorControl({
     >
       <PopoverTrigger
         aria-label={label}
-        title={label}
+        aria-description={shown}
+        title={`${label}: ${shown}`}
         // The selection is remembered before the popover takes focus (`keep-selection.ts`).
         onPointerDown={onOpen}
         className="inline-flex h-9 items-center gap-0.5 rounded-md px-1.5 text-foreground hover:bg-accent data-popup-open:bg-accent"
@@ -275,7 +307,16 @@ export function ColorControl({
         <span className="flex flex-col items-center">
           <Icon className="size-4" aria-hidden />
           <span
-            className={cn("lab-swatch mt-0.5 h-1 w-4 rounded-full", !bar && "border border-border")}
+            data-state={state}
+            data-surface={lightPaper ? "paper" : undefined}
+            className={cn(
+              "lab-bar mt-0.5 h-1 w-4 rounded-full",
+              state === "color" && "lab-swatch",
+              // The text is in the theme's own color (`lab.css`).
+              state === "theme" && "lab-swatch-theme",
+              state === "none" && "border border-muted-foreground",
+              state === "mixed" && "lab-swatch-mixed",
+            )}
             style={bar}
           />
         </span>

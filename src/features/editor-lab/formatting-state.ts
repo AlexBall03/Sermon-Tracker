@@ -7,9 +7,8 @@ import {
   type Alignment,
 } from "./formatting-commands";
 import type { ColorValue } from "./styles/colors";
-import { resolveAt } from "./styles/context";
 import { namedStyles, type FontKey, type NamedStyle } from "./styles/model";
-import { presetInForce, stylesInForce } from "./styles/plugin";
+import { resolveInForce } from "./styles/plugin";
 import { namedStyleOf } from "./styles/resolve";
 
 /*
@@ -49,8 +48,6 @@ function agree<T>(values: T[]): Maybe<T> {
 }
 
 export function textState(state: EditorState): TextState {
-  const styles = stylesInForce(state);
-  const preset = presetInForce(state);
   const runs: {
     fontFamily: FontKey;
     fontSize: number;
@@ -60,9 +57,9 @@ export function textState(state: EditorState): TextState {
   }[] = [];
   const read = (
     marks: readonly { type: { name: string }; attrs: Record<string, unknown> }[],
-    $pos: Parameters<typeof resolveAt>[1],
+    $pos: Parameters<typeof resolveInForce>[1],
   ) => {
-    const block = resolveAt(styles, $pos, preset);
+    const block = resolveInForce(state, $pos);
     const style = marks.find((mark) => mark.type.name === "textStyle")?.attrs;
     const highlight = marks.find((mark) => mark.type.name === "highlight")?.attrs.color;
     runs.push({
@@ -134,11 +131,9 @@ export type BlockState = {
 };
 
 export function blockState(state: EditorState): BlockState {
-  const styles = stylesInForce(state);
-  const preset = presetInForce(state);
   const blocks: {
     name: NamedStyle | typeof componentLook | null;
-    resolved: ReturnType<typeof resolveAt>;
+    resolved: ReturnType<typeof resolveInForce>;
   }[] = [];
   let points = false;
   for (const range of state.selection.ranges) {
@@ -147,7 +142,7 @@ export function blockState(state: EditorState): BlockState {
       if (!node.isTextblock) return true;
       const point = node.type.name === "point";
       if (point || node.type.name === "paragraph" || node.type.name === "heading") {
-        const resolved = resolveAt(styles, state.doc.resolve(pos + 1), preset);
+        const resolved = resolveInForce(state, state.doc.resolve(pos + 1));
         if (point) points = true;
         blocks.push({
           name: point

@@ -23,7 +23,11 @@ import {
   orphans,
   rebaseEdit,
   resetLayer,
+  originalPreset,
+  resetAllComponents,
+  restoreOriginal,
   restoreOutline,
+  restorePreset,
   setEdit,
   UNSET,
   type Draft,
@@ -341,6 +345,133 @@ describe("resets", () => {
   });
 });
 
+describe("the outline-wide resets (A1-UI.2B.2 final)", () => {
+  /** Styled at every level, with single components customized and a bold mark in the words. */
+  const customized = (): JSONContent => ({
+    ...documentV4([
+      pointV4("intro", "Introduction", 1, { role: "introduction" }),
+      {
+        type: "paragraph",
+        attrs: { depth: 1 },
+        content: [
+          { type: "text", text: "Why " },
+          { type: "text", text: "this", marks: [{ type: "bold" }] },
+          { type: "text", text: " psalm." },
+        ],
+      },
+      withAttrs(pointV4("p-1", "The lamp", 1), { appearance: { italic: true } }),
+      withAttrs(passageV4("s-1", ref(19, 119, 105), 1), { appearance: { fill: "blue" } }),
+      withAttrs(noteV4("n-1", "Ask who walked in the dark.", 1), {
+        appearance: { borderWidth: 2 },
+      }),
+      pointV4("p-2", "The path", 2),
+    ]),
+    attrs: {
+      ...documentV4([]).attrs,
+      styles: {
+        version: 1,
+        preset: "expressive",
+        defaults: { fontSize: 12 },
+        named: { title: { italic: true } },
+        components: { point: { bold: false }, scripture: { radius: 4 } },
+      } satisfies DocumentStyles,
+    },
+  });
+  /** Everything that is not appearance: the words, marks, ids, depth, and roles. */
+  const meaning = (editor: Editor) =>
+    JSON.stringify(editor.getJSON(), (key, value) =>
+      key === "styles" || key === "appearance" ? undefined : value,
+    );
+
+  it("reset all components to outline defaults, keeping every outline-wide style", () => {
+    const editor = open(customized());
+    const before = meaning(editor);
+    const styles = stored(editor);
+    const draft = resetAllComponents(emptyDraft, stored(editor), editor.state.doc);
+    // Previewed first: nothing is written until it is applied.
+    preview(editor, draft);
+    expect(appearanceOf(editor, "p-1")).toEqual({ italic: true });
+    expect(editor.commands.applyAppearanceDraft(draft)).toBe(true);
+    for (const id of ["p-1", "s-1", "n-1"]) expect(appearanceOf(editor, id)).toBeNull();
+    expect(stored(editor)).toEqual(styles);
+    expect(meaning(editor)).toBe(before);
+    // One step back restores every component's own appearance.
+    undo(editor.state, editor.view.dispatch);
+    expect(appearanceOf(editor, "p-1")).toEqual({ italic: true });
+    expect(appearanceOf(editor, "n-1")).toEqual({ borderWidth: 2 });
+    redo(editor.state, editor.view.dispatch);
+    expect(appearanceOf(editor, "s-1")).toBeNull();
+  });
+
+  it("take back a drafted edit for a component that had no appearance of its own", () => {
+    const editor = open(customized());
+    let draft = edit(
+      editor,
+      emptyDraft,
+      { layer: "instance", id: "p-2", kind: "subpoint", field: "bold" },
+      true,
+    );
+    draft = resetAllComponents(draft, stored(editor), editor.state.doc);
+    expect(mergeStyles(stored(editor), draft)).toEqual(stored(editor));
+    editor.commands.applyAppearanceDraft(draft);
+    expect(appearanceOf(editor, "p-2")).toBeNull();
+  });
+
+  it("restore the current preset: no customization left, the chosen preset kept", () => {
+    const editor = open(customized());
+    const before = meaning(editor);
+    editor.commands.applyAppearanceDraft(
+      restorePreset(emptyDraft, stored(editor), editor.state.doc),
+    );
+    expect(stored(editor)).toEqual({ version: 1, preset: "expressive" });
+    for (const id of ["p-1", "s-1", "n-1"]) expect(appearanceOf(editor, id)).toBeNull();
+    expect(meaning(editor)).toBe(before);
+    undo(editor.state, editor.view.dispatch);
+    expect(stored(editor)?.components).toEqual({
+      point: { bold: false },
+      scripture: { radius: 4 },
+    });
+    expect(appearanceOf(editor, "s-1")).toEqual({ fill: "blue" });
+  });
+
+  it("restore original Preacher Studio defaults: Balanced, written explicitly, nothing customized", () => {
+    const editor = open(customized());
+    const before = meaning(editor);
+    const draft = restoreOriginal(emptyDraft, stored(editor), editor.state.doc);
+    preview(editor, draft);
+    expect(presetIdInForce(editor.state)).toBe("balanced");
+    expect(stored(editor)?.preset).toBe("expressive");
+    editor.commands.applyAppearanceDraft(draft);
+    expect(stored(editor)).toEqual({ version: 1, preset: originalPreset });
+    expect(originalPreset).toBe("balanced");
+    for (const id of ["p-1", "s-1", "n-1"]) expect(appearanceOf(editor, id)).toBeNull();
+    expect(meaning(editor)).toBe(before);
+    expect(allIds(editor)).toContain("intro");
+    undo(editor.state, editor.view.dispatch);
+    expect(stored(editor)?.preset).toBe("expressive");
+    expect(appearanceOf(editor, "n-1")).toEqual({ borderWidth: 2 });
+  });
+
+  it("leave restoreOutline and resetOutlineToPreset as they were: single components kept", () => {
+    const editor = open(customized());
+    editor.commands.applyAppearanceDraft(
+      restoreOutline(emptyDraft, stored(editor), editor.state.doc),
+    );
+    expect(appearanceOf(editor, "p-1")).toEqual({ italic: true });
+  });
+
+  it("respect a change made after them, as every reset does", () => {
+    const editor = open(customized());
+    const draft = resetAllComponents(emptyDraft, stored(editor), editor.state.doc);
+    // The note's own appearance changes underneath before Apply: a conflict, never overwritten.
+    const { pos } = findComponent(editor.state.doc, "n-1")!;
+    editor.commands.setComponentAppearance(pos, { borderWidth: 3 });
+    expect(conflicts(draft, stored(editor), editor.state.doc)).toHaveLength(1);
+    expect(editor.commands.applyAppearanceDraft(draft)).toBe(false);
+    expect(appearanceOf(editor, "p-1")).toEqual({ italic: true });
+  });
+});
+
 describe("a change made elsewhere", () => {
   it("is never written over: a conflict refuses Apply until the person chooses", () => {
     const editor = open(sermon);
@@ -526,6 +657,14 @@ describe("the container properties (A1-UI.2B.2)", () => {
         expect(css).toContain(`--ps-${component}-${part}`);
       }
     }
+    // Expressive's note squares the corners on its accent's side, wherever that is.
+    const expressive = '.lab-editor[data-preset="expressive"] .lab-note';
+    expect(css).toContain(`${expressive}[data-accent="top"] {\n  --k-radius: 0 0 6px 6px;`);
+    expect(css).toContain(`${expressive}[data-accent="right"] {\n  --k-radius: 6px 0 0 6px;`);
+    // Placed before the kinds whose corners are even, which therefore keep them.
+    expect(css.indexOf(`${expressive}[data-accent="top"]`)).toBeLessThan(
+      css.indexOf(`${expressive}[data-kind="reminder"]`),
+    );
   });
 });
 

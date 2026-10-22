@@ -1,6 +1,6 @@
 import { Extension } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -23,7 +23,7 @@ import {
 import { presets, type Preset, type PresetId } from "./presets";
 import { appearanceStyle, styleSheet } from "./render";
 import { resolveAt } from "./context";
-import { readStyles, resolveComponent } from "./resolve";
+import { readStyles, resolveComponent, type ResolvedBlock } from "./resolve";
 
 /*
  * The document's styles in the editor (PS-1B.2B.2B):
@@ -138,6 +138,18 @@ export function appearanceInForce(
   const draft = draftOf(state);
   const id = node.attrs.id as string | null | undefined;
   return draft && id && touches(draft, id) ? mergeAppearance(appearance, draft, id) : appearance;
+}
+
+/**
+ * What a position's text looks like before its own marks, as drawn now: the
+ * Appearance preview over what is committed, a single component's own
+ * included (`resolveAt`). The toolbar's inherited values and the highlight
+ * pairs read this, so they follow a preview as the outline does.
+ */
+export function resolveInForce(state: EditorState, $pos: ResolvedPos): ResolvedBlock {
+  return resolveAt(stylesInForce(state), $pos, presetInForce(state), (node) =>
+    appearanceInForce(state, node),
+  );
 }
 
 /** Whether a transaction changed what is previewed. */
@@ -431,7 +443,6 @@ function appearances(
 
 /** Decorations for every highlighted run between `from` and `to`, added to `set`. */
 function pairs(state: EditorState, from: number, to: number, set: DecorationSet): DecorationSet {
-  const styles = stylesInForce(state);
   const added: Decoration[] = [];
   state.doc.nodesBetween(from, to, (node: ProseMirrorNode, pos: number) => {
     if (!node.isText) return true;
@@ -442,7 +453,7 @@ function pairs(state: EditorState, from: number, to: number, set: DecorationSet)
       ColorValue | null | undefined;
     // A color the person fixed is theirs: drawn as chosen by its own mark, never adapted.
     if (marked && typeof marked !== "string") return false;
-    const ink = marked ?? resolveAt(styles, state.doc.resolve(pos), presetInForce(state)).color;
+    const ink = marked ?? resolveInForce(state, state.doc.resolve(pos)).color;
     if (ink && typeof ink !== "string") return false;
     const light = inkOn(ink, fill, "light");
     const dark = inkOn(ink, fill, "dark");
