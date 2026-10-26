@@ -749,6 +749,14 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - **Not yet:** nothing calls it, nothing converts, nothing syncs, and the legacy outline is unchanged.
         - **Decided (owner):** a starting size limit of 512 KiB of UTF-8, reassessed in A2.3. This answers open decision 8 for documents only.
         - **Decided (the A2.1 brief):** one document revision, independent of the outline's. This answers open decision 6 for A2's documents.
+      - **A2.2 (built, 26 October 2026; not yet committed):** legacy conversion and content authority ([handoff](HANDOFF-PS-A2.md)). No migration.
+        - **Implemented:** a document row is the outline's content authority. That answers §9.3 step 4's "row or switch" question: the row, with no flag or column.
+        - **Implemented:** every legacy entry and numbering write is refused once the row exists (`document_authoritative`). Over sync it is a kept conflict (`documentAuthoritative`), discarded only by the person.
+        - **Implemented:** one server conversion, `convertOutline`, behind `convertOutlineDocument`.
+          - It is atomic and runs once per outline, under the legacy writes' lock order.
+          - It is refused unless the result can be read back as exactly the outline.
+          - It replaces A2.1's `createOutlineDocument` action (owner's decision).
+        - **Not yet:** nothing calls the conversion (A3). Queued legacy changes are not yet carried into the document, and devices are not yet told an outline is converted (A2.3).
     - **A3:** full signed-in editor integration.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.
@@ -764,24 +772,24 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
 
 ## 16. Known risks
 
-| Risk                                                                            | Severity | Mitigation                                                                           |
-| ------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| Version skew in sync silently drops fields or leads to discarded work           | Critical | Section 7.3 before PS-3b; invariants in handoff PS-1B.1 §E.7; register §F            |
-| A legacy outline edit from an old client arrives after its sermon was converted | Critical | Translated when lossless, else a kept conflict; never dropped (handoff PS-1B.1 §E.7) |
-| Old PWA installs strand queued work at a domain change                          | High     | Section 11.2 drain before redirect                                                   |
-| A conversion loses structure, numbering, or provenance                          | High     | Section 8 invariants; idempotent, verified, non-destructive                          |
-| A production migration damages data with no fresh backup                        | High     | Section 9.3 gates                                                                    |
-| Two production builds migrate concurrently                                      | Medium   | One release with migrations at a time; Proposed lock (9.3)                           |
-| A new user-owned table blocks account deletion                                  | Medium   | Section 10 rules and the Proposed test                                               |
-| Editor saves multiply database writes and keep Neon awake                       | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3                                 |
-| Polling keeps Neon awake                                                        | Low      | Reduced in PS-0C.1 (15-minute fallback, event-driven); removal remains PS-6          |
-| The prototype reaches production                                                | Medium   | Two server-side guards, tested (15.2)                                                |
-| JSON storage weakens referential integrity                                      | Medium   | Section 6.1; relational integrity kept                                               |
-| Tiptap or ProseMirror cannot meet the numbering or identity requirements        | Medium   | PS-1A tests them; fallback in 3.1                                                    |
-| Editable pagination (Print Layout) cannot split long blocks reliably            | High     | PS-1B.2 spike with measurements; a dedicated PS-5a rather than approximation         |
-| An older client saves a newer document and drops what it cannot read            | Critical | Read-only for a newer `schemaVersion` (handoff PS-1B.1 §B.11), enforced in PS-3a     |
-| Long Scripture passages cost many chapter requests                              | Medium   | Lazy loading, bounded concurrency, local text; measured in PS-1B.2                   |
-| Documentation drift (README, `DATABASE.md` 0015–0019)                           | Low      | README in PS-7; `DATABASE.md` before PS-2                                            |
+| Risk                                                                            | Severity | Mitigation                                                                                                                                       |
+| ------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Version skew in sync silently drops fields or leads to discarded work           | Critical | Section 7.3 before PS-3b; invariants in handoff PS-1B.1 §E.7; register §F                                                                        |
+| A legacy outline edit from an old client arrives after its sermon was converted | Critical | Since A2.2 always a kept `documentAuthoritative` conflict, never applied or dropped; carrying it into the document is A2.3 (handoff PS-A2, A2.2) |
+| Old PWA installs strand queued work at a domain change                          | High     | Section 11.2 drain before redirect                                                                                                               |
+| A conversion loses structure, numbering, or provenance                          | High     | Section 8 invariants; idempotent, verified, non-destructive                                                                                      |
+| A production migration damages data with no fresh backup                        | High     | Section 9.3 gates                                                                                                                                |
+| Two production builds migrate concurrently                                      | Medium   | One release with migrations at a time; Proposed lock (9.3)                                                                                       |
+| A new user-owned table blocks account deletion                                  | Medium   | Section 10 rules and the Proposed test                                                                                                           |
+| Editor saves multiply database writes and keep Neon awake                       | Medium   | Section 4.2 editor rules; measured in PS-1A and PS-3                                                                                             |
+| Polling keeps Neon awake                                                        | Low      | Reduced in PS-0C.1 (15-minute fallback, event-driven); removal remains PS-6                                                                      |
+| The prototype reaches production                                                | Medium   | Two server-side guards, tested (15.2)                                                                                                            |
+| JSON storage weakens referential integrity                                      | Medium   | Section 6.1; relational integrity kept                                                                                                           |
+| Tiptap or ProseMirror cannot meet the numbering or identity requirements        | Medium   | PS-1A tests them; fallback in 3.1                                                                                                                |
+| Editable pagination (Print Layout) cannot split long blocks reliably            | High     | PS-1B.2 spike with measurements; a dedicated PS-5a rather than approximation                                                                     |
+| An older client saves a newer document and drops what it cannot read            | Critical | Read-only for a newer `schemaVersion` (handoff PS-1B.1 §B.11), enforced in PS-3a                                                                 |
+| Long Scripture passages cost many chapter requests                              | Medium   | Lazy loading, bounded concurrency, local text; measured in PS-1B.2                                                                               |
+| Documentation drift (README, `DATABASE.md` 0015–0019)                           | Low      | README in PS-7; `DATABASE.md` before PS-2                                                                                                        |
 
 ---
 

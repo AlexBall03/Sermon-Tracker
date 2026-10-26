@@ -26,6 +26,10 @@ import { outlinePayloadSchemas, type OutlineSyncType, type ServerEntry } from ".
  *   and nobody else did is written, a field already as the device has it is
  *   done, and a field changed in both places to different things is an
  *   `entryStale` conflict for the person, with nothing written.
+ * - Once the outline has a sermon document (A2.2), every one of these is a
+ *   `documentAuthoritative` conflict: the services refuse it with nothing
+ *   written, and so no row of `sync_operations` is written either. A change
+ *   applied before the conversion is still answered `duplicate` from there.
  */
 
 type Handler = (
@@ -70,6 +74,11 @@ const passages = (list: readonly ScriptureReference[]) => list.map(referenceKey)
 
 const placement: SyncOutcome = { status: "conflict", conflict: { reason: "placement" } };
 
+const authoritative: SyncOutcome = {
+  status: "conflict",
+  conflict: { reason: "documentAuthoritative" },
+};
+
 export const outlineHandlers: Record<OutlineSyncType, Handler> = {
   async "outline.entry.add"(tx, ownerId, change, locale) {
     const payload = payloadOf("outline.entry.add", change);
@@ -112,6 +121,8 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
         return { status: "conflict", conflict: { reason: "missing" } };
       case "unavailable":
         return { status: "rejected", reason: "taken" };
+      case "document_authoritative":
+        return authoritative;
       default:
         return placement;
     }
@@ -132,6 +143,7 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
       expectedRevision: change.baseRevision,
     });
     if (first.status === "missing") return gone(tx, ownerId, change.entityId);
+    if (first.status === "document_authoritative") return authoritative;
     if (first.status === "updated") {
       return { status: "applied", entityId: change.entityId, revision: first.entry.revision };
     }
@@ -165,6 +177,7 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
       expectedRevision: theirs.revision,
     });
     if (second.status === "missing") return gone(tx, ownerId, change.entityId);
+    if (second.status === "document_authoritative") return authoritative;
     if (second.status === "stale") {
       return {
         status: "conflict",
@@ -195,6 +208,7 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
       mine.data,
       change.baseRevision,
     );
+    if (outcome.status === "document_authoritative") return authoritative;
     if (outcome.status === "stale") {
       const theirs = outcome.entry;
       if (passages(theirs.references) === passages(mine.data)) {
@@ -210,6 +224,7 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
       outcome = await entries.setEntryReferences(tx, ownerId, entryId, mine.data, theirs.revision);
     }
     if (outcome.status === "missing") return gone(tx, ownerId, change.entityId);
+    if (outcome.status === "document_authoritative") return authoritative;
     if (outcome.status === "stale") {
       return {
         status: "conflict",
@@ -255,6 +270,8 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
       }
       case "missing":
         return gone(tx, ownerId, change.entityId);
+      case "document_authoritative":
+        return authoritative;
       default:
         return placement;
     }
@@ -270,6 +287,7 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
     }
     const outcome = await entries.deleteEntry(tx, ownerId, entryId, change.baseRevision);
     if (outcome.status === "missing") return { status: "applied", entityId: change.entityId };
+    if (outcome.status === "document_authoritative") return authoritative;
     if (outcome.status === "stale") {
       return {
         status: "conflict",
@@ -285,8 +303,9 @@ export const outlineHandlers: Record<OutlineSyncType, Handler> = {
     if (!payload.success) return invalid(payload.error.issues[0]?.message);
     const numbering = outlineSchemas(locale).numbering.safeParse(payload.data.numbering);
     if (!numbering.success) return invalid(numbering.error.issues[0]?.message);
-    const outline = await setNumbering(tx, ownerId, change.entityId, numbering.data);
-    return outline
+    const outcome = await setNumbering(tx, ownerId, change.entityId, numbering.data);
+    if (outcome.status === "document_authoritative") return authoritative;
+    return outcome.status === "updated"
       ? { status: "applied", entityId: change.entityId }
       : { status: "conflict", conflict: { reason: "missing" } };
   },

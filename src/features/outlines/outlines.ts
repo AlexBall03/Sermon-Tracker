@@ -17,7 +17,8 @@ import type { Database } from "@/db/types";
 import { containing, statusAsRead } from "@/features/ideas/ideas";
 import { searchTerms } from "@/features/ideas/library-query";
 import type { ArchiveView } from "@/features/ideas/model";
-import { listEntries, type PlacedEntry } from "./entries";
+import { hasDocument } from "@/features/sermon-editor/persistence/authority";
+import { listEntries, type DocumentAuthoritative, type PlacedEntry } from "./entries";
 import { outlinePageSize, type OutlineSort } from "./model";
 import { readNumbering, type NumberingConfig } from "./numbering";
 
@@ -389,23 +390,80 @@ export async function listOutlines(
   };
 }
 
+/** What became of a change to how an outline is numbered. */
+export type SetNumberingOutcome =
+  | { status: "updated"; outline: OutlineRecord }
+  /** No such outline among the owner's. */
+  | { status: "missing" }
+  /** The outline has a sermon document, which says how it is numbered now (A2.2). Nothing was written. */
+  | DocumentAuthoritative;
+
 /**
  * Changes how an outline is numbered, and nothing else: no entry, title,
  * note, parent, or position is read or written, and the shape's revision
- * does not move. Returns the outline, or null when it is not the owner's.
+ * does not move.
+ *
+ * The outline's row is held first, and only then is it asked, in a statement
+ * of its own, whether the outline has a sermon document: a conversion that
+ * committed while this waited is seen, and the change is refused. No row of
+ * `ideas` is taken, so this never waits on a sermon while holding an outline.
  */
 export async function setNumbering(
   db: Database,
   ownerId: string,
   id: string,
   numbering: NumberingConfig,
-): Promise<OutlineRecord | null> {
-  const [updated] = await db
-    .update(sermonOutlines)
-    .set({ numberingConfig: numbering })
+): Promise<SetNumberingOutcome> {
+  return db.transaction(async (tx): Promise<SetNumberingOutcome> => {
+    const mine = and(eq(sermonOutlines.id, id), eq(sermonOutlines.ownerId, ownerId));
+    const [held] = await tx
+      .select({ id: sermonOutlines.id })
+      .from(sermonOutlines)
+      .where(mine)
+      .for("update");
+    if (!held) return { status: "missing" };
+    if (await hasDocument(tx, ownerId, held.id)) return { status: "document_authoritative" };
+    const [updated] = await tx
+      .update(sermonOutlines)
+      .set({ numberingConfig: numbering })
+      .where(mine)
+      .returning();
+    return { status: "updated", outline: asOutline(updated) };
+  });
+}
+
+/** An outline as a conversion reads it: exactly what is stored, nothing defaulted. */
+export type StoredOutline = {
+  id: string;
+  /** The shape's revision. */
+  revision: number;
+  /** The numbering exactly as stored: never `readNumbering`'s fallback, which would hide a bad one. */
+  numbering: unknown;
+  entries: PlacedEntry[];
+};
+
+/**
+ * One of the owner's outlines as it is stored, for converting it into a
+ * sermon document (A2.2). The caller holds the outline's locks
+ * (`lockOutlineRows`), so what this reads cannot change before the
+ * transaction ends.
+ */
+export async function readStoredOutline(
+  db: Reader,
+  ownerId: string,
+  id: string,
+): Promise<StoredOutline | null> {
+  const [row] = await db
+    .select({
+      id: sermonOutlines.id,
+      revision: sermonOutlines.revision,
+      numbering: sermonOutlines.numberingConfig,
+    })
+    .from(sermonOutlines)
     .where(and(eq(sermonOutlines.id, id), eq(sermonOutlines.ownerId, ownerId)))
-    .returning();
-  return updated ? asOutline(updated) : null;
+    .limit(1);
+  if (!row) return null;
+  return { ...row, entries: await listEntries(db, ownerId, row.id) };
 }
 
 /**

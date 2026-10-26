@@ -53,7 +53,11 @@ export { duplicateIds } from "@/features/editor-lab/identity";
 // Older documents and legacy outlines.
 export { toV3, v3ToV4, type BackToV3 } from "@/features/editor-lab/v4/migrate";
 export {
+  documentToLegacy,
   legacyToDocument,
+  shownOutline,
+  type BackResult,
+  type Loss,
   type ConversionIssue,
   type ConversionResult,
   type LegacyEntry,

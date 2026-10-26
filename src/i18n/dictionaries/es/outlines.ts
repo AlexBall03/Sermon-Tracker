@@ -37,11 +37,19 @@ export const outlines: Untranslated<typeof english> = {
     entryMoved: "Movido.",
     entryRemoved: "Eliminado del bosquejo.",
     referencesSaved: "Pasajes guardados.",
-    documentCreated: "Documento del sermón creado.",
+    documentConverted: "Este bosquejo ya es un documento del sermón.",
     documentSaved: "Guardado.",
     documentExists: "Este bosquejo ya tiene un documento del sermón.",
     documentTooLarge: (limit: string) =>
       `Este documento del sermón supera ${limit}, así que no se guardó. No se le quitó nada.`,
+    documentAuthoritative:
+      "Este bosquejo ya es un documento del sermón, así que los cambios aquí ya no se pueden guardar. Tu texto sigue en esta página.",
+    documentUnreadable:
+      "El documento del sermón de este bosquejo no se puede leer ahora. Se dejó tal como estaba.",
+    conversionUnsafe:
+      "Este bosquejo no puede convertirse en documento del sermón sin cambiar lo que dice, así que se queda como está.",
+    conversionTooLarge: (limit: string) =>
+      `Como documento del sermón, este bosquejo superaría ${limit}, así que se queda como está. No se le quitó nada.`,
   },
   page: {
     metaTitle: "Bosquejo",

@@ -545,6 +545,13 @@ export function createOutlineStore(
       fail(result.message, true);
       return "halt";
     }
+    // The outline is now a sermon document (A2.2). Reading it again would only
+    // be refused again, so nothing more is sent and nothing is retried; what
+    // is unsaved stays on the page, held as unsaved work.
+    if (result.code === "document_authoritative") {
+      fail(result.message, false);
+      return "halt";
+    }
     if (isEntryOp(op)) {
       if (result.code === "stale_entry" && result.entry) {
         merge(result.entry);

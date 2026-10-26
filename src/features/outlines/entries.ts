@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { isForeignKeyViolation, type Database } from "@/db/types";
 import { markDeveloped } from "@/features/ideas/ideas";
+import { hasDocument } from "@/features/sermon-editor/persistence/authority";
 import { referenceKey, type ScriptureReference } from "@/features/scripture/reference";
 import { outlineLimits, type EntryType } from "./model";
 import type { EntryCreate, EntryMove, EntryUpdate } from "./schemas";
@@ -39,6 +40,13 @@ import {
  * take their locks in the same order (ideas, the outline, then its entries),
  * so they cannot wait on each other. Deleting a sermon takes the same order:
  * the idea, then the outline that goes with it.
+ *
+ * Content authority (A2.2): once the outline has a sermon document, the
+ * document is what it says, and every write here answers
+ * `document_authoritative` and writes nothing. `lockForWrite` asks, with the
+ * outline held, so a conversion and a write to the same outline also run one
+ * after the other: a write that commits first is in the document, and one
+ * that comes after is refused.
  *
  * Two kinds of change are counted apart, so that one is never mistaken for
  * the other:
@@ -188,7 +196,7 @@ export async function listEntries(
 
 /**
  * Holds the outline's row until the transaction ends, and says what revision
- * its shape is at. Only `lockForWrite` calls it: the sermon's row is always
+ * its shape is at. Only `lockOutlineRows` calls it: the sermon's row is always
  * taken first.
  */
 async function lockOutline(tx: Transaction, ownerId: string, outlineId: string) {
@@ -204,8 +212,10 @@ async function lockOutline(tx: Transaction, ownerId: string, outlineId: string) 
 type Source = { id: string; title: string; notes: string | null };
 
 /**
- * Where every write to an outline begins: its locks, in the one order they
- * are ever taken. The rows of `ideas` first (the sermon the outline is of,
+ * The locks every write to an outline takes, in the one order they are ever
+ * taken. Legacy writes take them through `lockForWrite`; converting the
+ * outline into a sermon document (A2.2, `persistence/conversion.ts`) takes
+ * them here too, so the two run one after the other. The rows of `ideas` first (the sermon the outline is of,
  * and the saved point an entry is to be made from, lower ID first as
  * `linkIdeas` takes two ideas), then the outline's row.
  *
@@ -219,7 +229,7 @@ type Source = { id: string; title: string; notes: string | null };
  * Null when the outline is not the owner's. `source` is null when no point
  * was named, or the one named is not a point idea of the owner's.
  */
-async function lockForWrite(
+export async function lockOutlineRows(
   tx: Transaction,
   ownerId: string,
   outlineId: string,
@@ -258,6 +268,29 @@ async function lockForWrite(
 
   const outline = await lockOutline(tx, ownerId, outlineId);
   return outline ? { ...outline, sermonId: found.sermonId, source } : null;
+}
+
+/** Why a legacy write was refused: the outline's sermon document is what it says now (A2.2). */
+export type DocumentAuthoritative = { status: "document_authoritative" };
+const documentAuthoritative: DocumentAuthoritative = { status: "document_authoritative" };
+
+/**
+ * Where every legacy write to an outline begins: `lockOutlineRows`, then,
+ * in a statement of its own and with the outline held, whether the outline
+ * has a sermon document. Once it has, its entries are no longer what it
+ * says, and no legacy write may change them. The refusal comes before
+ * anything else is looked at, so nothing is written.
+ */
+async function lockForWrite(
+  tx: Transaction,
+  ownerId: string,
+  outlineId: string,
+  sourcePointId: string | null = null,
+) {
+  const outline = await lockOutlineRows(tx, ownerId, outlineId, sourcePointId);
+  if (!outline) return null;
+  if (await hasDocument(tx, ownerId, outline.id)) return documentAuthoritative;
+  return { status: "locked" as const, ...outline };
 }
 
 /**
@@ -409,7 +442,8 @@ export type CreateEntryOutcome =
   /** The point idea it was to be made from is not a point idea of the owner's. */
   | { status: "unknown_source" }
   /** The ID could not be used. Nothing says why, and nothing was written. */
-  | { status: "unavailable" };
+  | { status: "unavailable" }
+  | DocumentAuthoritative;
 
 /**
  * Adds an entry to an outline: a main point, a point under another, the
@@ -457,6 +491,7 @@ async function insertEntry(
     // wait on each other.
     const outline = await lockForWrite(tx, ownerId, input.outlineId, input.sourcePointId);
     if (!outline) return { status: "missing" };
+    if (outline.status === "document_authoritative") return outline;
     const { source } = outline;
 
     // A retry is answered before anything is checked again: it changes nothing.
@@ -537,7 +572,8 @@ export type UpdateEntryOutcome =
   | { status: "updated"; entry: EntryRecord }
   /** The entry's words have changed since the revision the request named: the entry as it stands. */
   | { status: "stale"; entry: EntryRecord }
-  | { status: "missing" };
+  | { status: "missing" }
+  | DocumentAuthoritative;
 
 /**
  * Changes an entry's title, its notes, or both: the fields the change names,
@@ -557,6 +593,7 @@ export async function updateEntry(
     const entry = await own(tx, ownerId, id);
     const outline = entry && (await lockForWrite(tx, ownerId, entry.outlineId));
     if (!outline) return { status: "missing" };
+    if (outline.status === "document_authoritative") return outline;
     // Read again under the lock, to tell a change from the same words sent again.
     const before = await own(tx, ownerId, id);
     if (!before) return { status: "missing" };
@@ -620,7 +657,8 @@ export type MoveEntryOutcome =
   /** The parent is not a point of this outline. */
   | { status: "invalid_parent" }
   /** The parent is the entry itself, or is under it. */
-  | { status: "cycle" };
+  | { status: "cycle" }
+  | DocumentAuthoritative;
 
 /**
  * Moves a point, with everything under it, to another place: among the points
@@ -644,6 +682,7 @@ export async function moveEntry(
     if (!entry) return { status: "missing" };
     const outline = await lockForWrite(tx, ownerId, entry.outlineId);
     if (!outline) return { status: "missing" };
+    if (outline.status === "document_authoritative") return outline;
     if (move.expectedRevision !== undefined && move.expectedRevision !== outline.revision) {
       return { status: "stale", revision: outline.revision };
     }
@@ -672,7 +711,9 @@ export async function moveEntry(
 
 /** What became of an attempt to remove an entry. `removed` counts it and everything that was under it. */
 export type DeleteEntryOutcome =
-  { status: "deleted"; outlineId: string; removed: number; revision: number } | Refused;
+  | { status: "deleted"; outlineId: string; removed: number; revision: number }
+  | Refused
+  | DocumentAuthoritative;
 
 /**
  * Removes an entry and everything under it, and closes the gap it leaves.
@@ -689,6 +730,7 @@ export async function deleteEntry(
     if (!entry) return { status: "missing" };
     const outline = await lockForWrite(tx, ownerId, entry.outlineId);
     if (!outline) return { status: "missing" };
+    if (outline.status === "document_authoritative") return outline;
     if (expectedRevision !== undefined && expectedRevision !== outline.revision) {
       return { status: "stale", revision: outline.revision };
     }
@@ -731,6 +773,7 @@ export async function setEntryReferences(
     const entry = await own(tx, ownerId, id);
     const outline = entry && (await lockForWrite(tx, ownerId, entry.outlineId));
     if (!outline) return { status: "missing" };
+    if (outline.status === "document_authoritative") return outline;
     const held = (await referencesFor(tx, ownerId, [id])).get(id) ?? [];
     const developed = references.map(referenceKey).join("|") !== held.map(referenceKey).join("|");
     const [updated] = await tx

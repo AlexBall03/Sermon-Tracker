@@ -31,6 +31,7 @@ import {
   setOutlineNumbering,
   updateEntry,
 } from "./actions";
+import { convertOutline } from "@/features/sermon-editor/persistence/conversion";
 import { getOutline } from "./outlines";
 
 let db: Database;
@@ -412,5 +413,36 @@ describe("outline actions", () => {
     signInAs(me);
     await deleteOutline(outlineId);
     expect(state.revalidatePath.mock.calls).toEqual(once);
+  });
+});
+
+describe("an outline that has become a sermon document (A2.2)", () => {
+  it("refuses every legacy action with document_authoritative, writes nothing, and renders nothing again", async () => {
+    const { outlineId, one, two } = await outlined();
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+    const before = await everything();
+    state.revalidatePath.mockClear();
+
+    const refused = {
+      ok: false,
+      code: "document_authoritative",
+      message:
+        "This outline is now a sermon document, so changes here can no longer be saved. Your text is still on this page.",
+    };
+    expect(await addEntry({ outlineId, title: "Three" })).toEqual(refused);
+    expect(await updateEntry(one, { title: "Renamed" })).toEqual(refused);
+    expect(await setEntryReferences(one, [])).toEqual(refused);
+    expect(await moveEntry(two, { parentId: null, position: 0 })).toEqual(refused);
+    expect(await removeEntry(two)).toEqual(refused);
+    expect(await setOutlineNumbering(outlineId, { version: 1, preset: "roman" })).toEqual(refused);
+
+    expect(await everything()).toEqual(before);
+    expect(state.revalidatePath).not.toHaveBeenCalled();
+
+    state.locale = "es";
+    expect(await updateEntry(one, { title: "Otro" })).toMatchObject({
+      code: "document_authoritative",
+      message: expect.stringContaining("documento del sermón"),
+    });
   });
 });

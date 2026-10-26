@@ -39,6 +39,8 @@ export type OutlineActionCode =
   | "cycle"
   | "full"
   | "unknown_source"
+  /** The outline is now a sermon document (A2.2): its entries take no more changes. Not stale; reading it again changes nothing. */
+  | "document_authoritative"
   | "failed";
 
 /**
@@ -162,15 +164,18 @@ export async function setOutlineNumbering(
   if (!parsed.success) return firstIssue(parsed.error, t.invalid);
 
   try {
-    const outline = await outlines.setNumbering(
+    const outcome = await outlines.setNumbering(
       getDb(),
       actor.user.id,
       outlineId.data,
       parsed.data,
     );
-    if (!outline) return refused("missing", t.missing);
-    refresh(outline.id);
-    return { ok: true, message: t.numberingSaved, ...made(outline) };
+    if (outcome.status === "missing") return refused("missing", t.missing);
+    if (outcome.status === "document_authoritative") {
+      return refused("document_authoritative", t.documentAuthoritative);
+    }
+    refresh(outcome.outline.id);
+    return { ok: true, message: t.numberingSaved, ...made(outcome.outline) };
   } catch (error) {
     console.error("Outline numbering update failed:", describeDatabaseError(error));
     return refused("failed", t.notSaved);
@@ -238,6 +243,8 @@ export async function addEntry(input: unknown, id?: unknown): Promise<OutlineAct
       return refused("unknown_source", t.unknownSource);
     case "unavailable":
       return refused("failed", t.notSaved);
+    case "document_authoritative":
+      return refused("document_authoritative", t.documentAuthoritative);
     case "existing":
     // A retry: it was added the first time, and that is the answer again.
     case "created":
@@ -258,6 +265,9 @@ function wordsSaved(
   message: string,
 ): OutlineActionResult {
   if (outcome.status === "missing") return refused("missing", t.missingEntry);
+  if (outcome.status === "document_authoritative") {
+    return refused("document_authoritative", t.documentAuthoritative);
+  }
   if (outcome.status === "stale") {
     // With the entry as it stands, so the editor can show what it lost to.
     return { ...refused("stale_entry", t.staleEntry), entry: outcome.entry };
@@ -351,6 +361,8 @@ export async function moveEntry(id: unknown, input: unknown): Promise<OutlineAct
       return refused("invalid_parent", t.invalidParent);
     case "cycle":
       return refused("cycle", t.cycle);
+    case "document_authoritative":
+      return refused("document_authoritative", t.documentAuthoritative);
     case "moved": {
       const { id: movedId, outlineId, parentId, position } = outcome.entry;
       refresh(outlineId);
@@ -386,6 +398,9 @@ export async function removeEntry(
     return refused("failed", t.notSaved);
   }
   if (outcome.status === "missing") return refused("missing", t.missingEntry);
+  if (outcome.status === "document_authoritative") {
+    return refused("document_authoritative", t.documentAuthoritative);
+  }
   if (outcome.status === "stale") {
     return { ...refused("stale", t.stale), revision: outcome.revision };
   }

@@ -330,7 +330,10 @@ describe("changing the numbering", () => {
     });
     for (const numbering of [{ version: 1, preset: "bullets" } as const, custom]) {
       const saved = await setNumbering(db, me, id, numbering);
-      expect(saved).toMatchObject({ id, numbering, revision: outline!.revision });
+      expect(saved).toMatchObject({
+        status: "updated",
+        outline: { id, numbering, revision: outline!.revision },
+      });
       expect((await getOutline(db, me, id))?.numbering).toEqual(numbering);
     }
     // No title, note, parent, place, or revision of any entry moved.
@@ -339,7 +342,9 @@ describe("changing the numbering", () => {
 
   it("is refused for another account's outline, which keeps its own", async () => {
     const { id } = await outlined("Grace");
-    expect(await setNumbering(db, other, id, { version: 1, preset: "none" })).toBeNull();
+    expect(await setNumbering(db, other, id, { version: 1, preset: "none" })).toEqual({
+      status: "missing",
+    });
     expect((await getOutline(db, me, id))?.numbering).toEqual(defaultNumbering);
   });
 

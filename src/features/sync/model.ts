@@ -58,6 +58,10 @@ export const ideaDeletePayloadSchema = z.object({ outline: z.boolean().default(f
  *   `fields` the device changed too, to something else; `entry` is it now.
  * - `entryMissing`: the entry was removed from the outline since.
  * - `placement`: where an entry was to go is no longer a place it can go.
+ * - `documentAuthoritative`: the outline has become a sermon document (A2.2),
+ *   so a change to its legacy entries or numbering can no longer be applied.
+ *   Nothing was written; the device keeps the change, and its text, until the
+ *   person discards it. It is not stale: trying again would be refused again.
  */
 export type SyncConflict =
   | { reason: "missingTags"; missingTagIds: string[] }
@@ -68,7 +72,8 @@ export type SyncConflict =
   | { reason: "outlineStale"; revision: number }
   | { reason: "entryStale"; entry: ServerEntry; fields: ("title" | "notes" | "references")[] }
   | { reason: "entryMissing" }
-  | { reason: "placement" };
+  | { reason: "placement" }
+  | { reason: "documentAuthoritative" };
 
 export type SyncOutcome =
   /**

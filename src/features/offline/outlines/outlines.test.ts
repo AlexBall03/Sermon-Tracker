@@ -19,7 +19,7 @@ import { createDeviceOutlineApi } from "./operations";
 import { refreshOutlines } from "./refresh";
 import { createOutlineSaving } from "./routing";
 import { getKeptOutline, outlineRecord, shownOutline } from "./store";
-import { afterApplied, settleOutline } from "./sync";
+import { afterApplied, outlineChoicesFor, settleOutline } from "./sync";
 
 /*
  * Phase 5D.2: an account's outlines on the device. The editor's store saves
@@ -447,6 +447,44 @@ describe("conflicts", () => {
     expect(sent).toMatchObject({ type: "outline.entry.add", status: "pending" });
     expect(sent.baseRevision).toBeUndefined();
     expect(sent.payload).toMatchObject({ type: "point", parentId: null, title: "Mine" });
+  });
+
+  it("keeps a change to an outline that became a sermon document until the person discards it", async () => {
+    await keep(A, outline());
+    const { store } = editor();
+    store.setTitle(p1, "Mine");
+    store.flush();
+    await settled(store);
+    store.move(p2, null, 0);
+    await settled(store);
+    const record = await conflicted("outline.entry.update", { reason: "documentAuthoritative" });
+    expect(outlineChoicesFor(record)).toEqual(["discard"]);
+
+    // A download changes nothing of what is kept here.
+    const fetcher = vi.fn(async (url: string) => {
+      const ids = new URL(url, "http://local").searchParams.get("ids");
+      const server = outline({ revision: 9, updatedAt: "2026-10-02T10:00:00.000Z" });
+      const { entries: _entries, sermonReferences: _refs, numbering: _n, ...summary } = server;
+      void _entries;
+      void _refs;
+      void _n;
+      return new Response(JSON.stringify({ owner: A, outlines: ids ? [server] : [summary] }), {
+        status: 200,
+      });
+    });
+    expect(await refreshOutlines(A, { fetcher, locks: null })).toBe("done");
+    expect(fetcher).toHaveBeenCalled();
+    expect((await queued()).map((item) => item.status)).toEqual(["conflict", "pending"]);
+    expect((await getKeptOutline(A, outlineId))?.local?.entries[0]).toMatchObject({
+      title: "Mine",
+    });
+
+    // Discarding it drops that change alone: the one behind it, and the copy, stay.
+    expect(await settleOutline(A, record, "discard")).toBeNull();
+    const left = await queued();
+    expect(left.map((item) => item.type)).toEqual(["outline.entry.move"]);
+    const kept = await getKeptOutline(A, outlineId);
+    expect(kept?.local?.entries.find((entry) => entry.id === p1)?.title).toBe("Mine");
   });
 
   it("forgets an outline deleted from the account only when the person discards", async () => {

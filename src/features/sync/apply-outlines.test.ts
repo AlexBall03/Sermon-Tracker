@@ -2,7 +2,14 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { ideas, sermonOutlines, users } from "@/db/schema";
+import {
+  ideas,
+  outlineEntries,
+  sermonOutlineDocuments,
+  sermonOutlines,
+  syncOperations,
+  users,
+} from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import { createIdea } from "@/features/ideas/ideas";
@@ -11,6 +18,7 @@ import { createEntry, getEntry, moveEntry, updateEntry } from "@/features/outlin
 import { createOutline, getOutline, listOutlines } from "@/features/outlines/outlines";
 import type { OutlinesQuery } from "@/features/outlines/outlines-query";
 import { searchLocalOutlines } from "@/features/offline/outlines/search";
+import { convertOutline } from "@/features/sermon-editor/persistence/conversion";
 import { applyMutation } from "./apply";
 import type { SyncEnvelope, SyncType } from "./model";
 import { offlineOutlines, outlineManifestFor } from "./snapshot";
@@ -317,5 +325,82 @@ describe("the offline overview", () => {
         ]);
       }
     }
+  });
+});
+
+describe("an outline that has become a sermon document (A2.2)", () => {
+  const john316 = { book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: null };
+
+  /** Everything the outline's changes could touch. */
+  async function state() {
+    return {
+      outline: (await db.select().from(sermonOutlines).where(eq(sermonOutlines.id, outlineId)))[0],
+      entries: await db
+        .select()
+        .from(outlineEntries)
+        .where(eq(outlineEntries.outlineId, outlineId)),
+      documents: await db.select().from(sermonOutlineDocuments),
+      sermon: (await db.select().from(ideas).where(eq(ideas.id, sermonId)))[0],
+      operations: await db.select().from(syncOperations),
+    };
+  }
+
+  it("answers every queued legacy change as a documentAuthoritative conflict, writing nothing", async () => {
+    const first = await point("First");
+    const second = await point("Second");
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+    const revision = await outlineRevision();
+    const before = await state();
+
+    const changes = [
+      change(
+        "outline.entry.add",
+        { entryId: crypto.randomUUID(), type: "point", parentId: null, title: "New" },
+        revision,
+      ),
+      change(
+        "outline.entry.update",
+        { entryId: first.id, title: "Renamed", base: { title: "First" } },
+        0,
+      ),
+      // Made on an older revision too: still refused, never merged in.
+      change(
+        "outline.entry.update",
+        { entryId: first.id, notes: "Notes", base: { notes: null } },
+        7,
+      ),
+      change("outline.entry.references", { entryId: first.id, references: [john316], base: [] }, 0),
+      change("outline.entry.move", { entryId: second.id, parentId: null, position: 0 }, revision),
+      change("outline.entry.remove", { entryId: second.id }, revision),
+      change("outline.numbering", { numbering: { version: 1, preset: "traditional" } }),
+    ];
+    for (const envelope of changes) {
+      expect(await apply(envelope)).toEqual({
+        status: "conflict",
+        conflict: { reason: "documentAuthoritative" },
+      });
+    }
+    // Nothing written, and no operation recorded, so none is ever mistaken for applied.
+    expect(await state()).toEqual(before);
+  });
+
+  it("still answers a change applied before the conversion as a duplicate", async () => {
+    const entryId = crypto.randomUUID();
+    const envelope = change(
+      "outline.entry.add",
+      { entryId, type: "point", parentId: null, position: 0, title: "Before" },
+      0,
+    );
+    expect(await apply(envelope)).toMatchObject({ status: "applied" });
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+
+    expect(await apply(envelope)).toEqual({ status: "duplicate", entityId: outlineId });
+    // The same change under a new op is new, and is refused.
+    expect(await apply({ ...envelope, opId: crypto.randomUUID() })).toEqual({
+      status: "conflict",
+      conflict: { reason: "documentAuthoritative" },
+    });
+    const [document] = await db.select().from(sermonOutlineDocuments);
+    expect(JSON.stringify(document.content)).toContain("Before");
   });
 });

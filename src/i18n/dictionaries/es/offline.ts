@@ -48,6 +48,8 @@ export const offline: Untranslated<typeof english> = {
       entryMissing: "Esta parte del bosquejo se quitó en tu cuenta.",
       placement: "El lugar donde iba ya no está en el bosquejo.",
       missingOutline: "Este bosquejo se eliminó de tu cuenta.",
+      documentAuthoritative:
+        "Este bosquejo pasó a ser un documento del sermón en tu cuenta, así que este cambio no se puede añadir aquí. Se guarda hasta que lo descartes.",
     },
     fields: {
       title: "título",

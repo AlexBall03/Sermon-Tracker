@@ -46,6 +46,8 @@ export const offline = {
       entryMissing: "This part of the outline was removed in your account.",
       placement: "Where it was to go is no longer in the outline.",
       missingOutline: "This outline was deleted from your account.",
+      documentAuthoritative:
+        "This outline became a sermon document in your account, so this change can't be added to it here. It's kept until you discard it.",
     },
     fields: {
       title: "title",

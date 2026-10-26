@@ -17,7 +17,13 @@ import {
 
 /*
  * Sermon document persistence (A2.1): one schema v4 document to an outline,
- * in `sermon_outline_documents`, and nothing else reads or writes that table.
+ * in `sermon_outline_documents`, and nothing else reads or writes that table
+ * (but for `authority.ts`, which only asks whether a row is there).
+ *
+ * Since A2.2 a row is the outline's content authority: an outline with one
+ * takes no more legacy entry writes. An outline's first document is made by
+ * converting its entries (`conversion.ts`); `createDocument` stays for that
+ * module's tests and internal use, and no action calls it.
  *
  * - Every statement has the owner in its WHERE clause, so another account's
  *   document and one that does not exist are the same answer. The owner is
@@ -153,6 +159,28 @@ export async function createDocument(
   // Refused by the key: the outline has a document already, perhaps from a moment ago.
   const revision = await currentRevision(db, ownerId, outlineId);
   return revision === null ? { status: "missing" } : { status: "exists", revision };
+}
+
+/**
+ * Inserts an outline's first document inside a transaction that already holds
+ * the outline's locks and has checked it is the owner's (A2.2,
+ * `conversion.ts`). `content` must be what `prepareDocument` returned. A
+ * document already there is left exactly as it is, and the answer is null.
+ * Nothing is caught: a failure aborts the caller's transaction, which then
+ * writes nothing at all.
+ */
+export async function insertPreparedDocument(
+  tx: Database,
+  ownerId: string,
+  outlineId: string,
+  content: JSONContent,
+): Promise<StoredDocument | null> {
+  const [created] = await tx
+    .insert(sermonOutlineDocuments)
+    .values({ outlineId, ownerId, content, revision: 0 })
+    .onConflictDoNothing({ target: sermonOutlineDocuments.outlineId })
+    .returning();
+  return created ? asStored(created) : null;
 }
 
 /**

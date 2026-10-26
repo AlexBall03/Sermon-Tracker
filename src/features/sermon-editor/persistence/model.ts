@@ -64,3 +64,28 @@ export type UpdateDocumentOutcome =
   /** No document for that outline among the owner's. */
   | { status: "missing" }
   | DocumentRefusal;
+
+/**
+ * Why an outline was not converted because doing so could change what it
+ * says (A2.2). `code` is a `legacyToDocument` issue, or `not_lossless` when
+ * the converted document, read back as entries, is not exactly the outline.
+ * Codes, IDs, and field names only: never the outline's words.
+ */
+export type ConversionProblem = {
+  code: string;
+  entryId?: string;
+  detail?: string;
+};
+
+export type ConvertOutlineOutcome =
+  /** The outline's first document, made from its entries, at revision 0. It is now the outline's authority. */
+  | { status: "converted"; document: StoredDocument }
+  /** It had a document already, which was left exactly as it was. */
+  | { status: "exists"; revision: number }
+  /** It has a document that is no longer accepted. Left exactly as it was, never converted over. */
+  | { status: "unreadable"; revision: number; problems: DocumentProblem[] }
+  /** No such outline among the owner's. */
+  | { status: "missing" }
+  /** Converting it could lose or change something. It stays a legacy outline, untouched. */
+  | { status: "unsafe"; problems: ConversionProblem[] }
+  | DocumentRefusal;

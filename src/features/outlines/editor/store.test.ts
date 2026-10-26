@@ -285,6 +285,28 @@ describe("a save that fails", () => {
     expect(status()).toBe("saved");
   });
 
+  it("stops, keeping the text, when the outline has become a sermon document", async () => {
+    const { store, api, reload, status, row } = editor();
+    const authoritative: OutlineActionResult = {
+      ok: false,
+      code: "document_authoritative",
+      message: "This outline is now a sermon document.",
+    };
+    api.updateEntry.mockResolvedValue(authoritative);
+    api.moveEntry.mockResolvedValue(authoritative);
+    store.setTitle("a", "Kept");
+    await pause();
+    expect(status()).toBe("failed");
+    expect(store.getState().problem).toBe("This outline is now a sermon document.");
+    expect(row("a")?.title).toBe("Kept");
+    expect(hasUnsavedWork()).toBe(true);
+
+    // Not read again (it would only be refused again), and not tried again by itself.
+    await pause(120000);
+    expect(reload).not.toHaveBeenCalled();
+    expect(api.updateEntry).toHaveBeenCalledTimes(1);
+  });
+
   it("stops trying after three more attempts, and tries again when asked", async () => {
     const { store, api, status } = editor();
     const down: OutlineActionResult = { ok: false, code: "failed", message: "Not saved." };

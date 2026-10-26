@@ -136,6 +136,10 @@ export function outlineChoicesFor(record: MutationRecord): OutlineChoice[] {
       return isWords(record) ? ["addAsPoint", "discard"] : ["discard"];
     case "placement":
       return record.type === "outline.entry.add" ? ["addAtEnd", "discard"] : ["discard"];
+    // The outline is a sermon document now (A2.2). Carrying the change into it
+    // is A2.3's; until then the change is kept, with its text, until discarded.
+    case "documentAuthoritative":
+      return ["discard"];
     default:
       return ["discard"];
   }
@@ -263,6 +267,13 @@ export async function settleOutline(owner: string, record: MutationRecord, choic
     case "discard":
       if (conflict.reason === "missing") {
         await discardOutlineChanges(owner, outlineId, true);
+        return null;
+      }
+      // Only this change: each one behind it is the person's to discard in its
+      // turn, and the copy keeps what they say while any is left.
+      if (conflict.reason === "documentAuthoritative") {
+        await drop(owner, [record]);
+        await afterDropping(owner, outlineId);
         return null;
       }
       await drop(owner, [record, ...(entryId ? await behind(owner, record, () => true) : [])]);

@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ideas, sermonOutlineDocuments, users } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+import { ideas, sermonOutlineDocuments, sermonOutlines, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
@@ -22,7 +24,7 @@ vi.mock("@/features/auth/access", () => ({
   authorize: async (): Promise<Authorization> => state.access as Authorization,
 }));
 
-import { createOutlineDocument, saveOutlineDocument } from "./actions";
+import { convertOutlineDocument, saveOutlineDocument } from "./actions";
 
 let db: Database;
 let me: string;
@@ -78,7 +80,7 @@ afterEach(() => {
 
 describe("sermon document actions", () => {
   it("refuses a caller who is not signed in, and writes nothing", async () => {
-    expect(await createOutlineDocument(outlineId, sermon("Grace"))).toEqual({
+    expect(await convertOutlineDocument(outlineId)).toEqual({
       ok: false,
       message: signedOut,
     });
@@ -89,11 +91,12 @@ describe("sermon document actions", () => {
     expect(await db.select().from(sermonOutlineDocuments)).toHaveLength(0);
   });
 
-  it("creates and saves as the signed-in account, never as one the input names", async () => {
+  it("converts and saves as the signed-in account, never as one the input names", async () => {
     signInAs(me);
-    expect(await createOutlineDocument(outlineId.toUpperCase(), sermon("Grace"))).toMatchObject({
+    expect(await convertOutlineDocument(outlineId.toUpperCase())).toMatchObject({
       ok: true,
       revision: 0,
+      message: "This outline is now a sermon document.",
     });
     expect(await saveOutlineDocument(outlineId, sermon("Grace, again"), 0)).toMatchObject({
       ok: true,
@@ -103,7 +106,7 @@ describe("sermon document actions", () => {
     expect(row).toMatchObject({ outlineId, ownerId: me, revision: 1 });
 
     // Another account's outline is the same answer as one that does not exist.
-    expect(await createOutlineDocument(theirs, sermon("Mine now"))).toMatchObject({
+    expect(await convertOutlineDocument(theirs)).toMatchObject({
       ok: false,
       code: "missing",
     });
@@ -115,7 +118,7 @@ describe("sermon document actions", () => {
 
   it("refuses a bad ID or revision before anything is read", async () => {
     signInAs(me);
-    expect(await createOutlineDocument("nope", sermon("Grace"))).toMatchObject({ code: "invalid" });
+    expect(await convertOutlineDocument("nope")).toMatchObject({ code: "invalid" });
     for (const revision of [undefined, -1, 1.5, "0", null]) {
       expect(await saveOutlineDocument(outlineId, sermon("Grace"), revision)).toMatchObject({
         code: "invalid",
@@ -125,13 +128,13 @@ describe("sermon document actions", () => {
 
   it("answers each refusal with its code", async () => {
     signInAs(me);
-    expect(await createOutlineDocument(outlineId, { type: "nope" })).toMatchObject({
+    expect(await saveOutlineDocument(outlineId, { type: "nope" }, 0)).toMatchObject({
       ok: false,
       code: "invalid",
       problems: [{ code: "not_a_document" }],
     });
-    await createOutlineDocument(outlineId, sermon("Grace"));
-    expect(await createOutlineDocument(outlineId, sermon("Again"))).toMatchObject({
+    await convertOutlineDocument(outlineId);
+    expect(await convertOutlineDocument(outlineId)).toMatchObject({
       code: "exists",
       revision: 0,
     });
@@ -144,6 +147,36 @@ describe("sermon document actions", () => {
     const tooLarge = await saveOutlineDocument(outlineId, huge, 1);
     expect(tooLarge).toMatchObject({ ok: false, code: "too_large", limit: documentLimits.bytes });
     expect(tooLarge.message).toContain("512 KB");
+  });
+
+  it("refuses an outline that could not be converted without loss, and one stored unreadable", async () => {
+    signInAs(me);
+    // A numbering that no longer parses: the outline shows the default, so converting would change it.
+    await db
+      .update(sermonOutlines)
+      .set({ numberingConfig: { version: 99 } as never })
+      .where(eq(sermonOutlines.id, outlineId));
+    expect(await convertOutlineDocument(outlineId)).toMatchObject({
+      ok: false,
+      code: "unsafe",
+      conversion: [{ code: "invalid_numbering" }],
+    });
+    expect(await db.select().from(sermonOutlineDocuments)).toHaveLength(0);
+
+    // Another outline whose stored document the core no longer accepts.
+    const second = await outlined(me);
+    await db
+      .insert(sermonOutlineDocuments)
+      .values({
+        outlineId: second,
+        ownerId: me,
+        content: { type: "doc", attrs: { schemaVersion: 99 } },
+      });
+    expect(await convertOutlineDocument(second)).toMatchObject({
+      ok: false,
+      code: "unreadable",
+      revision: 0,
+    });
   });
 
   it("answers in the account's language", async () => {
@@ -170,7 +203,7 @@ describe("sermon document actions", () => {
         },
       },
     );
-    expect(await createOutlineDocument(outlineId, sermon("Grace"))).toMatchObject({
+    expect(await convertOutlineDocument(outlineId)).toMatchObject({
       ok: false,
       code: "failed",
     });

@@ -350,12 +350,13 @@ describe("the legacy outline", () => {
     // Not the sermon either: no date moves, and nothing counts as developing it.
     expect(await idea()).toEqual(sermonBefore);
 
-    // The legacy editor's writes go on as before, and leave the document alone.
+    // Since A2.2 the document is the outline's authority: a legacy write is
+    // refused, and neither the entries nor the document change.
     const [before] = await documentRows();
     expect(
       (await updateEntry(db, me, added.entry.id, { title: "Point one, renamed" })).status,
-    ).toBe("updated");
-    expect((await getOutline(db, me, outlineId))!.revision).toBe(outline!.revision);
+    ).toBe("document_authoritative");
+    expect(await listEntries(db, me, outlineId)).toEqual(entries);
     expect(await documentRows()).toEqual([before]);
   });
 

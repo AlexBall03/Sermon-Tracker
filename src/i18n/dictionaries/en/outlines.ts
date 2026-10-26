@@ -38,11 +38,20 @@ export const outlines = {
     entryRemoved: "Removed from the outline.",
     referencesSaved: "Passages saved.",
     /** A sermon document (A2.1). */
-    documentCreated: "Sermon document created.",
+    documentConverted: "This outline is now a sermon document.",
     documentSaved: "Saved.",
     documentExists: "This outline already has a sermon document.",
     documentTooLarge: (limit: string) =>
       `This sermon document is larger than ${limit}, so it was not saved. Nothing was removed from it.`,
+    /** Content authority (A2.2). */
+    documentAuthoritative:
+      "This outline is now a sermon document, so changes here can no longer be saved. Your text is still on this page.",
+    documentUnreadable:
+      "This outline's sermon document can't be read right now. It was left exactly as it was.",
+    conversionUnsafe:
+      "This outline can't become a sermon document without changing what it says, so it stays as it is.",
+    conversionTooLarge: (limit: string) =>
+      `As a sermon document this outline would be larger than ${limit}, so it stays as it is. Nothing was removed from it.`,
   },
   page: {
     metaTitle: "Outline",
