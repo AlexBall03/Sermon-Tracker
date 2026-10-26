@@ -12,12 +12,18 @@ import type { DocumentProblem } from "@/features/sermon-editor/document";
  * The most a stored document may be, in UTF-8 bytes of its JSON. One place,
  * and not a CHECK in the table, so it can be changed without a migration.
  *
- * 512 KiB to begin with (the owner's decision, A2.1): measured, a typical
- * outline is about 36 KB and a very large one about 310 KB, and a Server
- * Action's body is refused over 1 MB by default. It is not a permanent limit
- * on what a sermon may hold; A2.3 reassesses it with real editing.
+ * 3 MiB (the owner's decision, A2.3A; 512 KiB in A2.1). Measured, a typical
+ * outline is about 36 KB, a very large one about 310 KB, and a legacy outline
+ * at every limit about 2.4 MB, so every ASCII legacy outline fits.
+ *
+ * A save travels as a Server Action, whose body is limited separately by
+ * `experimental.serverActions.bodySizeLimit` in `next.config.ts` (4 MB): above
+ * this limit, so a document a little over it still reaches `prepareDocument`
+ * and is refused as `too_large` rather than by the framework, and below
+ * Vercel's 4.5 MB request cap. `transport.test.ts` holds the two together.
+ * Raising this much further needs another transport (handoff PS-A2, A2.3A).
  */
-export const documentLimits = { bytes: 512 * 1024 } as const;
+export const documentLimits = { bytes: 3 * 1024 * 1024 } as const;
 
 const encoder = new TextEncoder();
 

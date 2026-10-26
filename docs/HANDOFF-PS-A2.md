@@ -972,3 +972,179 @@ An empty outline converts to a valid document (one empty paragraph), so a new ou
 ### Ready for owner review
 
 **Yes.** Every safety property in the brief is built and tested, and the concurrency claims are proved on two real connections. Nothing is committed, deployed, or migrated.
+
+## A2.3A: Persistence and local durability contracts (26 October 2026)
+
+**Status:** built and verified with focused tests. Not committed, not deployed, and no migration run anywhere.
+
+**Git:** began on `dev` at `a5009f7` with a clean tree. Ends there, with the files below changed or new and nothing staged.
+
+### Approved by the owner (binding)
+
+Full-document schema v4 saves; durable local recovery in IndexedDB; no more than one server save in flight per controller; no automatic merging of conflicting sermons; a 3 MiB target for the canonical document; manual recovery of legacy offline conflicts; production editor integration in A3.
+
+### What was found
+
+- **`accountData` already fits.** Key `[owner, kind, id]`, indexes `owner` and `ownerKind`.
+  - Every bulk removal there (`removeKeptIdeas`, `removeKeptOutlines`, the downloads' `keep`) is limited to its own kinds.
+  - Only `forgetAccount` removes every kind of an owner, and only `delete-account.tsx` calls it, after a confirmed deletion. Signing out only forgets the active account.
+  - So a new kind needs no IndexedDB migration and no change to `forgetAccount`.
+- **The transport.** No `serverActions` configuration existed, so Next's 1 MB default applied (`action-handler.js` counts the raw body and answers 413 above it). The proxy buffers up to 10 MB (`proxyClientMaxBodySize`). Vercel refuses a request body over 4.5 MB.
+- **The editor's JSON cannot be sent as it is.** ProseMirror's `toJSON` (and so `editor.getJSON()`) gives `attrs` objects with a null prototype, and React's action encoder throws on them: "Only plain objects, and a few built-ins, can be passed to Server Functions." A save must send a plain copy (`prepareSave`). Without it, A2.3B's first save would have thrown in the browser.
+- **This handoff** has the A2.2 section twice (around lines 421 and 755), and the first copy also repeats A2.1's final review. Left as found.
+
+### Size and transport
+
+- **`documentLimits.bytes` is 3 × 1024 × 1024** (3,145,728) UTF-8 bytes of JSON. `prepareDocument` still checks it twice (raw input, then canonical form) around `restoreSermonDocument`. Validation is unchanged.
+- **`experimental.serverActions.bodySizeLimit` is `"4mb"`** (4,194,304 bytes, `next.config.ts`):
+  - 1 MiB above the document limit, so a document a little over it still reaches the service and is answered `too_large`, rather than refused by the framework;
+  - under Vercel's 4.5 MB cap and the proxy's 10 MB;
+  - it applies to every Server Action. Each still validates its own input; no other takes large bodies.
+- **Measured** on this machine (Node, vitest; indicative), on a realistic document of 4,550 points and paragraphs, 3,144,670 bytes:
+
+  | Step | Time |
+  | --- | --- |
+  | `JSON.stringify` | 8 ms |
+  | plain copy (`prepareSave`'s parse) | 14 ms |
+  | `restoreSermonDocument` + `toJSON` | 21 ms |
+  | `prepareDocument` | 25 ms |
+  | `encodeReply` (the client's action encoding) | 50 ms |
+  | `createDocument` / `updateDocument` on PGlite | 201 / 144 ms |
+  | fake-indexeddb put / get of the same | 33 / 19 ms |
+
+  - The encoded body was **43 bytes** larger than the document.
+  - `transport.test.ts` proves the same at exactly the limit for ASCII, accented, emoji, and quote-heavy text: under 4 KiB of overhead each, and under the body limit.
+- **Conversion.** Every ASCII legacy outline now fits (about 2.4 MB at every legacy limit). `too_large` on conversion is reachable only with multi-byte text, since the notes CHECK counts characters; its test now uses 400 entries of 2,000 emoji.
+- **The `too_large` message** now says "3,072 KB".
+- **Not measured:** a real browser's structured clone and IndexedDB write of 3 MiB, Neon's latency for a 3 MiB `jsonb` write, and a deployed function's memory. A2.3B measures in the browser.
+
+### Recovery drafts (`persistence/recovery`)
+
+**The record.** One `accountData` record per draft: `[users.id, "documentDraft", "<outlineId>:<draftId>"]`.
+- Both IDs are lowercase UUIDs, so one outline's drafts are one key range.
+- `draftId` is a UUID the controller makes for its own session, so two tabs never overwrite each other.
+- The record's own `updatedAt` is the update time. Its `data`:
+
+| Field | Meaning |
+| --- | --- |
+| `format` | `1`. A higher number is `unsupported`; anything else is `malformed`. |
+| `content` | The newest snapshot this session kept: v4 JSON as the editor gave it. |
+| `sequence` | The client's sequence of `content`, rising per session. |
+| `confirmedSequence` | The highest sequence of this session the server confirmed (0: none since the draft began). Always below `sequence`. |
+| `baseRevision` | The document revision the next save of `content` names. Never goes back. |
+| `refusal?` | `{ code, sequence, revision?, at }`, `code` one of `stale`, `missing`, `invalid`, `too_large`: the server refused that snapshot's save. |
+| `createdAt` | When the draft began. |
+
+The outline and session are not repeated in `data`; they are the key. One snapshot is kept per draft: no history, no second copy.
+
+**Status.**
+- `pending`: content the server is not known to have.
+- `conflict`: a refusal, waiting for the person.
+- "Confirmed" is never stored: a draft whose snapshot the server confirmed is deleted.
+- A draft another session finds is a **recovery candidate**. Its relationship to the server is **uncertain** by definition, since its last save may have landed. A2.3C settles that by comparing with `getDocument`, never by assuming.
+
+**Operations** (`store.ts`), each one IndexedDB transaction that reads and decides under it:
+
+| Function | Result |
+| --- | --- |
+| `writeDraft(owner, { outlineId, draftId, content, sequence, baseRevision })` | `written`, or `superseded` when the draft holds this sequence or a later one (nothing written). Keeps `createdAt`, `confirmedSequence`, and a refusal; `baseRevision` is the larger of the given and the stored. |
+| `confirmDraft(owner, { …, sequence, revision })` | `cleared` (held exactly that snapshot: deleted); `advanced` (holds a newer one: kept, `confirmedSequence` and `baseRevision` move, and a refusal of that snapshot or an older one is lifted); or `ignored` (no draft, already counted, or a snapshot never kept). |
+| `refuseDraft(owner, { …, sequence, code, revision? })` | `refused` (content untouched), or `ignored` (no draft, a snapshot not kept, or one already confirmed). |
+| `discardDraft(owner, { …, sequence })` | The person's choice: `discarded` only if it still holds that snapshot, `kept` if a newer one was written since. |
+| `discardUnreadableDraft(owner, id)` | The person's choice for a `malformed` or `unsupported` record. Never removes a readable draft. |
+| `readDraft`, `listDrafts(owner, outlineId)`, `listAccountDrafts(owner)` | `DraftRead`s: `ok`, `unsupported`, or `malformed`. |
+
+**Atomicity.** IndexedDB runs read-write transactions over one store one at a time, in the order they began, so a write and an acknowledgment that overlap are each decided against what the other left.
+- Tested: write 10, write 11, confirm 10 keeps 11.
+- Tested: a write of 11 and a confirmation of 10 started together end with 11 kept, at the new revision.
+
+**One contract for A2.3B.** A controller issues its writes for one draft in sequence order, and updates the revision it holds before writing a later snapshot. An older snapshot written late, *after* the draft was cleared, would start a new draft from old content. That loses nothing (its save would be `stale`), but it would be a false recovery candidate.
+
+**Account isolation.**
+- Every key is built from the owner the caller passes.
+- A record whose owner field, kind, or ID disagrees with how it was asked for is `malformed`, and its content is never returned.
+- The module decides nothing about who is signed in. The server authorizes every save; the owner is a scope, not a lock.
+
+**Lifecycle.**
+- A draft survives a reload, a closed tab or browser, signing out, a lost session, and another account signing in.
+- It is removed only by an exact confirmation, the person's discard, or account deletion (`forgetAccount`, unchanged; tested).
+- Turning off "Keep my outlines on this device", or removing downloaded outlines, does not touch it.
+
+**Errors.** Every failure is a `DraftStorageError` with a `kind`:
+- `invalid`: an argument refused before storage is touched (an empty owner, an ID that is not a UUID, a sequence that is not a positive integer, a negative revision, content that is not a `doc`);
+- `unavailable`: IndexedDB missing or refused;
+- `quota`: out of space; the stored draft is left as it was;
+- `unreadable`: a write to a record that cannot be read, which is never written over;
+- `failed`: anything else.
+
+Nothing is swallowed, nothing is cut, and nothing is size-capped on the device: words are never refused locally.
+
+**What it does not guarantee:**
+- that the server has a draft: a draft is never a save;
+- protection from anyone using the same browser profile: IndexedDB is not encrypted;
+- survival of the browser clearing or evicting site storage (`requestPersistence` asks; the browser may refuse);
+- that `content` is still a document the schema accepts: recovery restores it through the core first.
+
+### The save contract (`persistence/saving.ts`)
+
+- **`DocumentSaveRequest`:** `{ outlineId, content, expectedRevision, sequence }`. `sequence` is never sent; it matches the answer to the snapshot.
+- **`prepareSave(content)`:** `{ ok: true, content, bytes }` with a plain copy, or `{ ok: false, bytes, limit }` over `documentLimits`. An oversized document is never sent: much larger, the framework's 413 would look like a failure worth retrying.
+- **`saveOutcome(sequence, result)`** reads `saveOutlineDocument`'s `DocumentActionResult`:
+  - `confirmed`, with the new revision;
+  - `conflict`, for `stale` (with the current revision) or `missing`: read again, never overwrite;
+  - `refused`, for `invalid` (with problems) or `too_large` (with sizes): keep everything;
+  - `unauthorized`, when `authorize` refused (no code): keep the draft;
+  - `failed`: `uncertain: false` for `code: "failed"` (the transaction wrote nothing); `uncertain: true` for a success without a revision or an unexpected code.
+- **`unansweredOutcome(sequence)`:** `failed` with `uncertain: true`, for a thrown action or no answer. The server may have saved it.
+- No competing revision, schema, validator, or server session table. The PostgreSQL revision stays the concurrency control.
+
+### Files
+
+- **New:**
+  - `src/features/sermon-editor/persistence/recovery/model.ts`, `store.ts`, `recovery.test.ts`;
+  - `src/features/sermon-editor/persistence/saving.ts`, `saving.test.ts`;
+  - `src/features/sermon-editor/persistence/transport.test.ts`, with `next-compiled.d.ts` (types for Next's untyped `bytes` and action encoder, used only by that test).
+- **Changed:**
+  - `next.config.ts`: `experimental.serverActions.bodySizeLimit`;
+  - `src/features/sermon-editor/persistence/model.ts`: the limit and its comment;
+  - `actions.test.ts` ("3,072 KB") and `conversion.test.ts` (multi-byte notes for `too_large`);
+  - `AGENTS.md`, `ARCHITECTURE.md` ("Sermon documents"), `docs/DATABASE.md`, `docs/PREACHER-STUDIO-MIGRATION.md`, and this handoff.
+
+### Verification
+
+- `vitest run src/features/sermon-editor/persistence src/features/offline/offline.test.ts src/features/offline/outlines src/features/account/deletion.test.ts`: 9 files, 113 tests, 1 failed. `actions.test.ts` still asserted "512 KB"; that assertion was updated.
+- Then `vitest run src/features/sermon-editor/persistence`: 6 files, 80 passed. That includes `recovery.test.ts` (17), `saving.test.ts`, `transport.test.ts`, `documents.test.ts` (the 3 MiB boundary: exactly the limit accepted, one byte more refused, UTF-8 counted, revision checks unchanged), and `conversion.test.ts`.
+- `vitest run src/features/sermon-editor/persistence/actions.test.ts src/features/sermon-editor/document`: 3 files, 20 passed. `core.node.test.ts` still holds the core boundary.
+- `recovery.test.ts` runs against fake-indexeddb with the real offline database and its migrations. A deliberate mutation (confirming any sequence at or below the stored one, and dropping the stale-write check) made 4 of its tests fail; it was reverted.
+- **Final run, after every change:** `vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/offline/offline.test.ts src/features/offline/outlines src/features/account/deletion.test.ts`: 11 files, 126 passed, none failed.
+- `tsc --noEmit`: clean. ESLint and Prettier on `next.config.ts` and `src/features/sermon-editor/persistence`: clean.
+- **Not run:** the full unit suite, a production build, end-to-end tests, a real browser, and any migration. Nothing visible changed, so there are no screenshots.
+
+### Boundaries
+
+- **A2.3A (this):** contracts and storage only. Nothing calls them: no timer, no Tiptap subscription, no automatic save, no recovery interface.
+- **A2.3B, autosave:** a controller outside the editor.
+  - It owns its `draftId` and sequence, and writes drafts throttled: each write is the whole snapshot, up to 3 MiB.
+  - It keeps at most one save in flight: `prepareSave`, then `saveOutlineDocument`, then `saveOutcome`, then `confirmDraft` or `refuseDraft`.
+  - It registers unsaved work with `hasUnsavedWork()`, never sends an unchanged document (an identical save still moves the revision), and stops on `conflict`, `refused`, and `unauthorized`.
+- **A2.3C, recovery:**
+  - On opening, `listDrafts` for the outline. Compare each candidate with `getDocument` (an equal one is discarded), restore it through the core, and offer it to the person.
+  - Conflicts are resolved by the person, never merged. `discardDraft` and `discardUnreadableDraft` are the only removals.
+  - It carries `documentAuthoritative` legacy conflicts into the document, or shows them to copy (manual, as approved).
+- **A2.3D, offline authority:** `/api/offline/outlines` says an outline is converted, and `createDeviceOutlineApi` stops taking legacy edits for it.
+- **A3:** the production route, conversion on opening, `unreadable` as a recoverable state, and revalidation.
+
+### Risks
+
+- **Throttling is A2.3B's.** Each draft write and each save is a whole document. On a 3 MiB sermon, a write per keystroke would be wasteful (about 30 ms of IndexedDB each in fake-indexeddb).
+- **Little room above 3 MiB.** Vercel's 4.5 MB cap leaves about 1.3 MB. A larger document needs another transport, which was not built.
+- **The 4 MB body limit is global** to Server Actions. Any request can now make the server read up to 4 MB before an action's `authorize` runs; the bound was 1 MB.
+- **Browser storage** can be cleared or evicted by the browser or the person, and can be unavailable (private windows). Each case is an error the controller sees, never silent loss of what IndexedDB did keep.
+- **Two tabs on one outline** each keep their own draft and save against the same revision. The second save is `stale` and waits for the person (no merging, as approved).
+
+### Ready for owner review
+
+**Yes.** To decide:
+- the 4 MB body limit, which applies to every Server Action;
+- whether to remove the duplicated A2.2 section from this handoff;
+- approval to begin A2.3B.

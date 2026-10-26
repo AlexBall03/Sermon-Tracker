@@ -16,6 +16,15 @@ const nextConfig: NextConfig = {
   env: { APP_VERSION: appVersion },
   experimental: {
     agentUpgrade: "security",
+    /*
+     * A sermon document is saved whole through a Server Action, and may be up
+     * to 3 MiB (`documentLimits`, src/features/sermon-editor/persistence).
+     * 4 MB leaves 1 MiB for the action's encoding and for a document slightly
+     * over the limit, which the service then refuses as `too_large`; it stays
+     * under Vercel's 4.5 MB request cap and the proxy's 10 MB buffer. It
+     * applies to every action; each still validates its own input.
+     */
+    serverActions: { bodySizeLimit: "4mb" },
   },
   /*
    * The service worker is never kept by a cache between the browser and the

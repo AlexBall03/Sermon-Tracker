@@ -757,6 +757,11 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
           - It is refused unless the result can be read back as exactly the outline.
           - It replaces A2.1's `createOutlineDocument` action (owner's decision).
         - **Not yet:** nothing calls the conversion (A3). Queued legacy changes are not yet carried into the document, and devices are not yet told an outline is converted (A2.3).
+      - **A2.3A (built, 26 October 2026; not yet committed):** persistence and local durability contracts ([handoff](HANDOFF-PS-A2.md)). No migration.
+        - **Decided (owner):** full-document saves through the existing Server Action; durable local recovery in IndexedDB; at most one save in flight per controller; no automatic merging; manual recovery of legacy offline conflicts; production integration in A3.
+        - **Decided (owner), implemented:** the document limit is 3 MiB of UTF-8 (replacing A2.1's 512 KiB), with a 4 MB Server Action body limit. Verified by encoding a save at the limit as the client does.
+        - **Implemented:** account-scoped recovery drafts (`persistence/recovery`) with compare-and-set sequences, and the save contract (`persistence/saving.ts`).
+        - **Not yet:** the autosave controller (A2.3B), the recovery interface (A2.3C), offline authority integration (A2.3D).
     - **A3:** full signed-in editor integration.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.

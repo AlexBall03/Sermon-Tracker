@@ -146,7 +146,7 @@ describe("sermon document actions", () => {
     const huge = documentV4([pointV4("p-1", "x".repeat(documentLimits.bytes), 1)]);
     const tooLarge = await saveOutlineDocument(outlineId, huge, 1);
     expect(tooLarge).toMatchObject({ ok: false, code: "too_large", limit: documentLimits.bytes });
-    expect(tooLarge.message).toContain("512 KB");
+    expect(tooLarge.message).toContain("3,072 KB");
   });
 
   it("refuses an outline that could not be converted without loss, and one stored unreadable", async () => {
@@ -165,13 +165,11 @@ describe("sermon document actions", () => {
 
     // Another outline whose stored document the core no longer accepts.
     const second = await outlined(me);
-    await db
-      .insert(sermonOutlineDocuments)
-      .values({
-        outlineId: second,
-        ownerId: me,
-        content: { type: "doc", attrs: { schemaVersion: 99 } },
-      });
+    await db.insert(sermonOutlineDocuments).values({
+      outlineId: second,
+      ownerId: me,
+      content: { type: "doc", attrs: { schemaVersion: 99 } },
+    });
     expect(await convertOutlineDocument(second)).toMatchObject({
       ok: false,
       code: "unreadable",

@@ -442,7 +442,7 @@ An outline's Preacher Studio sermon document: one complete schema v4 document, s
   - `setNumbering` holds only the outline's row `FOR UPDATE`; it takes no `ideas` row, so no lock cycle is possible.
   - Tested on two real development connections (`docs/HANDOFF-PS-A2.md`, A2.2).
 - **The revision is the document's own.** `sermon_outlines.revision` still counts the legacy entries' shape, and neither moves the other. A save names the revision it was made against; the comparison and the write are one `UPDATE … WHERE revision = …`, and a stale save writes nothing.
-- **No size CHECK.** The limit is `documentLimits.bytes` in the service (512 KiB of UTF-8 to begin with), so it can change without a migration.
+- **No size CHECK.** The limit is `documentLimits.bytes` in the service (3 MiB of UTF-8 since A2.3A; 512 KiB in A2.1), so it can change without a migration. A save arrives through a Server Action, whose body limit (`serverActions.bodySizeLimit`, 4 MB in `next.config.ts`) is set above it (`docs/HANDOFF-PS-A2.md`, A2.3A).
 - **No extra index.** The primary key serves every read, write, and cascade. Only account deletion reads by `owner_id`, through the `RESTRICT` check.
 - **Account deletion.** It cascades from `ideas` through `sermon_outlines`, before the `users` row goes (`deletion.test.ts`).
 

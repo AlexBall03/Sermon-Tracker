@@ -320,9 +320,11 @@ describe("what conversion refuses, leaving the legacy outline exactly as it was"
   });
 
   it("refuses an outline too large to store, and cuts nothing", async () => {
-    const notes = "n".repeat(2000);
+    // Every ASCII legacy outline fits under 3 MiB (about 2.4 MB at every limit),
+    // so this needs text of four bytes a character: the notes CHECK counts characters.
+    const notes = "😀".repeat(2000);
     await db.insert(outlineEntries).values(
-      Array.from({ length: 300 }, (_, position) => ({
+      Array.from({ length: 400 }, (_, position) => ({
         outlineId,
         ownerId: me,
         entryType: "point" as const,
