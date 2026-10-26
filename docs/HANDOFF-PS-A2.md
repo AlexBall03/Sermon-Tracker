@@ -610,6 +610,340 @@ An empty outline converts to a valid document (one empty paragraph), so a new ou
 - **The unhandled error:** the same pre-existing `getClientRects` error from `appearance-dialogs.test.tsx` (A2.1).
 - **Not run:** the full unit suite, a production build, end-to-end tests, and any migration. No UI changed visibly beyond two new message strings, so no screenshots.
 
+### Deployment and rollout (verified against the build, 26 October 2026; not executed)
+
+**How a production deployment migrates.** `npm run build` is `next build && node scripts/db/cli.mjs migrate deploy`.
+
+- **Where it runs.** Only where `VERCEL_ENV=production`. Everywhere else it prints that it skipped; previews use the development database, which already has `0020`.
+- **What it does.** It checks the target's declaration and stamp, then applies every pending migration through Drizzle's migrator.
+- **One transaction.** The migrator runs all pending migrations in one transaction (`drizzle-orm/pg-core/dialect.js`, over the Neon WebSocket pool, which supports interactive transactions). A failing statement in `0020` leaves no table and no record of it.
+- **A failure stops the deployment.** A refusal or failure exits 1 (`process.exit(1)`). Through `&&` that fails the build, so Vercel never makes the deployment live, and the previous one keeps serving.
+
+**What that means for A2.2:**
+
+- **The table comes before the code that needs it.** `0020` and the A2.2 code reach production in the same deployment, and the table is created during its build, before it serves anything.
+- **Nothing reads the table at build or render time.** `hasDocument` is called only inside legacy writes (outline actions and the `outline.*` sync handlers). No page, layout, route, static generation, or `generateStaticParams` reads it.
+- **The window during the build is safe.** The previous deployment serves against a database that already has the table, and its code never names it.
+- **It fails closed.** If the A2.2 code were ever served without the table (for example, a hand-made prebuilt deploy that skipped the migration), a legacy write would fail and write nothing. No data would be corrupted.
+- **No separate manual migration is needed.** Nothing in the automated workflow was changed.
+
+**Old deployments.** These can still write after A2.2 is live:
+
+- in-flight requests on the old deployment while Vercel switches over: seconds;
+- an Instant Rollback, or promoting an older deployment;
+- if Skew Protection is on, an open tab's Server Action and RSC requests, which go to the deployment that served it until the configured maximum age;
+- an old deployment's generated URL, if it can authenticate.
+
+Not one of these matters before the first conversion, and A2.2 has no caller for one. Each matters once A3 converts. This checkout isn't linked to the Vercel project (`.vercel/project.json`), so the Skew Protection and Deployment Protection settings were not read here.
+
+**Rollout:**
+
+1. **Merge to `master`.** Its production build applies `0020`, then the deployment goes live with the guard. That's one step, not two, and no conversion can happen.
+2. **Check** the build log ("applied 1 migration(s) to production"), then run `npm run db:status -- prod`, which is read-only.
+3. **Before A3 enables conversion**, the owner confirms in Vercel:
+   - no rolling release is in progress, and no older deployment is promoted;
+   - Skew Protection is off, or its maximum age has passed since the last pre-A2.2 deployment, so no tab still reaches unguarded code;
+   - Deployment Protection covers generated deployment URLs, or Clerk's production session cannot be used on them.
+   - Optional: a DB trigger refusing legacy writes for converted outlines makes the above independent of Vercel. It is a migration, offered and not built.
+4. **A3 enables conversion,** after A2.3's device-side flag is in production, so devices stop offering legacy edits.
+
+**Rollback:**
+
+- **Before the first production conversion:** any rollback is safe. The table stays, and older code never names it.
+- **After it:** roll back, or promote, only a deployment that has the A2.2 guard (`b141037` or later). An older one would accept legacy writes to converted outlines, and their entries would drift from their documents. Instant Rollback doesn't run the build, so it would not reapply anything.
+- **If an older build must be restored anyway:**
+  1. Stop new conversions first, by deploying a build in which A3's conversion call is off.
+  2. Accept that legacy edits made meanwhile to converted outlines are recovery work (A2.3).
+  3. Never drop `sermon_outline_documents` to "undo" A2.2. That would delete the authoritative copy, and the conversion is the only place its later edits exist.
+
+### For A2.3 (autosave and recovery)
+
+- Save through `saveOutlineDocument`, coalesced and never per keystroke, naming the revision last acknowledged.
+- `stale` means read the document again, and then merge or ask; never overwrite. `too_large` means keep everything and say so.
+- Don't send a document that hasn't changed. An identical save still moves the revision.
+- Reassess `documentLimits.bytes` and `serverActions.bodySizeLimit` together. A 512 KiB document plus the action's envelope stays under 1 MB.
+- Once a page shows documents, decide what to revalidate.
+- An editor or saving hook that holds a save in flight must register it with `hasUnsavedWork()`.
+
+### For A3 (the production route)
+
+- The page reads with `getDocument` behind `requireActiveUser()`.
+- `unreadable` is shown as a recoverable state, never repaired silently.
+- The page mounts `SermonWorkspace` with a `documentKey` that is stable for each outline.
+
+### Ready for owner review
+
+**Yes.** Every requested part is built and tested as listed. To be decided:
+
+- whether the Next.js changes were meant;
+- approval to apply `0020` to development, after which the two-connection race can be run once;
+- the A2.2 decisions above.
+
+### Final review (26 October 2026)
+
+- **Unreadable is never missing, and can't be replaced by a create.**
+  - A stored document the core no longer accepts reads as `unreadable` with its revision. A create answers `exists` and writes nothing.
+  - Sending a future-version document is refused (`invalid`), whether by create or by save.
+  - New test: "never lets a create replace an unreadable document, or call it missing".
+  - A save naming the current revision can replace it. That is a deliberate save by someone who has read that revision; A3 shows `unreadable` as a recoverable state.
+- **Logs:**
+  - `failure` now logs a name only if it is a plain word, and a code only if it is a five-character SQLSTATE. Anything else logs as `Error`.
+  - New test: an error whose name, code, and message hold document text logs exactly `["Sermon document save failed:", "Error"]`.
+  - The service logs nothing. Every error in an action is caught after `authorize`, so Next never logs one of them itself.
+- **Baseline:** the `getClientRects` error was confirmed pre-existing (see Tests).
+- **Advisories (`npm audit --omit=dev`):**
+  - none for `next`;
+  - outside A2.1, for a separate dependency checkpoint before release:
+    - `zod` 4.6.5, a direct dependency, has GHSA-mrhx-c7xc-m3w5, fixed in 4.6.6;
+    - `@vercel/blob` 2.8.2 brings in `undici` 6.29.0, which has advisories;
+    - the rest (`undici` 7, `body-parser`, `fast-uri`, `ip-address`, `@shadcn/registry`) come through `shadcn`, a CLI listed in `dependencies`.
+- **The race test.** Nothing in the code blocks it: the service takes any `Database`, and `.env.local` names a development `DATABASE_URL`. Before it can run:
+  - the owner approves;
+  - `npm run db:status` against development (read-only) confirms `0000`–`0019` are applied;
+  - `npm run db:migrate:dev` applies `0020`;
+  - a temporary test opens two pooled connections, makes a throwaway account, races two creates and two saves at one revision, removes everything it made, and is deleted (as in 3A).
+- **Previews:** they share the development database. That is harmless: nothing reads the table.
+- **Checks run in this review:**
+  - `vitest run src/features/sermon-editor/persistence`: 36 passed, then 7 passed in `actions.test.ts` after its last assertion was added;
+  - `deletion.test.ts` and `document-migration.test.ts`: 11 passed;
+  - the baseline run of `appearance-dialogs.test.tsx`;
+  - `tsc --noEmit`, clean;
+  - ESLint and Prettier on `persistence/`.
+
+### Development migration and two-connection race (26 October 2026)
+
+**Done with the owner's approval, on the development database only.** Production was not touched.
+
+1. **`npm run db:status`** reported the target as the development branch:
+   - host `ep-rough-frost-b79xswkz-pooler…/neondb`, declared `development`, stamped `development`;
+   - 20 migrations applied (`0000`–`0019`), and only `0020` pending;
+   - Check `ok`.
+2. **Before migrating,** a read-only fingerprint was taken: the row count and an md5 of every row of `users`, `ideas`, `sermon_outlines`, `outline_entries`, `outline_entry_scripture_references`, and `sync_operations`.
+3. **`npm run db:migrate:dev`** applied 1 migration. Status then showed 21 applied, 0 pending, Check `ok`.
+   - The catalog shows the table exactly as generated: the primary key, both foreign keys (`ON DELETE CASCADE` to `sermon_outlines (id, owner_id)`, `ON DELETE RESTRICT` to `users`), and both CHECKs.
+4. **The race,** from a temporary test file (now deleted) that refused to run unless the database was declared and stamped `development`:
+   - **Connections:** two single-connection pools, with different backend PIDs, and a third that only watched `pg_stat_activity`. It made a throwaway account.
+   - **Overlapping creates:**
+     - A created the document inside an open transaction.
+     - B's create was then seen **waiting on A's lock**.
+     - After A committed, B answered `exists` at revision 0. One row was left, with A's content.
+   - **Saves at the same revision:**
+     - A saved at revision 0 inside an open transaction.
+     - B's save at revision 0 was seen **waiting on A's row lock**.
+     - After A committed, B answered `stale` at revision 1, and wrote nothing. The row held A's content at revision 1: the loser never overwrote the winner.
+   - **Unforced races, 10 rounds:** two creates and then two saves at revision 0, sent at once on the two connections. Every round had exactly one `created` and one `exists`, then one `updated` and one `stale`, with the winner's content stored at revision 1.
+   - **3 of 3 passed.** Cleanup ran in `afterAll` and asserted that no user, idea, outline, or document of the test account was left.
+5. **Afterwards:**
+   - every fingerprinted table was unchanged in count and checksum;
+   - `sermon_outline_documents` holds 0 rows;
+   - no test account remains;
+   - the temporary test file and the scratch scripts are deleted.
+
+**Found:** the pooled URL (`DATABASE_URL`, through PgBouncer) gave both test clients the **same** backend PID, so the race used `DATABASE_URL_UNPOOLED` (the same branch and database) to get two real sessions.
+
+- This doesn't affect the application: every document write is one statement, and a transaction holds its own server session while it runs.
+- A later design must never rely on a session lasting from one statement or request to the next over the pooled URL.
+
+### Tracked for later checkpoints (owner, 26 October 2026)
+
+- **A3:** prevent accidental replacement of an `unreadable` document. A save naming its current revision can replace it today, so the page must show it as a recoverable state and never offer a blind save over it.
+- **Before public release:** correct the Drizzle error logging. `describeDatabaseError` logs query parameters, which are people's text, in the existing idea and outline actions.
+- **Before public release:** a separate, targeted security update for `zod` (4.6.5 → at least 4.6.6, GHSA-mrhx-c7xc-m3w5) and the transitive advisories through `@vercel/blob` (`undici` 6) and `shadcn`.
+- **Editor testing checkpoint:** the pre-existing `getClientRects` unhandled error in `appearance-dialogs.test.tsx` under jsdom.
+- **A2.2:** built; see the next section.
+
+## A2.2: Legacy conversion and content authority (26 October 2026)
+
+**Status:** built and verified. Not committed, not deployed, and no migration run anywhere.
+
+**Git:** began on `dev` at `d5eebf6` with a clean tree. Ends there, with the files below changed or new and nothing staged.
+
+A2.2 makes one rule authoritative, refuses every legacy write that would break it, and adds the one way an outline becomes a document:
+
+- **The rule:** an outline's sermon document row is its content authority.
+- **The guard:** every legacy write that would break the rule is refused, online and offline.
+- **The way in:** an atomic, idempotent, lossless-or-refused conversion.
+
+It adds no table, column, or migration. The legacy editor is unchanged until a document exists, and in production none can exist until A3 calls the conversion.
+
+### What was found
+
+- **`setNumbering` (`outlines.ts`) was one bare `UPDATE`** with no lock. The `outline.numbering` sync handler calls it too. A guard in `lockForWrite` alone would have missed both.
+- **The check has to be its own statement.** A write's own `WHERE NOT EXISTS (document)` is unsafe under READ COMMITTED.
+  - Such an `UPDATE` waits on a conversion's `FOR UPDATE` lock, then runs on its old snapshot.
+  - The conversion only locked the row, so nothing triggers a recheck, and the write proceeds.
+  - So the check is a statement of its own, made after the outline is held.
+- **`asOutline` reads the numbering through `readNumbering`,** which replaces a stored config that doesn't parse with the default. Converting from that would silently change an outline, so conversion reads the raw column.
+- **The numbering schema fills defaults** (`case`, `bullet`, `prefix`, …). A custom config stored before a field existed is still valid. It shows with the default, so conversion keeps it as shown.
+- **The database already refuses** `duplicate_section`, `section_with_parent`, `duplicate_position`, and `orphan_parent`. It cannot refuse `cycle`, `section_parent`, `invalid_numbering`, or `too_many_entries`; only the service prevents those.
+- **`v3ToV4` keeps all provenance.** On every entry: `id`, `legacyEntryId`, `legacyRevision`, `derivedFrom`, `sourcePointId`, `legacyParentId`, `presentation`, and `appearance`. On the document: `legacyOutlineId` and `legacyRevision`. Asserted in `conversion.test.ts`.
+- **A new code would have looped the legacy editor.** Its store answers an unknown code by reloading the outline, and resending against a converted outline would refuse and reload again. It now halts.
+- **Sync idempotency needed no change.** `applyMutation` answers `duplicate` from `sync_operations` before any handler runs, and an outcome that isn't `applied` rolls back without writing an op row.
+- **The client needed one change.** The engine keeps a conflict and never retries it by itself, and an unknown reason already falls back to "discard". Only the discard needed changing, so it drops one change.
+- **Sermon title.** No document holds a title.
+  - `ideas.title` is the Sermon Title and its only authority. Conversion copies nothing from it.
+  - The optional Subtitle is the document's `doc.attrs.subtitle` (v3 and v4).
+  - There is no separate Outline Title. UI.2C builds the header on this contract.
+
+### The authority rule
+
+| State                           | What the outline says          |
+| ------------------------------- | ------------------------------ |
+| No document row                 | Its legacy entries             |
+| A readable document row         | The document                   |
+| An unreadable document row      | The stored document, protected |
+| A conversion that inserted none | Its legacy entries, untouched  |
+
+Nothing else decides it: no flag, setting, or column.
+
+### Locks and transactions
+
+- **Every legacy write:** `lockForWrite` = `lockOutlineRows` (sermon `FOR NO KEY UPDATE`, then outline `FOR UPDATE`, unchanged), then `hasDocument` (new, `persistence/authority.ts`) as a separate statement.
+  - Covers `createEntry`, `updateEntry`, `setEntryReferences`, `moveEntry`, and `deleteEntry`.
+  - The refusal comes before the retry and stale checks, so nothing is written.
+- **`setNumbering`:** now a transaction that holds the outline `FOR UPDATE`, then asks `hasDocument`, then updates. It takes no `ideas` row, so it never waits on a sermon while holding an outline.
+- **`convertOutline`:** one transaction.
+  1. `lockOutlineRows`.
+  2. Read the document row. If there is one, readable or not, return it as is.
+  3. Read the outline as stored (`readStoredOutline`, raw numbering).
+  4. `legacyToDocument`.
+  5. `prepareDocument`: the core's restore and v3→v4 migration, then the size limit.
+  6. The fidelity proof.
+  7. `insertPreparedDocument`, at revision 0.
+- **What that ordering guarantees:**
+  - A legacy write that held the outline first commits before conversion reads anything.
+  - One that comes after waits, then is refused.
+  - A second conversion waits, then answers `exists`.
+- **No session affinity.** Nothing relies on a session lasting beyond its own transaction, so Neon's pooler is fine.
+- **Untouched:** `deleteOutline`. An explicit delete of an outline or its sermon still cascades to the document.
+
+### Conversion outcomes (`ConvertOutlineOutcome`, `persistence/model.ts`)
+
+| Outcome      | Meaning                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `converted`  | The first document, at revision 0. It is now the authority.                                                        |
+| `exists`     | A readable document was there. Untouched.                                                                          |
+| `unreadable` | A stored document the core no longer accepts. Untouched and never converted over (with its revision and problems). |
+| `missing`    | No such outline among the owner's.                                                                                 |
+| `unsafe`     | Converting could lose or change something (`problems`: codes, entry IDs, field names; never words).                |
+| `invalid`    | The core refused the converted document.                                                                           |
+| `too_large`  | Over `documentLimits.bytes`, with its size. Nothing cut.                                                           |
+
+**The action.** `convertOutlineDocument(outlineId)` (`persistence/actions.ts`) begins with `authorize("active")` and takes the owner from the session.
+
+- **Replaces:** A2.1's `createOutlineDocument`, removed (owner's decision), so no content sent from a browser can become an outline's authority.
+- **Codes:** `exists`, `unreadable`, `missing`, `unsafe` (with `conversion`), `invalid`, `too_large`, and `failed`.
+- **Messages and logs:** the messages are in both languages, and failures are logged content-safe through `failure()`.
+- **Kept:** the `createDocument` service, for tests and internal use.
+- **Called by:** nothing yet.
+
+An empty outline converts to a valid document (one empty paragraph), so a new outline can become a document without any legacy editing.
+
+### Fidelity policy
+
+- **What is preserved, and tested:**
+  - the introduction and conclusion;
+  - main points and subpoints at any depth, in shown order;
+  - entry IDs, entry revisions, and `sourcePointId`;
+  - passages in stored order (as `print: "reference"`, no translation);
+  - notes exactly, a paragraph per line, with blank lines and leading and trailing spaces;
+  - built-in and custom numbering, in `layout.numbering`;
+  - the outline's ID and shape revision.
+- **What is refused (`unsafe`):**
+  - any issue `legacyToDocument` reports, including `ok: true` with issues. None of them can be shown to keep everything, and the database rules out most of them anyway.
+  - stored numbering that doesn't parse, or that parsing would drop or change (an unknown key, for example).
+- **The proof at runtime.** The canonical stored form is taken back through `toV3`, then `documentToLegacy`. It must report no loss, give the same outline ID, revision, and numbering, and give every entry exactly once and equal to the original as `shownOutline` shows it. Otherwise the answer is `unsafe` with `not_lossless`.
+- **Never:** a partial conversion, a repaired document, or a deleted, truncated, or rewritten legacy row.
+
+### Size
+
+- **The limit stays as it is:** 512 KiB, `documentLimits.bytes`.
+- **Measured (A2.1):** a typical outline converts to about 36 KB, and 150 points with 1,000-character notes to about 310 KB, so both fit. An outline at every legacy limit (500 entries) is about 2.4 MB.
+- **Anything over is `too_large`** and stays a working legacy outline, whole. Tested with 300 entries of 2,000-character notes.
+- **Not measured:** the real distribution in production. Reading production was not authorized.
+- **Options for A2.3:**
+  - raise the stored limit, since conversion runs on the server and has no request-body limit;
+  - but saves go through a Server Action, refused over 1 MB (`serverActions.bodySizeLimit`). So either raise that together with the stored limit (to 2–3 MB), save through a route handler, or save step-based patches instead of whole documents.
+  - No chunked storage was built; nothing has shown it is needed.
+
+### Offline
+
+- **The server.** Every `outline.*` handler maps the refusal to the conflict `{ reason: "documentAuthoritative" }` (`sync/model.ts`).
+  - Nothing is written, neither the document nor legacy content.
+  - No `sync_operations` row is written, so no change is falsely acknowledged.
+  - An operation applied before the conversion still answers `duplicate`, and the same change under a new op ID is refused.
+- **The device** (`offline/outlines/sync.ts`).
+  - The conflict is kept, never retried by itself. The only choice offered is "discard".
+  - Discarding drops **that change only**. Changes queued behind it stay, each refused in turn and kept. The device's local copy keeps what they say until the last is discarded.
+  - A download never touches `local` while any change is queued (tested).
+  - The Pending Changes note is `offline.conflicts.documentAuthoritative`, in both languages.
+- **The online legacy editor.** `document_authoritative` stops the queue: no reload, no automatic retry. The message is shown and the unsaved text stays on the page, held as unsaved work.
+- **Old clients.** A device on an older build gets an unknown conflict reason, and it is kept: no message text, with "discard" only. An older online editor would reload and resend in a loop. That's why A3 must route converted outlines away from the legacy editor (rollout below).
+
+### Files
+
+- **New:**
+  - `src/features/sermon-editor/persistence/authority.ts`
+  - `src/features/sermon-editor/persistence/conversion.ts`
+  - `src/features/sermon-editor/persistence/conversion.test.ts`
+- **Changed (source):**
+  - `src/features/outlines/entries.ts`: `lockOutlineRows`, the guard, and the outcomes;
+  - `src/features/outlines/outlines.ts`: `setNumbering`, `readStoredOutline`;
+  - `src/features/outlines/actions.ts` and `editor/store.ts`;
+  - `src/features/sync/model.ts` and `apply-outlines.ts`;
+  - `src/features/offline/outlines/sync.ts`;
+  - `src/features/sermon-editor/persistence/actions.ts`, `documents.ts`, `model.ts`;
+  - `src/features/sermon-editor/document/index.ts`: exports `documentToLegacy` and `shownOutline`;
+  - the `outlines` and `offline` dictionaries, in English and Spanish.
+- **Changed (tests):** `outlines/actions.test.ts`, `outlines/outlines.test.ts`, `editor/store.test.ts`, `sync/apply-outlines.test.ts`, `offline/outlines/outlines.test.ts`, `persistence/actions.test.ts`, `persistence/documents.test.ts`.
+- **Changed (docs):** `AGENTS.md`, `docs/DATABASE.md`, `docs/PREACHER-STUDIO-MIGRATION.md`, and this file.
+
+### Verification
+
+- **PGlite (one connection).**
+  - `conversion.test.ts`, 15 tests:
+    - normal, empty, nested, saved-point, passage, numbering, and whitespace fidelity, and provenance;
+    - converting once, including two at once;
+    - `unreadable` protected, and a legacy write before conversion included;
+    - a foreign or missing outline;
+    - `cycle` and `section_parent` refused;
+    - three kinds of bad raw numbering refused, and a pre-default custom config kept;
+    - `too_large`;
+    - rollback, forced by a test trigger: no row, and the legacy outline goes on;
+    - all seven legacy write paths refused, with nothing written;
+    - delete still cascading;
+    - other outlines unaffected.
+  - Also:
+    - `apply-outlines.test.ts`: each `outline.*` type gives the conflict with no op row, and duplicate replay still works;
+    - `outlines.test.ts` (offline): choices, the one-change discard, and a download keeping `local`;
+    - `store.test.ts`: halts, keeps the text, no reload or retry;
+    - `actions.test.ts` (outlines): every action's code, in both languages, and no revalidation;
+    - `persistence/actions.test.ts`: the convert action;
+    - updated for the new contracts: the A2.1 test in `documents.test.ts` that expected legacy writes to continue after a document, and the two `setNumbering` tests in `outlines/outlines.test.ts`.
+- **Two real connections (development, with the owner's approval).**
+  - **Setup:**
+    - `npm run db:status` (read-only) reported the database declared and stamped `development`, with 21 migrations applied and 0 pending.
+    - A temporary test refused to run unless `.env.local` declared development and the stamp said so.
+    - It used `DATABASE_URL_UNPOOLED` with one-connection pools, verified to have different backend PIDs, plus a third watcher.
+    - It used a throwaway account.
+  - **Forced, each observed waiting in `pg_stat_activity` (`wait_event_type = 'Lock'`):**
+    - two conversions: one `converted` and one `exists`, one row;
+    - a legacy word change held open, then a conversion: the conversion waited, and the document contains the change;
+    - a conversion held open, then a word change, and separately a numbering change: each waited, then answered `document_authoritative`, and the outline row and entries were unchanged.
+  - **Unforced:** 10 rounds of two conversions and a word change sent together. Every round was consistent: one `converted`, one `exists`, and the document agreeing with whether the write landed.
+    - In all 10 rounds the conversion won the lock, so the "write first" order was covered by the forced test, not by chance.
+  - **Run twice, both passing.** Cleanup asserted no user, idea, outline, entry, or document of the account remained. A count and md5 fingerprint of `users`, `ideas`, `sermon_outlines`, `outline_entries`, `outline_entry_scripture_references`, `sermon_outline_documents`, and `sync_operations` matched before and after.
+  - The temporary file is deleted.
+- **Also run:**
+  - `tsc --noEmit`, clean;
+  - ESLint and Prettier on the changed source;
+  - `vitest run src/features/sermon-editor src/features/outlines src/features/sync src/features/offline src/i18n src/db/document-migration.test.ts src/features/account/deletion.test.ts`: 546 of 547 passed in 33 files. `core.node.test.ts` still holds the core boundary with the two new exports.
+- **The one failure is timing, not A2.2.** "says a save failed, keeps the text, and saves it when asked again" (`outline-editor.test.tsx`) uses fake timers that also advance with real time. In a 155-second loaded run more than 2 s passed before its click, so the store's own 2 s retry fired first (3 calls, not 2).
+  - It passes alone, and 3 of 3 times with the whole outlines suite (276 tests).
+  - The store change can't cause it: a network failure never reaches the new branch.
+- **The unhandled error:** the same pre-existing `getClientRects` error from `appearance-dialogs.test.tsx` (A2.1).
+- **Not run:** the full unit suite, a production build, end-to-end tests, and any migration. No UI changed visibly beyond two new message strings, so no screenshots.
+
 ### Deployment and rollout (a contract, not executed)
 
 1. **Deploy this build.** It brings the server guard, the store halt, and the offline conflict reason. Conversion stays unreachable: nothing calls `convertOutlineDocument`.

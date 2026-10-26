@@ -689,7 +689,11 @@ The production deployment migrates its own database. `npm run build` is `next bu
 
 It runs after the code has compiled and before Vercel puts the deployment live. If it refuses or a migration fails, the build fails and the previous deployment keeps serving. The reason is in the build log.
 
-Drizzle records applied migrations in `drizzle.__drizzle_migrations`, so rerunning is safe. A failed migration is not rolled back automatically: read the error, fix forward with a new migration, and use Neon's point-in-time restore if data was damaged.
+Drizzle records applied migrations in `drizzle.__drizzle_migrations`, so rerunning is safe.
+
+- **A failure leaves nothing applied.** Drizzle's migrator applies every pending migration in one transaction (over the Neon WebSocket pool), so a statement that fails rolls back that run's migrations and their records, and the deployment never goes live.
+- **The reference loads run separately.** The Bible and psalm-title loads that follow are transactions of their own.
+- **A migration that succeeded but was wrong is not undone:** read the error, fix forward with a new migration, and use Neon's point-in-time restore if data was damaged.
 
 ### By hand, from a workstation
 
