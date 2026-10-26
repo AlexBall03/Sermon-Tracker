@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   env: { APP_VERSION: appVersion },
+  experimental: {
+    agentUpgrade: "security",
+  },
   /*
    * The service worker is never kept by a cache between the browser and the
    * server, so an update is seen as soon as it is deployed.

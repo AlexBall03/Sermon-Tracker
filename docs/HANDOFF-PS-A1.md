@@ -1676,6 +1676,8 @@ Approved future contract, recorded so the Appearance category can take it withou
 
 A2 puts persistence around `SermonWorkspace`; it does not change the editor.
 
+A2.0 (the production-safe document core) is built: see [HANDOFF-PS-A2.md](HANDOFF-PS-A2.md). Persistence reads and checks documents through `src/features/sermon-editor/document`.
+
 - **Appearance (A1-UI.2B.1, 2B.2):** the outline's preset and styles are inside the document (`doc.attrs.styles`, with `preset`), and each component's own appearance is on its node; both are saved with it. An Appearance session's draft (Outline Settings, Component Appearance) is never persisted: Apply makes it a document change. There is nothing extra to persist. When an outline is created from an account's default preset (built-in or personal, UI.2B.3), write it explicitly.
 
 - **Open:** pass the stored document as `document` with a stable `documentKey`. One sermon is one mount; another sermon is a new `key`.

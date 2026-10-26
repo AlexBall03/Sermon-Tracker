@@ -741,6 +741,7 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
     - **A1-UI.4:** final visual acceptance, workflow and structural regression checks, long sermons, pagination and print, mobile, browsers, accessibility, and integrity, and a first-time-user scenario from a blank outline to a complete sermon through the real controls, with no tour and no development inspector. A1 is accepted only after it.
   - **Then:**
     - **A2:** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2"), with revisions and data protection.
+      - **A2.0 (built, 26 October 2026, awaiting owner review):** the production-safe document core, `src/features/sermon-editor/document` ([handoff](HANDOFF-PS-A2.md)). Nothing persisted; no database change.
     - **A3:** full signed-in editor integration.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.

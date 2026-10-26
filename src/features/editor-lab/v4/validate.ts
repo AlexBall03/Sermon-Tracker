@@ -2,7 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
 
 import { identifiedTypes } from "../schema/nodes";
-import { labSchema } from "../schema/extensions";
+import { v3Schema } from "../schema/document-schema";
 import { validHighlight, validTextColor } from "../schema/formatting";
 import { pointPresentationSchema } from "../schema/model";
 import { referenceFrom } from "../schema/scripture";
@@ -13,7 +13,7 @@ import { v3ToV4 } from "./migrate";
 import { maxDepth, pointRoles, v4SchemaVersion } from "./model";
 
 /*
- * Whether JSON may be loaded as a v4 document (prototype). Narrower than
+ * Whether JSON may be loaded as a v4 document. Narrower than
  * v3's validator, and on purpose: it checks what v4 changes and what keeps
  * meaning safe. A document older than v4 is first checked in full by v3's
  * validator (`restoreDocument`), then flattened (`migrate.ts`).
@@ -28,6 +28,9 @@ import { maxDepth, pointRoles, v4SchemaVersion } from "./model";
  * Not refused: an irregular structure (a skipped level, a block deeper than
  * its owner). Every sequence of depths has a meaning (`ownership.ts`); an
  * irregular one is shown and can be fixed, never repaired here.
+ *
+ * It needs no editor and no DOM: a server checks a document with `v4Schema()`
+ * (`schema.ts`), through `src/features/sermon-editor/document` (A2.0).
  */
 
 export type RestoredV4 =
@@ -131,7 +134,7 @@ export function restoreV4(json: unknown, schema: Schema): RestoredV4 {
   let content = source;
   let migratedFrom: number | null = null;
   if ((version as number) < v4SchemaVersion) {
-    const older = restoreDocument(source, labSchema());
+    const older = restoreDocument(source, v3Schema());
     if (!older.ok) return older;
     content = v3ToV4(older.doc.toJSON());
     migratedFrom = version as number;

@@ -1,6 +1,5 @@
 import { getSchema, type Editor, type Extensions, type JSONContent } from "@tiptap/core";
 import { EditorState } from "@tiptap/pm/state";
-import StarterKit from "@tiptap/starter-kit";
 
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { ClickPlacement } from "../click-placement";
@@ -9,10 +8,7 @@ import { GapCaret } from "../gap-caret";
 import { NodeIdentity, type IdFactory } from "../identity";
 import { PassageExpansion } from "../pagination/expansion";
 import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
-import { formattingExtensions, LabTextAlign } from "../schema/formatting";
-import { PageBreak, Script } from "../schema/nodes";
-import { ScripturePassageNode, ScriptureReferenceNode } from "../schema/scripture";
-import { StyleAttributes } from "../styles/attributes";
+import { ScripturePassageNodeView } from "../schema/scripture-view";
 import { DocumentStylesExtension } from "../styles/plugin";
 import type { PresetId } from "../styles/presets";
 import { CaretSync } from "./caret-sync";
@@ -22,7 +18,7 @@ import { PaperV4 } from "./paper";
 import type { V4Notice } from "./model";
 import { NumberingV4, type RoleNumbering } from "./numbering";
 import { V4Plugins } from "./plugins";
-import { DepthAttribute, DocumentV4, PointNode, PreacherNoteV4, TextAlignV4 } from "./schema";
+import { v4SchemaExtensions } from "./schema";
 import { restoreV4, type RestoredV4 } from "./validate";
 
 export type V4ExtensionOptions = {
@@ -39,14 +35,16 @@ export type V4ExtensionOptions = {
 };
 
 /**
- * The v4 prototype editor. Reused from v3 unchanged: StarterKit as v3
+ * The v4 editor. Its schema is `v4SchemaExtensions` (`schema.ts`), with the
+ * passage's node view. Reused from v3 unchanged: StarterKit as v3
  * configures it, the formatting marks, Scripture, scripts, page breaks,
  * the style attributes and document styles, node identity, the clipboard's
  * document stamp and re-keying, Print Layout, passage expansion, the gap
  * caret, and click placement. New: the flat point, depth, the ownership
  * engine's numbering, the v4 keys, and the guards (`plugins.ts`). Gone:
  * v3's sections and nested points, their titles, and the commands that
- * existed to edit at their edges.
+ * existed to edit at their edges. Everything after the schema is behaviour
+ * and adds nothing to it.
  */
 export function labV4Extensions({
   locale = defaultLocale,
@@ -60,28 +58,8 @@ export function labV4Extensions({
 }: V4ExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
-    StarterKit.configure({
-      document: false,
-      heading: { levels: [1, 2, 3, 4] },
-      code: false,
-      codeBlock: false,
-      horizontalRule: false,
-      link: false,
-      strike: false,
-      trailingNode: false,
-    }),
-    ...formattingExtensions.filter((extension) => extension !== LabTextAlign),
-    TextAlignV4,
-    DocumentV4,
-    PointNode,
-    DepthAttribute,
-    PreacherNoteV4,
-    Script,
-    StyleAttributes,
+    ...v4SchemaExtensions({ locale, passage: ScripturePassageNodeView }),
     DocumentStylesExtension.configure({ preset }),
-    PageBreak,
-    ScriptureReferenceNode.configure({ locale }),
-    ScripturePassageNode.configure({ locale }),
     NumberingV4.configure({ roles: roles ?? "subpoints" }),
     NodeIdentity.configure({ newId: ids }),
     DocumentClipboard.configure({ newId: ids, onNotice: onClipboardNotice }),
@@ -97,6 +75,7 @@ export function labV4Extensions({
   ];
 }
 
+/** The editor's whole schema; the same as `v4Schema()` (`schema.ts`), which needs no editor. */
 export const labV4Schema = () => getSchema(labV4Extensions());
 
 /** Loads JSON as a fresh v4 document (validated, migrated from v3 when older), with empty history. */

@@ -1,7 +1,10 @@
 import { sectionRoles } from "../schema/model";
 
 /*
- * Schema v4, an architecture-validation prototype (lab only, never stored).
+ * Schema v4: the canonical sermon document. It began as the lab's
+ * architecture-validation prototype; since A1 it is the document of
+ * `SermonWorkspace`, and since A2.0 server and persistence code reach it only
+ * through `src/features/sermon-editor/document`. It is not yet stored.
  *
  * The document is a flat sequence of ordinary blocks. A sermon point is one
  * textblock (`point`), not a container, and every top-level block carries a

@@ -1,5 +1,4 @@
 import { getSchema, type Extensions } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
 
 import { defaultLocale, type Locale } from "@/i18n/locales";
 import { DocumentClipboard, type ClipboardNotice } from "../clipboard";
@@ -8,22 +7,11 @@ import { OutlineNumbering } from "../numbering";
 import { OutlineKeymap } from "../outline-commands";
 import { PassageExpansion } from "../pagination/expansion";
 import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
-import { StyleAttributes } from "../styles/attributes";
 import { DocumentStylesExtension } from "../styles/plugin";
 import { GapCaret } from "../gap-caret";
 import { ClickPlacement } from "../click-placement";
-import { formattingExtensions } from "./formatting";
-import {
-  LabDocument,
-  OutlinePoint,
-  PageBreak,
-  PointTitle,
-  PreacherNote,
-  Script,
-  SectionTitle,
-  SermonSection,
-} from "./nodes";
-import { ScripturePassageNode, ScriptureReferenceNode } from "./scripture";
+import { v3SchemaExtensions } from "./document-schema";
+import { ScripturePassageNodeView } from "./scripture-view";
 
 export type LabExtensionOptions = {
   locale?: Locale;
@@ -40,6 +28,10 @@ export type LabExtensionOptions = {
  * extensions give color, highlight, and alignment; the sermon's own nodes,
  * identity, numbering, clipboard, and structure commands are the lab's, and
  * so are Print Layout and the passages' expansion (view state only).
+ *
+ * The schema is `v3SchemaExtensions` (`document-schema.ts`), with the
+ * passage's node view; everything after it is behaviour and adds nothing to
+ * the schema.
  */
 export function labExtensions({
   locale = defaultLocale,
@@ -49,30 +41,8 @@ export function labExtensions({
 }: LabExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
-    StarterKit.configure({
-      document: false,
-      heading: { levels: [1, 2, 3, 4] },
-      code: false,
-      codeBlock: false,
-      horizontalRule: false,
-      link: false,
-      strike: false,
-      // No paragraph is forced at the end: a document may end with a section or a point.
-      trailingNode: false,
-    }),
-    ...formattingExtensions,
-    LabDocument,
-    SermonSection,
-    SectionTitle,
-    OutlinePoint,
-    PointTitle,
-    PreacherNote,
-    Script,
-    StyleAttributes,
+    ...v3SchemaExtensions({ locale, passage: ScripturePassageNodeView }),
     DocumentStylesExtension,
-    PageBreak,
-    ScriptureReferenceNode.configure({ locale }),
-    ScripturePassageNode.configure({ locale }),
     OutlineNumbering,
     NodeIdentity.configure({ newId: ids }),
     DocumentClipboard.configure({ newId: ids, onNotice }),
@@ -84,5 +54,5 @@ export function labExtensions({
   ];
 }
 
-/** The document schema alone, for checking JSON without an editor. */
+/** The lab editor's whole schema; the same as `v3Schema()` (`document-schema.ts`), which needs no editor. */
 export const labSchema = () => getSchema(labExtensions());

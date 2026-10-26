@@ -1,8 +1,14 @@
-import { Extension, mergeAttributes, Node } from "@tiptap/core";
+import { Extension, getSchema, mergeAttributes, Node, type Extensions } from "@tiptap/core";
 import { TextAlign } from "@tiptap/extension-text-align";
+import type { Schema } from "@tiptap/pm/model";
 
+import { defaultLocale } from "@/i18n/locales";
+import { documentStarterKit, type SchemaExtensionOptions } from "../schema/document-schema";
+import { formattingExtensions, LabTextAlign } from "../schema/formatting";
 import { textAlignments } from "../schema/model";
-import { dataAttribute, LabDocument, PreacherNote } from "../schema/nodes";
+import { dataAttribute, LabDocument, PageBreak, PreacherNote, Script } from "../schema/nodes";
+import { ScripturePassageNode, ScriptureReferenceNode } from "../schema/scripture";
+import { StyleAttributes } from "../styles/attributes";
 import { namedStyles } from "../styles/model";
 import { depthTypes, maxDepth, pointRoles, v4SchemaVersion } from "./model";
 
@@ -115,3 +121,34 @@ export const TextAlignV4 = TextAlign.configure({
   alignments: [...textAlignments],
   defaultAlignment: null,
 });
+
+/**
+ * Schema v4's extensions, and nothing else (A2.0): the canonical schema. An
+ * editor (`labV4Extensions`) adds its behaviour after these and passes the
+ * passage with its node view, so its schema is exactly this one. Nothing here
+ * touches the DOM, so it is built on a server too.
+ */
+export function v4SchemaExtensions({
+  locale = defaultLocale,
+  passage = ScripturePassageNode,
+}: SchemaExtensionOptions = {}): Extensions {
+  return [
+    documentStarterKit(),
+    ...formattingExtensions.filter((extension) => extension !== LabTextAlign),
+    TextAlignV4,
+    DocumentV4,
+    PointNode,
+    DepthAttribute,
+    PreacherNoteV4,
+    Script,
+    StyleAttributes,
+    PageBreak,
+    ScriptureReferenceNode.configure({ locale }),
+    passage.configure({ locale }),
+  ];
+}
+
+let v4: Schema | undefined;
+
+/** Schema v4, built once. */
+export const v4Schema = (): Schema => (v4 ??= getSchema(v4SchemaExtensions()));
