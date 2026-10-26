@@ -37,6 +37,11 @@ export const outlines: Untranslated<typeof english> = {
     entryMoved: "Movido.",
     entryRemoved: "Eliminado del bosquejo.",
     referencesSaved: "Pasajes guardados.",
+    documentCreated: "Documento del sermón creado.",
+    documentSaved: "Guardado.",
+    documentExists: "Este bosquejo ya tiene un documento del sermón.",
+    documentTooLarge: (limit: string) =>
+      `Este documento del sermón supera ${limit}, así que no se guardó. No se le quitó nada.`,
   },
   page: {
     metaTitle: "Bosquejo",

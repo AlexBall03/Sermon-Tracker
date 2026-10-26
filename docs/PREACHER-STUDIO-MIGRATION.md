@@ -741,7 +741,14 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
     - **A1-UI.4:** final visual acceptance, workflow and structural regression checks, long sermons, pagination and print, mobile, browsers, accessibility, and integrity, and a first-time-user scenario from a blank outline to a complete sermon through the real controls, with no tour and no development inspector. A1 is accepted only after it.
   - **Then:**
     - **A2:** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2"), with revisions and data protection.
-      - **A2.0 (built, 26 October 2026, awaiting owner review):** the production-safe document core, `src/features/sermon-editor/document` ([handoff](HANDOFF-PS-A2.md)). Nothing persisted; no database change.
+      - **A2.0 (built, 26 October 2026; committed as `f480456`):** the production-safe document core, `src/features/sermon-editor/document` ([handoff](HANDOFF-PS-A2.md)). Nothing persisted; no database change.
+      - **A2.1 (built and approved, 26 October 2026; not yet committed):** server document persistence ([handoff](HANDOFF-PS-A2.md)).
+        - **Storage:** `sermon_outline_documents` (migration `0020`, applied to development only), one v4 document to an outline, with its own revision.
+        - **Status:** approved by the owner on 26 October 2026; the two-connection race passed on development.
+        - **Code:** an owner-scoped service with an atomic revision check (`src/features/sermon-editor/persistence`), and thin actions behind `authorize("active")`.
+        - **Not yet:** nothing calls it, nothing converts, nothing syncs, and the legacy outline is unchanged.
+        - **Decided (owner):** a starting size limit of 512 KiB of UTF-8, reassessed in A2.3. This answers open decision 8 for documents only.
+        - **Decided (the A2.1 brief):** one document revision, independent of the outline's. This answers open decision 6 for A2's documents.
     - **A3:** full signed-in editor integration.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.

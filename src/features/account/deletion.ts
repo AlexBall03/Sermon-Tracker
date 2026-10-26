@@ -105,7 +105,8 @@ export async function processDeletion(
 
       // Occasions first: they hold their sermon, venue, and context in place.
       await tx.delete(preachingOccurrences).where(eq(preachingOccurrences.ownerId, userId));
-      // Tags on ideas, passages, relations, points, and outlines cascade from the ideas.
+      // Tags on ideas, passages, relations, points, and outlines (with their
+      // entries and sermon documents) cascade from the ideas.
       await tx.delete(ideas).where(eq(ideas.ownerId, userId));
       await tx.delete(tags).where(eq(tags.ownerId, userId));
       await tx.delete(preachingVenues).where(eq(preachingVenues.ownerId, userId));

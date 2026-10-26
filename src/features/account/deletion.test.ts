@@ -12,6 +12,7 @@ import {
   preachingOccurrences,
   preachingVenues,
   pushSubscriptions,
+  sermonOutlineDocuments,
   sermonOutlines,
   supportAttachments,
   supportMessages,
@@ -72,7 +73,15 @@ async function seed(clerkUserId: string, role: "admin" | "user" = "user") {
     preachedOn: "2026-01-04",
   });
   await db.insert(tags).values({ ownerId: owner, name: "Grace" });
-  await db.insert(sermonOutlines).values({ ownerId: owner, sermonId: sermon.id });
+  const [outline] = await db
+    .insert(sermonOutlines)
+    .values({ ownerId: owner, sermonId: sermon.id })
+    .returning();
+  await db.insert(sermonOutlineDocuments).values({
+    outlineId: outline.id,
+    ownerId: owner,
+    content: { type: "doc", attrs: { schemaVersion: 4 }, content: [] },
+  });
   await db.insert(bibleFavorites).values({
     ownerId: owner,
     translation: "kjv",
@@ -132,6 +141,9 @@ const rowsOf = async (owner: string) => ({
     .length,
   devices: (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.ownerId, owner)))
     .length,
+  documents: (
+    await db.select().from(sermonOutlineDocuments).where(eq(sermonOutlineDocuments.ownerId, owner))
+  ).length,
 });
 
 beforeEach(async () => {
@@ -170,6 +182,7 @@ describe("account deletion", () => {
       highlights: 0,
       notifications: 0,
       devices: 0,
+      documents: 0,
     });
 
     expect(await rowsOf(admin.user.id)).toEqual({
@@ -178,6 +191,7 @@ describe("account deletion", () => {
       highlights: 1,
       notifications: 1,
       devices: 1,
+      documents: 1,
     });
     const reply = await db
       .select()
@@ -225,6 +239,7 @@ describe("account deletion", () => {
       highlights: 0,
       notifications: 0,
       devices: 0,
+      documents: 0,
     });
 
     // The identity still signs in: it finds its locked row, never a new account.

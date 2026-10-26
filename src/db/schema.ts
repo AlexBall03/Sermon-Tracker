@@ -1,3 +1,4 @@
+import type { JSONContent } from "@tiptap/core";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -1023,6 +1024,53 @@ export const outlineEntryScriptureReferences = pgTable(
     ),
   ],
 );
+
+/**
+ * An outline's Preacher Studio sermon document (A2.1): one complete schema v4
+ * document, as `restoreSermonDocument` accepted it and `doc.toJSON()` wrote
+ * it. It is read and written only by
+ * `src/features/sermon-editor/persistence/documents.ts`, and nothing creates
+ * one yet: no page, no conversion, no sync.
+ *
+ * It is not part of the outline organizer (`src/features/outlines`) and does
+ * not change it. Its `revision` is its own: how many times the document was
+ * saved. `sermon_outlines.revision` still counts the legacy entries' shape,
+ * and neither moves the other.
+ *
+ * The owner is repeated and is part of the key to the outline, so a document
+ * can only belong to its outline's owner, and deleting the outline (or its
+ * sermon) removes it. There is no size CHECK: the limit is the service's
+ * (`documentLimits`), so it can change without a migration.
+ */
+export const sermonOutlineDocuments = pgTable(
+  "sermon_outline_documents",
+  {
+    /** One document to an outline. */
+    outlineId: uuid("outline_id").primaryKey(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    content: jsonb("content").$type<JSONContent>().notNull(),
+    /** 0 when created; one more for every save accepted against the revision before it. */
+    revision: integer("revision").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    foreignKey({
+      name: "sermon_outline_documents_outline_fk",
+      columns: [table.outlineId, table.ownerId],
+      foreignColumns: [sermonOutlines.id, sermonOutlines.ownerId],
+    }).onDelete("cascade"),
+    check("sermon_outline_documents_content_check", sql`jsonb_typeof(${table.content}) = 'object'`),
+    check("sermon_outline_documents_revision_check", sql`${table.revision} >= 0`),
+  ],
+);
+
+export type SermonOutlineDocument = typeof sermonOutlineDocuments.$inferSelect;
 
 /**
  * Changes sent from a device's offline queue (Phase 5C), one row per change

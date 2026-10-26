@@ -37,6 +37,12 @@ export const outlines = {
     entryMoved: "Moved.",
     entryRemoved: "Removed from the outline.",
     referencesSaved: "Passages saved.",
+    /** A sermon document (A2.1). */
+    documentCreated: "Sermon document created.",
+    documentSaved: "Saved.",
+    documentExists: "This outline already has a sermon document.",
+    documentTooLarge: (limit: string) =>
+      `This sermon document is larger than ${limit}, so it was not saved. Nothing was removed from it.`,
   },
   page: {
     metaTitle: "Outline",
