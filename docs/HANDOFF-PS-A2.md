@@ -1439,3 +1439,218 @@ D1 is compared with `jsonEqual`, giving `exact`. Failing that, the browser's `ca
 
 ### Ready for owner review
 
+
+## A2.3B.2B.2 and A2.3B.2B.3: Conditional retry, refusal recording, and resumption (27 October 2026)
+
+**Status:** built and verified with focused tests. Not committed, not deployed, not mounted, and no migration. These are the second and third of the three A2.3B.2B checkpoints, built in one session as the owner approved. A2.3B.2B is complete. B.2C (backoff, timeouts) and A3 (mounting) are not started.
+
+**Git:** began on `dev` at `cfdcc44` with a clean tree. That commit is titled "Phase A2.3B.2B.2 is done!", but it holds B.2B.1 (its handoff section above says B.2B.2 and B.2B.3 are not built). It ends there, with the files below changed or new and nothing staged.
+
+### Approved by the owner (binding)
+
+1. Both checkpoints in one session.
+2. The conditional retry is **automatic, once**: sent right after a read finds `unchanged`, with no timer. It is also public as `retryUnchanged()`. (Asked and answered at the start of this session.)
+3. A newer valid snapshot resumes saving after an invalid or oversized one (B.2B.1's decision 2).
+
+### B.2B.2: the conditional retry
+
+**When.** Every one of these must hold:
+- not disposed;
+- `reconciling`;
+- the same `Submission` still held;
+- its latest read is `unchanged`;
+- no read or retry in flight;
+- its one retry not spent.
+
+`reconcile()` sends it as part of the same call when its read finds `unchanged`. `retryUnchanged()` sends it when asked. Anywhere else, either call does nothing, or returns the request already in flight.
+
+**What is sent.** `submission.content`, `sequence`, and `expectedRevision` (R0), unchanged, under the claim already held. It never sends the editor's newer content, and the retry is never a new submission. `getSubmission()` returns the same object throughout.
+
+**Budget.** One retry per submission:
+- `retried` is compared by object identity, set before anything is sent or told, and never reset;
+- `NetworkState.submission.attempts` is 1, or 2 once the retry is sent;
+- a later submission has its own budget.
+
+**Single flight.** One slot (`inFlight`) for reads and the retry, never both:
+- it is set before the work starts, and the send waits a microtask, so a listener calling either method from inside a state change gets the same promise;
+- `NetworkState.retrying` is `true` while the retry is in flight, never together with `reading`.
+
+**The retry's answer:**
+
+| Answer | What happens |
+| --- | --- |
+| `confirmed`, its sequence, exactly R0 + 1, `confirmSave` accepted | settled as a confirmation (`outcome` confirmed, base `predicted`, provenance `confirmed`); newer work scheduled |
+| `confirmed` but `confirmSave` refuses | held, `block: rejected_confirmation`, then read back |
+| `conflict` `stale` | **not a conflict**: read back (the original may be what moved the revision) |
+| `refused`, `failed`, a throw, another revision, another sequence, or nothing | held, then read back |
+| `conflict` `missing` | released, `blocked` (`conflict`), recorded `missing` |
+| `unauthorized` | `blocked` (`unauthorized`), the claim **held** (the original may still be written) |
+
+The read back uses B.2B.1's classification unchanged. If it finds `unchanged` again, the save stays held: the budget is spent. At most one save, one read, one retry, and one read back per submission. After that, only an explicit `reconcile()` reads again, and it never resends.
+
+**Why a refusal of the retry is held.** By B.2B.1's rule, only what can never be written is released. The retry's refusal says what the server does now; it does not show the original can never commit (across a deployment, for example). The save stays held with its draft. A3 or B.3 decides what the person is offered.
+
+**Why both attempts cannot be written.** Only the server's `UPDATE … WHERE revision = R0` guarantees it. Nothing in the browser stands in for that. The original's answer always arrives before `reconciling` (that answer is what puts the coordinator there), so only its commit on the server can come late. The integration test runs that against a server that writes only at the revision named.
+
+**Disposal.** No read or retry starts after `dispose()`. A retry already sent may still answer:
+- a late confirmation at R0 + 1 goes to the same controller;
+- a late `missing` releases the claim and records the refusal;
+- anything else keeps the claim held.
+
+### B.2B.3: refusals recorded, and resumed from
+
+**Controller (`autosave/controller.ts`):**
+- `DraftStorage` now includes `refuseDraft`.
+- `refuseSave(sequence, { code, revision? })` is accepted only for the claimed snapshot. It releases the claim and queues `refuseDraft` on the controller's existing queue. That puts it after the snapshot's own draft write (write-ahead) and in order with every other draft operation.
+- A revision the store would refuse is dropped rather than losing the record. Like `confirmSave`, it is accepted after disposal.
+- `AutosaveState.refusalRecord` is `{ sequence, code, revision?, status: pending → recorded | ignored | failed, error? }`.
+  - It is metadata only.
+  - It never sets `storageError` and never changes `autosaveStatus`, because the content's durability is reported separately.
+  - `ignored` means the draft does not hold that snapshot, for example because its own write failed.
+- An oversized snapshot is written with `refusal: "too_large"` in the same `writeDraft`. That is one transaction, not a second 3 MiB write.
+
+**Store and model (`recovery/`), a small deviation from the plan to leave `store.ts` alone:**
+- `writeDraft` takes an optional `refusal: "too_large"`. It labels that snapshot's own refusal, but never over a `stale` or `missing` refusal, which belong to the whole line of work.
+- `currentRefusal(draft)` says whether a refusal still applies to the content:
+  - `stale` and `missing` always do, until a confirmation answers them;
+  - `invalid` and `too_large` apply only when they name the draft's own sequence.
+- `draftStatus` uses it, so a refusal of an older snapshot is kept as history for A2.3C and no longer counts as `conflict`.
+- Recording each oversized snapshot through `refuseDraft` would have rewritten the whole record a second time on every snapshot.
+
+**What the coordinator records** (all through `refuseSave`, never the store):
+
+| Source | Code |
+| --- | --- |
+| The check before sending (`canonicalDocument`) | `invalid` or `too_large` |
+| A first attempt's `refused` | its code |
+| A first attempt's `conflict` | `stale` (with the server's revision) or `missing`; definite since B.2B.1 |
+| A read that releases | `stale` with the read revision (conflict, or unreadable past R0), or `missing` |
+
+Never recorded:
+- an uncertain answer;
+- a held read;
+- `unauthorized`;
+- a retry's `stale` before its read back.
+
+**Resumption:**
+- Only `blocked` with `block.reason: "refused"` and no submission can resume.
+- A change arms the timers as in `idle`. A newer snapshot that was already waiting when the refusal came is scheduled at once (Scenario F).
+- The block is cleared only when a request is actually sent.
+- `conflict`, `unauthorized`, `revision_mismatch`, `failed`, and anything `reconciling` never resume, whatever is edited.
+
+**Suppression.** Refused content is not sent again:
+- A claim at or below the refused sequence (an edit back to the same snapshot) is released unsent, and the coordinator returns to the same block.
+- Content whose canonical form `jsonEqual`s what the server refused, under a new sequence (A→B→A), is foreseen locally. It is recorded for the new sequence and not sent (`origin: "local"`).
+- Locally refused content is never sent. Each new snapshot costs one `canonicalDocument` run and no request.
+- The memory of a refusal is cleared once a save is settled.
+
+**An oversized document** is held back by the controller (`refusal`, status `attention`) before the coordinator sees it. As in B.2A, it resumes on the first snapshot under the limit.
+
+### Claim ownership
+
+- A claim whose save may still be written is never released because its coordinator went away.
+- `createSaveCoordinator` refuses such a controller (`claimed`), so the session's later edits stay on the device and are not sent.
+- A definite late answer after disposal (confirmed, `missing`, a first attempt's refusal or conflict) releases or records, after which a new coordinator may be made.
+- Taking over an ambiguous claim (a new session, recovery) is A3's and B.3's; nothing here does it.
+- Nothing crosses accounts. Every draft operation uses the controller's own owner, outline, and session, which never change.
+
+### Files
+
+- **Changed:**
+  - `persistence/autosave/coordinator.ts` (retry, refusal routing, resumption, suppression)
+  - `autosave/controller.ts` (`refuseSave`, `refusalRecord`, oversized label)
+  - `autosave/model.ts` (`retrying`, `submission.attempts`, `RefusalRecord`, `SaveRefusal`, phase docs)
+  - `recovery/store.ts` (`writeDraft`'s `refusal`)
+  - `recovery/model.ts` (`lineRefusals`, `currentRefusal`, `draftStatus`)
+  - tests: `coordinator.test.ts`, `controller.test.ts`, `editor-adapter.test.ts` (stub), `recovery.test.ts`
+  - `AGENTS.md`, `ARCHITECTURE.md`, this handoff
+- **New:** `autosave/integration.test.ts`
+- No server, action, schema, transport, `saving.ts`, or migration change.
+
+### Verification
+
+`vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/editor-lab/v4`: 23 files, 566 passed, none failed (497 at B.2B.1, +69). By file:
+
+**`coordinator.test.ts`: 122 (+39).**
+- Conditional retry (20): availability before and after `unchanged`; the exact original request with newer edits excluded; confirmation settling only the sequence sent; the original winning (stale, then read back); another writer winning; seven non-settling answers each read back once with no third request; read back unavailable; equivalence and mismatch; equal-to-base at R0 never confirmed; controller rejection; `missing`; `unauthorized`; concurrent and re-entrant callers; disposal during the read and during the retry; a fresh budget per submission.
+- Refusals (16): each definite code recorded after its own write; uncertain answers never recorded; a retry's stale recorded only once a read proves the conflict; local invalid never sent; server-refused content never resent under a new sequence; oversized held back then corrected; a still-invalid edit not resuming; Scenario F; a refusal after disposal; a refusal storage failure.
+- Five B.2B.1 tests and three B.2A tests changed on purpose, because they asserted "never resent after `unchanged`" and "refusals are final".
+
+**`controller.test.ts`: 38 (+13)**, on the real store in fake-indexeddb:
+- refusal after the write, content untouched;
+- only the claimed sequence;
+- a refusal of N never replacing N + 1;
+- a conflict staying current for newer content;
+- watermark and baseRevision kept;
+- a confirmed snapshot never refused;
+- oversized labeling and history;
+- precedence over conflicts;
+- refusal storage failure reported without touching `storageError`;
+- `ignored` when the snapshot's own write failed;
+- after disposal;
+- a bad revision dropped;
+- two accounts kept apart.
+
+**`recovery.test.ts`: 22 (+5).** `writeDraft`'s `refusal`: labeling, precedence, replacing an older invalid, never by an older write, lifted by confirmation.
+
+**`integration.test.ts`: 12 (new).** Scenarios A–H:
+- A: the original wins;
+- B: the retry wins, and both answers lost;
+- C: another writer wins;
+- D: invalid, then corrected;
+- E: oversized, then shortened;
+- F: refusal of N with N + 1 kept;
+- G: disposed with a save out, and disposed with a save unresolved;
+- H: storage unavailable, and only the refusal failing;
+- every operation scoped to the session's own account, outline, and draft.
+
+Each runs against a server that writes only at the named revision and asserts the server's revision and write count.
+
+**Mutations,** each reverted. Run on the coordinator file (1–6) or on all autosave and recovery tests (7–16):
+
+| # | Mutation | Tests failed |
+| --- | --- | --- |
+| 1 | resetting the budget on each read | 11 |
+| 2 | treating the retry's stale as a conflict | 6 |
+| 3 | no automatic retry | 26 |
+| 4 | accepting any revision past R0 on the retry | 1 |
+| 5 | no single flight for the retry | 12 |
+| 6 | releasing on the retry's refusal | 1 |
+| 7 | resuming from a conflict | 10 |
+| 8 | no refused-sequence guard | 1 |
+| 9 | recording a refusal on an uncertain answer | 59 |
+| 10 | no content suppression | 1 |
+| 11 | not arming after a refusal | 2 |
+| 12 | no conflict precedence in `writeDraft` | 2 |
+| 13 | every refusal current | 6 |
+| 14 | `refuseSave` without the claim | 2 |
+| 15 | a refusal storage failure reported recorded | 4 |
+| 16 | no oversized label | 2 |
+
+**Tooling:** `tsc --noEmit` clean; ESLint and Prettier on `src/features/sermon-editor/persistence` clean.
+
+**Whole unit suite** (`vitest run`): 178 files, 3,112 tests, 3,109 passed, 3 failed. None is this phase's:
+- `src/features/preferences/preferences.test.ts` fails to load: its `@/features/admin/clerk` mock has no `deleteIdentity` export. It fails alone too, and neither it nor that module was touched.
+- Three `church-ministry-settings.test.tsx` tests timed out under the full run and pass when run alone.
+
+**Not run:** a build, end-to-end tests, a real browser, a real database. Nothing is mounted and no server code changed.
+
+### Limitations
+
+- **A refused or still-`unchanged` retry stays held** until the session ends. The words are on the device, but nothing more is sent. What the person is offered is A3/A2.3C.
+- **Oversized from the canonical step only.** A document under the limit whose canonical form is over it is refused locally as `too_large` through the same path as `invalid`. No test builds one; the shared path is tested with `invalid`.
+- **Suppression keeps one refused content**, the latest. Refusals of different contents A, then B, then A again would send A once more; the server refuses it again, and nothing loops.
+- **A retry needs no fresh claim.** If something else released the controller's claim during the retry, the retry's confirmation is refused by the controller and held (`rejected_confirmation`). Nothing in the application releases claims that way.
+
+### For A2.3B.2C
+
+- Backoff and a request timeout apply to `failed` and, for the timeout, end as `uncertain` (read back). They never add a second conditional retry: the budget is one per submission.
+- Pace any explicit `reconcile()`. Never call it or `retryUnchanged()` from a state listener as a reaction to state.
+
+### For A3, A2.3C, and B.3
+
+- **A3:** show `serverSaveStatus`, with `reconciliation`, `submission.attempts`, `retrying`, and the controller's `refusalRecord` for detail. A `failed` `refusalRecord` means the refusal is not on the device; the words may still be.
+- **A2.3C:** read a draft's refusal through `currentRefusal`. `stale` and `missing` are conflicts for the person; an older `invalid` or `too_large` is history.
+- **B.3:** take over a claim held by a disposed coordinator (a new session through recovery), never by releasing it.
+
+### Ready for owner review

@@ -60,15 +60,36 @@ export type DocumentDraftData = {
 };
 
 /**
+ * Refusals of the line of work rather than of one snapshot: the server's
+ * document moved on (`stale`) or is gone (`missing`), so every later snapshot
+ * of the session is made against a base it no longer has.
+ */
+export const lineRefusals: ReadonlySet<DraftRefusal["code"]> = new Set(["stale", "missing"]);
+
+/**
+ * The refusal that still applies to the draft's content (A2.3B.2B.3). A
+ * `stale` or `missing` one always does, until a confirmation answers it. An
+ * `invalid` or `too_large` one applies only to the snapshot it names: once a
+ * newer snapshot is kept, it is history, kept for the person (A2.3C) but no
+ * longer said of the content.
+ */
+export function currentRefusal(draft: DocumentDraftData): DraftRefusal | null {
+  const refusal = draft.refusal;
+  if (!refusal) return null;
+  if (lineRefusals.has(refusal.code)) return refusal;
+  return refusal.sequence === draft.sequence ? refusal : null;
+}
+
+/**
  * Where a draft stands. `pending`: content the server is not known to have
  * (a save of it may have landed; nothing here proves it did). `conflict`: the
- * server refused it and the person decides. A draft found by a session other
- * than its own is a recovery candidate, whatever its status.
+ * server refused it (`currentRefusal`) and the person decides. A draft found
+ * by a session other than its own is a recovery candidate, whatever its status.
  */
 export type DraftStatus = "pending" | "conflict";
 
 export const draftStatus = (draft: DocumentDraftData): DraftStatus =>
-  draft.refusal ? "conflict" : "pending";
+  currentRefusal(draft) ? "conflict" : "pending";
 
 /** A draft as read: readable, of a format this code does not know, or damaged. Never silently skipped. */
 export type DraftRead =

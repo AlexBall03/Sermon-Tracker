@@ -136,6 +136,7 @@ describe("the controller on the editor", () => {
     const storage: DraftStorage = {
       writeDraft: vi.fn(async () => "written" as const),
       confirmDraft: vi.fn(async () => "cleared" as const),
+      refuseDraft: vi.fn(async () => "refused" as const),
     };
     return storage;
   };

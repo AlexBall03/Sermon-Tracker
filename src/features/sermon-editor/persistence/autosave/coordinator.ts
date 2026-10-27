@@ -12,6 +12,7 @@ import {
   type NetworkState,
   type Reconciliation,
   type ReconciliationMatch,
+  type SaveRefusal,
   type ServerSaveTiming,
 } from "./model";
 import type { DocumentTransport } from "./transport";
@@ -59,11 +60,23 @@ import type { DocumentTransport } from "./transport";
  * - Past R0 otherwise, or the document gone: it can never be written.
  *   Released, `blocked` (`conflict`).
  * - At R0 or below, or anything not understood: held, still `reconciling`.
- *   That includes the base still there (`unchanged`, for A2.3B.2B.2's
- *   conditional retry), even when what was sent says the same: the request
- *   may still be written and move the revision.
+ *   That includes the base still there (`unchanged`), even when what was
+ *   sent says the same: the request may still be written and move the
+ *   revision.
  * - An account that may not read: `blocked`, the claim still held.
  * A read never moves `outcome`; what it showed is `reconciliation`.
+ *
+ * The conditional retry (A2.3B.2B.2): after a read finds `unchanged`, the
+ * same submission is sent once more, by itself and at once (no timer): the
+ * same content, the same sequence, against the same R0, under the same claim.
+ * The server's `WHERE revision = R0` is what keeps the original and the retry
+ * from both being written; nothing here stands in for it. A confirmation at
+ * R0 + 1 settles it. Anything else (a `stale` answer included, which may be
+ * the original's own write) is read back once, by the rules above; the
+ * document gone releases it; an account that may not save stops it holding
+ * the claim. One retry per submission, spent before it is sent and never
+ * given back: at most one save, one read, one retry, and one read back.
+ * Reads and the retry share one slot in flight.
  *
  * It logs nothing.
  */
@@ -120,12 +133,25 @@ export type SaveCoordinator = {
    * While `reconciling` only: reads the document once and settles the save
    * if the read shows what became of it (A2.3B.2B.1). Never writes. A call
    * while a read is in flight gets that read's promise. Done by itself once
-   * on entering `reconciling`; after that, only when called. Resolves with
-   * the state after the read; never rejects. Does nothing in any other phase
-   * or once disposed. Never call it from a state listener for every state:
-   * each answer is published, so that would read again without pause.
+   * on entering `reconciling`; after that, only when called. If the read
+   * finds the base still at R0 and the save's one conditional retry is not
+   * spent, the retry is sent as part of the same call (A2.3B.2B.2). Resolves
+   * with the state after the read (and that retry, with its read back); never
+   * rejects. Does nothing in any other phase or once disposed. Never call it
+   * from a state listener for every state: each answer is published, so that
+   * would read again without pause.
    */
   reconcile(): Promise<NetworkState>;
+  /**
+   * The conditional retry (A2.3B.2B.2), at most once per save: only while
+   * `reconciling`, after the latest read found the base the save was made
+   * against still at R0 (`reconciliation.result === "unchanged"`). Sends
+   * exactly what was sent, against the same revision, under the same claim;
+   * anything but a confirmation is read back once. Sent by itself after such
+   * a read, so callers rarely need it. A call while a read or retry is in
+   * flight gets its promise; anywhere else it does nothing. Never rejects.
+   */
+  retryUnchanged(): Promise<NetworkState>;
   /** What the server is known to hold. */
   getBase(): AuthoritativeBase;
   getSubmission(): Submission | null;
@@ -164,6 +190,8 @@ function matcher(read: JSONContent) {
 
 type Settled = Exclude<NetworkPhase, "scheduled" | "disposed">;
 
+type Refusal = Extract<DocumentSaveOutcome, { kind: "refused" }>;
+
 export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoordinator {
   const { controller, transport } = options;
   const timing = { ...serverSaveTiming, ...options.timing };
@@ -200,9 +228,23 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let maxTimer: ReturnType<typeof setTimeout> | null = null;
   let running: Promise<void> | null = null;
-  /** The read in flight (A2.3B.2B.1): one at a time. */
-  let reading: Promise<NetworkState> | null = null;
+  /** The read or conditional retry in flight (A2.3B.2B.1–2): one at a time, never both. */
+  let inFlight: Promise<NetworkState> | null = null;
   let readInFlight = false;
+  let retryInFlight = false;
+  /**
+   * The submission whose one conditional retry was spent (A2.3B.2B.2),
+   * compared by identity: the `Submission` object is the logical save, kept
+   * through its retry. Set before anything is sent or told, and never reset.
+   */
+  let retried: Submission | null = null;
+  /**
+   * The last snapshot refused for certain (A2.3B.2B.3), and what was refused:
+   * the canonical content the server refused (null when the check before
+   * sending refused it), so that content is never sent again, whatever its
+   * sequence. Cleared once a save is settled.
+   */
+  let refused: { sequence: number; predicted: JSONContent | null; outcome: Refusal } | null = null;
 
   const listeners = new Set<(state: NetworkState) => void>();
 
@@ -219,12 +261,14 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
         sequence: submission.sequence,
         expectedRevision: submission.expectedRevision,
         bytes: submission.bytes,
+        attempts: retried === submission ? 2 : 1,
       },
       confirmedSequence,
       due,
       outcome,
       block,
       reading: readInFlight,
+      retrying: retryInFlight,
       reconciliation: reconciliation && { ...reconciliation },
     };
   }
@@ -254,9 +298,17 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     maxTimer = null;
   }
 
-  /** Whether changes may still schedule a save. Not once anything is unresolved, refused, or failed. */
+  /**
+   * A refusal a newer snapshot may clear (A2.3B.2B.3): nothing was written,
+   * no claim or submission is held, and the base is still what the server
+   * holds. Every other block is final.
+   */
+  const resumable = () =>
+    !disposed && phase === "blocked" && block?.reason === "refused" && submission === null;
+
+  /** Whether changes may still schedule a save. Not once anything is unresolved, failed, or blocked for good. */
   const schedulable = () =>
-    !disposed && (phase === "idle" || phase === "preparing" || phase === "saving");
+    !disposed && (phase === "idle" || phase === "preparing" || phase === "saving" || resumable());
 
   function onChange() {
     if (!schedulable()) return;
@@ -276,7 +328,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       publish();
       return;
     }
-    if (phase === "idle") void run();
+    if (phase === "idle" || resumable()) void run();
   }
 
   /** Arms the idle timer once, when work is waiting and nothing else will start a save. */
@@ -284,7 +336,9 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     if (!schedulable() || idleTimer || maxTimer) return;
     const state = controller.getState();
     if (state.disposed || state.refusal) return;
-    if (state.changed || state.sequence > state.confirmedSequence) {
+    // After a refusal, only a snapshot newer than the refused one is work.
+    const after = Math.max(state.confirmedSequence, refused?.sequence ?? 0);
+    if (state.changed || state.sequence > after) {
       idleTimer = setTimeout(onDue, timing.serverDebounceMs);
     }
   }
@@ -316,6 +370,25 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     publish();
   }
 
+  /**
+   * Refused for certain (A2.3B.2B.3): the claim is released and the refusal
+   * queued into the draft (`refuseSave`), and the block waits for a newer
+   * snapshot. One already waiting (made while this was in flight) is
+   * scheduled now, since the timers were cleared.
+   */
+  function stopRefused(
+    sequence: number,
+    refusal: Refusal,
+    predicted: JSONContent | null,
+    origin: "server" | "local",
+  ) {
+    controller.refuseSave(sequence, { code: refusal.code });
+    refused = { sequence, predicted, outcome: refusal };
+    submission = null;
+    stop("blocked", "refused", origin);
+    armIfWaiting();
+  }
+
   /** Flushes and claims, trying again only when a draft write slipped in between. */
   async function claim(): Promise<ClaimedSnapshot | null> {
     for (let attempt = 0; attempt < claimAttempts; attempt += 1) {
@@ -333,19 +406,26 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
   }
 
   async function save(): Promise<void> {
+    // From a refusal (A2.3B.2B.3), a save that finds nothing newer goes back to it, never to idle.
+    const resuming = resumable();
     due = false;
     phase = "preparing";
     publish();
 
+    const back = () => {
+      phase = resuming ? "blocked" : "idle";
+      publish();
+    };
     const claimed = await claim();
     if (disposed) {
       if (claimed) controller.releaseSave(claimed.sequence);
       return;
     }
-    if (!claimed) {
-      phase = "idle";
-      publish();
-      return;
+    if (!claimed) return back();
+    if (refused && claimed.sequence <= refused.sequence) {
+      // The refused snapshot itself (an edit back to it): never sent again.
+      controller.releaseSave(claimed.sequence);
+      return back();
     }
     if (claimed.expectedRevision !== revision) {
       controller.releaseSave(claimed.sequence);
@@ -355,8 +435,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     // What the server would store for it, by the server's own function. What it refuses is never sent.
     const predicted = canonicalDocument(claimed.content);
     if (!predicted.ok) {
-      controller.releaseSave(claimed.sequence);
-      outcome =
+      const refusal: Refusal =
         predicted.status === "invalid"
           ? {
               kind: "refused",
@@ -371,7 +450,18 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
               bytes: predicted.bytes,
               limit: predicted.limit,
             };
-      stop("blocked", "refused", "local");
+      outcome = refusal;
+      stopRefused(claimed.sequence, refusal, null, "local");
+      return;
+    }
+    if (
+      refused?.predicted &&
+      jsonEqual(predicted.content as JsonValue, refused.predicted as JsonValue)
+    ) {
+      // The content the server refused, under a new sequence: foreseen, never sent again.
+      const again: Refusal = { ...refused.outcome, sequence: claimed.sequence };
+      outcome = again;
+      stopRefused(claimed.sequence, again, refused.predicted, "local");
       return;
     }
 
@@ -384,7 +474,10 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       base: { content: canonicalBase, revision },
     };
     submission = sent;
+    retried = null;
     reconciliation = null;
+    // Leaving a refusal: only now, with a request actually sent.
+    block = null;
     phase = "saving";
     publish();
 
@@ -428,15 +521,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
           stop("reconciling", "rejected_confirmation", "local");
           return;
         }
-        revision = answer.revision;
-        confirmedSequence = sent.sequence;
-        base = { content: sent.predicted, revision: answer.revision };
-        canonicalBase = sent.predicted;
-        baseInfo = { revision: answer.revision, provenance: "confirmed", canonical: true };
-        submission = null;
-        block = null;
-        phase = "idle";
-        publish();
+        settleConfirmed(sent, answer.revision);
         return;
       }
       case "failed":
@@ -450,16 +535,16 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
         stop("failed", null, "server");
         return;
       // Each wrote nothing: the claim is released and no submission is left unresolved.
-      // `outcome` keeps which one (stale or missing, invalid or too_large) for A2.3B.2B.
+      // `outcome` keeps which one (stale or missing, invalid or too_large). A first
+      // attempt's `stale` is definite: nothing else of this session was unresolved.
+      // Conflicts and refusals are recorded in the draft (A2.3B.2B.3).
       case "conflict":
-        controller.releaseSave(sent.sequence);
+        controller.refuseSave(sent.sequence, { code: answer.code, revision: answer.revision });
         submission = null;
         stop("blocked", "conflict", "server");
         return;
       case "refused":
-        controller.releaseSave(sent.sequence);
-        submission = null;
-        stop("blocked", "refused", "server");
+        stopRefused(sent.sequence, answer, sent.predicted, "server");
         return;
       case "unauthorized":
         controller.releaseSave(sent.sequence);
@@ -471,32 +556,168 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     }
   }
 
+  /**
+   * Runs `work` as the one read or retry in flight. `inFlight` is set before
+   * `work` begins, so anyone told of its state and asking again gets this
+   * promise rather than a second request. `work` never rejects.
+   */
+  function single(work: () => Promise<void>): Promise<NetworkState> {
+    let done!: (state: NetworkState) => void;
+    const promise = new Promise<NetworkState>((resolve) => {
+      done = resolve;
+    });
+    inFlight = promise;
+    void work()
+      .catch(() => undefined)
+      .then(() => {
+        if (inFlight === promise) inFlight = null;
+        done(getState());
+      });
+    return promise;
+  }
+
   function reconcile(): Promise<NetworkState> {
-    if (reading) return reading;
+    if (inFlight) return inFlight;
     if (disposed || phase !== "reconciling" || submission === null) {
       return Promise.resolve(getState());
     }
-    readInFlight = true;
-    reading = readBack(submission);
-    // Told only once `reading` is set, so a listener that asks again gets this read.
-    publish();
-    return reading;
+    const held = submission;
+    return single(async () => {
+      await readBack(held);
+      // The base is still at R0: the one conditional retry, if it has not been sent (A2.3B.2B.2).
+      if (retryable(held)) await retryBack(held);
+    });
   }
 
-  async function readBack(held: Submission): Promise<NetworkState> {
+  async function readBack(held: Submission): Promise<void> {
+    readInFlight = true;
+    publish();
     let answer: DocumentReadOutcome;
     try {
-      // Always after a tick, even if the transport throws at once: `reading` is set by then.
+      // Always after a tick, even if the transport throws at once: `inFlight` is set by then.
       answer = await Promise.resolve().then(() => transport.read(controller.outlineId));
     } catch {
       answer = { kind: "failed" };
     }
     readInFlight = false;
-    reading = null;
     // Only the submission read for is settled; nothing else can replace it while it is held.
     if (submission === held) classify(held, answer);
     else publish();
-    return getState();
+  }
+
+  /**
+   * Whether `held` may be sent once more (A2.3B.2B.2): still the save held,
+   * still `reconciling`, its latest read found the base it was made against
+   * at R0, and its one retry not yet spent.
+   */
+  function retryable(held: Submission): boolean {
+    return (
+      !disposed &&
+      phase === "reconciling" &&
+      submission === held &&
+      retried !== held &&
+      !readInFlight &&
+      !retryInFlight &&
+      reconciliation?.sequence === held.sequence &&
+      reconciliation.result === "unchanged"
+    );
+  }
+
+  function retryUnchanged(): Promise<NetworkState> {
+    if (inFlight) return inFlight;
+    if (submission === null || !retryable(submission)) return Promise.resolve(getState());
+    const held = submission;
+    return single(() => retryBack(held));
+  }
+
+  /**
+   * The conditional retry: exactly what was sent, against the same revision,
+   * under the same claim. `updateDocument` writes only at R0, so this and the
+   * original request can never both be written. Anything short of a
+   * confirmation is read back once; nothing here sends a third time.
+   */
+  async function retryBack(held: Submission): Promise<void> {
+    retried = held;
+    retryInFlight = true;
+    publish();
+    let answer: DocumentSaveOutcome;
+    try {
+      answer = await Promise.resolve().then(() =>
+        transport.save({
+          outlineId: controller.outlineId,
+          content: held.content,
+          expectedRevision: held.expectedRevision,
+          sequence: held.sequence,
+        }),
+      );
+    } catch {
+      answer = unansweredOutcome(held.sequence);
+    }
+    retryInFlight = false;
+    if (submission !== held) {
+      publish();
+      return;
+    }
+    // `settleRetry` tells listeners of what it settles; a read back tells them as it starts.
+    const readAgain = settleRetry(held, answer);
+    if (readAgain && !disposed && phase === "reconciling" && submission === held) {
+      await readBack(held);
+    }
+  }
+
+  /**
+   * What the retry's answer means; true when it must be read back. Only a
+   * confirmation at R0 + 1 settles it. A `stale` answer is not a conflict:
+   * the original request may be what moved the revision. A refusal says what
+   * the server does now, not that the original can never be written. Released
+   * only when the document is gone; an account that may not save stops it,
+   * holding the claim.
+   */
+  function settleRetry(held: Submission, answer: DocumentSaveOutcome): boolean {
+    const own = typeof answer === "object" && answer !== null && answer.sequence === held.sequence;
+    outcome = own ? answer : unansweredOutcome(held.sequence);
+    if (!own) return true;
+    switch (answer.kind) {
+      case "confirmed":
+        if (
+          !Number.isSafeInteger(answer.revision) ||
+          answer.revision !== held.expectedRevision + 1
+        ) {
+          return true;
+        }
+        if (!controller.confirmSave(held.sequence, answer.revision)) {
+          block = { reason: "rejected_confirmation", origin: "local" };
+          return true;
+        }
+        settleConfirmed(held, answer.revision);
+        armIfWaiting();
+        return false;
+      case "conflict":
+        if (answer.code === "missing") {
+          release(held, { code: "missing" });
+          return false;
+        }
+        return true;
+      case "unauthorized":
+        stop("blocked", "unauthorized", "server");
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  /** The server confirmed `sent` at `confirmed` (= R0 + 1) and the controller took it. */
+  function settleConfirmed(sent: Submission, confirmed: number) {
+    revision = confirmed;
+    confirmedSequence = sent.sequence;
+    base = { content: sent.predicted, revision: confirmed };
+    canonicalBase = sent.predicted;
+    baseInfo = { revision: confirmed, provenance: "confirmed", canonical: true };
+    submission = null;
+    refused = null;
+    block = null;
+    phase = "idle";
+    publish();
   }
 
   /** What a read says of `held`; see the module comment. Never sends. */
@@ -543,7 +764,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
           }
           // Moved on past what this request named: it can never be written now.
           record("conflict", { revision: r1, submitted });
-          return release(held);
+          return release(held, { code: "stale", revision: r1 });
         }
         if (r1 === r0) {
           const submitted = match(held.predicted);
@@ -558,13 +779,13 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       }
       case "missing":
         record("missing");
-        return release(held);
+        return release(held, { code: "missing" });
       case "unreadable": {
         const { revision: stored } = answer as Extract<DocumentReadOutcome, { kind: "unreadable" }>;
         const r1 =
           Number.isSafeInteger(stored) && (stored as number) >= 0 ? (stored as number) : null;
         record("unreadable", { revision: r1 });
-        return r1 !== null && r1 > r0 ? release(held) : hold();
+        return r1 !== null && r1 > r0 ? release(held, { code: "stale", revision: r1 }) : hold();
       }
       case "unauthorized":
         // The request may still have been written: the claim stays, and nothing more is asked.
@@ -581,9 +802,12 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     publish();
   }
 
-  /** The request can never be written: the claim is released, and nothing more is sent. */
-  function release(held: Submission) {
-    controller.releaseSave(held.sequence);
+  /**
+   * The request can never be written: the claim is released, the conflict
+   * recorded in the draft (A2.3B.2B.3), and nothing more is sent.
+   */
+  function release(held: Submission, refusal: SaveRefusal) {
+    controller.refuseSave(held.sequence, refusal);
     submission = null;
     stop("blocked", "conflict", "server");
   }
@@ -602,6 +826,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     canonicalBase = held.predicted;
     baseInfo = { revision: readRevision, provenance: "server", canonical: submitted === "exact" };
     submission = null;
+    refused = null;
     block = null;
     phase = "idle";
     publish();
@@ -615,7 +840,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       await running;
       return getState();
     }
-    if (phase !== "idle") return getState();
+    if (phase !== "idle" && !resumable()) return getState();
     clearTimers();
     await run();
     return getState();
@@ -659,6 +884,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     saveNow,
     retry,
     reconcile,
+    retryUnchanged,
     getBase: () => base,
     getSubmission: () => submission,
     dispose,

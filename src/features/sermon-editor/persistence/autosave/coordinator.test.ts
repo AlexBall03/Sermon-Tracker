@@ -71,6 +71,7 @@ function deferred() {
 function stubStorage(log: string[]) {
   let hold: ReturnType<typeof deferred> | null = null;
   const failures: unknown[] = [];
+  const refuseFailures: unknown[] = [];
   const storage: DraftStorage = {
     writeDraft: vi.fn(async (_owner, input) => {
       if (hold) {
@@ -89,6 +90,14 @@ function stubStorage(log: string[]) {
       log.push(`clear:${input.sequence}`);
       return "cleared" as const;
     }),
+    refuseDraft: vi.fn(async (_owner, input) => {
+      if (refuseFailures.length) {
+        log.push(`refuse-failed:${input.sequence}:${input.code}`);
+        throw refuseFailures.shift();
+      }
+      log.push(`refuse:${input.sequence}:${input.code}`);
+      return "refused" as const;
+    }),
   };
   return {
     storage,
@@ -97,6 +106,7 @@ function stubStorage(log: string[]) {
       return hold;
     },
     failNext: (error: unknown) => failures.push(error),
+    failNextRefuse: (error: unknown) => refuseFailures.push(error),
   };
 }
 
@@ -585,8 +595,8 @@ describe("the save boundary", () => {
     await controller.dispose();
   });
 
-  it("never sends what the server's canonical function refuses, and stops", async () => {
-    const { editor, net, controller, coordinator, status } = setup();
+  it("never sends what the server's canonical function refuses, records it, and resumes with a valid edit (A2.3B.2B.3)", async () => {
+    const { editor, net, controller, coordinator, status, log } = setup();
     editor.edit({ type: "doc", content: [{ type: "no_such_node" }] });
     await vi.advanceTimersByTimeAsync(1500);
     expect(net.requests).toHaveLength(0);
@@ -596,10 +606,24 @@ describe("the save boundary", () => {
       outcome: { kind: "refused", code: "invalid", sequence: 1 },
     });
     expect(controller.getState().saving).toBeNull();
-    editor.edit(doc("Fixed?"));
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(net.requests).toHaveLength(0);
     expect(status()).toBe("blocked");
+    await settle();
+    expect(log).toContain("refuse:1:invalid");
+    expect(controller.getState().refusalRecord).toMatchObject({
+      sequence: 1,
+      code: "invalid",
+      status: "recorded",
+    });
+    editor.edit(doc("Fixed"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(net.requests).toHaveLength(1);
+    expect(net.requests[0]).toMatchObject({
+      sequence: 2,
+      expectedRevision: 8,
+      content: doc("Fixed"),
+    });
+    expect(coordinator.getState()).toMatchObject({ phase: "idle", block: null, revision: 9 });
+    expect(status()).toBe("saved");
     await controller.dispose();
   });
 });
@@ -917,8 +941,6 @@ describe("outcomes", () => {
   it.each([
     ["a stale conflict", { kind: "conflict", code: "stale", revision: 12 }, "conflict"],
     ["a missing document", { kind: "conflict", code: "missing" }, "conflict"],
-    ["an invalid refusal", { kind: "refused", code: "invalid", problems: [] }, "refused"],
-    ["a too_large refusal", { kind: "refused", code: "too_large", bytes: 5, limit: 4 }, "refused"],
     ["an ended session", { kind: "unauthorized" }, "unauthorized"],
   ])("stops for %s, keeps the work, and never asks again", async (_name, answer, reason) => {
     const parts = await inFlight();
@@ -945,6 +967,46 @@ describe("outcomes", () => {
     expect(parts.controller.getState().localSequence).toBeGreaterThan(1);
     await parts.controller.dispose();
   });
+
+  it.each([
+    ["an invalid refusal", { kind: "refused", code: "invalid", problems: [] }],
+    ["a too_large refusal", { kind: "refused", code: "too_large", bytes: 5, limit: 4 }],
+  ])(
+    "stops for %s, keeps the work, and sends the next new snapshot (A2.3B.2B.3)",
+    async (_name, answer) => {
+      const parts = await inFlight();
+      parts.net.answer((r) => ({ ...answer, sequence: r.sequence }) as DocumentSaveOutcome);
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "blocked",
+        revision: 8,
+        block: { reason: "refused", origin: "server" },
+        submission: null,
+        outcome: { kind: "refused" },
+      });
+      expect(parts.controller.getState()).toMatchObject({ saving: null, confirmedSequence: 0 });
+      // Nothing new: nothing sent, however long, however asked.
+      await vi.advanceTimersByTimeAsync(30_000);
+      await parts.coordinator.saveNow();
+      await parts.coordinator.retry();
+      expect(parts.net.requests).toHaveLength(1);
+      expect(parts.status()).toBe("blocked");
+      // A newer snapshot is sent as usual, against the same revision.
+      parts.editor.edit(doc("Corrected"));
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(parts.net.requests).toHaveLength(2);
+      expect(parts.net.requests[1]).toMatchObject({
+        sequence: 2,
+        expectedRevision: 8,
+        content: doc("Corrected"),
+      });
+      expect(parts.coordinator.getState()).toMatchObject({ phase: "saving", block: null });
+      parts.net.answer();
+      await settle();
+      expect(parts.status()).toBe("saved");
+      await parts.controller.dispose();
+    },
+  );
 
   it("a confirmation the controller will not take is unresolved, not blocked: the server wrote it", async () => {
     const parts = await inFlight();
@@ -1086,7 +1148,7 @@ describe("reconciliation (A2.3B.2B.1)", () => {
   }
 
   /** Edits and lets time pass: nothing is sent and nothing more is read. */
-  async function nothingMore(parts: Parts, reads = 1) {
+  async function nothingMore(parts: Parts, reads = 1, requests = 1) {
     for (let i = 0; i < 5; i += 1) {
       parts.editor.edit(doc(`Later ${i}`));
       await vi.advanceTimersByTimeAsync(2000);
@@ -1094,12 +1156,13 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await parts.coordinator.saveNow();
     await parts.coordinator.retry();
-    expect(parts.net.requests).toHaveLength(1);
+    await parts.coordinator.retryUnchanged();
+    expect(parts.net.requests).toHaveLength(requests);
     expect(parts.net.reads).toBe(reads);
   }
 
   /** Still unknown: the claim, the submission, and revision 8 stay; nothing confirmed. */
-  function expectHeld(parts: Parts, reconciliation: Record<string, unknown>) {
+  function expectHeld(parts: Parts, reconciliation: Record<string, unknown>, requests = 1) {
     expect(parts.coordinator.getState()).toMatchObject({
       phase: "reconciling",
       revision: 8,
@@ -1118,7 +1181,7 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     });
     expect(parts.controller.claimSave()).toBeNull();
     expect(parts.coordinator.getBase().revision).toBe(8);
-    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.net.requests).toHaveLength(requests);
     expect(parts.status()).toBe("unresolved");
   }
 
@@ -1220,17 +1283,40 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.controller.dispose();
   });
 
-  it("C: the base still there at R0 is held for the conditional retry, never resent", async () => {
+  it("C: the base still there at R0 is sent once more as it was (A2.3B.2B.2), and never a third time", async () => {
     const parts = await unanswered();
     await read(parts, found(opened(), 8));
-    expectHeld(parts, {
-      result: "unchanged",
-      revision: 8,
-      submitted: "different",
-      base: "exact",
-      equivalent: false,
+    // The one conditional retry: the same request, under the same claim.
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.requests[1]).toEqual(parts.net.requests[0]);
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      retrying: true,
+      reading: false,
+      submission: { sequence: 1, expectedRevision: 8, attempts: 2 },
+      reconciliation: { result: "unchanged" },
     });
-    await nothingMore(parts);
+    // No answer to it either: read back once, and the base is still there.
+    parts.net.reject(new TypeError("Failed to fetch"));
+    await settle();
+    expect(parts.net.reads).toBe(2);
+    await read(parts, found(opened(), 8));
+    expectHeld(
+      parts,
+      {
+        result: "unchanged",
+        revision: 8,
+        submitted: "different",
+        base: "exact",
+        equivalent: false,
+      },
+      2,
+    );
+    expect(parts.coordinator.getState()).toMatchObject({
+      retrying: false,
+      submission: { attempts: 2 },
+    });
+    await nothingMore(parts, 2, 2);
     await parts.controller.dispose();
   });
 
@@ -1267,8 +1353,19 @@ describe("reconciliation (A2.3B.2B.1)", () => {
       revision: 8,
       saving: 2,
     });
+    // Settled only by the retry's own confirmation, never by the read at R0.
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.requests[1]).toMatchObject({ sequence: 2, expectedRevision: 8 });
+    parts.net.answer();
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      revision: 9,
+      confirmedSequence: 2,
+      outcome: { kind: "confirmed", sequence: 2, revision: 9 },
+    });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.net.requests).toHaveLength(2);
     expect(parts.net.reads).toBe(1);
     await parts.controller.dispose();
   });
@@ -1379,8 +1476,21 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     expect(parts.net.reads).toBe(2);
     expect(parts.coordinator.getState().reading).toBe(true);
     parts.net.answerRead(found(opened(), 8));
+    await settle();
+    // Unchanged: the one retry, then its read back, all in the call asked for.
+    expect(parts.net.requests).toHaveLength(2);
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead({ kind: "failed" });
     const state = await again;
-    expect(state).toMatchObject({ phase: "reconciling", reconciliation: { result: "unchanged" } });
+    expect(state).toMatchObject({
+      phase: "reconciling",
+      reading: false,
+      retrying: false,
+      reconciliation: { result: "failed" },
+      submission: { attempts: 2 },
+    });
+    expect(parts.net.reads).toBe(3);
     await parts.controller.dispose();
   });
 
@@ -1516,11 +1626,11 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.controller.dispose();
   });
 
-  it("a late commit after an unchanged read: a later reconcile() settles exactly the sequence sent, and newer work stays pending", async () => {
+  it("a late commit after an unchanged read: the retry meets stale, and its read back settles exactly the sequence sent; newer work stays pending", async () => {
     const parts = await unanswered();
     // The automatic read answers before the lost request commits: the base, still at R0.
     await read(parts, found(opened(), 8));
-    expectHeld(parts, { result: "unchanged", revision: 8, base: "exact" });
+    expectHeld(parts, { result: "unchanged", revision: 8, base: "exact" }, 2);
     // Newer local work while held: kept on the device, never sent.
     parts.editor.edit(doc("Newer"));
     await vi.advanceTimersByTimeAsync(5000);
@@ -1529,11 +1639,20 @@ describe("reconciliation (A2.3B.2B.1)", () => {
       saving: 1,
       confirmedSequence: 0,
     });
-    expect(parts.net.requests).toHaveLength(1);
-    // The original request commits on the server; the next read, asked for, shows it.
-    const settled = parts.coordinator.reconcile();
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.requests[1]).toMatchObject({ sequence: 1, content: doc("Sent") });
+    // The original request commits on the server first: the retry is refused as stale.
+    parts.net.answer((r) => ({
+      kind: "conflict",
+      sequence: r.sequence,
+      code: "stale",
+      revision: 9,
+    }));
     await settle();
+    // Not a conflict: read back.
+    expect(parts.coordinator.getState()).toMatchObject({ phase: "reconciling", reading: true });
     expect(parts.net.reads).toBe(2);
+    const settled = parts.coordinator.reconcile();
     parts.net.answerRead(found(sent(), 9));
     expect(await settled).toMatchObject({
       revision: 9,
@@ -1554,16 +1673,16 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     });
     expect(parts.log.filter((entry) => entry.startsWith("clear:"))).toEqual(["clear:1"]);
     expect(parts.status()).not.toBe("saved");
-    // No duplicate of what was sent: the next request is the newer work, against R0 + 1.
-    expect(parts.net.requests).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1500);
+    // Nothing of sequence 1 a third time: the next request is the newer work, against R0 + 1.
     expect(parts.net.requests).toHaveLength(2);
-    expect(parts.net.requests[1]).toMatchObject({
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(3);
+    expect(parts.net.requests[2]).toMatchObject({
       sequence: 2,
       expectedRevision: 9,
       content: doc("Newer"),
     });
-    expect(parts.net.requests.filter((request) => request.sequence === 1)).toHaveLength(1);
+    expect(parts.net.requests.filter((request) => request.sequence === 1)).toHaveLength(2);
     await parts.controller.dispose();
   });
 
@@ -1662,7 +1781,7 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.controller.dispose();
   });
 
-  it("the same server failure with the base still there is held, never sent again", async () => {
+  it("the same server failure with the base still there is sent once more, then held", async () => {
     const actions = {
       save: vi.fn(async () => ({ ok: false, code: "failed", message: "Not saved" })),
       read: vi.fn(async () => ({ ok: true, message: "", content: opened(), revision: 8 })),
@@ -1676,10 +1795,17 @@ describe("reconciliation (A2.3B.2B.1)", () => {
       reconciliation: { result: "unchanged" },
     });
     expect(parts.controller.getState().saving).toBe(1);
+    // One save, one read, one retry, one read back: then nothing more by itself.
+    expect(actions.save).toHaveBeenCalledTimes(2);
+    expect(actions.read).toHaveBeenCalledTimes(2);
+    expect(parts.coordinator.getState().submission).toMatchObject({ attempts: 2 });
     await parts.coordinator.retry();
+    await parts.coordinator.retryUnchanged();
+    await parts.coordinator.reconcile();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(actions.save).toHaveBeenCalledTimes(1);
-    expect(actions.read).toHaveBeenCalledTimes(1);
+    expect(actions.save).toHaveBeenCalledTimes(2);
+    expect(actions.read).toHaveBeenCalledTimes(3);
+    expect(parts.controller.getState().saving).toBe(1);
     await parts.controller.dispose();
   });
 
@@ -1726,6 +1852,779 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     expect(submission?.base.revision).toBe(8);
     expect(equal(submission?.base.content, opened())).toBe(true);
     expect(equal(submission?.predicted, sent())).toBe(true);
+    await parts.controller.dispose();
+  });
+});
+
+describe("conditional retry (A2.3B.2B.2)", () => {
+  // R0 is 8. What was sent is doc("Sent") (S); the base is doc("Opened") (B0).
+  const sent = () => canonical(doc("Sent"));
+  const opened = () => canonical(doc("Opened"));
+  const found = (content: JSONContent, revision: number): DocumentReadOutcome => ({
+    kind: "found",
+    content: JSON.parse(JSON.stringify(content)) as JSONContent,
+    revision,
+  });
+  const stale =
+    (revision: number) =>
+    (r: DocumentSaveRequest): DocumentSaveOutcome => ({
+      kind: "conflict",
+      sequence: r.sequence,
+      code: "stale",
+      revision,
+    });
+
+  /** A save sent against 8 whose answer was lost; its automatic read waits. */
+  async function lost(options: SetupOptions = {}) {
+    const parts = setup({ mode: "manual", ...options });
+    parts.net.holdReads();
+    parts.editor.edit(doc("Sent"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(1);
+    parts.net.reject(new TypeError("Failed to fetch"));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({ phase: "reconciling", reading: true });
+    return parts;
+  }
+  type Parts = Awaited<ReturnType<typeof lost>>;
+
+  /** The lost save, read back as unchanged: the retry is now in flight. */
+  async function retrying(options: SetupOptions = {}) {
+    const parts = await lost(options);
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      retrying: true,
+      reading: false,
+      submission: { sequence: 1, expectedRevision: 8, attempts: 2 },
+    });
+    return parts;
+  }
+
+  /** Held, as B.2B.1 holds: the claim, the submission, revision 8; nothing confirmed. */
+  function expectStillHeld(parts: Parts) {
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      revision: 8,
+      confirmedSequence: 0,
+      submission: { sequence: 1, expectedRevision: 8, attempts: 2 },
+      retrying: false,
+    });
+    expect(parts.controller.getState()).toMatchObject({
+      saving: 1,
+      confirmedSequence: 0,
+      revision: 8,
+    });
+    expect(parts.coordinator.getSubmission()?.content).toEqual(doc("Sent"));
+    expect(parts.status()).toBe("unresolved");
+  }
+
+  /** Every way of asking, and time: no third request. */
+  async function noThirdRequest(parts: Parts) {
+    parts.editor.edit(doc("Later"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    await parts.coordinator.retryUnchanged();
+    await parts.coordinator.saveNow();
+    await parts.coordinator.retry();
+    expect(parts.net.requests.filter((r) => r.sequence === 1)).toHaveLength(2);
+    expect(parts.net.requests).toHaveLength(2);
+  }
+
+  it("is not available before a read shows the base unchanged: while saving, while reading, or after another finding", async () => {
+    const parts = setup({ mode: "manual" });
+    parts.net.holdReads();
+    expect(await parts.coordinator.retryUnchanged()).toMatchObject({ phase: "idle" });
+    parts.editor.edit(doc("Sent"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(await parts.coordinator.retryUnchanged()).toMatchObject({ phase: "saving" });
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    // A read in flight: the call shares it and sends nothing.
+    const during = parts.coordinator.retryUnchanged();
+    expect(during).toBe(parts.coordinator.reconcile());
+    parts.net.answerRead({ kind: "failed" });
+    await during;
+    expect(parts.net.requests).toHaveLength(1);
+    // A finding other than unchanged: never sent again.
+    const findings: DocumentReadOutcome[] = [
+      found(canonical(doc("Unexpected")), 8),
+      found(sent(), 8),
+      found(sent(), 7),
+      { kind: "failed" },
+      { kind: "unreadable", revision: 8 },
+      found({ type: "doc", content: [{ type: "node_from_a_newer_schema" }] }, 9),
+    ];
+    for (const outcome of findings) {
+      const asked = parts.coordinator.reconcile();
+      await settle();
+      parts.net.answerRead(outcome);
+      await asked;
+      await parts.coordinator.retryUnchanged();
+      expect(parts.net.requests).toHaveLength(1);
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "reconciling",
+        submission: { attempts: 1 },
+      });
+    }
+    await parts.controller.dispose();
+  });
+
+  it("sends exactly the original request: content, sequence, and revision, never newer edits", async () => {
+    const parts = await lost();
+    const original = parts.coordinator.getSubmission();
+    // Newer work while the read is out: kept on the device, never part of the retry.
+    parts.editor.edit(doc("Newer"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(parts.controller.getState()).toMatchObject({ sequence: 2, saving: 1 });
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    expect(parts.net.requests).toHaveLength(2);
+    const [first, second] = parts.net.requests;
+    expect(second).toEqual(first);
+    expect(second.content).toBe(first.content);
+    expect(second).toMatchObject({ sequence: 1, expectedRevision: 8, outlineId });
+    expect(JSON.stringify(second.content)).not.toContain("Newer");
+    // The same logical save: the same submission and the same claim, not a new one.
+    expect(parts.coordinator.getSubmission()).toBe(original);
+    expect(parts.controller.getState().saving).toBe(1);
+    expect(parts.controller.claimSave()).toBeNull();
+    await parts.controller.dispose();
+  });
+
+  it("a confirmation of the retry settles only the sequence sent; newer work is sent after, against R0 + 1", async () => {
+    const parts = await lost();
+    parts.editor.edit(doc("Newer"));
+    await vi.advanceTimersByTimeAsync(3000);
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    parts.net.answer();
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "scheduled",
+      revision: 9,
+      confirmedSequence: 1,
+      submission: null,
+      block: null,
+      retrying: false,
+      outcome: { kind: "confirmed", sequence: 1, revision: 9 },
+      base: { revision: 9, provenance: "confirmed", canonical: true },
+    });
+    expect(equal(parts.coordinator.getBase().content, sent())).toBe(true);
+    expect(parts.controller.getState()).toMatchObject({
+      confirmedSequence: 1,
+      sequence: 2,
+      revision: 9,
+      saving: null,
+    });
+    expect(parts.log.filter((e) => e.startsWith("clear:"))).toEqual(["clear:1"]);
+    expect(parts.status()).not.toBe("saved");
+    expect(parts.net.reads).toBe(1);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(3);
+    expect(parts.net.requests[2]).toMatchObject({ sequence: 2, expectedRevision: 9 });
+    parts.net.answer();
+    await settle();
+    expect(parts.status()).toBe("saved");
+    await parts.controller.dispose();
+  });
+
+  it("the original wins: the retry's stale answer is read back, and what was sent at R0 + 1 settles it once", async () => {
+    const parts = await retrying();
+    const listener = vi.fn();
+    parts.coordinator.subscribe(listener);
+    parts.net.answer(stale(9));
+    await settle();
+    // Never a conflict on the strength of `stale` alone.
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      reading: true,
+      outcome: { kind: "conflict", code: "stale" },
+    });
+    expect(listener.mock.calls.some(([s]) => s.phase === "blocked")).toBe(false);
+    parts.net.answerRead(found(sent(), 9));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      revision: 9,
+      confirmedSequence: 1,
+      submission: null,
+      reconciliation: { sequence: 1, result: "saved", revision: 9 },
+    });
+    expect(parts.controller.getState()).toMatchObject({ confirmedSequence: 1, revision: 9 });
+    expect(parts.log.filter((e) => e === "clear:1")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.reads).toBe(2);
+    await parts.controller.dispose();
+  });
+
+  it("another writer wins: stale, then other content past R0 is released and blocked as a conflict, never merged", async () => {
+    const parts = await retrying();
+    parts.net.answer(stale(9));
+    await settle();
+    parts.net.answerRead(found(canonical(doc("Someone else")), 9));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      revision: 8,
+      submission: null,
+      block: { reason: "conflict", origin: "server" },
+      reconciliation: { result: "conflict", revision: 9, submitted: "different" },
+    });
+    expect(parts.controller.getState()).toMatchObject({ saving: null, confirmedSequence: 0 });
+    expect(parts.coordinator.getBase().revision).toBe(8);
+    expect(parts.log.some((e) => e.startsWith("clear:"))).toBe(false);
+    await noThirdRequest(parts);
+    await parts.controller.dispose();
+  });
+
+  it.each([
+    ["no answer", (p: Parts) => p.net.reject(new TypeError("offline"))],
+    [
+      "a server failure",
+      (p: Parts) =>
+        p.net.answer((r) => ({ kind: "failed", sequence: r.sequence, uncertain: true })),
+    ],
+    [
+      "a refusal (what the server does now, not proof the original can never be written)",
+      (p: Parts) =>
+        p.net.answer((r) => ({ kind: "refused", sequence: r.sequence, code: "invalid" })),
+    ],
+    [
+      "a confirmation at R0 + 2",
+      (p: Parts) =>
+        p.net.answer((r) => ({ kind: "confirmed", sequence: r.sequence, revision: 10 })),
+    ],
+    [
+      "a confirmation without a revision",
+      (p: Parts) =>
+        p.net.answer((r) => ({ kind: "confirmed", sequence: r.sequence, revision: Number.NaN })),
+    ],
+    [
+      "an answer for another sequence",
+      (p: Parts) => p.net.answer(() => ({ kind: "confirmed", sequence: 2, revision: 9 })),
+    ],
+    ["nothing", (p: Parts) => p.net.answer(() => null as unknown as DocumentSaveOutcome)],
+  ])(
+    "%s: confirms nothing, is read back once, and is never sent a third time",
+    async (_name, answer) => {
+      const parts = await retrying();
+      answer(parts);
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({ phase: "reconciling", reading: true });
+      expect(parts.net.reads).toBe(2);
+      expect(parts.controller.getState()).toMatchObject({ saving: 1, confirmedSequence: 0 });
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expectStillHeld(parts);
+      expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "unchanged" });
+      await noThirdRequest(parts);
+      expect(parts.net.reads).toBe(2);
+      await parts.controller.dispose();
+    },
+  );
+
+  it("the read back unavailable: held, and asked again only by reconcile(), never resent", async () => {
+    const parts = await retrying();
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead({ kind: "failed" });
+    await settle();
+    expectStillHeld(parts);
+    expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "failed" });
+    await noThirdRequest(parts);
+    // An explicit read that finds the base again still sends nothing: the retry is spent.
+    const asked = parts.coordinator.reconcile();
+    await settle();
+    parts.net.answerRead(found(opened(), 8));
+    await asked;
+    expectStillHeld(parts);
+    expect(parts.net.requests).toHaveLength(2);
+    await parts.controller.dispose();
+  });
+
+  it("read back after the retry: the same document in another form settles; other content at R0 + 1 does not", async () => {
+    const reordered = JSON.parse(JSON.stringify(sent()), (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).reverse())
+        : value,
+    ) as JSONContent;
+    const parts = await retrying();
+    parts.net.answer(stale(9));
+    await settle();
+    parts.net.answerRead(found(reordered, 9));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      reconciliation: { result: "saved", submitted: "exact" },
+    });
+    await parts.controller.dispose();
+
+    const other = await retrying();
+    other.net.answer(stale(9));
+    await settle();
+    other.net.answerRead(found(canonical(doc("Sent, edited elsewhere")), 9));
+    await settle();
+    expect(other.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      reconciliation: { result: "conflict" },
+    });
+    await other.controller.dispose();
+  });
+
+  it("what was sent equal to the base, at R0 after the retry, is still not a confirmation", async () => {
+    const parts = setup({ mode: "manual" });
+    parts.net.holdReads();
+    parts.editor.edit(doc("Away"));
+    await vi.advanceTimersByTimeAsync(400);
+    parts.editor.edit(doc("Opened"));
+    await vi.advanceTimersByTimeAsync(1500);
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    expect(parts.net.requests).toHaveLength(2);
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      confirmedSequence: 0,
+      reconciliation: { result: "unchanged", submitted: "exact", equivalent: true },
+    });
+    expect(parts.controller.getState()).toMatchObject({ saving: 2, confirmedSequence: 0 });
+    expect(parts.status()).toBe("unresolved");
+    await parts.controller.dispose();
+  });
+
+  it("a confirmation of the retry the controller will not take is held and read back, never saved", async () => {
+    const parts = await retrying();
+    expect(parts.controller.releaseSave(1)).toBe(true);
+    parts.net.answer();
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      reading: true,
+      revision: 8,
+      block: { reason: "rejected_confirmation", origin: "local" },
+    });
+    parts.net.answerRead(found(sent(), 9));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      revision: 8,
+      confirmedSequence: 0,
+      reconciliation: { result: "unsettled" },
+    });
+    expect(parts.status()).toBe("unresolved");
+    expect(parts.log.some((e) => e.startsWith("clear:"))).toBe(false);
+    await parts.controller.dispose();
+  });
+
+  it("the document gone: the retry's missing answer releases and blocks; nothing created", async () => {
+    const parts = await retrying();
+    parts.net.answer((r) => ({ kind: "conflict", sequence: r.sequence, code: "missing" }));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      submission: null,
+      block: { reason: "conflict", origin: "server" },
+      outcome: { kind: "conflict", code: "missing" },
+      reading: false,
+    });
+    expect(parts.controller.getState().saving).toBeNull();
+    expect(parts.net.reads).toBe(1);
+    await noThirdRequest(parts);
+    await parts.controller.dispose();
+  });
+
+  it("an account that may not save: blocked, the claim held (the original may still be written), not read", async () => {
+    const parts = await retrying();
+    parts.net.answer((r) => ({ kind: "unauthorized", sequence: r.sequence }));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      block: { reason: "unauthorized", origin: "server" },
+      submission: { sequence: 1, attempts: 2 },
+    });
+    expect(parts.controller.getState().saving).toBe(1);
+    await parts.coordinator.reconcile();
+    expect(parts.net.reads).toBe(1);
+    await noThirdRequest(parts);
+    await parts.controller.dispose();
+  });
+
+  it("one retry in flight: concurrent calls, reconcile(), and re-entrant listeners share it", async () => {
+    const parts = await lost();
+    const seen: Promise<unknown>[] = [];
+    parts.coordinator.subscribe(() => {
+      // Asks for everything on every state: still one retry, and one read back.
+      seen.push(parts.coordinator.retryUnchanged(), parts.coordinator.reconcile());
+    });
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    expect(parts.net.requests).toHaveLength(2);
+    const a = parts.coordinator.retryUnchanged();
+    const b = parts.coordinator.retryUnchanged();
+    const c = parts.coordinator.reconcile();
+    expect(a).toBe(b);
+    expect(a).toBe(c);
+    parts.net.answer(stale(9));
+    await settle();
+    expect(parts.net.reads).toBe(2);
+    expect(parts.net.readsWaiting).toBe(1);
+    parts.net.answerRead(found(sent(), 9));
+    await Promise.all([a, b, c, ...seen]);
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.reads).toBe(2);
+    expect(parts.coordinator.getState()).toMatchObject({ phase: "idle", confirmedSequence: 1 });
+    expect(parts.log.filter((e) => e === "clear:1")).toHaveLength(1);
+    await parts.controller.dispose();
+  });
+
+  it("disposed while the read is out: an unchanged read sends no retry", async () => {
+    const parts = await lost();
+    parts.coordinator.dispose();
+    parts.net.answerRead(found(opened(), 8));
+    await settle();
+    await parts.coordinator.retryUnchanged();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.controller.getState().saving).toBe(1);
+    await parts.controller.dispose();
+  });
+
+  it("disposed while the retry is out: a late confirmation reaches the same session; nothing is scheduled or read", async () => {
+    const parts = await retrying();
+    const listener = vi.fn();
+    parts.coordinator.subscribe(listener);
+    parts.coordinator.dispose();
+    listener.mockClear();
+    parts.editor.edit(doc("After dispose"));
+    parts.net.answer();
+    await settle();
+    expect(listener).not.toHaveBeenCalled();
+    expect(parts.controller.getState()).toMatchObject({
+      confirmedSequence: 1,
+      revision: 9,
+      saving: null,
+    });
+    expect(parts.log).toContain("clear:1");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.reads).toBe(1);
+    await parts.controller.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("disposed while the retry is out: a late stale answer is not read back, and the claim stays held", async () => {
+    const parts = await retrying();
+    parts.coordinator.dispose();
+    parts.net.answer(stale(9));
+    await settle();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.reads).toBe(1);
+    expect(parts.net.requests).toHaveLength(2);
+    // Possibly written: never released because its coordinator went away.
+    expect(parts.controller.getState()).toMatchObject({ saving: 1, confirmedSequence: 0 });
+    expect(() =>
+      createSaveCoordinator({
+        controller: parts.controller,
+        transport: parts.net.transport,
+        base: { content: opened(), revision: 8 },
+      }),
+    ).toThrow(SaveCoordinatorError);
+    await parts.controller.dispose();
+  });
+
+  it("a later save gets its own retry: the budget belongs to one submission", async () => {
+    const parts = await retrying();
+    parts.net.answer();
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({ phase: "idle", revision: 9 });
+    parts.editor.edit(doc("Second"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(3);
+    expect(parts.coordinator.getState().submission).toMatchObject({ sequence: 2, attempts: 1 });
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead(found(sent(), 9));
+    await settle();
+    expect(parts.net.requests).toHaveLength(4);
+    expect(parts.net.requests[3]).toMatchObject({ sequence: 2, expectedRevision: 9 });
+    expect(parts.coordinator.getState().submission).toMatchObject({ sequence: 2, attempts: 2 });
+    await parts.controller.dispose();
+  });
+});
+
+describe("refusals: recorded, and resumed from (A2.3B.2B.3)", () => {
+  const found = (content: JSONContent, revision: number): DocumentReadOutcome => ({
+    kind: "found",
+    content: JSON.parse(JSON.stringify(content)) as JSONContent,
+    revision,
+  });
+  const refusals = (log: string[]) => log.filter((e) => e.startsWith("refuse"));
+  const invalid = { type: "doc", content: [{ type: "no_such_node" }] } as JSONContent;
+  const huge = (words: string) => doc(words + "x".repeat(documentLimits.bytes + 10));
+
+  async function inFlight(words = "Sent") {
+    const parts = setup({ mode: "manual" });
+    parts.net.holdReads();
+    parts.editor.edit(doc(words));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(1);
+    return parts;
+  }
+
+  it.each([
+    ["invalid", { kind: "refused", code: "invalid", problems: [] }, "refuse:1:invalid"],
+    ["too_large", { kind: "refused", code: "too_large", bytes: 5, limit: 4 }, "refuse:1:too_large"],
+    ["stale", { kind: "conflict", code: "stale", revision: 12 }, "refuse:1:stale"],
+    ["missing", { kind: "conflict", code: "missing" }, "refuse:1:missing"],
+  ])(
+    "a definite %s answer is recorded for the sequence sent, after its own draft write",
+    async (_n, answer, entry) => {
+      const parts = await inFlight();
+      parts.net.answer((r) => ({ ...answer, sequence: r.sequence }) as DocumentSaveOutcome);
+      await settle();
+      expect(refusals(parts.log)).toEqual([entry]);
+      expect(parts.log.indexOf("write:1")).toBeLessThan(parts.log.indexOf(entry));
+      expect(parts.controller.getState()).toMatchObject({
+        saving: null,
+        confirmedSequence: 0,
+        refusalRecord: { sequence: 1, status: "recorded" },
+      });
+      // The words are still the device's: nothing was cleared.
+      expect(parts.log.some((e) => e.startsWith("clear:"))).toBe(false);
+      if (answer.kind === "conflict" && answer.code === "stale") {
+        expect(parts.stub.storage.refuseDraft).toHaveBeenCalledWith(
+          owner,
+          expect.objectContaining({ sequence: 1, code: "stale", revision: 12 }),
+        );
+      }
+      await parts.controller.dispose();
+    },
+  );
+
+  it.each([
+    ["no answer", (p: Parts) => p.net.reject(new TypeError("offline"))],
+    [
+      "a server failure",
+      (p: Parts) =>
+        p.net.answer((r) => ({ kind: "failed", sequence: r.sequence, uncertain: true })),
+    ],
+    [
+      "an ended session",
+      (p: Parts) => p.net.answer((r) => ({ kind: "unauthorized", sequence: r.sequence })),
+    ],
+  ])("%s records nothing: it is not a refusal", async (_n, answer) => {
+    const parts = await inFlight();
+    answer(parts);
+    await settle();
+    expect(refusals(parts.log)).toEqual([]);
+    expect(parts.controller.getState().refusalRecord).toBeNull();
+    await parts.controller.dispose();
+  });
+  type Parts = Awaited<ReturnType<typeof inFlight>>;
+
+  it("a retry's stale answer is not recorded until a read proves the save can never be written", async () => {
+    const parts = await inFlight();
+    parts.net.reject(new TypeError("offline"));
+    await settle();
+    parts.net.answerRead(found(canonical(doc("Opened")), 8));
+    await settle();
+    expect(parts.net.requests).toHaveLength(2);
+    parts.net.answer((r) => ({
+      kind: "conflict",
+      sequence: r.sequence,
+      code: "stale",
+      revision: 9,
+    }));
+    await settle();
+    // Read back, not recorded: the original may be what moved the revision.
+    expect(refusals(parts.log)).toEqual([]);
+    parts.net.answerRead(found(canonical(doc("Elsewhere")), 9));
+    await settle();
+    expect(refusals(parts.log)).toEqual(["refuse:1:stale"]);
+    expect(parts.stub.storage.refuseDraft).toHaveBeenCalledWith(
+      owner,
+      expect.objectContaining({ sequence: 1, code: "stale", revision: 9 }),
+    );
+    await parts.controller.dispose();
+  });
+
+  it("a read that settles the save records nothing; a read that finds it gone records missing", async () => {
+    const saved = await inFlight();
+    saved.net.reject(new TypeError("offline"));
+    await settle();
+    saved.net.answerRead(found(canonical(doc("Sent")), 9));
+    await settle();
+    expect(refusals(saved.log)).toEqual([]);
+    await saved.controller.dispose();
+
+    const gone = await inFlight();
+    gone.net.reject(new TypeError("offline"));
+    await settle();
+    gone.net.answerRead({ kind: "missing" });
+    await settle();
+    expect(refusals(gone.log)).toEqual(["refuse:1:missing"]);
+    await gone.controller.dispose();
+  });
+
+  it("locally invalid content is never sent: not the first time, not after an edit away and back", async () => {
+    const parts = setup({ mode: "manual" });
+    parts.editor.edit(invalid);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      block: { reason: "refused", origin: "local" },
+    });
+    // Still invalid, in other words: checked, refused, never sent.
+    parts.editor.edit({ type: "doc", content: [{ type: "no_such_node" }, { type: "nor_this" }] });
+    await vi.advanceTimersByTimeAsync(1500);
+    parts.editor.edit(invalid);
+    await vi.advanceTimersByTimeAsync(1500);
+    await parts.coordinator.saveNow();
+    expect(parts.net.requests).toHaveLength(0);
+    expect(refusals(parts.log)).toEqual([
+      "refuse:1:invalid",
+      "refuse:2:invalid",
+      "refuse:3:invalid",
+    ]);
+    expect(parts.status()).toBe("blocked");
+    await parts.controller.dispose();
+  });
+
+  it("content the server refused is never sent again, even under a new sequence", async () => {
+    const parts = await inFlight("Refused words");
+    parts.net.answer((r) => ({ kind: "refused", sequence: r.sequence, code: "invalid" }));
+    await settle();
+    // Away and back to exactly what was refused, each kept as its own snapshot.
+    parts.editor.edit(doc("Something else"));
+    await vi.advanceTimersByTimeAsync(400);
+    parts.editor.edit(doc("Refused words"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.controller.getState().sequence).toBe(3);
+    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "blocked",
+      block: { reason: "refused", origin: "local" },
+      outcome: { kind: "refused", code: "invalid", sequence: 3 },
+    });
+    expect(refusals(parts.log)).toEqual(["refuse:1:invalid", "refuse:3:invalid"]);
+    // An edit to the same words again is not a new snapshot: nothing at all.
+    parts.editor.edit(doc("Refused words"));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(parts.net.requests).toHaveLength(1);
+    // Different words are sent.
+    parts.editor.edit(doc("Accepted words"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.requests[1]).toMatchObject({ sequence: 4, content: doc("Accepted words") });
+    await parts.controller.dispose();
+  });
+
+  it("an oversized document is never sent while it stays oversized, and is sent once corrected", async () => {
+    const parts = setup({ mode: "manual" });
+    parts.editor.edit(huge("Long "));
+    await vi.advanceTimersByTimeAsync(1500);
+    for (let i = 0; i < 4; i += 1) {
+      parts.editor.edit(huge(`Longer ${i} `));
+      await vi.advanceTimersByTimeAsync(2000);
+    }
+    await parts.coordinator.saveNow();
+    expect(parts.net.requests).toHaveLength(0);
+    expect(parts.status()).toBe("attention");
+    parts.editor.edit(doc("Shortened"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.net.requests[0]).toMatchObject({ expectedRevision: 8, content: doc("Shortened") });
+    parts.net.answer();
+    await settle();
+    expect(parts.status()).toBe("saved");
+    expect(parts.net.requests).toHaveLength(1);
+    await parts.controller.dispose();
+  });
+
+  it("a corrected edit that is still invalid does not resume; a valid one saves once", async () => {
+    const parts = setup({ mode: "manual" });
+    parts.editor.edit(invalid);
+    await vi.advanceTimersByTimeAsync(1500);
+    parts.editor.edit({ type: "doc", content: [{ type: "still_wrong" }] });
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(0);
+    parts.editor.edit(doc("Valid"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(1);
+    parts.net.answer();
+    await settle();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(1);
+    expect(parts.coordinator.getState()).toMatchObject({ phase: "idle", revision: 9, block: null });
+    await parts.controller.dispose();
+  });
+
+  it("a newer snapshot made while the refused one was in flight is sent without another edit", async () => {
+    const parts = await inFlight();
+    parts.editor.edit(doc("Newer"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(parts.controller.getState().sequence).toBe(2);
+    parts.net.answer((r) => ({ kind: "refused", sequence: r.sequence, code: "invalid" }));
+    await settle();
+    expect(parts.coordinator.getState().phase).toBe("blocked");
+    expect(refusals(parts.log)).toEqual(["refuse:1:invalid"]);
+    // The draft holds 2 and is not overwritten by the refusal of 1.
+    expect(parts.log.indexOf("write:2")).toBeGreaterThan(-1);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(2);
+    expect(parts.net.requests[1]).toMatchObject({
+      sequence: 2,
+      expectedRevision: 8,
+      content: doc("Newer"),
+    });
+    parts.net.answer();
+    await settle();
+    expect(parts.controller.getState()).toMatchObject({ confirmedSequence: 2, revision: 9 });
+    expect(parts.status()).toBe("saved");
+    await parts.controller.dispose();
+  });
+
+  it("a refusal recorded after the coordinator is disposed still reaches the draft; nothing is sent", async () => {
+    const parts = await inFlight();
+    parts.coordinator.dispose();
+    parts.net.answer((r) => ({ kind: "refused", sequence: r.sequence, code: "too_large" }));
+    await settle();
+    expect(refusals(parts.log)).toEqual(["refuse:1:too_large"]);
+    expect(parts.controller.getState().saving).toBeNull();
+    parts.editor.edit(doc("After"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(1);
+    // Released for certain: a new coordinator may take the controller over.
+    expect(() =>
+      createSaveCoordinator({
+        controller: parts.controller,
+        transport: parts.net.transport,
+        base: { content: canonical(doc("Opened")), revision: 8 },
+      }),
+    ).not.toThrow();
+    await parts.controller.dispose();
+  });
+
+  it("a refusal the draft could not take is reported as failed; the words' own state is untouched", async () => {
+    const parts = await inFlight();
+    parts.stub.failNextRefuse(new DraftStorageError("quota"));
+    const before = parts.controller.getState();
+    parts.net.answer((r) => ({ kind: "refused", sequence: r.sequence, code: "invalid" }));
+    await settle();
+    expect(parts.controller.getState()).toMatchObject({
+      refusalRecord: { sequence: 1, code: "invalid", status: "failed", error: "quota" },
+      storageError: before.storageError,
+      localSequence: before.localSequence,
+    });
+    expect(parts.coordinator.getState().phase).toBe("blocked");
     await parts.controller.dispose();
   });
 });

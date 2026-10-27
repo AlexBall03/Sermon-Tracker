@@ -62,7 +62,27 @@ export type AutosaveState = {
   refusal: AutosaveRefusal | null;
   /** The snapshot claimed for a save (A2.3B.2): at most one. */
   saving: number | null;
+  /**
+   * The latest refusal of a claimed snapshot written to this session's draft
+   * (`refuseSave`, A2.3B.2B.3): `pending` while queued or running, then what
+   * IndexedDB said. Metadata only: the content's own durability is
+   * `localSequence` and `storageError`, which this never changes.
+   */
+  refusalRecord: RefusalRecord | null;
   disposed: boolean;
+};
+
+/** A refusal the coordinator knows for certain, as `refuseSave` takes it. */
+export type SaveRefusal = {
+  code: "stale" | "missing" | "invalid" | "too_large";
+  revision?: number;
+};
+
+export type RefusalRecord = SaveRefusal & {
+  sequence: number;
+  /** `ignored`: the draft does not hold that snapshot (its write failed) or it was confirmed. */
+  status: "pending" | "recorded" | "ignored" | "failed";
+  error?: DraftStorageErrorKind;
 };
 
 /**
@@ -114,10 +134,10 @@ export type ServerSaveTiming = typeof serverSaveTiming;
  *   (a conflict, a refusal, an account that may not save), or a read showed
  *   the request can no longer be written (a conflict). No claim or
  *   `submission` is held, but for one case: an account found unauthorized by
- *   a read, whose request may still have been written, holds both.
- *   `block.reason` with `outcome` and `reconciliation` says which. Nothing
- *   more is sent, even after further edits; A2.3B.2B.3 decides which of these
- *   an edit may clear.
+ *   a read or a retry, whose request may still have been written, holds both.
+ *   `block.reason` with `outcome` and `reconciliation` says which. Only a
+ *   `refused` block is left by an edit (A2.3B.2B.3): a newer snapshot that is
+ *   not the refused content is sent as usual. Every other block is final.
  * - `failed`: the server's transaction failed and wrote nothing. Sent again
  *   only by `retry()` (A2.3B.2C adds bounded backoff).
  * - `disposed`: sends nothing more.
@@ -162,8 +182,9 @@ export type ReconciliationMatch = "exact" | "normalized" | "different" | "unknow
  *   saved: still `reconciling`, the submission held, nothing advanced, and
  *   `block.reason` is `rejected_confirmation`.
  * - `unchanged`: at R0, with the base it was made against: not written yet,
- *   and it still may be. Held for A2.3B.2B.2's conditional retry. `equivalent`
- *   when what was sent says what the base says.
+ *   and it still may be. Held, and the one conditional retry (A2.3B.2B.2) is
+ *   sent if it has not been. `equivalent` when what was sent says what the
+ *   base says.
  * - `unverifiable`: at R0 + 1 in a form the browser's core refuses. Held.
  * - `diverged`: at R0 with other content, or below R0. Held: the request may
  *   still be written.
@@ -210,8 +231,17 @@ export type NetworkState = {
    * was already in the browser's canonical form.
    */
   base: { revision: number; provenance: "server" | "confirmed"; canonical: boolean };
-  /** The save in flight or not resolved (content through `getSubmission`): set exactly while its claim is held. */
-  submission: { sequence: number; expectedRevision: number; bytes: number } | null;
+  /**
+   * The save in flight or not resolved (content through `getSubmission`): set
+   * exactly while its claim is held. `attempts`: requests sent for it; 2 once
+   * its one conditional retry (A2.3B.2B.2) was sent.
+   */
+  submission: {
+    sequence: number;
+    expectedRevision: number;
+    bytes: number;
+    attempts: number;
+  } | null;
   /** The newest sequence this coordinator saw confirmed. */
   confirmedSequence: number;
   /** A save fell due while one was running; it runs when that one settles. */
@@ -223,8 +253,10 @@ export type NetworkState = {
    * it was first held; what a read showed since is `reconciliation`.
    */
   block: { reason: NetworkBlockReason; origin: "server" | "local" } | null;
-  /** A read of the document is in flight (A2.3B.2B.1). At most one. */
+  /** A read of the document is in flight (A2.3B.2B.1). At most one, and never with a retry. */
   reading: boolean;
+  /** The conditional retry is in flight (A2.3B.2B.2). Never with a read. */
+  retrying: boolean;
   /** What the latest read for the current or last submission showed; cleared when a new one is sent. */
   reconciliation: Reconciliation | null;
 };

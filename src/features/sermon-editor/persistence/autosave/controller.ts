@@ -5,6 +5,7 @@ import { draftInputs } from "../recovery/model";
 import {
   confirmDraft,
   DraftStorageError,
+  refuseDraft,
   writeDraft,
   type DraftStorageErrorKind,
 } from "../recovery/store";
@@ -16,6 +17,8 @@ import {
   type AutosaveState,
   type AutosaveTiming,
   type DocumentSource,
+  type RefusalRecord,
+  type SaveRefusal,
 } from "./model";
 
 /*
@@ -43,10 +46,11 @@ import {
  * It logs nothing: errors carry kinds and paths, never words.
  */
 
-/** The two draft operations the controller uses; the real store unless a test gives others. */
+/** The draft operations the controller uses; the real store unless a test gives others. */
 export type DraftStorage = {
   writeDraft: typeof writeDraft;
   confirmDraft: typeof confirmDraft;
+  refuseDraft: typeof refuseDraft;
 };
 
 /** A snapshot claimed for a save (A2.3B.2): send `content` against `expectedRevision`. */
@@ -97,6 +101,16 @@ export type AutosaveController = {
   /** For A2.3B.2's saves: the claimed snapshot was not confirmed; it may be claimed again. */
   releaseSave(sequence: number): boolean;
   /**
+   * For A2.3B.2B.3: the claimed snapshot `sequence` was refused for certain
+   * (by the server, or by the check before sending). Releases the claim, as
+   * `releaseSave` does, and queues the refusal into this session's draft
+   * after every draft operation decided before it; the content is never
+   * touched. Accepted only for the snapshot claimed (false otherwise). What
+   * IndexedDB said is `refusalRecord`. Taken after `dispose()` too, as a late
+   * confirmation is.
+   */
+  refuseSave(sequence: number, refusal: SaveRefusal): boolean;
+  /**
    * Stops watching: takes a last snapshot of unkept changes, cancels the
    * timers, and publishes nothing more. Draft operations already decided
    * still run (they hold the newest words; a draft left behind is a recovery
@@ -142,7 +156,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
   const draftId = parsed<string>(draftInputs.draftId, crypto.randomUUID());
   let revision = parsed<number>(draftInputs.revision, options.revision);
   const timing = { ...autosaveTiming, ...options.timing };
-  const storage = options.storage ?? { writeDraft, confirmDraft };
+  const storage = options.storage ?? { writeDraft, confirmDraft, refuseDraft };
   const { source } = options;
 
   // The document as attached is snapshot 0: never written, only compared with.
@@ -153,6 +167,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
   let confirmedSequence = 0;
   let storageError: DraftStorageErrorKind | null = null;
   let saving: number | null = null;
+  let refusalRecord: RefusalRecord | null = null;
   let disposed = false;
 
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -199,6 +214,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
       storageError,
       refusal,
       saving,
+      refusalRecord: refusalRecord && { ...refusalRecord },
       disposed,
     };
   }
@@ -257,6 +273,8 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
         content: snapshot.content,
         sequence: snapshot.sequence,
         baseRevision: revision,
+        // Over the limit: never sent, so the draft says why in the same write (A2.3B.2B.3).
+        ...(snapshot.refusal?.reason === "too_large" ? { refusal: "too_large" as const } : {}),
       });
       // "superseded" means this session's draft already holds a later snapshot: kept either way.
       localSequence = Math.max(localSequence, snapshot.sequence);
@@ -394,6 +412,46 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
     return true;
   }
 
+  function refuseSave(sequence: number, refusal: SaveRefusal): boolean {
+    if (saving === null || sequence !== saving) return false;
+    saving = null;
+    // A revision the store would refuse is left out, never a reason to lose the record.
+    const known =
+      refusal.revision !== undefined && draftInputs.revision.safeParse(refusal.revision).success;
+    const record: RefusalRecord = {
+      code: refusal.code,
+      ...(known ? { revision: refusal.revision } : {}),
+      sequence,
+      status: "pending",
+    };
+    refusalRecord = record;
+    // Queued after the snapshot's own draft write (write ahead: it was decided before the claim).
+    void enqueue(async () => {
+      let status: RefusalRecord["status"];
+      let error: DraftStorageErrorKind | undefined;
+      try {
+        const result = await storage.refuseDraft(owner, {
+          outlineId,
+          draftId,
+          sequence,
+          code: record.code,
+          ...(record.revision === undefined ? {} : { revision: record.revision }),
+        });
+        status = result === "refused" ? "recorded" : "ignored";
+      } catch (caught) {
+        // The content's durability is not this record's: `storageError` stays as it was.
+        status = "failed";
+        error = caught instanceof DraftStorageError ? caught.kind : "failed";
+      }
+      // A newer refusal recorded since is the one reported.
+      if (refusalRecord === record) {
+        refusalRecord = { ...record, status, ...(error ? { error } : {}) };
+      }
+    });
+    publish();
+    return true;
+  }
+
   function dispose(): Promise<void> {
     if (disposed) return chain;
     unsubscribe();
@@ -440,6 +498,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
     claimSave,
     confirmSave,
     releaseSave,
+    refuseSave,
     dispose,
   };
 }

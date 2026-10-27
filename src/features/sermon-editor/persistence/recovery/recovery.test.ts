@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { documentV4, pointV4, proseV4 } from "@/features/editor-lab/v4/fixtures";
 import { forgetAccount, resetAccountMemory } from "@/features/offline/account";
 import { closeOfflineDb, openOfflineDb } from "@/features/offline/db";
-import { draftKind, draftStatus, readDraftRecord } from "./model";
+import { currentRefusal, draftKind, draftStatus, readDraftRecord } from "./model";
 import {
   confirmDraft,
   discardDraft,
@@ -354,5 +354,71 @@ describe("recovery drafts", () => {
     await forgetAccount(alice);
     expect(await listAccountDrafts(alice)).toEqual([]);
     expect((await ok(bob)).draft.content).toEqual(doc("Bob"));
+  });
+});
+
+describe("a snapshot's own refusal (A2.3B.2B.3)", () => {
+  const oversized = (sequence: number, words = `Long ${sequence}`) =>
+    writeDraft(alice, {
+      ...at,
+      content: doc(words),
+      sequence,
+      baseRevision: 3,
+      refusal: "too_large",
+    });
+
+  it("is written with the snapshot, for its sequence, and is current only while it is the newest", async () => {
+    expect(await oversized(1)).toBe("written");
+    let draft = (await ok(alice)).draft;
+    expect(draft.refusal).toMatchObject({ code: "too_large", sequence: 1 });
+    expect(currentRefusal(draft)).toMatchObject({ code: "too_large" });
+    expect(draftStatus(draft)).toBe("conflict");
+    await oversized(2);
+    expect((await ok(alice)).draft.refusal).toMatchObject({ code: "too_large", sequence: 2 });
+    // A newer snapshot not refused keeps the record as history.
+    await write(alice, 3, "Short");
+    draft = (await ok(alice)).draft;
+    expect(draft.refusal).toMatchObject({ code: "too_large", sequence: 2 });
+    expect(currentRefusal(draft)).toBeNull();
+    expect(draftStatus(draft)).toBe("pending");
+  });
+
+  it("never writes over a conflict, which is the line of work's", async () => {
+    await write(alice, 1, "One");
+    await refuseDraft(alice, { ...at, sequence: 1, code: "missing" });
+    await oversized(2);
+    const draft = (await ok(alice)).draft;
+    expect(draft).toMatchObject({ sequence: 2, refusal: { code: "missing", sequence: 1 } });
+    expect(currentRefusal(draft)).toMatchObject({ code: "missing" });
+  });
+
+  it("replaces an older snapshot's invalid refusal", async () => {
+    await write(alice, 1, "One");
+    await refuseDraft(alice, { ...at, sequence: 1, code: "invalid" });
+    await oversized(2);
+    expect((await ok(alice)).draft.refusal).toMatchObject({ code: "too_large", sequence: 2 });
+  });
+
+  it("is never recorded by an older write, and only too_large is taken", async () => {
+    await write(alice, 5, "Newest");
+    expect(await oversized(4)).toBe("superseded");
+    expect((await ok(alice)).draft.refusal).toBeUndefined();
+    await expect(
+      writeDraft(alice, {
+        ...at,
+        content: doc("x"),
+        sequence: 6,
+        baseRevision: 3,
+        refusal: "stale" as "too_large",
+      }),
+    ).rejects.toMatchObject({ kind: "invalid" });
+    expect((await ok(alice)).draft.sequence).toBe(5);
+  });
+
+  it("is lifted by a confirmation of its snapshot or a later one", async () => {
+    await oversized(1);
+    await write(alice, 2, "Short");
+    expect(await confirmDraft(alice, { ...at, sequence: 1, revision: 4 })).toBe("advanced");
+    expect((await ok(alice)).draft.refusal).toBeUndefined();
   });
 });

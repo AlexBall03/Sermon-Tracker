@@ -8,7 +8,14 @@ import { documentV4, pointV4, proseV4 } from "@/features/editor-lab/v4/fixtures"
 import { resetAccountMemory } from "@/features/offline/account";
 import { closeOfflineDb } from "@/features/offline/db";
 import { documentLimits } from "../model";
-import { confirmDraft, DraftStorageError, readDraft, writeDraft } from "../recovery/store";
+import {
+  confirmDraft,
+  DraftStorageError,
+  readDraft,
+  refuseDraft,
+  writeDraft,
+} from "../recovery/store";
+import { currentRefusal, draftStatus } from "../recovery/model";
 import { createAutosaveController, type DraftStorage } from "./controller";
 import { autosaveStatus, jsonEqual, type DocumentSource } from "./model";
 
@@ -82,6 +89,8 @@ function stubStorage() {
   const confirms: { sequence: number; revision: number }[] = [];
   const failures: unknown[] = [];
   const confirmFailures: unknown[] = [];
+  const refuses: { sequence: number; code: string; revision?: number }[] = [];
+  const refuseFailures: unknown[] = [];
   let hold: ReturnType<typeof deferred> | null = null;
   let running = 0;
   let maxRunning = 0;
@@ -111,11 +120,18 @@ function stubStorage() {
       confirms.push({ sequence: input.sequence, revision: input.revision });
       return "cleared" as const;
     }),
+    refuseDraft: vi.fn(async (_owner, input) => {
+      if (refuseFailures.length) throw refuseFailures.shift();
+      refuses.push({ sequence: input.sequence, code: input.code, revision: input.revision });
+      return "refused" as const;
+    }),
   };
   return {
     storage,
     writes,
     confirms,
+    refuses,
+    failNextRefuse: (error: unknown) => refuseFailures.push(error),
     failNext: (error: unknown) => failures.push(error),
     failNextConfirm: (error: unknown) => confirmFailures.push(error),
     holdNext() {
@@ -445,6 +461,7 @@ describe("ordering in IndexedDB", () => {
           return writeDraft(who, input);
         },
         confirmDraft,
+        refuseDraft,
       },
     });
     editor.edit(doc("One"));
@@ -473,6 +490,7 @@ describe("ordering in IndexedDB", () => {
           return writeDraft(who, input);
         },
         confirmDraft,
+        refuseDraft,
       },
     });
     editor.edit(doc("One"));
@@ -675,5 +693,277 @@ describe("A2.3B.2A additions", () => {
     expect(state.refusal).toMatchObject({ reason: "unsafe" });
     expect(autosaveStatus(state)).toBe("unprotected");
     await controller.dispose();
+  });
+});
+
+describe("refusals in IndexedDB (A2.3B.2B.3)", () => {
+  beforeEach(async () => {
+    await closeOfflineDb();
+    globalThis.indexedDB = new IDBFactory();
+    resetAccountMemory();
+  });
+  afterEach(async () => {
+    await closeOfflineDb();
+  });
+
+  function real(who = owner, storage?: DraftStorage) {
+    const editor = fakeSource(doc("Opened"));
+    const controller = createAutosaveController({
+      owner: who,
+      outlineId,
+      revision: 3,
+      source: editor.source,
+      ...(storage ? { storage } : {}),
+    });
+    const draft = async () => {
+      const read = await readDraft(who, { outlineId, draftId: controller.draftId });
+      if (read?.status !== "ok") throw new Error(`no readable draft: ${read?.status}`);
+      return read.draft;
+    };
+    return { editor, controller, draft };
+  }
+
+  it("records a refusal of the claimed snapshot after its draft write, leaving the content", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    expect(controller.claimSave()?.sequence).toBe(1);
+    expect(controller.refuseSave(1, { code: "stale", revision: 7 })).toBe(true);
+    expect(controller.getState()).toMatchObject({
+      saving: null,
+      refusalRecord: { sequence: 1, code: "stale", revision: 7, status: "pending" },
+    });
+    const state = await controller.flush();
+    expect(state.refusalRecord).toMatchObject({ status: "recorded" });
+    const stored = await draft();
+    expect(stored).toMatchObject({ sequence: 1, confirmedSequence: 0 });
+    expect(stored.content).toEqual(doc("One"));
+    expect(stored.refusal).toMatchObject({ code: "stale", sequence: 1, revision: 7 });
+    expect(currentRefusal(stored)).toMatchObject({ code: "stale" });
+    expect(draftStatus(stored)).toBe("conflict");
+    await controller.dispose();
+  });
+
+  it("takes a refusal only for the snapshot claimed", async () => {
+    const { editor, controller } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    expect(controller.refuseSave(1, { code: "invalid" })).toBe(false);
+    controller.claimSave();
+    expect(controller.refuseSave(2, { code: "invalid" })).toBe(false);
+    expect(controller.getState()).toMatchObject({ saving: 1, refusalRecord: null });
+    await controller.dispose();
+  });
+
+  it("a refusal of N decided while N + 1 waits to be written never replaces N + 1", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    editor.edit(doc("Two"));
+    const flushing = controller.flush(); // the write of 2 is queued before the refusal of 1
+    expect(controller.refuseSave(1, { code: "invalid" })).toBe(true);
+    await flushing;
+    await controller.flush();
+    const stored = await draft();
+    expect(stored.sequence).toBe(2);
+    expect(stored.content).toEqual(doc("Two"));
+    // A refusal of an older snapshot's content is history, not said of the newer content.
+    expect(stored.refusal).toMatchObject({ code: "invalid", sequence: 1 });
+    expect(currentRefusal(stored)).toBeNull();
+    expect(draftStatus(stored)).toBe("pending");
+    await controller.dispose();
+  });
+
+  it("a refusal queued before a newer snapshot is written is kept with it", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    controller.refuseSave(1, { code: "stale", revision: 4 });
+    editor.edit(doc("Two"));
+    await controller.flush();
+    const stored = await draft();
+    expect(stored).toMatchObject({ sequence: 2, refusal: { code: "stale", sequence: 1 } });
+    expect(stored.content).toEqual(doc("Two"));
+    // A conflict is the line of work's: still current for the newer content.
+    expect(draftStatus(stored)).toBe("conflict");
+    await controller.dispose();
+  });
+
+  it("keeps the confirmed watermark, and a later confirmation answers the refusal", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    // 2 is kept before 1 is confirmed: the draft advances (watermark 1) rather than clearing.
+    editor.edit(doc("Two"));
+    await controller.flush();
+    controller.confirmSave(1, 4);
+    await controller.flush();
+    expect(controller.claimSave()?.sequence).toBe(2);
+    controller.refuseSave(2, { code: "invalid" });
+    editor.edit(doc("Three"));
+    await controller.flush();
+    let stored = await draft();
+    expect(stored).toMatchObject({
+      sequence: 3,
+      confirmedSequence: 1,
+      baseRevision: 4,
+      refusal: { code: "invalid", sequence: 2 },
+    });
+    expect(controller.getState()).toMatchObject({ confirmedSequence: 1, revision: 4 });
+    // 3 is sent and confirmed: the draft is cleared, the refusal with it.
+    controller.claimSave();
+    controller.confirmSave(3, 5);
+    await controller.flush();
+    expect(await readDraft(owner, { outlineId, draftId: controller.draftId })).toBeNull();
+    editor.edit(doc("Four"));
+    await controller.flush();
+    stored = await draft();
+    expect(stored.refusal).toBeUndefined();
+    await controller.dispose();
+  });
+
+  it("a confirmed snapshot can no longer be refused", async () => {
+    const { editor, controller } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    expect(controller.confirmSave(1, 4)).toBe(true);
+    expect(controller.refuseSave(1, { code: "stale" })).toBe(false);
+    await controller.flush();
+    expect(await readDraft(owner, { outlineId, draftId: controller.draftId })).toBeNull();
+    await controller.dispose();
+  });
+
+  it("an oversized snapshot is recorded as refused in its own write; a corrected one leaves it as history", async () => {
+    const { editor, controller, draft } = real();
+    const huge = doc("x".repeat(documentLimits.bytes + 10));
+    editor.edit(huge);
+    await controller.flush();
+    let stored = await draft();
+    expect(stored.sequence).toBe(1);
+    expect(stored.refusal).toMatchObject({ code: "too_large", sequence: 1 });
+    expect(draftStatus(stored)).toBe("conflict");
+    // Still oversized: the refusal names the newest snapshot.
+    editor.edit(doc("y".repeat(documentLimits.bytes + 10)));
+    await controller.flush();
+    stored = await draft();
+    expect(stored.refusal).toMatchObject({ code: "too_large", sequence: 2 });
+    // Corrected: kept, but no longer said of the content.
+    editor.edit(doc("Short"));
+    await controller.flush();
+    stored = await draft();
+    expect(stored.content).toEqual(doc("Short"));
+    expect(stored.refusal).toMatchObject({ code: "too_large", sequence: 2 });
+    expect(currentRefusal(stored)).toBeNull();
+    expect(controller.getState().refusal).toBeNull();
+    expect(controller.claimSave()?.sequence).toBe(3);
+    await controller.dispose();
+  });
+
+  it("an oversized snapshot never writes over a conflict already recorded", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    controller.refuseSave(1, { code: "stale", revision: 9 });
+    editor.edit(doc("x".repeat(documentLimits.bytes + 10)));
+    await controller.flush();
+    const stored = await draft();
+    expect(stored.sequence).toBe(2);
+    expect(stored.refusal).toMatchObject({ code: "stale", sequence: 1, revision: 9 });
+    await controller.dispose();
+  });
+
+  it("a refusal IndexedDB will not take is reported failed; the content stays kept and said so", async () => {
+    const failing: DraftStorage = {
+      writeDraft,
+      confirmDraft,
+      refuseDraft: async () => {
+        throw new DraftStorageError("unavailable");
+      },
+    };
+    const { editor, controller, draft } = real(owner, failing);
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    controller.refuseSave(1, { code: "invalid" });
+    const state = await controller.flush();
+    expect(state).toMatchObject({
+      refusalRecord: { sequence: 1, status: "failed", error: "unavailable" },
+      storageError: null,
+      localSequence: 1,
+    });
+    expect(autosaveStatus(state)).toBe("local");
+    expect((await draft()).content).toEqual(doc("One"));
+    await controller.dispose();
+  });
+
+  it("a refusal of a snapshot whose own write failed is ignored, never invented content", async () => {
+    let fail = true;
+    const flaky: DraftStorage = {
+      writeDraft: async (who, input) => {
+        if (fail) throw new DraftStorageError("quota");
+        return writeDraft(who, input);
+      },
+      confirmDraft,
+      refuseDraft,
+    };
+    const { editor, controller } = real(owner, flaky);
+    editor.edit(doc("One"));
+    expect((await controller.flush()).storageError).toBe("quota");
+    controller.claimSave();
+    controller.refuseSave(1, { code: "invalid" });
+    const state = await controller.flush();
+    expect(state.refusalRecord).toMatchObject({ status: "ignored" });
+    expect(autosaveStatus(state)).toBe("unprotected");
+    expect(await readDraft(owner, { outlineId, draftId: controller.draftId })).toBeNull();
+    fail = false;
+    await controller.dispose();
+  });
+
+  it("records a late refusal after the controller is disposed", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    await controller.dispose();
+    expect(controller.refuseSave(1, { code: "missing" })).toBe(true);
+    await controller.dispose();
+    expect((await draft()).refusal).toMatchObject({ code: "missing", sequence: 1 });
+  });
+
+  it("drops a revision the store would refuse rather than losing the record", async () => {
+    const { editor, controller, draft } = real();
+    editor.edit(doc("One"));
+    await controller.flush();
+    controller.claimSave();
+    controller.refuseSave(1, { code: "stale", revision: Number.NaN });
+    await controller.flush();
+    const stored = await draft();
+    expect(stored.refusal).toMatchObject({ code: "stale", sequence: 1 });
+    expect(stored.refusal?.revision).toBeUndefined();
+    await controller.dispose();
+  });
+
+  it("one account's refusal never reaches another's draft of the same outline", async () => {
+    const mine = real(owner);
+    const theirs = real(stranger);
+    mine.editor.edit(doc("Mine"));
+    theirs.editor.edit(doc("Theirs"));
+    await mine.controller.flush();
+    await theirs.controller.flush();
+    mine.controller.claimSave();
+    mine.controller.refuseSave(1, { code: "stale" });
+    await mine.controller.flush();
+    expect((await mine.draft()).refusal).toMatchObject({ code: "stale" });
+    const other = await theirs.draft();
+    expect(other.refusal).toBeUndefined();
+    expect(other.content).toEqual(doc("Theirs"));
+    expect(await readDraft(stranger, { outlineId, draftId: mine.controller.draftId })).toBeNull();
+    await mine.controller.dispose();
+    await theirs.controller.dispose();
   });
 });

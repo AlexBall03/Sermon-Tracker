@@ -13,6 +13,7 @@ import {
   draftInputs,
   draftKind,
   draftFormat,
+  lineRefusals,
   readDraftRecord,
   type DocumentDraftData,
   type DraftRead,
@@ -147,13 +148,20 @@ export type WriteDraftInput = Target & {
   sequence: number;
   /** The revision the controller would name in its next save of `content`. */
   baseRevision: number;
+  /**
+   * This snapshot is refused as it is (A2.3B.2B.3: over the limit, kept here
+   * and never sent). Recorded in the same transaction, for this sequence, but
+   * never over a `stale` or `missing` refusal, which is the line of work's.
+   */
+  refusal?: "too_large";
 };
 
 /**
  * Keeps a snapshot. `superseded` when the draft already holds this sequence or
  * a later one: nothing is written, so a delayed older write never replaces
- * newer work. Keeps the draft's start, what was confirmed, and any refusal;
- * the base revision never goes back.
+ * newer work. Keeps the draft's start, what was confirmed, and any refusal
+ * (unless `refusal` names this snapshot's own); the base revision never goes
+ * back.
  */
 export async function writeDraft(
   owner: string,
@@ -165,10 +173,18 @@ export async function writeDraft(
   if (typeof input.content !== "object" || input.content === null || input.content.type !== "doc") {
     throw new DraftStorageError("invalid");
   }
+  if (input.refusal !== undefined && input.refusal !== "too_large") {
+    throw new DraftStorageError("invalid");
+  }
   return inTransaction("readwrite", async (store) => {
     const before = await stored(who, store, key);
     if (before && before.sequence >= sequence) return "superseded";
     const now = Date.now();
+    const kept = before?.refusal;
+    const refusal: DraftRefusal | undefined =
+      input.refusal && !(kept && lineRefusals.has(kept.code))
+        ? { code: input.refusal, sequence, at: now }
+        : kept;
     const data: DocumentDraftData = {
       format: draftFormat,
       content: input.content,
@@ -176,7 +192,7 @@ export async function writeDraft(
       confirmedSequence: before?.confirmedSequence ?? 0,
       baseRevision: Math.max(baseRevision, before?.baseRevision ?? 0),
       createdAt: before?.createdAt ?? now,
-      ...(before?.refusal ? { refusal: before.refusal } : {}),
+      ...(refusal ? { refusal } : {}),
     };
     await store.put(record(key, data, now));
     return "written";
