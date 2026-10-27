@@ -76,12 +76,29 @@ export type PreparedSave =
  * worth retrying.
  */
 export function prepareSave(content: JSONContent): PreparedSave {
+  const prepared = prepareSnapshot(content);
+  if (prepared.ok || prepared.reason === "unsafe") return prepared;
+  return { ok: false, reason: "too_large", bytes: prepared.bytes, limit: prepared.limit };
+}
+
+/**
+ * `prepareSave`, keeping the plain copy of a document over the limit too
+ * (A2.3B.1): the autosave controller keeps such a document on the device,
+ * where words are never refused, and never sends it.
+ */
+export type PreparedSnapshot =
+  | Extract<PreparedSave, { ok: true }>
+  | (Extract<PreparedSave, { reason: "too_large" }> & { content: JSONContent })
+  | Extract<PreparedSave, { reason: "unsafe" }>;
+
+export function prepareSnapshot(content: JSONContent): PreparedSnapshot {
   const plain = toPlainJson(content);
   if (!plain.ok) return { ok: false, reason: "unsafe", problem: plain.problem };
-  const bytes = utf8Bytes(JSON.stringify(plain.value));
+  const copy = plain.value as JSONContent;
+  const bytes = utf8Bytes(JSON.stringify(copy));
   const limit = documentLimits.bytes;
-  if (bytes > limit) return { ok: false, reason: "too_large", bytes, limit };
-  return { ok: true, content: plain.value as JSONContent, bytes };
+  if (bytes > limit) return { ok: false, reason: "too_large", bytes, limit, content: copy };
+  return { ok: true, content: copy, bytes };
 }
 
 /** What `saveOutlineDocument`'s answer means for the snapshot `sequence`. */

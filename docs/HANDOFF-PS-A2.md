@@ -1005,3 +1005,128 @@ This is separate from persistence. The server refuses such text by itself, whate
 ### Ready for owner review
 
 **Yes.** Nothing is committed, deployed, or migrated, and A2.3B has not been started.
+
+## A2.3B.1: Autosave controller foundation (26 October 2026)
+
+**Status:** built and verified with focused tests. Not committed, not deployed, not mounted, and no migration anywhere.
+
+**Git:** began on `dev` at `7be079b` with a clean tree. Ends there, with the files below changed or new and nothing staged.
+
+### What was found
+
+- **Transactions (Tiptap 3.31.4).**
+  - `dispatchTransaction` emits `transaction` with `{ transaction, appendedTransactions }` for every applied transaction.
+  - `update` fires only when one of them is `docChanged`, `preventUpdate` is unset, and the document is not `eq` to the one before.
+  - Every document change is a step, so it is `docChanged`: typing, structure, Scripture, notes, scripts, page breaks, `setDocAttribute` (numbering `layout`, `styles`: the preset and appearance), Undo, and Redo.
+  - View state is meta only, so it is not `docChanged`: expansion, Regular or Print and page setup, `setStylesPreview`, the appearance target, presentation, caret sync, selection, and focus.
+- **No plugin changes the document by itself.**
+  - `NodeIdentity` and `V4Plugins` act in `appendTransaction` only on transactions that already changed it.
+  - `loadV4` dispatches one empty, history-less transaction before `onReady`.
+- **Teardown.** `onReady` runs only after a successful `loadV4`. `Editor.destroy()` emits `destroy` before it unmounts the view and removes its listeners, so the document can still be read in that handler.
+- **The resurrection.** `writeDraft`'s sequence check protects a draft only while it exists. A write issued after `confirmDraft` has cleared the draft makes it again; that is how the store is meant to work, and the controller prevents it.
+- **No existing equality helper.** Comparing `JSON.stringify` output depends on key order, so `jsonEqual` was added.
+
+### What was built
+
+- **`persistence/autosave/model.ts`:**
+  - `autosaveTiming`: 350 ms debounce, 2 s maximum. The maximum bounds what continuous typing can leave unkept to about 2 s.
+  - `DocumentSource`, the `AutosaveState` contract, and `autosaveStatus`.
+  - `jsonEqual`: order-independent, and it stops at the first difference.
+- **`persistence/autosave/controller.ts`:** `createAutosaveController({ owner, outlineId, revision, source })`.
+  - **Identity.** Owner, outline, and revision are validated with `draftInputs`. The `draftId` is the controller's own `randomUUID()` and is never given.
+  - **Snapshots.**
+    - A change only marks the state changed and arms the timers; it serializes nothing.
+    - At the boundary the controller reads once, makes the copy with `prepareSnapshot`, and compares it with `jsonEqual` against the newest snapshot (sequence 0 is the document as attached).
+    - Only something new takes the next sequence. An edit undone before its boundary writes nothing.
+  - **Ordering.**
+    - One promise chain carries every draft operation; each catches its own failure.
+    - At most one write waits, and it is always the newest snapshot.
+    - `claimSave` hands out a snapshot only once its write has settled, and only one at a time.
+    - `confirmSave` accepts only the claimed sequence. Before anything is queued, it raises `confirmedSequence` (the watermark), the revision, and `localSequence`, and drops a waiting write at or below the watermark.
+    - Three guards stop a cleared draft being made again: the drain's watermark check, the drop of a waiting write, and `retry`'s check. A mutation test showed each is enough alone, and that removing all three makes the test fail.
+  - **Failures.**
+    - A failed write sets `storageError` (the `DraftStorageError` kind) and never raises `localSequence`.
+    - Nothing retries by itself: only a new snapshot or `retry()` writes again.
+    - A failed `confirmDraft` leaves a draft equal to the server's copy, which recovery discards as equal.
+  - **`flush()`** resolves with the state once the operations decided so far have finished. It does not rely on unload.
+  - **`dispose()`** (also called when the source ends):
+    - takes a last snapshot of unkept changes, cancels its timers, and unsubscribes;
+    - tells its listeners once, then publishes nothing more;
+    - lets decided operations finish, and still accepts the confirmation of a save in flight.
+- **`persistence/autosave/editor-adapter.ts`:** `editorSource(editor)`.
+  - It uses the public `on`/`off` events only, and a `live` guard means nothing is called after unsubscribing.
+  - `read()` throws `SourceGone` once the editor is destroyed.
+- **`saving.ts`:** added `prepareSnapshot`, which is `prepareSave` but keeps the plain copy when a document is too large. `prepareSave` now delegates to it; its contract and tests are unchanged.
+
+### Status contract
+
+| Status | Means |
+| --- | --- |
+| `saved` | The server confirmed exactly the current content (only through `confirmSave`). |
+| `unprotected` | The current content is kept nowhere but the editor: a failed write, or content that is not plain JSON. |
+| `pending` | Changes not yet kept on this device. |
+| `attention` | Kept on this device, but too large for the server. A2.3B.2 adds conflicts here. |
+| `local` | Kept on this device, not known to be on the server. |
+| `unchanged` | Nothing changed since the document was attached. |
+
+### Attaching (A3)
+
+```ts
+onReady={(editor) => {
+  controller = createAutosaveController({ owner, outlineId, revision, source: editorSource(editor) });
+}}
+```
+
+`SermonWorkspace` is unchanged. A refused document never calls `onReady`. The controller disposes itself on the editor's `destroy`, while the document is still readable.
+
+### Decisions for the owner (not blocking)
+
+1. **Content that is not plain JSON** (in practice U+0000 or an unpaired surrogate from a paste) is not written as a draft.
+   - The draft format promises schema v4 JSON.
+   - The editor keeps the words, the previous draft stays, and the status says `unprotected`.
+   - Keeping such content raw on the device instead is possible, if the owner prefers it.
+   - The approved paste-boundary fix (UI.3/A3) makes this rare.
+2. **A document over 3 MiB is kept on the device**, as "words are never refused locally" requires. It is shown as `attention` and never claimed for a save.
+3. **The baseline is the editor's document at attach.** A document migrated on opening (v3 to v4, or defaults written out) is not saved until it is edited. A3 decides whether that should change.
+
+### Measured (vitest, jsdom; indicative)
+
+On a 3.37 MB v4 document:
+- `getJSON`: about 3 ms;
+- `prepareSnapshot`: about 50 ms;
+- `jsonEqual` over equal documents (the full walk): 3–9 ms.
+
+During continuous typing on a document of that size, that is about one 60 ms snapshot every 2 s. A real browser was not measured.
+
+### Files
+
+- **New:** `src/features/sermon-editor/persistence/autosave/model.ts`, `controller.ts`, `editor-adapter.ts`, `controller.test.ts`, `editor-adapter.test.ts`.
+- **Changed:** `persistence/saving.ts` (`prepareSnapshot`), `AGENTS.md`, `ARCHITECTURE.md`, and this handoff.
+
+### Verification
+
+- `vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/editor-lab/v4`: 19 files, 402 passed, none failed. The new files hold 31 tests:
+  - `controller.test.ts` (23): timing on fake timers; ordering on the real store in fake-indexeddb; failures, the B.2 boundary, lifecycle, and content safety.
+  - `editor-adapter.test.ts` (8): a real v4 editor.
+- **Mutations**, each reverted:
+  - removing the equality check failed 2 tests;
+  - counting a write as kept before it finished failed 3;
+  - removing every watermark guard failed the resurrection test.
+- `tsc --noEmit`, ESLint, and Prettier on `src/features/sermon-editor/persistence`: clean.
+- **Not run:** the full suite, a build, end-to-end tests, and a real browser. Nothing is mounted or visible.
+
+### For A2.3B.2
+
+- **The save loop:**
+  1. `flush()`, then `claimSave()`.
+  2. Send `content` against `expectedRevision`.
+  3. Read the answer with `saveOutcome`.
+  4. `confirmSave` on `confirmed`. Otherwise `releaseSave`, plus `refuseDraft` for a refusal or conflict. That refusal has to go through the controller's queue: add an operation there, never a direct call.
+- **Its own timing:** the server's 1.5 s idle and 10 s maximum, kept separate from the local timers. Never send while `refusal` is set.
+- **An unanswered save:** the reconciliation in A2.3A.1 above, comparing with `jsonEqual` against the canonical form of what was sent.
+
+### For A2.3B.3
+
+- `holdUnsavedWork` while the status is not `saved`, `local`, or `unchanged`.
+- On `pagehide` and `visibilitychange`, `flush()` (best effort). Tab coordination and account switching.
+
