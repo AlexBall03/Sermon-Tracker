@@ -639,3 +639,41 @@ describe("content safety", () => {
     await controller.dispose();
   });
 });
+
+describe("A2.3B.2A additions", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("tells change listeners of every change, reads nothing for them, and stops on unsubscribe or dispose", async () => {
+    const { editor, controller } = setup();
+    const onChange = vi.fn();
+    const stop = controller.onDocumentChange(onChange);
+    for (let i = 0; i < 5; i += 1) editor.edit(doc(`Change ${i}`));
+    expect(onChange).toHaveBeenCalledTimes(5);
+    expect(editor.reads).toBe(1); // only the baseline
+    stop();
+    editor.edit(doc("After stop"));
+    expect(onChange).toHaveBeenCalledTimes(5);
+    await controller.dispose();
+    editor.edit(doc("After dispose"));
+    expect(controller.onDocumentChange(onChange)).toBeTypeOf("function");
+  });
+
+  it("never says saved while the editor holds content that was refused as unsafe", async () => {
+    const { editor, controller } = setup();
+    editor.edit(doc("Kept"));
+    await controller.flush();
+    const claimed = controller.claimSave();
+    expect(controller.confirmSave(claimed!.sequence, 4)).toBe(true);
+    expect(autosaveStatus(controller.getState())).toBe("saved");
+    editor.edit(doc("Pasted \u0000"));
+    const state = await controller.flush();
+    expect(state.refusal).toMatchObject({ reason: "unsafe" });
+    expect(autosaveStatus(state)).toBe("unprotected");
+    await controller.dispose();
+  });
+});

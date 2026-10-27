@@ -737,7 +737,7 @@ Nothing is dropped without the person choosing, and Discard on the row asks firs
 
 ### Sermon documents
 
-Preacher Studio phases A2.1–A2.3B.1 ([handoff](docs/HANDOFF-PS-A2.md)), `src/features/sermon-editor/persistence`. Nothing in the application calls it yet; A2.3B.2 sends autosaves and A3 mounts the editor on a real route.
+Preacher Studio phases A2.1–A2.3B.2A ([handoff](docs/HANDOFF-PS-A2.md)), `src/features/sermon-editor/persistence`. Nothing in the application calls it yet; A2.3B.2B–C finish the server autosave and A3 mounts the editor on a real route.
 
 - **On the server** (A2.1, A2.2): one schema v4 document per outline in `sermon_outline_documents`, with its own revision, read and written only by `documents.ts` behind `actions.ts`. A save is the whole document, made against a revision; a stale one writes nothing. A row is the outline's content authority. `convertOutline` makes the first one from the legacy entries.
 - **Size** (A2.3A): `documentLimits.bytes` is 3 MiB of UTF-8 JSON, checked by `prepareDocument`. Saves travel through a Server Action, so `experimental.serverActions.bodySizeLimit` in `next.config.ts` is 4 MB: above the document limit, below Vercel's 4.5 MB request cap. `transport.test.ts` keeps the two in step and encodes a save at the limit as the client does.
@@ -748,6 +748,13 @@ Preacher Studio phases A2.1–A2.3B.1 ([handoff](docs/HANDOFF-PS-A2.md)), `src/f
   - `claimSave` and `confirmSave` are A2.3B.2's way in. There is one save in flight, a snapshot is claimed only once its draft write has settled, and a confirmation raises a watermark so a late write never makes a cleared draft again.
   - `autosaveStatus` gives one status: `saved`, `unprotected`, `pending`, `attention`, `local`, or `unchanged`.
   - A document over the limit is kept on the device and never offered for a save. One that is not plain JSON is not kept, and is reported `unprotected`.
+- **Server saves** (`autosave/coordinator.ts`, A2.3B.2A; not mounted, not production-ready):
+  - `createSaveCoordinator({ controller, transport, base })` sends one controller's snapshots through an injected `DocumentTransport` (`autosave/transport.ts`; `actionTransport` wraps `saveOutlineDocument` and `readOutlineDocument`, passed in by the caller, so neither module imports a Server Action). `base` is the authoritative server document and its revision, which must be the controller's.
+  - Timing is `serverSaveTiming`: 1.5 s after the last change, at most 10 s after the first unsent one, from the controller's `onDocumentChange`. No polling, never per keystroke.
+  - A save is `flush()` (write ahead) then `claimSave()`. One request at a time; a save due meanwhile waits for it. Nothing is sent while the controller has a `refusal`, and nothing the server's own canonical function refuses (`canonicalDocument`, `canonical.ts`, which is `prepareDocument` moved to a pure module) is sent.
+  - Only the answer for the sequence sent, at exactly `expectedRevision + 1`, confirms (`confirmSave`). The base then becomes that save's predicted canonical form (`provenance: "confirmed"`).
+  - No answer or an answer that cannot be built on holds the claim and stops all saves (`reconciling`, for A2.3B.2B). A conflict, a refusal, or an unauthorized account stops them (`blocked`). A failure that wrote nothing waits for `retry()` (`failed`). Nothing is retried automatically (A2.3B.2C).
+  - `serverSaveStatus` combines the local status with the coordinator's phase: `saved`, `saving`, `waiting`, `unresolved`, `blocked`, `failed`, `disposed`, or a local status.
 - **Recovery drafts** (`recovery/`, A2.3A): the newest snapshot of each editor session is kept in the offline database's `accountData` store as `[users.id, "documentDraft", "<outlineId>:<draftId>"]`, with its sequence, the highest confirmed sequence, the revision its next save names, and any refusal. Every operation is one IndexedDB transaction that compares before it writes: an older write never replaces a newer snapshot, and a confirmation of snapshot N deletes the draft only if it still holds N, otherwise keeping N+1. A draft survives reloads, sign-out, and another account signing in; it is removed only by an exact confirmation, the person's discard, or account deletion (`forgetAccount`). An unreadable record is reported, never skipped or written over. A draft is never a save, and IndexedDB is not encrypted.
 
 ### Scripture

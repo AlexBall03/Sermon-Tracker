@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import type { JsonProblem, JsonValue } from "../json";
 import type { DraftStorageErrorKind } from "../recovery/store";
+import type { DocumentSaveOutcome } from "../saving";
 
 /*
  * The autosave controller's contract (A2.3B.1): its timing, what it reads
@@ -80,12 +81,116 @@ export type AutosaveStatus =
 export function autosaveStatus(state: AutosaveState): AutosaveStatus {
   // An edit not yet taken as a snapshot is never counted as kept.
   const current = !state.changed;
-  if (current && state.sequence > 0 && state.confirmedSequence === state.sequence) return "saved";
+  // Refused content is newer than any snapshot, confirmed or not (A2.3B.2A: it was said `saved`).
   if (state.refusal?.reason === "unsafe") return "unprotected";
+  if (current && state.sequence > 0 && state.confirmedSequence === state.sequence) return "saved";
   const kept = current && state.localSequence >= state.sequence;
   if (!kept) return state.storageError ? "unprotected" : "pending";
   if (state.refusal?.reason === "too_large") return "attention";
   return state.sequence === 0 ? "unchanged" : "local";
+}
+
+/**
+ * When the save coordinator (A2.3B.2A) sends the document to the server, kept
+ * apart from the local timing above. A save is due `serverDebounceMs` after
+ * the last change, and at most `serverMaxWaitMs` after the first change not
+ * yet sent: continuous typing restarts the first and never the second, so it
+ * still sends about every 10 s. One whole-document request each time, never
+ * one per keystroke.
+ */
+export const serverSaveTiming = { serverDebounceMs: 1500, serverMaxWaitMs: 10_000 };
+export type ServerSaveTiming = typeof serverSaveTiming;
+
+/**
+ * Where the save coordinator stands:
+ * - `idle`: nothing due. `scheduled`: a save is due when a timer fires.
+ * - `preparing`: taking and claiming a snapshot. `saving`: one request in flight.
+ * - `reconciling`: a request whose outcome is not known (no answer, or an
+ *   answer that cannot be built on, a confirmation included). Its claim and
+ *   `submission` are held. Nothing more is sent until A2.3B.2B reads the
+ *   document and decides.
+ * - `blocked`: the server, or the check before sending, said no for certain
+ *   (a conflict, a refusal, an account that may not save), so nothing of it
+ *   was written: no claim or `submission` is held, and `block.reason` with
+ *   `outcome` says which. Nothing more is sent, even after further edits;
+ *   A2.3B.2B decides which of these an edit may clear.
+ * - `failed`: the server's transaction failed and wrote nothing. Sent again
+ *   only by `retry()` (A2.3B.2C adds bounded backoff).
+ * - `disposed`: sends nothing more.
+ */
+export type NetworkPhase =
+  "idle" | "scheduled" | "preparing" | "saving" | "reconciling" | "blocked" | "failed" | "disposed";
+
+export type NetworkBlockReason =
+  /** No answer, or one that is not an answer to what was sent. */
+  | "uncertain"
+  /** Success, with a revision other than the expected one plus one. */
+  | "unexpected_revision"
+  /** The document moved on since (`stale`) or is gone (`missing`). */
+  | "conflict"
+  /** Not a document the server takes (`invalid`, `too_large`), said by it or foreseen before sending. */
+  | "refused"
+  | "unauthorized"
+  /** The controller would not confirm the sequence the server confirmed (`reconciling`: the server wrote it). */
+  | "rejected_confirmation"
+  /** The controller's revision is not the coordinator's. */
+  | "revision_mismatch";
+
+export type NetworkState = {
+  phase: NetworkPhase;
+  /** The document revision the next save names: the base's. */
+  revision: number;
+  /**
+   * What the server is known to hold. `server`: as given at creation (read
+   * from the server). `confirmed`: the canonical form of a confirmed save, as
+   * predicted in the browser with the server's own function. `canonical`:
+   * whether that content was already in canonical form when given.
+   */
+  base: { revision: number; provenance: "server" | "confirmed"; canonical: boolean };
+  /** The save in flight or not resolved (content through `getSubmission`): set exactly while its claim is held. */
+  submission: { sequence: number; expectedRevision: number; bytes: number } | null;
+  /** The newest sequence this coordinator saw confirmed. */
+  confirmedSequence: number;
+  /** A save fell due while one was running; it runs when that one settles. */
+  due: boolean;
+  /** The last answer to a save, or the refusal foreseen before sending. */
+  outcome: DocumentSaveOutcome | null;
+  block: { reason: NetworkBlockReason; origin: "server" | "local" } | null;
+};
+
+/**
+ * The local status with the server's in it (A2.3B.2A), for A3's indicator:
+ * - `saved`: the server confirmed exactly the current content.
+ * - `saving`: a request is being prepared or is in flight (the current content may be newer).
+ * - `waiting`: a save is scheduled.
+ * - `unresolved`: a request's outcome is not known; nothing is sent until it is.
+ * - `blocked`: the server will not take a save for now (see `block`).
+ * - `failed`: a save failed and wrote nothing; waiting for `retry()`.
+ * - `disposed`: the coordinator sends nothing more.
+ * - otherwise the local status (`unprotected`, `attention`, `unchanged`,
+ *   `pending`, `local`), which never claims the server has anything.
+ */
+export type ServerSaveStatus =
+  | "saved"
+  | "saving"
+  | "waiting"
+  | "unresolved"
+  | "blocked"
+  | "failed"
+  | "disposed"
+  | Exclude<AutosaveStatus, "saved">;
+
+export function serverSaveStatus(local: AutosaveState, network: NetworkState): ServerSaveStatus {
+  if (network.phase === "disposed") return "disposed";
+  if (network.phase === "reconciling") return "unresolved";
+  if (network.phase === "blocked") return "blocked";
+  if (network.phase === "failed") return "failed";
+  const status = autosaveStatus(local);
+  if (status === "saved" || status === "unprotected" || status === "attention") return status;
+  if (status === "unchanged") return status;
+  if (network.phase === "preparing" || network.phase === "saving") return "saving";
+  if (network.phase === "scheduled") return "waiting";
+  return status;
 }
 
 /**

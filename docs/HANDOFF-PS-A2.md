@@ -1130,3 +1130,171 @@ During continuous typing on a document of that size, that is about one 60 ms sna
 - `holdUnsavedWork` while the status is not `saved`, `local`, or `unchanged`.
 - On `pagehide` and `visibilitychange`, `flush()` (best effort). Tab coordination and account switching.
 
+## A2.3B.2A: Network autosave coordinator foundation (27 October 2026)
+
+**Status:** built and verified with focused tests. Not committed, not deployed, not mounted, not production-ready, and no migration anywhere. B.2B (reconciliation and conflict safety) and B.2C (retry and hardening) are not started.
+
+**Git:** began on `dev` at `852b508` with a clean tree. Ends there, with the files below changed or new and nothing staged.
+
+### Approved by the owner (binding)
+
+1. A separate, framework-independent coordinator with an injected transport; IndexedDB stays the controller's.
+2. The authoritative canonical base is tracked explicitly; revision numbers alone never decide that content matches.
+3. The eventual retry: bounded exponential backoff, at most 30 s, manual after repeated failure; an unresolved save is never retried blindly. Only its foundations are here.
+4. B.2A, B.2B, B.2C in that order; this is B.2A only.
+
+### What was found
+
+- **The controller's notifications cannot time a server save.** It publishes on the first change after a snapshot, not on each change, so a 1.5 s idle timer cannot be measured from `subscribe()`. Added `onDocumentChange` (below).
+- **`claimSave` claims only the latest captured snapshot** and returns null while a draft write waits or runs. A local snapshot can be taken while `flush()` awaits IndexedDB (it awaits the queue as it was when called). The claimed content is an immutable copy, so later edits never leak into it.
+- **The server stores `restoreSermonDocument(...).doc.toJSON()`**, not the editor's JSON: a v3 document becomes v4, defaults are written out, and attributes have no prototype. `prepareDocument` was the server's pipeline but lived in `documents.ts`, which imports the database.
+- **`confirmSave` accepts any revision at or above the current one.** The server's contract is narrower: an accepted update is exactly `expectedRevision + 1` (`updateDocument`).
+- **A B.1 defect (fixed):** after a confirmed save, an unsafe paste (U+0000, an unpaired surrogate) left `autosaveStatus` at `saved`, because the `saved` check came before the `unsafe` one. The editor's words were kept nowhere. `unsafe` is now checked first; regression test in `controller.test.ts`.
+- **After an unsafe paste, `claimSave` would still claim the older valid snapshot** if it was not yet confirmed. The B.1 handoff says never send while `refusal` is set, so the coordinator checks the controller's `refusal` before claiming (a mutation test showed this check is the only guard).
+
+### What was built
+
+- **`persistence/canonical.ts`** (pure):
+  - `prepareDocument`, moved unchanged from `documents.ts`, which imports and re-exports it (callers unchanged; a test asserts they are the same function).
+  - `canonicalDocument(json)`: `prepareDocument` plus the `toPlainJson` step `readOutlineDocument` takes, so the browser predicts with the server's own function what a save stores and what reading it back gives. Compare with `jsonEqual`.
+- **`autosave/controller.ts`:** `onDocumentChange(listener)`, called for every change the source reports, until unsubscribed or disposed. It reads and publishes nothing. Nothing else in the controller changed.
+- **`autosave/model.ts`:** `serverSaveTiming` (1,500 ms idle, 10,000 ms at most), the `NetworkState` contract, `serverSaveStatus`, and the `autosaveStatus` fix above.
+- **`autosave/transport.ts`:** `DocumentTransport` (`save`, `read`; neither rejects) and `actionTransport(actions)`, which takes `saveOutlineDocument` and `readOutlineDocument` as arguments and imports only their types. A throw or something that is not an answer is `unansweredOutcome` (uncertain); answers go through `saveOutcome` and `readOutcome`.
+- **`autosave/coordinator.ts`:** `createSaveCoordinator({ controller, transport, base, timing? })` with `getState`, `subscribe`, `saveNow`, `retry`, `getBase`, `getSubmission`, `dispose`.
+
+### Initialization (for A3)
+
+```ts
+const controller = createAutosaveController({ owner, outlineId, revision, source: editorSource(editor) });
+const coordinator = createSaveCoordinator({
+  controller,
+  transport: actionTransport({ save: saveOutlineDocument, read: readOutlineDocument }),
+  base: { content, revision }, // what readOutlineDocument / getDocument gave: the authoritative document
+});
+```
+
+- `base.revision` must equal the controller's revision, the controller must not be disposed or hold a claim (an earlier coordinator's unresolved save), and the base must be a document the core accepts; otherwise `SaveCoordinatorError` (`revision`, `disposed`, `claimed`, `base`).
+- The base is kept as given, with `canonical: false` if it was not already in canonical form; that is reported, never assumed.
+- The editor's document at attach is still the controller's baseline (B.1's decision 3). A document migrated on opening is not treated as persisted canonically, and is not saved until edited; A3 decides.
+
+### State
+
+`NetworkState` holds no document content (that is `getBase()` and `getSubmission()`):
+
+| Field | Means |
+| --- | --- |
+| `phase` | `idle`, `scheduled`, `preparing`, `saving`, `reconciling`, `blocked`, `failed`, `disposed` |
+| `revision` | The revision the next save names |
+| `base` | `{ revision, provenance: "server" or "confirmed", canonical }` |
+| `submission` | `{ sequence, expectedRevision, bytes }` of the save in flight or unresolved |
+| `confirmedSequence`, `due` | The newest confirmed; a save fell due during another |
+| `outcome`, `block` | The last answer; `{ reason, origin: "server" or "local" }` when stopped |
+
+`serverSaveStatus(local, network)` gives `saved` (only when the controller's own status is `saved`), `saving`, `waiting`, `unresolved`, `blocked`, `failed`, `disposed`, or the local status (`unprotected`, `attention`, `unchanged`, `pending`, `local`). It never says `saved` with unsnapshotted edits, a newer sequence, an uncertain or refused save, or after a confirmation of only an older sequence. The final indicator is A3's.
+
+### Scheduling
+
+- A change restarts the idle timer (1.5 s) and arms the maximum (10 s) only if it is not armed, so typing never pushes it back. Timers keep running during a save; one that fires then sets `due`, and the next save starts as soon as that one settles.
+- It publishes when the phase changes, never per keystroke.
+- A save that finds nothing to send goes `idle` and arms nothing: no loop when the content is too large, refused, or unchanged. After a confirmation, the idle timer is armed once if newer work waits and nothing else will start a save.
+- Changes are ignored while `reconciling`, `blocked`, or `failed`; the controller still keeps them on the device.
+
+### A save, step by step
+
+1. `controller.flush()`: changes not yet in a snapshot are taken, and queued draft writes finish first (write ahead). A failed draft write does not stop the save.
+2. Nothing is sent if the controller has a `refusal` or nothing is newer than the confirmed sequence.
+3. `claimSave()`. If a draft write slipped in during the flush, it flushes and claims again, at most 3 times.
+4. The claim's `expectedRevision` must be the coordinator's (else `blocked`, `revision_mismatch`).
+5. `canonicalDocument(claim.content)`. If it refuses, nothing is sent, the claim is released, and it stops (`blocked`, `refused`, origin `local`). Otherwise its output is kept as `predicted`.
+6. `transport.save(...)`, one request; a throw is `unansweredOutcome`.
+
+### Outcomes
+
+| Answer | What happens |
+| --- | --- |
+| `confirmed`, for the sequence sent, at `expectedRevision + 1` | `confirmSave`. Revision advances; base becomes `predicted` (`provenance: "confirmed"`); newer work stays pending and is sent against the new revision. If `confirmSave` refuses, nothing advances (`reconciling`, `rejected_confirmation`, origin `local`): the server wrote it, so it is unresolved, never a refusal. |
+| `confirmed` at any other revision (missing, NaN, same, older, +2) | Nothing confirmed. `reconciling` (`unexpected_revision`), claim held. |
+| An answer for another sequence, a throw, `failed` + `uncertain` | Nothing confirmed. `reconciling` (`uncertain`), claim held, submission kept. |
+| `conflict` (`stale`, `missing`) | Claim released, submission cleared, `blocked` (`conflict`). The server's revision is not adopted. |
+| `refused` | Claim released, submission cleared, `blocked` (`refused`). |
+| `unauthorized` | Claim released, submission cleared, `blocked` (`unauthorized`). |
+| `failed`, not uncertain (nothing written) | Claim released, `failed`. Only `retry()` sends again. |
+
+`reconciling` and `blocked` are final in B.2A: nothing is sent from them, by timers, `saveNow()`, or `retry()`.
+
+`submission` is set exactly while the controller's claim is held: in flight, or `reconciling`. `blocked` and `failed` hold neither, since nothing of them was written; `block.reason` and `outcome` (with its `code`) say which refusal it was.
+
+### Disposal
+
+- `dispose()` (and the controller's own disposal, when the editor goes) cancels the timers, unsubscribes, tells listeners once, and sends nothing more.
+- A request already sent may still be taken by the server. A late `confirmed` is still given to `confirmSave` on the same session's controller, which clears that session's draft correctly; nothing is scheduled. Any other late answer is recorded and starts nothing.
+- A claim made while being disposed is released unsent.
+
+### Measured (vitest, jsdom; indicative)
+
+`canonicalDocument` on a 2.7 MB v4 document: about 80–90 ms, once per server save (at most every 1.5 s of idle or 10 s of typing), never per keystroke. A real browser was not measured.
+
+### Files
+
+- **New:**
+  - `src/features/sermon-editor/persistence/canonical.ts`, `canonical.test.ts`
+  - `persistence/autosave/coordinator.ts`, `coordinator.test.ts`
+  - `persistence/autosave/transport.ts`, `transport.test.ts`
+- **Changed:** `persistence/documents.ts` (`prepareDocument` moved out), `autosave/controller.ts` (`onDocumentChange`), `autosave/model.ts`, `autosave/controller.test.ts` (2 tests), `AGENTS.md`, `ARCHITECTURE.md`, and this handoff.
+
+### Verification
+
+- `vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/editor-lab/v4`: 22 files, 457 passed, none failed. The new tests:
+  - `coordinator.test.ts` (43): scheduling, the save boundary and write-ahead order, one request at a time, the base, every outcome, and disposal; on fake timers with the real B.1 controller, and two on a real v4 editor (selection and view state; typing, Undo, and Redo during a save).
+  - `canonical.test.ts` (6), `autosave/transport.test.ts` (4), `controller.test.ts` (+2).
+- **Mutations**, each reverted:
+  - accepting any confirmed revision failed 3 tests;
+  - accepting an answer for another sequence failed 1;
+  - ignoring the controller's refusal failed 1;
+  - removing both one-request guards failed 2;
+  - releasing the claim on an uncertain answer failed 2.
+- `tsc --noEmit`, ESLint, and Prettier on `src/features/sermon-editor/persistence`: clean.
+- **Not run:** the full suite, a build, end-to-end tests, and a real browser. Nothing is mounted or visible.
+
+### Limitations
+
+- **Version skew.** A `confirmed` base is the browser's prediction with the browser's schema. If the server was deployed with another schema between load and save, the stored form may differ. B.2B's read-back settles it; until then `provenance` says which it is.
+- **No timeout.** A request that never settles leaves the coordinator `saving`, which is safe but stuck (B.2C).
+- **An edit back to confirmed content is sent again** (one write, one revision): skipping it means confirming a sequence that was never sent, which needs B.2B's canonical comparison.
+- **After a definite failure** the status is `failed` until `retry()`: changes are kept on the device but not sent.
+
+### For A2.3B.2B
+
+- Resolve `reconciling` with `transport.read`: `jsonEqual(read.content, submission.predicted)` at `expectedRevision + 1` confirms; the old base at `expectedRevision` means not saved (release and send again); anything else is a conflict. Never decide from the revision alone.
+- Conflicts and refusals: `refuseDraft` through the controller's queue (an operation there, never a direct call), and what the person is offered.
+- Whether an edit back to the base can be confirmed without a write.
+
+### For A2.3B.2C
+
+- Bounded exponential backoff from `failed` (at most 30 s, manual after repeated failure), and a request timeout that ends as `uncertain`, never as a retry.
+
+### For A2.3B.3 and A3
+
+- `saveNow()` is the hook for `pagehide` and `visibilitychange`. Which statuses hold unsaved work (`holdUnsavedWork`) is B.3's to settle with `serverSaveStatus`; never `saving`, `unresolved`, `blocked`, or `failed`.
+- A3 mounts both, gives `base` from the server read, and builds the indicator from `serverSaveStatus`.
+
+### Post-implementation review (27 October 2026)
+
+Three corrections, each with a regression test written first and seen to fail:
+
+1. **A confirmation the controller refuses is `reconciling`, not `blocked`.** The server wrote that save, so treating it as a definite refusal misfiled a write as nothing written. Reachable only if something else releases the claim; still classified correctly.
+2. **A definite refusal clears `submission`.** `conflict`, `refused`, and `unauthorized` released the claim but kept the submission, so `getSubmission()` named a save as unresolved when nothing of it was written. Now `submission` is set exactly while the claim is held.
+3. **A controller holding a claim is refused at creation (`claimed`).** A second coordinator on such a controller would have forgotten the earlier coordinator's unresolved save, and re-armed a local timer every 1.5 s without ever being able to claim.
+
+Verified after the corrections: the same `vitest run` as above, 22 files, 459 passed (2 new tests; the five refusal cases now also check `submission` and `outcome`); `tsc --noEmit` and ESLint on `persistence` clean; Prettier clean on the code. This handoff fails Prettier at HEAD already (its tables are not aligned); the review added no new cases.
+
+Found and left as designed (for later phases):
+
+- **`failed` from the server is definite only as far as the driver knows.** It comes from a caught `updateDocument` error; if the statement committed and the connection dropped before the answer, it is still `failed`. `retry()` is still safe: it names the old revision, so the server answers `stale` and never applies a save twice. B.2B should expect that a `stale` conflict right after a retry may be its own earlier save (the failed submission is not kept).
+- **`blocked` is final for every reason in B.2A**, including a refusal (`invalid`, `too_large`) that a later edit could clear. The state tells them apart: `block.reason` (`conflict`, `refused`, `unauthorized`), `block.origin`, and `outcome.code` (`stale`, `missing`, `invalid`, `too_large`). With no claim or submission held, B.2B can resume after a refusal by returning to `idle`, without a redesign.
+- **`retry()` called from inside a state listener**, while the failing save is still unwinding, schedules the save 1.5 s later instead of starting it at once. B.2C calls it from a timer, where it starts at once.
+- **`saveNow()` during a running save** resolves once that save settles; the save it made due (holding the newer words) has started by then but not finished. B.3 should watch the coordinator's state if it needs that save's answer.
+- **The base is not compared with the editor's opening document.** A3 must open the editor from the same read it gives as `base`.
+
+### Ready for owner review
+

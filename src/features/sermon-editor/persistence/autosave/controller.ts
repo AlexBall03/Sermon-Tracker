@@ -23,8 +23,9 @@ import {
  * session. It notices changes through a `DocumentSource`, takes a whole
  * snapshot only at a boundary (`autosaveTiming`), and keeps the newest
  * meaningful one as this session's recovery draft (recovery/store.ts). No
- * React, no editor, no network: A2.3B.2 sends saves through `claimSave` and
- * `confirmSave`; A3 attaches it to the editor (editor-adapter.ts).
+ * React, no editor, no network: the save coordinator (coordinator.ts,
+ * A2.3B.2A) sends saves through `claimSave` and `confirmSave`, timed by
+ * `onDocumentChange`; A3 attaches it to the editor (editor-adapter.ts).
  *
  * Its rules, from the A2.3A review:
  * - One queue. Every draft operation runs on one promise chain, in the order
@@ -65,6 +66,12 @@ export type AutosaveController = {
   getState(): AutosaveState;
   /** Called with each new state until unsubscribed or disposed; never per keystroke. */
   subscribe(listener: (state: AutosaveState) => void): () => void;
+  /**
+   * Called for every change the source reports, until unsubscribed or
+   * disposed (A2.3B.2A): the save coordinator's timers. Carries nothing; the
+   * document is read only at a snapshot boundary.
+   */
+  onDocumentChange(listener: () => void): () => void;
   /**
    * Takes a snapshot now if anything changed, and resolves once every draft
    * operation decided so far has finished, with the state then. Whether the
@@ -158,6 +165,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
   let writeRunning = false;
 
   const listeners = new Set<(state: AutosaveState) => void>();
+  const changeListeners = new Set<() => void>();
 
   function snapshotOf(sequence: number, json: JSONContent): Snapshot {
     const prepared = prepareSnapshot(json);
@@ -306,6 +314,15 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
     debounce = setTimeout(capture, timing.localDebounceMs);
     maxWait ??= setTimeout(capture, timing.localMaxWaitMs);
     if (first) publish();
+    for (const listener of [...changeListeners]) {
+      try {
+        listener();
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
   }
 
   const unsubscribe = source.subscribe(onChange, () => {
@@ -395,6 +412,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
       }
     }
     listeners.clear();
+    changeListeners.clear();
     return chain;
   }
 
@@ -408,6 +426,13 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    onDocumentChange(listener) {
+      if (disposed) return () => {};
+      changeListeners.add(listener);
+      return () => {
+        changeListeners.delete(listener);
       };
     },
     flush,
