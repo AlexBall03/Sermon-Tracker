@@ -48,9 +48,10 @@ export type DocumentSaveOutcome =
   | { kind: "unauthorized"; sequence: number }
   /**
    * Not saved as far as is known. `uncertain` when no answer came (the network,
-   * a 413, a crash): the server may have saved it, so the next answer to read
-   * is the document itself. Otherwise the server's transaction failed and
-   * wrote nothing.
+   * a 413, a crash) or the server's own save failed (its statement may have
+   * committed before the connection dropped, A2.3B.2B.1): the server may have
+   * saved it, so the next answer to read is the document itself. Otherwise
+   * (never from `saveOutcome` since A2.3B.2B.1) nothing was written.
    */
   | { kind: "failed"; sequence: number; uncertain: boolean };
 
@@ -124,7 +125,9 @@ export function saveOutcome(sequence: number, result: DocumentActionResult): Doc
         limit: result.limit,
       };
     case "failed":
-      return { kind: "failed", sequence, uncertain: false };
+      // A caught database error (A2.3B.2B.1): the statement may have committed before the
+      // connection dropped, so the server may hold it. Read the document; never send again blindly.
+      return { kind: "failed", sequence, uncertain: true };
     case undefined:
       // `authorize` refused: its answer carries no code.
       return { kind: "unauthorized", sequence };

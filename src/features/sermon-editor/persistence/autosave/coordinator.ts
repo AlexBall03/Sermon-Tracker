@@ -2,7 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 
 import { canonicalDocument } from "../canonical";
 import type { JsonValue } from "../json";
-import { unansweredOutcome, type DocumentSaveOutcome } from "../saving";
+import { unansweredOutcome, type DocumentReadOutcome, type DocumentSaveOutcome } from "../saving";
 import type { AutosaveController, ClaimedSnapshot } from "./controller";
 import {
   jsonEqual,
@@ -10,6 +10,8 @@ import {
   type NetworkBlockReason,
   type NetworkPhase,
   type NetworkState,
+  type Reconciliation,
+  type ReconciliationMatch,
   type ServerSaveTiming,
 } from "./model";
 import type { DocumentTransport } from "./transport";
@@ -38,12 +40,30 @@ import type { DocumentTransport } from "./transport";
  *   else confirms nothing.
  * - Nothing whose outcome is unknown is sent again. No answer, or an answer
  *   that cannot be built on, holds the claim and stops every automatic save
- *   until A2.3B.2B reads the document and decides (`reconciling`). A
- *   definite refusal, conflict, or unauthorized account stops them too
- *   (`blocked`, holding no claim); a failure that wrote nothing waits for
- *   `retry()` (`failed`). There is no automatic retry here (A2.3B.2C).
+ *   (`reconciling`). A definite refusal, conflict, or unauthorized account
+ *   stops them too (`blocked`, holding no claim); a failure that wrote
+ *   nothing waits for `retry()` (`failed`). There is no automatic retry here
+ *   (A2.3B.2C).
  * - One coordinator per claim. A controller whose claim is still held (an
  *   earlier coordinator's unresolved save) is refused at creation.
+ *
+ * Reconciliation (A2.3B.2B.1): entering `reconciling` reads the document
+ * once (`transport.read`), and `reconcile()` reads it again; one read at a
+ * time, never on a timer, and never a write. What was read is compared, with
+ * `canonicalDocument` and `jsonEqual`, with what was sent and with the base
+ * it was made against (both kept in the `Submission`). The request can still
+ * be written only while the server's revision is the one it named (R0) or
+ * below (`updateDocument` writes only at R0, and revisions only rise), so:
+ * - At R0 + 1 with what was sent: settled, through `confirmSave` (`saved`).
+ *   If the controller will not take it, still held (`unsettled`).
+ * - Past R0 otherwise, or the document gone: it can never be written.
+ *   Released, `blocked` (`conflict`).
+ * - At R0 or below, or anything not understood: held, still `reconciling`.
+ *   That includes the base still there (`unchanged`, for A2.3B.2B.2's
+ *   conditional retry), even when what was sent says the same: the request
+ *   may still be written and move the revision.
+ * - An account that may not read: `blocked`, the claim still held.
+ * A read never moves `outcome`; what it showed is `reconciliation`.
  *
  * It logs nothing.
  */
@@ -68,6 +88,12 @@ export type Submission = {
   content: JSONContent;
   /** Its canonical form: what the server holds if this save was taken. */
   predicted: JSONContent;
+  /**
+   * The document it was made against, at `expectedRevision`, in the
+   * browser's canonical form: what the server still holds if it was not
+   * taken. Taken when it was sent, never a later base.
+   */
+  base: AuthoritativeBase;
 };
 
 export type SaveCoordinatorOptions = {
@@ -90,6 +116,16 @@ export type SaveCoordinator = {
   saveNow(): Promise<NetworkState>;
   /** After `failed` only: one more attempt. Does nothing in any other phase. */
   retry(): Promise<NetworkState>;
+  /**
+   * While `reconciling` only: reads the document once and settles the save
+   * if the read shows what became of it (A2.3B.2B.1). Never writes. A call
+   * while a read is in flight gets that read's promise. Done by itself once
+   * on entering `reconciling`; after that, only when called. Resolves with
+   * the state after the read; never rejects. Does nothing in any other phase
+   * or once disposed. Never call it from a state listener for every state:
+   * each answer is published, so that would read again without pause.
+   */
+  reconcile(): Promise<NetworkState>;
   /** What the server is known to hold. */
   getBase(): AuthoritativeBase;
   getSubmission(): Submission | null;
@@ -105,6 +141,27 @@ export type SaveCoordinator = {
 /** How many times a save flushes and tries to claim when a draft write slipped in between. */
 const claimAttempts = 3;
 
+const isObject = (value: unknown): value is JSONContent =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Compares a document read from the server with documents the browser knows:
+ * as it was read, then in the browser's canonical form (computed once, and
+ * only if needed). Never by string.
+ */
+function matcher(read: JSONContent) {
+  let canonical: JSONContent | null | undefined;
+  return (known: JSONContent): ReconciliationMatch => {
+    if (jsonEqual(read as JsonValue, known as JsonValue)) return "exact";
+    if (canonical === undefined) {
+      const result = canonicalDocument(read);
+      canonical = result.ok ? result.content : null;
+    }
+    if (canonical === null) return "unknown";
+    return jsonEqual(canonical as JsonValue, known as JsonValue) ? "normalized" : "different";
+  };
+}
+
 type Settled = Exclude<NetworkPhase, "scheduled" | "disposed">;
 
 export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoordinator {
@@ -118,14 +175,16 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     throw new SaveCoordinatorError("revision");
   }
   // The server's document is one the core accepts; anything else is not a base.
-  const canonicalBase = canonicalDocument(options.base.content);
-  if (!canonicalBase.ok) throw new SaveCoordinatorError("base");
+  const given = canonicalDocument(options.base.content);
+  if (!given.ok) throw new SaveCoordinatorError("base");
 
   let base: AuthoritativeBase = { content: options.base.content, revision: options.base.revision };
+  // The base in the browser's canonical form, at the same revision: what a read is compared with.
+  let canonicalBase: JSONContent = given.content;
   let baseInfo: NetworkState["base"] = {
     revision: base.revision,
     provenance: "server",
-    canonical: jsonEqual(canonicalBase.content as JsonValue, options.base.content as JsonValue),
+    canonical: jsonEqual(given.content as JsonValue, options.base.content as JsonValue),
   };
 
   let phase: Settled = "idle";
@@ -135,11 +194,15 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
   let due = false;
   let outcome: DocumentSaveOutcome | null = null;
   let block: NetworkState["block"] = null;
+  let reconciliation: Reconciliation | null = null;
   let disposed = false;
 
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let maxTimer: ReturnType<typeof setTimeout> | null = null;
   let running: Promise<void> | null = null;
+  /** The read in flight (A2.3B.2B.1): one at a time. */
+  let reading: Promise<NetworkState> | null = null;
+  let readInFlight = false;
 
   const listeners = new Set<(state: NetworkState) => void>();
 
@@ -161,6 +224,8 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       due,
       outcome,
       block,
+      reading: readInFlight,
+      reconciliation: reconciliation && { ...reconciliation },
     };
   }
 
@@ -316,8 +381,10 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       bytes: claimed.bytes,
       content: claimed.content,
       predicted: predicted.content,
+      base: { content: canonicalBase, revision },
     };
     submission = sent;
+    reconciliation = null;
     phase = "saving";
     publish();
 
@@ -333,6 +400,9 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       answer = unansweredOutcome(sent.sequence);
     }
     settle(sent, answer);
+    // Unknown: read once what the server holds. Never again by itself.
+    // (`settle` moved the phase; TypeScript still narrows it to `saving`.)
+    if (!disposed && (phase as Settled) === "reconciling") void reconcile();
   }
 
   /** What the answer to `sent` means. Only `sent`'s own answer can confirm anything. */
@@ -361,6 +431,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
         revision = answer.revision;
         confirmedSequence = sent.sequence;
         base = { content: sent.predicted, revision: answer.revision };
+        canonicalBase = sent.predicted;
         baseInfo = { revision: answer.revision, provenance: "confirmed", canonical: true };
         submission = null;
         block = null;
@@ -398,6 +469,143 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       default:
         stop("reconciling", "uncertain", "server");
     }
+  }
+
+  function reconcile(): Promise<NetworkState> {
+    if (reading) return reading;
+    if (disposed || phase !== "reconciling" || submission === null) {
+      return Promise.resolve(getState());
+    }
+    readInFlight = true;
+    reading = readBack(submission);
+    // Told only once `reading` is set, so a listener that asks again gets this read.
+    publish();
+    return reading;
+  }
+
+  async function readBack(held: Submission): Promise<NetworkState> {
+    let answer: DocumentReadOutcome;
+    try {
+      // Always after a tick, even if the transport throws at once: `reading` is set by then.
+      answer = await Promise.resolve().then(() => transport.read(controller.outlineId));
+    } catch {
+      answer = { kind: "failed" };
+    }
+    readInFlight = false;
+    reading = null;
+    // Only the submission read for is settled; nothing else can replace it while it is held.
+    if (submission === held) classify(held, answer);
+    else publish();
+    return getState();
+  }
+
+  /** What a read says of `held`; see the module comment. Never sends. */
+  function classify(held: Submission, answer: DocumentReadOutcome) {
+    const r0 = held.expectedRevision;
+    const record = (result: Reconciliation["result"], found: Partial<Reconciliation> = {}) => {
+      reconciliation = {
+        sequence: held.sequence,
+        result,
+        revision: null,
+        submitted: null,
+        base: null,
+        equivalent: jsonEqual(held.predicted as JsonValue, held.base.content as JsonValue),
+        ...found,
+      };
+    };
+    const kind = typeof answer === "object" && answer !== null ? answer.kind : undefined;
+
+    switch (kind) {
+      case "found": {
+        const { content, revision: r1 } = answer as Extract<DocumentReadOutcome, { kind: "found" }>;
+        if (!Number.isSafeInteger(r1) || r1 < 0 || !isObject(content)) {
+          // Not an answer that can be built on.
+          record("failed");
+          return hold();
+        }
+        const match = matcher(content);
+        if (r1 > r0) {
+          const submitted = match(held.predicted);
+          const same = submitted === "exact" || submitted === "normalized";
+          if (r1 === r0 + 1 && same) {
+            // The server holds what was sent. `saved` only once the controller takes it.
+            if (!controller.confirmSave(held.sequence, r1)) {
+              record("unsettled", { revision: r1, submitted });
+              block = { reason: "rejected_confirmation", origin: "local" };
+              return hold();
+            }
+            record("saved", { revision: r1, submitted });
+            return settleSaved(held, r1, content, submitted);
+          }
+          if (r1 === r0 + 1 && submitted === "unknown") {
+            record("unverifiable", { revision: r1, submitted });
+            return hold();
+          }
+          // Moved on past what this request named: it can never be written now.
+          record("conflict", { revision: r1, submitted });
+          return release(held);
+        }
+        if (r1 === r0) {
+          const submitted = match(held.predicted);
+          const onBase = match(held.base.content);
+          const unchanged = onBase === "exact" || onBase === "normalized";
+          record(unchanged ? "unchanged" : "diverged", { revision: r1, submitted, base: onBase });
+          return hold();
+        }
+        // Below the revision it was made against: never confirmed, never sent over.
+        record("diverged", { revision: r1 });
+        return hold();
+      }
+      case "missing":
+        record("missing");
+        return release(held);
+      case "unreadable": {
+        const { revision: stored } = answer as Extract<DocumentReadOutcome, { kind: "unreadable" }>;
+        const r1 =
+          Number.isSafeInteger(stored) && (stored as number) >= 0 ? (stored as number) : null;
+        record("unreadable", { revision: r1 });
+        return r1 !== null && r1 > r0 ? release(held) : hold();
+      }
+      case "unauthorized":
+        // The request may still have been written: the claim stays, and nothing more is asked.
+        record("unauthorized");
+        return stop("blocked", "unauthorized", "server");
+      default:
+        record("failed");
+        return hold();
+    }
+  }
+
+  /** Still unknown: the claim and submission stay, nothing is sent. */
+  function hold() {
+    publish();
+  }
+
+  /** The request can never be written: the claim is released, and nothing more is sent. */
+  function release(held: Submission) {
+    controller.releaseSave(held.sequence);
+    submission = null;
+    stop("blocked", "conflict", "server");
+  }
+
+  /** The server holds what was sent, at R0 + 1, and the controller took it: the read is the new base. */
+  function settleSaved(
+    held: Submission,
+    readRevision: number,
+    content: JSONContent,
+    submitted: ReconciliationMatch,
+  ) {
+    revision = readRevision;
+    confirmedSequence = held.sequence;
+    base = { content, revision: readRevision };
+    // Equal to what was read, in the browser's canonical form.
+    canonicalBase = held.predicted;
+    baseInfo = { revision: readRevision, provenance: "server", canonical: submitted === "exact" };
+    submission = null;
+    block = null;
+    phase = "idle";
+    publish();
+    armIfWaiting();
   }
 
   async function saveNow(): Promise<NetworkState> {
@@ -450,6 +658,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     },
     saveNow,
     retry,
+    reconcile,
     getBase: () => base,
     getSubmission: () => submission,
     dispose,

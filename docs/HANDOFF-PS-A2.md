@@ -1298,3 +1298,144 @@ Found and left as designed (for later phases):
 
 ### Ready for owner review
 
+## A2.3B.2B.1: Deterministic ambiguous-save reconciliation (27 October 2026)
+
+**Status:** built and verified with focused tests. Not committed, not deployed, not mounted, and no migration. This is the first of three checkpoints in A2.3B.2B. B.2B.2 (the conditional retry) and B.2B.3 (refusal recording and resumption) are **not built**.
+
+**Git:** began on `dev` at `b265b34` with a clean tree. Ends there, with the files below changed and nothing staged.
+
+### Approved by the owner (binding)
+
+1. B.2B.2 retries once, conditionally on the revision, after a read-back shows the original base.
+2. B.2B.3 resumes automatically after a new valid snapshot corrects invalid or oversized content.
+3. Three checkpoints, each reviewed and committed by the owner. This one is read-back and classification only.
+
+### What was found
+
+- **`confirmSave` needs no change.** It takes the claimed sequence at any revision at or above the controller's.
+- **A server `failed` could hide a commit.** The database is a Neon `Pool` over WebSocket. If `updateDocument` committed and the connection then dropped, `saveOutlineDocument` caught the error and answered `failed`, and `saveOutcome` read that as `uncertain: false`, so the coordinator released the claim. **Fixed:** `saveOutcome` now maps `failed` to `uncertain: true`, so such a save is read back. The coordinator's `uncertain: false` branch (`failed`, `retry()`) stays for a transport that can promise nothing was written; no server answer reaches it any longer.
+- **`stale` as evidence of an earlier save.** After the fix, B.2B.1 sends nothing while a save is unresolved, so a `stale` answer can no longer belong to an earlier ambiguous save of this session. B.2B.2's conditional retry can meet one: it must read back, not block as a conflict.
+- **The base a save was made against was implicit.** It held only because `base` changes only when `submission` clears. It is now recorded in the `Submission`.
+
+### The rule
+
+`updateDocument` writes only where the stored revision is the one named (R0), and revisions only rise. So **a request whose answer was lost can still be written while the server's revision is R0 or lower, and never once it is past R0.** Every classification follows from that:
+
+- Settle only what is proven.
+- Release only what can never be written.
+- Hold everything else, with the claim and the `submission` kept and nothing sent.
+
+### Classification
+
+Notation: R0 is `submission.expectedRevision`; S is `submission.predicted` (the browser's canonical form of what was sent); B0 is `submission.base.content` (the canonical base it was made against); R1 and D1 are the revision and content read.
+
+D1 is compared with `jsonEqual`, giving `exact`. Failing that, the browser's `canonicalDocument(D1)` is computed once and compared: equal is `normalized`, unequal is `different`, and a refusal by the browser's core is `unknown`. Nothing is compared by string.
+
+| Read | Result | What happens |
+| --- | --- | --- |
+| R1 = R0 + 1, S `exact`/`normalized`, `confirmSave(seq, R1)` accepted | `saved` (A) | revision R1; base = D1 as read (`provenance: "server"`, `canonical` when `exact`); submission cleared; `idle`; the idle timer armed once if newer work waits |
+| R1 = R0 + 1, S `exact`/`normalized`, `confirmSave` refused | `unsettled` | held: still `reconciling`, `block.reason: "rejected_confirmation"`, claim and submission kept, nothing advanced |
+| R1 = R0 + 1, S `unknown` | `unverifiable` | held (a server on a newer schema; never called a conflict) |
+| R1 > R0 otherwise (other content, or a jump of more than one, even with S) | `conflict` (D, F) | released, submission cleared, `blocked` (`conflict`, server) |
+| R1 = R0, B0 matches | `unchanged` (C; `equivalent` when S is B0, case B) | held, for B.2B.2 |
+| R1 = R0, B0 does not match (including D1 = S ≠ B0) | `diverged` (E) | held |
+| R1 < R0 | `diverged` (F) | held |
+| `found` with a bad revision (NaN, negative, fractional) or content that is not an object | `failed` | held |
+| `missing` | `missing` (G) | released, `blocked` (`conflict`); nothing created or converted |
+| `unreadable`, revision > R0 | `unreadable` (H) | released, `blocked` (`conflict`) |
+| `unreadable`, revision ≤ R0 or none | `unreadable` (H) | held; never repaired |
+| `unauthorized` | `unauthorized` (J) | `blocked` (`unauthorized`), **claim and submission held**; `reconcile()` refuses from `blocked` |
+| `failed`, a throw, an unknown answer | `failed` (I) | held; read again only by `reconcile()` |
+
+**Case B is held, not settled.** S equal to B0 at R0 shows what the server holds now, but the lost request can still commit and move the revision to R0 + 1. Settling at R0 would release the claim, and the next save, made against R0, could then meet a spurious `stale`. B.2B.2's conditional retry resolves it: the retry either commits, or meets `stale` and reads back case A.
+
+**Confirmed and inferred are kept apart.** A read never sets `outcome`, which stays the last answer to a save; a settlement by read is `reconciliation.result === "saved"`. The read shows what the server holds, not which request wrote it.
+
+**Observed is not settled.** What the server was seen to hold is `reconciliation.revision` with `submitted` (`exact` or `normalized` at R0 + 1). Whether the save is settled is the result: `saved` only after `confirmSave` accepted it, the claim is gone, and the phase left `reconciling`. The same evidence with the controller refusing is `unsettled`: not saved, still held. No result ever reads as saved while a claim is held.
+
+### The API
+
+- `reconcile(): Promise<NetworkState>`:
+  - It reads once and classifies, and works only while `reconciling` with a `submission`. Anywhere else, or once disposed, it returns the state.
+  - It is single flight: a call during a read gets that read's promise. A listener told of the read and asking again gets the same read, since `reading` is set before anyone is told.
+  - It never rejects. The read always starts after a tick, so a transport that throws at once is a `failed` read and leaves nothing stuck.
+- **Automatic read:** once, when a save's answer leaves the coordinator `reconciling` (`uncertain`, `unexpected_revision`, `rejected_confirmation`). There are no timers and no polling; a failed read waits for an explicit `reconcile()`.
+- `Submission.base`: the canonical base the save was made against, taken when sent. The coordinator keeps a canonical copy of its base: the given base's canonical form, then a confirmed save's `predicted`, then a reconciled save's `predicted` (equal to what was read, in the browser's form).
+- `NetworkState` gains:
+  - `reading`: a read is in flight.
+  - `reconciliation`: `{ sequence, result, revision, submitted, base, equivalent }`. It holds no content and is cleared when a new save is sent.
+- In held cases, `block.reason` keeps the reason the save was first held; the read's finding is `reconciliation`. `serverSaveStatus` is unchanged: held is `unresolved`, released is `blocked`.
+- `saveOutcome`: `failed` is now `uncertain`.
+
+### Disposal
+
+- No read starts after `dispose()`. `reconcile()` starts nothing; while a read is still in flight it returns that read's promise.
+- A read already in flight is not cancelled, and nothing on the server is undone. Its answer is classified by the same rules, but nothing is published or scheduled.
+- A `saved` read is given to the same session's controller, which clears that session's draft, as B.2A does for a late confirmation. The claim is released by `conflict`, `missing`, and `unreadable` past R0. Anything else holds it, `unauthorized` and `unsettled` included.
+
+### Files
+
+- **Changed:**
+  - `src/features/sermon-editor/persistence/autosave/coordinator.ts` (`reconcile`, classification, `Submission.base`)
+  - `autosave/model.ts` (`Reconciliation`, `ReconciliationMatch`, `reading`, `reconciliation`, phase docs)
+  - `saving.ts` (`failed` is uncertain)
+  - `autosave/coordinator.test.ts`, `saving.test.ts`, `autosave/transport.test.ts`
+  - `AGENTS.md`, `ARCHITECTURE.md`, this handoff
+- No controller, recovery store, server, action, schema, or migration change.
+
+### Verification
+
+- `vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/editor-lab/v4`: 22 files, 497 passed, none failed.
+  - `coordinator.test.ts`: 83, of which 38 are new, covering:
+    - cases A–J;
+    - a late commit: the automatic read finds the base at R0, the request commits after, and an explicit `reconcile()` settles exactly the sequence sent at R0 + 1, with newer work still pending and nothing sent twice;
+    - newer edits during a read;
+    - concurrent and re-entrant `reconcile()`;
+    - disposal (saved and conflict);
+    - controller rejection (`unsettled`, never `saved`);
+    - normalization (key order exact, v3 form normalized);
+    - a server on another schema;
+    - a server `failed` through the real transport (settled, and held);
+    - an unexpected confirmed revision read back;
+    - malformed reads (7);
+    - Spanish and emoji;
+    - the submission's own base.
+  - The case tests (A–J, the malformed reads, the schema skew, and controller rejection) assert phase, `reconciliation`, `block`, revision, the controller's `confirmedSequence` and `saving`, `submission`, reads, and writes; held and released cases do so through shared helpers (`expectHeld`, `expectReleased`). The narrower tests (the re-entrant listener, normalization, Spanish and emoji, the submission's base) assert what they are about, mostly phase, `reconciliation`, base, and read counts.
+  - Existing tests now also assert the single automatic read, and that none follows a dispose.
+- **Mutations**, each reverted:
+  - settling at any revision past R0 failed 1 test;
+  - settling case B failed 1;
+  - releasing on a failed read failed 13;
+  - settling on a `different` match failed 2;
+  - removing single flight failed 2;
+  - removing the automatic read failed 41;
+  - settling a regression failed 1;
+  - recording a refused settlement as `saved` failed 1.
+- `tsc --noEmit`, ESLint, and Prettier on `src/features/sermon-editor/persistence`: clean.
+- **Not run:** the full suite, a build, end-to-end tests, a real browser, a real database.
+
+### Limitations
+
+- **Held saves stay held.** Without B.2B.2, a save held as `unchanged` (including any transient server failure) sends nothing more until the session ends; the words stay on the device. Nothing is mounted, so no one meets this yet.
+- **`unverifiable` and `diverged`** wait for B.2B.3 or A3: what the person is offered, and how a new session takes over.
+- **Version skew** is judged only through the browser's own core. A server read the browser normalizes to S counts as S. A newer server's own additions are kept in the base as read, never sent back.
+
+### For A2.3B.2B.2
+
+- From `unchanged` only (C and B), at most once per submission: send the same `submission.content` against the same `expectedRevision`. `confirmed` at R0 + 1 settles as usual; `stale` is read back (expect case A or `conflict`), never a conflict directly; any other ambiguity is held again.
+- Keep the claim through the retry. Never resend from `diverged`, `unverifiable`, `unreadable`, or `failed`.
+
+### For A2.3B.2B.3
+
+- Record refusals through the controller's queue (`refuseDraft`, an operation there, never a direct call).
+- Resume from `blocked` (`refused`) once a new valid snapshot replaces the refused one.
+- Decide what the person is offered for `conflict`, `diverged`, `unverifiable`, `missing`, `unreadable`, and `unauthorized`, and how a new coordinator takes over a claim held after `unauthorized`.
+
+### For A2.3B.2C and A3
+
+- B.2C: a request timeout ends as `uncertain` and so is read back; backoff applies only to a definite `failed`, which no server answer gives now.
+- A3: the indicator reads `reconciliation` for detail; `serverSaveStatus` stays the summary. Never show saved from `reconciliation.revision` or `submitted` alone: only `result === "saved"` is settled, and `unsettled` is not.
+- A3: never call `reconcile()` from a state listener as a reaction to state. Every read's answer is published, so a listener that reads again whenever it sees `reconciling` without a read in flight would read in a tight loop. Reads are asked by the person or by an explicit, paced trigger (B.2C).
+
+### Ready for owner review
+

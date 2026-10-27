@@ -62,7 +62,7 @@ describe("actionTransport.save", () => {
       ],
       [
         { ok: false, message: "", code: "failed" },
-        { kind: "failed", uncertain: false },
+        { kind: "failed", uncertain: true },
       ],
       [{ ok: false, message: "Sign in" }, { kind: "unauthorized" }],
     ];

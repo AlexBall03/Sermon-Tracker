@@ -107,13 +107,17 @@ export type ServerSaveTiming = typeof serverSaveTiming;
  * - `preparing`: taking and claiming a snapshot. `saving`: one request in flight.
  * - `reconciling`: a request whose outcome is not known (no answer, or an
  *   answer that cannot be built on, a confirmation included). Its claim and
- *   `submission` are held. Nothing more is sent until A2.3B.2B reads the
- *   document and decides.
+ *   `submission` are held. Nothing more is sent. The document is read once
+ *   on entering it, and again only by `reconcile()` (A2.3B.2B.1); what the
+ *   read showed is `reconciliation`.
  * - `blocked`: the server, or the check before sending, said no for certain
- *   (a conflict, a refusal, an account that may not save), so nothing of it
- *   was written: no claim or `submission` is held, and `block.reason` with
- *   `outcome` says which. Nothing more is sent, even after further edits;
- *   A2.3B.2B decides which of these an edit may clear.
+ *   (a conflict, a refusal, an account that may not save), or a read showed
+ *   the request can no longer be written (a conflict). No claim or
+ *   `submission` is held, but for one case: an account found unauthorized by
+ *   a read, whose request may still have been written, holds both.
+ *   `block.reason` with `outcome` and `reconciliation` says which. Nothing
+ *   more is sent, even after further edits; A2.3B.2B.3 decides which of these
+ *   an edit may clear.
  * - `failed`: the server's transaction failed and wrote nothing. Sent again
  *   only by `retry()` (A2.3B.2C adds bounded backoff).
  * - `disposed`: sends nothing more.
@@ -136,15 +140,74 @@ export type NetworkBlockReason =
   /** The controller's revision is not the coordinator's. */
   | "revision_mismatch";
 
+/**
+ * How a document read back compares with a document the browser knows
+ * (A2.3B.2B.1): `exact` (`jsonEqual`), `normalized` (equal once the browser's
+ * `canonicalDocument` is run on what was read: the same document in another
+ * representation), `different`, or `unknown` (the browser's core refuses what
+ * was read, so it cannot say: a server on a newer schema).
+ */
+export type ReconciliationMatch = "exact" | "normalized" | "different" | "unknown";
+
+/**
+ * What a read of the document showed about an unresolved save (A2.3B.2B.1).
+ * R0 is the revision the save was made against. The request can still be
+ * written only while the server's revision is R0 or below, so:
+ * - `saved`: at R0 + 1, with the content sent, and settled: the controller
+ *   took it (`confirmSave`), the claim is gone, and the phase has left
+ *   `reconciling`. Which request wrote it is not known, so this is never a
+ *   `confirmed` outcome.
+ * - `unsettled`: the same evidence as `saved` (the server holds what was
+ *   sent at R0 + 1), but the controller would not take the settlement. Not
+ *   saved: still `reconciling`, the submission held, nothing advanced, and
+ *   `block.reason` is `rejected_confirmation`.
+ * - `unchanged`: at R0, with the base it was made against: not written yet,
+ *   and it still may be. Held for A2.3B.2B.2's conditional retry. `equivalent`
+ *   when what was sent says what the base says.
+ * - `unverifiable`: at R0 + 1 in a form the browser's core refuses. Held.
+ * - `diverged`: at R0 with other content, or below R0. Held: the request may
+ *   still be written.
+ * - `conflict`: past R0 and not `saved` (another revision, or more than one).
+ *   It can no longer be written: released, `blocked`.
+ * - `missing`, `unreadable`, `unauthorized`, `failed`: as the read answered.
+ *   `missing`, and `unreadable` past R0, are released and `blocked`;
+ *   `unauthorized` is `blocked` holding the claim; the rest are held.
+ * Holds no content.
+ */
+export type Reconciliation = {
+  /** The submission the read was for. */
+  sequence: number;
+  result:
+    | "saved"
+    | "unsettled"
+    | "unchanged"
+    | "unverifiable"
+    | "diverged"
+    | "conflict"
+    | "missing"
+    | "unreadable"
+    | "unauthorized"
+    | "failed";
+  /** The revision read, when the answer had a valid one. */
+  revision: number | null;
+  /** How what was read compares with what was sent (its canonical prediction). */
+  submitted: ReconciliationMatch | null;
+  /** How what was read compares with the base the save was made against. */
+  base: ReconciliationMatch | null;
+  /** What was sent says what that base says. */
+  equivalent: boolean;
+};
+
 export type NetworkState = {
   phase: NetworkPhase;
   /** The document revision the next save names: the base's. */
   revision: number;
   /**
-   * What the server is known to hold. `server`: as given at creation (read
-   * from the server). `confirmed`: the canonical form of a confirmed save, as
-   * predicted in the browser with the server's own function. `canonical`:
-   * whether that content was already in canonical form when given.
+   * What the server is known to hold. `server`: read from the server, as
+   * given at creation or by a reconciliation that settled a save.
+   * `confirmed`: the canonical form of a confirmed save, as predicted in the
+   * browser with the server's own function. `canonical`: whether that content
+   * was already in the browser's canonical form.
    */
   base: { revision: number; provenance: "server" | "confirmed"; canonical: boolean };
   /** The save in flight or not resolved (content through `getSubmission`): set exactly while its claim is held. */
@@ -153,9 +216,17 @@ export type NetworkState = {
   confirmedSequence: number;
   /** A save fell due while one was running; it runs when that one settles. */
   due: boolean;
-  /** The last answer to a save, or the refusal foreseen before sending. */
+  /** The last answer to a save, or the refusal foreseen before sending. Never set by a read. */
   outcome: DocumentSaveOutcome | null;
+  /**
+   * Why it stopped. While a save is held `reconciling`, this stays the reason
+   * it was first held; what a read showed since is `reconciliation`.
+   */
   block: { reason: NetworkBlockReason; origin: "server" | "local" } | null;
+  /** A read of the document is in flight (A2.3B.2B.1). At most one. */
+  reading: boolean;
+  /** What the latest read for the current or last submission showed; cleared when a new one is sent. */
+  reconciliation: Reconciliation | null;
 };
 
 /**

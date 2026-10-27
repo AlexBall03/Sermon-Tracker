@@ -60,11 +60,12 @@ describe("saveOutcome", () => {
     });
   });
 
-  it("separates a failed transaction, an ended session, and no answer", () => {
+  it("separates a failed save, an ended session, and no answer", () => {
+    // A2.3B.2B.1: the server's failure may follow a commit whose answer was lost: uncertain.
     expect(saveOutcome(1, { ok: false, message: "", code: "failed" })).toEqual({
       kind: "failed",
       sequence: 1,
-      uncertain: false,
+      uncertain: true,
     });
     expect(
       saveOutcome(1, { ok: false, message: "Your session has ended. Sign in again." }),
