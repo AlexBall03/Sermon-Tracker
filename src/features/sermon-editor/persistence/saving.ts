@@ -1,7 +1,8 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { DocumentProblem } from "@/features/sermon-editor/document";
-import type { DocumentActionResult } from "./actions";
+import type { DocumentActionResult, DocumentReadResult } from "./actions";
+import { toPlainJson, type JsonProblem } from "./json";
 import { documentLimits, utf8Bytes } from "./model";
 
 /*
@@ -53,28 +54,34 @@ export type DocumentSaveOutcome =
    */
   | { kind: "failed"; sequence: number; uncertain: boolean };
 
-/**
- * A plain JSON copy of a document, as a save sends it. The editor's JSON
- * (ProseMirror's `toJSON`) gives attributes with no prototype, which a Server
- * Action refuses to encode; this also drops anything JSON cannot carry.
- */
-export const plainDocument = (content: JSONContent): JSONContent =>
-  JSON.parse(JSON.stringify(content)) as JSONContent;
+export type PreparedSave =
+  /** The plain copy to send, and its size in UTF-8 bytes of JSON. */
+  | { ok: true; content: JSONContent; bytes: number }
+  /** Over `documentLimits`. Never sent; keep all of it. */
+  | { ok: false; reason: "too_large"; bytes: number; limit: number }
+  /**
+   * Holds something JSON would change or PostgreSQL cannot store
+   * (`not_json`, `unstorable_text`, with its path). Never sent; keep all of
+   * it. The server refuses the same thing as `invalid`.
+   */
+  | { ok: false; reason: "unsafe"; problem: JsonProblem };
 
 /**
- * Prepares a snapshot to be sent: its plain copy, or a refusal when it is over
- * `documentLimits` in UTF-8 bytes. A document over the limit is never sent:
- * the server would refuse it, and much larger the framework would refuse the
- * request before it, which would look like a failure worth retrying.
+ * Prepares a snapshot to be sent (A2.3A.1): its strict plain copy
+ * (`toPlainJson`), or why it is not sent. The editor's JSON has attributes
+ * with no prototype, which a Server Action refuses to encode; the copy gives
+ * every object `Object.prototype` and changes nothing else. A document over
+ * the limit is never sent: the server would refuse it, and much larger the
+ * framework would refuse the request first, which would look like a failure
+ * worth retrying.
  */
-export function prepareSave(
-  content: JSONContent,
-): { ok: true; content: JSONContent; bytes: number } | { ok: false; bytes: number; limit: number } {
-  const text = JSON.stringify(content);
-  const bytes = utf8Bytes(text);
+export function prepareSave(content: JSONContent): PreparedSave {
+  const plain = toPlainJson(content);
+  if (!plain.ok) return { ok: false, reason: "unsafe", problem: plain.problem };
+  const bytes = utf8Bytes(JSON.stringify(plain.value));
   const limit = documentLimits.bytes;
-  if (bytes > limit) return { ok: false, bytes, limit };
-  return { ok: true, content: JSON.parse(text) as JSONContent, bytes };
+  if (bytes > limit) return { ok: false, reason: "too_large", bytes, limit };
+  return { ok: true, content: plain.value as JSONContent, bytes };
 }
 
 /** What `saveOutlineDocument`'s answer means for the snapshot `sequence`. */
@@ -116,3 +123,40 @@ export const unansweredOutcome = (sequence: number): DocumentSaveOutcome => ({
   sequence,
   uncertain: true,
 });
+
+/**
+ * What the server holds, as `readOutlineDocument` answered (A2.3A.1): for the
+ * controller to compare with the snapshot it sent when a save got no answer.
+ * Reading never changes anything, so every outcome may be asked again.
+ */
+export type DocumentReadOutcome =
+  /** The canonical document, as a plain copy, and the revision the next save names. */
+  | { kind: "found"; content: JSONContent; revision: number }
+  /** No document for that outline among the account's (or an ID that names none). */
+  | { kind: "missing" }
+  /** Stored but no longer accepted. Never saved over blindly (A3). */
+  | { kind: "unreadable"; revision?: number }
+  /** The session ended or the account may not read. */
+  | { kind: "unauthorized" }
+  /** Not read this time: try again later. */
+  | { kind: "failed" };
+
+/** What `readOutlineDocument`'s answer means. */
+export function readOutcome(result: DocumentReadResult): DocumentReadOutcome {
+  if (result.ok) {
+    return result.content && typeof result.revision === "number"
+      ? { kind: "found", content: result.content, revision: result.revision }
+      : { kind: "failed" };
+  }
+  switch (result.code) {
+    case "missing":
+    case "invalid":
+      return { kind: "missing" };
+    case "unreadable":
+      return { kind: "unreadable", revision: result.revision };
+    case undefined:
+      return { kind: "unauthorized" };
+    default:
+      return { kind: "failed" };
+  }
+}

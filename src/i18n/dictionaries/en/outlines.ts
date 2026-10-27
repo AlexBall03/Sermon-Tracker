@@ -40,6 +40,10 @@ export const outlines = {
     /** A sermon document (A2.1). */
     documentConverted: "This outline is now a sermon document.",
     documentSaved: "Saved.",
+    documentLoaded: "Sermon document loaded.",
+    documentNotRead: "This sermon document could not be loaded. Try again.",
+    documentUnstorable:
+      "This sermon document contains a character that can't be saved, so it was not saved. Nothing was removed from it.",
     documentExists: "This outline already has a sermon document.",
     documentTooLarge: (limit: string) =>
       `This sermon document is larger than ${limit}, so it was not saved. Nothing was removed from it.`,

@@ -70,7 +70,11 @@ export type ProblemCode =
   | "invalid_color"
   | "invalid_reference"
   | "too_many_entries"
-  | "invalid_layout";
+  | "invalid_layout"
+  /** A value JSON cannot keep exactly (`NaN`, `undefined`, a `Date`, a cycle): persistence's `toPlainJson`. */
+  | "not_json"
+  /** Text PostgreSQL cannot store (U+0000, an unpaired surrogate): persistence's `toPlainJson`. */
+  | "unstorable_text";
 
 export type DocumentProblem = { code: ProblemCode; path?: string; detail?: string };
 

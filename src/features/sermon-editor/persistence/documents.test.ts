@@ -154,6 +154,27 @@ describe("what is refused", () => {
     expect(prepareDocument(cycle)).toMatchObject({ ok: false, status: "invalid" });
     expect(prepareDocument(BigInt(10))).toMatchObject({ ok: false, status: "invalid" });
   });
+
+  it("answers text jsonb cannot store as invalid, never as a database error (A2.3A.1)", async () => {
+    await createDocument(db, me, outlineId, sermon("Grace"));
+    for (const [text, detail] of [
+      ["a\u0000b", "nul"],
+      ["a\ud800b", "unpaired_surrogate"],
+    ]) {
+      const json = sermon("Grace", [proseV4(text, 1)]);
+      expect(await updateDocument(db, me, outlineId, json, 0)).toEqual({
+        status: "invalid",
+        problems: [{ code: "unstorable_text", path: "/content/2/content/0/text", detail }],
+      });
+      expect((await createDocument(db, me, outlineId, json)).status).toBe("invalid");
+    }
+    const [row] = await documentRows();
+    expect(row).toMatchObject({ revision: 0, content: canonical(sermon("Grace")) });
+    // Paired surrogates are ordinary text, and are stored.
+    const emoji = sermon("Grace", [proseV4("Joy 😀 🙏", 1)]);
+    expect(await updateDocument(db, me, outlineId, emoji, 0)).toMatchObject({ status: "updated" });
+    expect((await getDocument(db, me, outlineId)).status).toBe("found");
+  });
 });
 
 describe("whose outline", () => {

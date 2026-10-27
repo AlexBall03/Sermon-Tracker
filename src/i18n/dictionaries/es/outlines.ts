@@ -39,6 +39,10 @@ export const outlines: Untranslated<typeof english> = {
     referencesSaved: "Pasajes guardados.",
     documentConverted: "Este bosquejo ya es un documento del sermón.",
     documentSaved: "Guardado.",
+    documentLoaded: "Documento del sermón cargado.",
+    documentNotRead: "No se pudo cargar el documento del sermón. Inténtalo de nuevo.",
+    documentUnstorable:
+      "Este documento del sermón contiene un carácter que no se puede guardar, así que no se guardó. No se le quitó nada.",
     documentExists: "Este bosquejo ya tiene un documento del sermón.",
     documentTooLarge: (limit: string) =>
       `Este documento del sermón supera ${limit}, así que no se guardó. No se le quitó nada.`,

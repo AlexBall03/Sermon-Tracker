@@ -1,5 +1,6 @@
 "use server";
 
+import type { JSONContent } from "@tiptap/core";
 import { z } from "zod";
 
 import { getDb } from "@/db";
@@ -11,6 +12,7 @@ import { getLocale } from "@/i18n/server";
 import type { ActionResult } from "@/lib/action-result";
 import * as documents from "./documents";
 import { convertOutline } from "./conversion";
+import { toPlainJson } from "./json";
 import type { ConversionProblem, DocumentRefusal } from "./model";
 
 /*
@@ -81,7 +83,10 @@ const kilobytes = (locale: Messages["locale"], bytes: number) =>
 
 function refusedDocument({ locale, t }: Messages, outcome: DocumentRefusal): DocumentActionResult {
   if (outcome.status === "invalid") {
-    return refused("invalid", t.invalid, { problems: outcome.problems });
+    const unstorable = outcome.problems.some((problem) => problem.code === "unstorable_text");
+    return refused("invalid", unstorable ? t.documentUnstorable : t.invalid, {
+      problems: outcome.problems,
+    });
   }
   return refused("too_large", t.documentTooLarge(kilobytes(locale, outcome.limit)), {
     bytes: outcome.bytes,
@@ -130,6 +135,65 @@ export async function convertOutlineDocument(outlineId: unknown): Promise<Docume
       });
     default:
       return refusedDocument(messages, outcome);
+  }
+}
+
+export type DocumentReadResult = ActionResult & {
+  /** Why nothing was read: `missing` for none (or another account's), `unreadable` for one the core no longer accepts. */
+  code?: "invalid" | "missing" | "unreadable" | "failed";
+  /** The canonical document, as a plain copy a Client Component can take. Only with `ok`. */
+  content?: JSONContent;
+  /** The revision to name in the next save; with `unreadable` too. */
+  revision?: number;
+};
+
+/**
+ * Reads the caller's sermon document as the server holds it (A2.3A.1): its
+ * canonical form and revision, for the autosave controller to compare with
+ * the snapshot it sent when a save got no answer. Read only: it never
+ * creates, converts, repairs, or writes, and revalidates nothing. Another
+ * account's outline and none are the same `missing`. An unreadable document
+ * gives its revision and not its content or its problems.
+ */
+export async function readOutlineDocument(outlineId: unknown): Promise<DocumentReadResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return actor;
+  const { t } = await context();
+
+  const id = outlineIdSchema.safeParse(outlineId);
+  if (!id.success) return { ok: false, code: "invalid", message: t.invalid };
+
+  let outcome: Awaited<ReturnType<typeof documents.getDocument>>;
+  try {
+    outcome = await documents.getDocument(getDb(), actor.user.id, id.data);
+  } catch (error) {
+    console.error("Sermon document read failed:", failure(error));
+    return { ok: false, code: "failed", message: t.documentNotRead };
+  }
+  switch (outcome.status) {
+    case "found": {
+      // ProseMirror's attributes have no prototype, which React refuses to send.
+      const plain = toPlainJson(outcome.document.content);
+      if (!plain.ok) {
+        console.error("Sermon document read failed:", `not plain JSON (${plain.problem.code})`);
+        return { ok: false, code: "failed", message: t.documentNotRead };
+      }
+      return {
+        ok: true,
+        message: t.documentLoaded,
+        content: plain.value as JSONContent,
+        revision: outcome.document.revision,
+      };
+    }
+    case "unreadable":
+      return {
+        ok: false,
+        code: "unreadable",
+        message: t.documentUnreadable,
+        revision: outcome.revision,
+      };
+    case "missing":
+      return { ok: false, code: "missing", message: t.missing };
   }
 }
 

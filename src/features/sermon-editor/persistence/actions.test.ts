@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { encodeReply } from "next/dist/compiled/react-server-dom-webpack/client.edge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { eq } from "drizzle-orm";
@@ -24,7 +25,7 @@ vi.mock("@/features/auth/access", () => ({
   authorize: async (): Promise<Authorization> => state.access as Authorization,
 }));
 
-import { convertOutlineDocument, saveOutlineDocument } from "./actions";
+import { convertOutlineDocument, readOutlineDocument, saveOutlineDocument } from "./actions";
 
 let db: Database;
 let me: string;
@@ -232,5 +233,155 @@ describe("sermon document actions", () => {
     });
     expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
     expect(logged.mock.calls).toEqual([["Sermon document save failed:", "Error"]]);
+  });
+});
+
+describe("strict document input (A2.3A.1)", () => {
+  /** A database that fails the test if it is asked anything. */
+  const untouchable = () =>
+    new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new Error("the database was asked");
+        },
+      },
+    );
+
+  it("refuses unstorable text and non-JSON values as invalid, before the database is asked", async () => {
+    signInAs(me);
+    state.db = untouchable();
+    const nul = documentV4([pointV4("p-1", "Grace", 1), proseV4("a\u0000b", 1)]);
+    const unstorable = await saveOutlineDocument(outlineId, nul, 0);
+    expect(unstorable).toMatchObject({
+      ok: false,
+      code: "invalid",
+      problems: [{ code: "unstorable_text", path: "/content/1/content/0/text", detail: "nul" }],
+    });
+    expect(unstorable.message).toContain("can't be saved");
+
+    const lone = documentV4([pointV4("p-1", "Grace\ud800", 1)]);
+    expect(await saveOutlineDocument(outlineId, lone, 0)).toMatchObject({
+      code: "invalid",
+      problems: [{ code: "unstorable_text", detail: "unpaired_surrogate" }],
+    });
+
+    const notJson = { ...sermon("Grace"), attrs: { schemaVersion: 4, page: Number.NaN } };
+    expect(await saveOutlineDocument(outlineId, notJson, 0)).toMatchObject({
+      code: "invalid",
+      message: "That request was not valid.",
+      problems: [{ code: "not_json", path: "/attrs/page", detail: "NaN" }],
+    });
+  });
+
+  it("keeps the stored document exactly when such a save is refused", async () => {
+    signInAs(me);
+    await convertOutlineDocument(outlineId);
+    await saveOutlineDocument(outlineId, sermon("Kept"), 0);
+    const [before] = await db.select().from(sermonOutlineDocuments);
+    const nul = documentV4([pointV4("p-1", "Grace", 1), proseV4("a\u0000b", 1)]);
+    expect(await saveOutlineDocument(outlineId, nul, 1)).toMatchObject({ code: "invalid" });
+    const [after] = await db.select().from(sermonOutlineDocuments);
+    expect(after).toEqual(before);
+  });
+});
+
+describe("readOutlineDocument (A2.3A.1)", () => {
+  const rowOf = async (id: string) =>
+    (await db.select().from(sermonOutlineDocuments)).find((row) => row.outlineId === id);
+
+  it("refuses a caller who is not signed in, and reads nothing", async () => {
+    state.db = new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new Error("the database was asked");
+        },
+      },
+    );
+    expect(await readOutlineDocument(outlineId)).toEqual({ ok: false, message: signedOut });
+  });
+
+  it("gives the canonical document and its revision, as plain JSON a Client Component can take", async () => {
+    signInAs(me);
+    await convertOutlineDocument(outlineId);
+    await saveOutlineDocument(outlineId, sermon("Grace upon grace"), 0);
+    const read = await readOutlineDocument(outlineId.toUpperCase());
+    expect(read).toMatchObject({ ok: true, revision: 1, message: "Sermon document loaded." });
+    expect(read.content).toEqual((await rowOf(outlineId))!.content);
+    expect(JSON.stringify(read.content)).toContain("Grace upon grace");
+    // React refuses an object without a prototype in either direction.
+    await expect(encodeReply([read.content] as never)).resolves.toBeTypeOf("string");
+  });
+
+  it("never gives another account's document: the same answer as none", async () => {
+    signInAs(other);
+    await convertOutlineDocument(theirs);
+    signInAs(me);
+    expect(await readOutlineDocument(theirs)).toEqual({
+      ok: false,
+      code: "missing",
+      message: "That outline no longer exists.",
+    });
+    expect(await readOutlineDocument(outlineId)).toMatchObject({ ok: false, code: "missing" });
+    expect(await readOutlineDocument("0b6a3c1e-9d54-4c7e-8a55-1f1f6d3b2a10")).toMatchObject({
+      code: "missing",
+    });
+    expect(await readOutlineDocument("nope")).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("says unreadable with the revision, and neither the content nor its problems", async () => {
+    signInAs(me);
+    await db.insert(sermonOutlineDocuments).values({
+      outlineId,
+      ownerId: me,
+      content: { type: "doc", attrs: { schemaVersion: 99, secret } },
+    });
+    const read = await readOutlineDocument(outlineId);
+    expect(read).toEqual({
+      ok: false,
+      code: "unreadable",
+      revision: 0,
+      message:
+        "This outline's sermon document can't be read right now. It was left exactly as it was.",
+    });
+    expect(JSON.stringify(read)).not.toContain(secret);
+  });
+
+  it("changes nothing: not the content, the revision, or the time it was saved", async () => {
+    signInAs(me);
+    await convertOutlineDocument(outlineId);
+    await saveOutlineDocument(outlineId, sermon("Grace"), 0);
+    const before = await rowOf(outlineId);
+    for (let i = 0; i < 3; i++) await readOutlineDocument(outlineId);
+    expect(await rowOf(outlineId)).toEqual(before);
+    expect(await db.select().from(sermonOutlineDocuments)).toHaveLength(1);
+    // Reading an outline with no document does not make one.
+    const second = await outlined(me);
+    await readOutlineDocument(second);
+    expect(await rowOf(second)).toBeUndefined();
+  });
+
+  it("reports a failing database as failed, without logging the document", async () => {
+    signInAs(me);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failure = Object.assign(new Error(`Failed query: select …\nparams: ${secret}`), {
+      cause: Object.assign(new Error("connection terminated"), { code: "08006" }),
+    });
+    state.db = new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw failure;
+        },
+      },
+    );
+    expect(await readOutlineDocument(outlineId)).toEqual({
+      ok: false,
+      code: "failed",
+      message: "This sermon document could not be loaded. Try again.",
+    });
+    expect(logged.mock.calls).toEqual([["Sermon document read failed:", "Error (08006)"]]);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
   });
 });

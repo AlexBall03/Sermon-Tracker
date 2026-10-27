@@ -10,7 +10,13 @@ import { restoreSermonDocument } from "@/features/sermon-editor/document";
 import nextConfig from "../../../../next.config";
 import { prepareDocument } from "./documents";
 import { documentLimits, utf8Bytes } from "./model";
-import { plainDocument } from "./saving";
+import { prepareSave } from "./saving";
+
+const sendable = (json: JSONContent) => {
+  const prepared = prepareSave(json);
+  if (!prepared.ok) throw new Error(prepared.reason);
+  return prepared.content;
+};
 
 /*
  * The document limit and the Server Action body limit are set in two places
@@ -59,7 +65,7 @@ describe("the save transport", () => {
   it("cannot carry the editor's own JSON, whose attributes have no prototype", async () => {
     const json = canonical(documentV4([pointV4("p-1", "Grace", 1)]));
     await expect(encodeReply([json] as never)).rejects.toThrow(/plain objects/);
-    await expect(encodeReply([plainDocument(json)] as never)).resolves.toBeTypeOf("string");
+    await expect(encodeReply([sendable(json)] as never)).resolves.toBeTypeOf("string");
   });
 
   it("is 3 MiB for a document", () => {
@@ -77,7 +83,7 @@ describe("the save transport", () => {
     for (const char of ["x", "é", "😀", '"']) {
       const json = documentAtLimit(char);
       expect(prepareDocument(json).ok).toBe(true);
-      const body = await encodedBytes([outlineId, plainDocument(json), 2_147_483_647]);
+      const body = await encodedBytes([outlineId, sendable(json), 2_147_483_647]);
       // The arguments' encoding adds little beyond the JSON itself.
       expect(body - documentLimits.bytes).toBeLessThan(4 * 1024);
       expect(body).toBeLessThan(bodyLimit());

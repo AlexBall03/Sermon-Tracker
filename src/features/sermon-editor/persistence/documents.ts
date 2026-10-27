@@ -5,6 +5,7 @@ import { sermonOutlineDocuments, type SermonOutlineDocument } from "@/db/schema"
 import { isForeignKeyViolation } from "@/db/types";
 import type { Database } from "@/db/types";
 import { restoreSermonDocument } from "@/features/sermon-editor/document";
+import { toPlainJson } from "./json";
 import {
   documentLimits,
   utf8Bytes,
@@ -55,27 +56,25 @@ function asStored(row: SermonOutlineDocument): StoredDocument {
 
 /**
  * What would be stored for `json`: its canonical form, or why it is refused.
- * The size is checked before the document is (so a huge one is not parsed),
- * and the canonical form again after, since that is what is stored. An older
+ *
+ * First it must be JSON that `jsonb` keeps exactly (`toPlainJson`, A2.3A.1):
+ * a `NaN`, an `undefined`, a `Date`, a cycle, U+0000, or an unpaired surrogate
+ * is refused as `invalid` (`not_json`, `unstorable_text`) before the database
+ * is asked, never written as something else or left to fail there. Then the
+ * size, before the schema is asked (so a huge document is not parsed), and the
+ * canonical form's size again after, since that is what is stored. An older
  * document is migrated by the core, so what is stored is always v4.
  */
 export function prepareDocument(
   json: unknown,
 ): { ok: true; content: JSONContent } | ({ ok: false } & DocumentRefusal) {
   const limit = documentLimits.bytes;
-  let raw: string | undefined;
-  try {
-    raw = JSON.stringify(json);
-  } catch {
-    // A cycle or a BigInt: not JSON, so not a document.
-  }
-  if (raw === undefined) {
-    return { ok: false, status: "invalid", problems: [{ code: "not_a_document" }] };
-  }
-  const rawBytes = utf8Bytes(raw);
+  const plain = toPlainJson(json);
+  if (!plain.ok) return { ok: false, status: "invalid", problems: [plain.problem] };
+  const rawBytes = utf8Bytes(JSON.stringify(plain.value));
   if (rawBytes > limit) return { ok: false, status: "too_large", bytes: rawBytes, limit };
 
-  const restored = restoreSermonDocument(json);
+  const restored = restoreSermonDocument(plain.value);
   if (!restored.ok) return { ok: false, status: "invalid", problems: restored.problems };
   const content = restored.doc.toJSON() as JSONContent;
   const bytes = utf8Bytes(JSON.stringify(content));
