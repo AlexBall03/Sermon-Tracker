@@ -1834,7 +1834,7 @@ Where a save fails fast (a network error, a thrown action), nothing is left pend
 
 ### Approved before A3: a GET Route Handler for recovery reads
 
-The owner approved a dedicated, authenticated GET Route Handler for authoritative recovery reads. It is a **prerequisite to A3** and is **not built in B.2C**: it is built and tested immediately before A3's integration. Its requirements:
+*(Built in A2.3B.2D, below.)* The owner approved a dedicated, authenticated GET Route Handler for authoritative recovery reads. It is a **prerequisite to A3** and is **not built in B.2C**: it is built and tested immediately before A3's integration. Its requirements:
 
 - **No queue:** a plain `fetch` GET, never a Server Action, so it bypasses the client's action serialization.
 - **Access:** the same owner-scoped authorization as `readOutlineDocument`: `authorize("active")`, the owner from the session, and `outlineIdSchema`. It never returns or reveals another account's document; another account's outline answers `missing`.
@@ -1858,3 +1858,108 @@ The owner approved a dedicated, authenticated GET Route Handler for authoritativ
 - **B.3:** `saveNow()` offline marks the save `waiting` and sends nothing. The page lifecycle should treat `offline`, `stalled`, `unresolved`, and `failed` as unsaved work.
 
 ### Ready for owner review
+
+## A2.3B.2D: Independent authoritative read transport (28 October 2026)
+
+**Status:** built and verified; ready for owner review. Not committed (the owner commits).
+
+**Starting point:** branch `dev`, HEAD `4782092` (A2.3B.2C), clean tree.
+
+### Why
+
+Next.js dispatches a client's Server Actions one at a time (bundled docs, `01-app/02-guides/server-actions.md`, "Sequential dispatch on the client"). B.2C's transport read through `readOutlineDocument`, a Server Action. So a save that timed out but was still pending held every recovery read behind it (A2.3B.2C, "The Server Action queue"). That was a liveness limit, not a data-integrity defect. This phase builds the GET route the owner approved for those reads.
+
+### What was built
+
+- **One reader.** `persistence/reader.ts` (`server-only`) holds `readCallerDocument`, the body of `readOutlineDocument` moved unchanged:
+  - `authorize("active")`, then `outlineIdSchema` (an uppercase UUID is normalized), then `documents.getDocument` with the owner from the session, then `toPlainJson`;
+  - the same codes, localized messages, and sanitized logging.
+
+  `DocumentReadResult` moved with it. `readOutlineDocument` is now a one-line wrapper, kept for compatibility. The kind-and-SQLSTATE logger moved to `persistence/failure.ts` unchanged, for the action and the route to share.
+- **The route.** `src/app/api/sermon-documents/[outlineId]/route.ts`, `GET` only, answers `readCallerDocument`'s result as its body. The status comes from `read-route.ts`, which the transport also reads, so the two cannot drift:
+
+  | Result                                                | Status | `DocumentReadOutcome` |
+  | ----------------------------------------------------- | ------ | --------------------- |
+  | found                                                 | 200    | `found`               |
+  | `invalid` (not an ID)                                 | 400    | `missing`             |
+  | `missing` (none, or another account's: the same body) | 404    | `missing`             |
+  | `unreadable` (revision only, no content or problems)  | 409    | `unreadable`          |
+  | refused by `authorize` (no code)                      | 401    | `unauthorized`        |
+  | `failed` (database, or anything thrown)               | 503    | `failed`              |
+
+  - **401 vs 403.** Signed out and denied are both 401. `authorize` returns only a message, and the directive forbids reading messages or reworking auth to tell them apart. This matches the other `/api` routes. The transport also accepts a 403 with no code as `unauthorized`, should one ever be sent.
+  - **Caching.** Every answer, errors included, carries `Cache-Control: private, no-store`. The route is dynamic: `authorize` calls `connection()`, and the route has no `generateStaticParams`. The service worker answers no `/api` request. The proxy does not redirect `/api`, because it is not an app route.
+  - **Writes.** None. It never creates, converts, or repairs.
+- **The transport.** `documentTransport({ save, fetch? })` replaces `actionTransport`; `DocumentActions` is gone. The `DocumentTransport` interface is unchanged.
+  - **Save.** Unchanged: the `saveOutlineDocument` Server Action, mapped by `saveOutcome`.
+  - **Read.** `fetch(sermonDocumentHref(id), { method: "GET", cache: "no-store", credentials: "same-origin", redirect: "error", headers: { Accept: "application/json" } })`, with the ID through `encodeURIComponent`.
+  - **What counts as an answer.** Only one with a JSON content type, a JSON object body, and a status that agrees with the body. A 200 needs `ok: true`, an object `content`, and a non-negative integer revision. 400, 404, 409, and 503 each need their own code. 401 and 403 need no code. Everything else is `failed`, never `found`: HTML, unparseable JSON, a status and body that disagree, another status, a redirect, or a rejected fetch.
+  - **Never throws.** It has no timer, retry, or AbortController. The coordinator's 10 s read timeout, its dropping of late answers, and its bounded retries (B.2C) stay the only ones.
+  - **No queued read.** There is no runtime path to `readOutlineDocument`. A3 passes only `{ save: saveOutlineDocument }`.
+- **The probe** (development only; the owner's decision). It exists so the runtime proof can run a real save from client code.
+  - **Where.** `/lab/persistence-probe` (page) and `src/features/persistence-probe` (harness and fixture actions). The module sits outside `src/features/editor-lab`, whose boundary test (no database, no Server Action) is unchanged.
+  - **Development only.** Outside development the proxy's `labGuard` answers 404, the page refuses again, and both fixture actions refuse before anything else (tested).
+  - **What it touches.** It makes a disposable sermon for each run, titled `[Persistence probe fixture] <ISO time>`, with its outline and converted document. It deletes only a sermon `isProbeFixture` accepts, and only the caller's own (tested).
+  - **What it exposes.** `setup`, `save`, `read`, `readByAction` (the queued-action control), and `teardown`. None takes an ID. It mounts no editor or autosave.
+  - **Production gate.** `/lab/persistence-probe` is added to `tests/lab/production.spec.ts`'s 404 list.
+
+### What independence does and does not guarantee
+
+- The GET does not wait in the browser's action queue, and it runs on the server while a save action is still executing.
+- **A GET that sees R0 does not prove the pending save will never commit.** It may commit afterwards. The read can equally see R0 + 1 from the save, or a revision from another tab or writer. The coordinator's classification decides, unchanged:
+  - hold at R0 or lower;
+  - settle only at exactly R0 + 1 with what was sent;
+  - release on anything past R0 or gone.
+- The server's `WHERE revision = R0` still lets only one of the original and its single conditional resend be written.
+
+### Verification
+
+- **Reader/action** (`persistence/actions.test.ts`): 16 passed, unchanged. They now prove the wrapper is equivalent.
+- **Route** (`src/app/api/sermon-documents/[outlineId]/route.test.ts`, real in-memory PostgreSQL): 8 passed.
+  - found, including an uppercase UUID;
+  - another account's body is byte-identical to none, with no content;
+  - invalid IDs are refused before the database is asked;
+  - unreadable gives the revision without content or problems;
+  - signed out, denied, or owing setup gives 401 and reads nothing;
+  - a database failure gives 503, logged as `Error (08006)` only;
+  - an unexpected throw gives 503, logged as its kind only;
+  - nothing is written (content, revision, `updated_at`), and no document is created;
+  - `private, no-store` and JSON are asserted on every answer.
+- **Transport** (`autosave/transport.test.ts`): 8 passed. The save behaviour is kept. The read is one fetch with the exact options above, and a read action handed to it is never called. The ID is encoded. Every mapping is checked, plus 23 malformed or mismatched answers that all come back `failed`. No timer or second fetch is left behind.
+- **Coordinator** (`autosave/coordinator.test.ts`): 152 passed. Its three real-transport cases now read through a stub `fetch` answered as the route would. B.2C's handoff counted 153; the diff removes no test.
+- **Whole loop over the route** (`autosave/route-transport.test.ts`, new): 6 passed. It uses the real controller, the real coordinator, `documentTransport`, the real GET handler, and the real `saveOutlineDocument` on in-memory PostgreSQL, with each save held at a test gate. Cases:
+  - the GET answers R0 while the original is pending past its 15 s timeout; one conditional resend wins; the late original lands `stale`;
+  - the original commits first while unanswered; the resend meets stale and is read back as saved;
+  - the GET sees R0 + 1 once the pending save committed: saved, with no resend;
+  - another writer moves the revision: blocked, nothing overwritten, the draft kept;
+  - the session ends mid-recovery: 401, blocked holding the claim, nothing more sent;
+  - five failed reads exhaust the budget with the save pending; after it commits, `recover()` reads it as saved.
+
+  In every case at most two writes reach the server and none is a third.
+- **Probe fixtures** (`src/features/persistence-probe/actions.test.ts`): 4 passed.
+- **Runtime, in a real browser on `next dev`** (`tests/lab/persistence-probe.spec.ts`, desktop Chrome, development Clerk test account, development Neon database): 2 tests, each passed in three consecutive repeats (6/6).
+  1. **Browser dispatch.**
+     - *Setup:* the save's POST (`Next-Action`) was held by Playwright's network interception.
+     - *Read:* while it was held, the GET reached the route and returned `found` at R0 (200, `private, no-store`).
+     - *Control:* a `readOutlineDocument` action started beside the save never left the page until the save was released. That shows the queue the GET avoids.
+     - *After release:* the save confirmed R0 + 1; the queued action read then went out and saw R0 + 1, as did a later GET.
+  2. **Server execution.**
+     - *Setup:* the test held `SELECT … FOR UPDATE` on the fixture's document row alone (no write, rolled back).
+     - *Evidence the save was executing:* `pg_stat_activity` with `pg_blocking_pids` showed the save's `UPDATE sermon_outline_documents` running inside Next.js and waiting on the test's backend. Each look took a fresh `pg_stat_clear_snapshot()`, because a transaction otherwise keeps its first snapshot. That first, stale snapshot was the cause of an early false failure.
+     - *Read:* while the save was blocked, the GET returned `found` at R0 and the save was still unanswered.
+     - *After rollback:* the save confirmed R0 + 1, and the GET returned R0 + 1.
+
+  Teardown deleted every fixture; a read-only count afterwards found none left.
+- TypeScript (`npm run typecheck`), ESLint, and Prettier pass on all changed files.
+
+### Limits and follow-up
+
+- **The runtime proof ran on `next dev`, not a production build.** The client action queue and the route's dynamic rendering are the same in both, and the probe cannot exist in production. The production server's independence is inferred, not measured.
+- **401 for denied accounts**, as above.
+- **Clerk's own redirects.** A Clerk handshake redirect of an expired session is refused by `redirect: "error"` and becomes `failed`, retried within the budget, rather than `unauthorized`. Signing in again resolves it.
+- **No change** to save scheduling, timeouts, the retry budget, the conditional resend, refusals, drafts, the schema, or migrations.
+
+### For A2.3B.3 and A3
+
+- A3 builds the transport as `documentTransport({ save: saveOutlineDocument })`. Everything else under "For A2.3B.3 and A3" in B.2C stands.
+- The prerequisite to mounting the coordinator is met. Mounting it is still A3's. A2.3B.3 (page lifecycle, multi-tab) may be planned.

@@ -15,6 +15,7 @@ const addresses = [
   "/lab/editor",
   "/lab/editor/",
   "/lab/editor?fixture=stress",
+  "/lab/persistence-probe",
   "/lab/anything/else",
 ];
 

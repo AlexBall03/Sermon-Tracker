@@ -578,4 +578,11 @@ export const editorLab = {
     shortcuts:
       "Enter, Backspace, Delete, and Shift+Enter edit as usual. Tab: a point one level down, or writing into the point above. Shift+Tab: a point moves out with its content, or writing comes up a level. Where neither applies, Tab moves focus on. Alt+Shift+↑/↓: move a point with its content. Alt+Shift+→: increase level. Alt+Shift+←: move out. Ctrl+Enter: new point. Ctrl+Shift+Enter: new subpoint.",
   },
+  persistenceProbe: {
+    metaTitle: "Editor Lab · Persistence probe",
+    title: "Persistence probe",
+    description:
+      "A development-only harness for the sermon document transport tests (A2.3B.2D). It works only on a disposable sermon it creates for a test run.",
+    ready: "Ready for a test run.",
+  },
 };

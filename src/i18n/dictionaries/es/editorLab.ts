@@ -592,4 +592,11 @@ export const editorLab: Untranslated<typeof english> = {
     shortcuts:
       "Intro, Retroceso, Suprimir y Mayús+Intro editan como siempre. Tab: un punto baja un nivel, o el texto entra en el punto de arriba. Mayús+Tab: un punto sale con su contenido, o el texto sube un nivel. Donde nada de eso aplica, Tab pasa el foco. Alt+Mayús+↑/↓: mover un punto con su contenido. Alt+Mayús+→: aumentar nivel. Alt+Mayús+←: sacar al nivel superior. Ctrl+Intro: nuevo punto. Ctrl+Mayús+Intro: nuevo subpunto.",
   },
+  persistenceProbe: {
+    metaTitle: "Laboratorio del editor · Sonda de persistencia",
+    title: "Sonda de persistencia",
+    description:
+      "Un arnés solo para desarrollo, para las pruebas del transporte del documento del sermón (A2.3B.2D). Solo trabaja con un sermón desechable que crea para cada prueba.",
+    ready: "Listo para una prueba.",
+  },
 };

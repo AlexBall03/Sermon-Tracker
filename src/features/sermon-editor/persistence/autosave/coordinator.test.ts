@@ -22,7 +22,9 @@ import {
   type DocumentSource,
   type NetworkRecoveryTiming,
 } from "./model";
-import { actionTransport, type DocumentActions, type DocumentTransport } from "./transport";
+import { readHeaders, statusOf } from "../read-route";
+import type { DocumentReadResult } from "../reader";
+import { documentTransport, type DocumentTransport } from "./transport";
 
 /*
  * The save coordinator (A2.3B.2A) over the real autosave controller, on fake
@@ -31,6 +33,21 @@ import { actionTransport, type DocumentActions, type DocumentTransport } from ".
 
 const owner = "4f1c2d3e-0000-4000-8000-00000000a11c";
 const outlineId = "0b6a3c1e-9d54-4c7e-8a55-1f1f6d3b2a10";
+
+/**
+ * The real transport (A2.3B.2D): saves through `actions.save`, reads through
+ * a `fetch` answered as the route answers `actions.read`'s result.
+ */
+function realTransport(actions: { save: unknown; read: unknown }) {
+  const read = actions.read as (id: string) => Promise<DocumentReadResult>;
+  return documentTransport({
+    save: actions.save as never,
+    fetch: (async (url: string) => {
+      const result = await read(decodeURIComponent(url.split("/").pop() ?? ""));
+      return Response.json(result, { status: statusOf(result), headers: readHeaders });
+    }) as unknown as typeof fetch,
+  });
+}
 
 const doc = (words: string) => documentV4([pointV4("p-1", "Grace", 1), proseV4(words, 1)]);
 
@@ -961,8 +978,8 @@ describe("outcomes", () => {
     const actions = {
       save: vi.fn(async () => ({ ok: true, message: "Saved" })),
       read: vi.fn(),
-    } as unknown as DocumentActions;
-    const parts = setup({ transport: actionTransport(actions) });
+    };
+    const parts = setup({ transport: realTransport(actions) });
     parts.editor.edit(doc("Sent"));
     await vi.advanceTimersByTimeAsync(1500);
     expect(parts.coordinator.getState().phase).toBe("reconciling");
@@ -1834,8 +1851,8 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     const actions = {
       save: vi.fn(async () => ({ ok: false, code: "failed", message: "Not saved" })),
       read: vi.fn(async () => ({ ok: true, message: "", content: sent(), revision: 9 })),
-    } as unknown as DocumentActions;
-    const parts = setup({ transport: actionTransport(actions) });
+    };
+    const parts = setup({ transport: realTransport(actions) });
     parts.editor.edit(doc("Sent"));
     await vi.advanceTimersByTimeAsync(1500);
     await settle();
@@ -1858,8 +1875,8 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     const actions = {
       save: vi.fn(async () => ({ ok: false, code: "failed", message: "Not saved" })),
       read: vi.fn(async () => ({ ok: true, message: "", content: opened(), revision: 8 })),
-    } as unknown as DocumentActions;
-    const parts = setup({ transport: actionTransport(actions) });
+    };
+    const parts = setup({ transport: realTransport(actions) });
     parts.editor.edit(doc("Sent"));
     await vi.advanceTimersByTimeAsync(1500);
     await settle();

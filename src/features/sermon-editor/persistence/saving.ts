@@ -1,7 +1,8 @@
 import type { JSONContent } from "@tiptap/core";
 
 import type { DocumentProblem } from "@/features/sermon-editor/document";
-import type { DocumentActionResult, DocumentReadResult } from "./actions";
+import type { DocumentActionResult } from "./actions";
+import type { DocumentReadResult } from "./reader";
 import { toPlainJson, type JsonProblem } from "./json";
 import { documentLimits, utf8Bytes } from "./model";
 

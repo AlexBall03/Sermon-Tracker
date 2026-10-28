@@ -1,6 +1,5 @@
 "use server";
 
-import type { JSONContent } from "@tiptap/core";
 import { z } from "zod";
 
 import { getDb } from "@/db";
@@ -12,7 +11,8 @@ import { getLocale } from "@/i18n/server";
 import type { ActionResult } from "@/lib/action-result";
 import * as documents from "./documents";
 import { convertOutline } from "./conversion";
-import { toPlainJson } from "./json";
+import { failure } from "./failure";
+import { readCallerDocument, type DocumentReadResult } from "./reader";
 import type { ConversionProblem, DocumentRefusal } from "./model";
 
 /*
@@ -43,24 +43,6 @@ export type DocumentActionResult = ActionResult & {
   /** For `unsafe`: why converting the outline could change it (codes and IDs only). */
   conversion?: ConversionProblem[];
 };
-
-/**
- * What is logged of a failure: its kind and SQLSTATE, and nothing else.
- * Not `describeDatabaseError`: Drizzle puts every parameter of the failed
- * query in its message, and here that is the whole document, which is never
- * logged (migration document, section 10).
- */
-function failure(error: unknown): string {
-  let code: unknown;
-  for (let current = error, depth = 0; current && depth < 3; depth += 1) {
-    if (typeof current !== "object") break;
-    code ??= (current as { code?: unknown }).code;
-    current = (current as { cause?: unknown }).cause;
-  }
-  // Only a real SQLSTATE (five digits or capitals) and a plain name: nothing else of the error.
-  const kind = error instanceof Error && /^\w{1,40}$/.test(error.name) ? error.name : "Error";
-  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? `${kind} (${code})` : kind;
-}
 
 /** The revision a save is made against: always named. */
 const expectedRevisionSchema = z.number().int().min(0).max(2_147_483_647);
@@ -138,63 +120,17 @@ export async function convertOutlineDocument(outlineId: unknown): Promise<Docume
   }
 }
 
-export type DocumentReadResult = ActionResult & {
-  /** Why nothing was read: `missing` for none (or another account's), `unreadable` for one the core no longer accepts. */
-  code?: "invalid" | "missing" | "unreadable" | "failed";
-  /** The canonical document, as a plain copy a Client Component can take. Only with `ok`. */
-  content?: JSONContent;
-  /** The revision to name in the next save; with `unreadable` too. */
-  revision?: number;
-};
+export type { DocumentReadResult };
 
 /**
- * Reads the caller's sermon document as the server holds it (A2.3A.1): its
- * canonical form and revision, for the autosave controller to compare with
- * the snapshot it sent when a save got no answer. Read only: it never
- * creates, converts, repairs, or writes, and revalidates nothing. Another
- * account's outline and none are the same `missing`. An unreadable document
- * gives its revision and not its content or its problems.
+ * Reads the caller's sermon document as the server holds it (A2.3A.1). Kept
+ * for compatibility: it is `readCallerDocument` (reader.ts), which the GET
+ * Route Handler `/api/sermon-documents/[outlineId]` shares. The browser's
+ * recovery reads use that route, never this action, which Next.js would
+ * queue behind a pending save (A2.3B.2D).
  */
 export async function readOutlineDocument(outlineId: unknown): Promise<DocumentReadResult> {
-  const actor = await authorize("active");
-  if (!actor.ok) return actor;
-  const { t } = await context();
-
-  const id = outlineIdSchema.safeParse(outlineId);
-  if (!id.success) return { ok: false, code: "invalid", message: t.invalid };
-
-  let outcome: Awaited<ReturnType<typeof documents.getDocument>>;
-  try {
-    outcome = await documents.getDocument(getDb(), actor.user.id, id.data);
-  } catch (error) {
-    console.error("Sermon document read failed:", failure(error));
-    return { ok: false, code: "failed", message: t.documentNotRead };
-  }
-  switch (outcome.status) {
-    case "found": {
-      // ProseMirror's attributes have no prototype, which React refuses to send.
-      const plain = toPlainJson(outcome.document.content);
-      if (!plain.ok) {
-        console.error("Sermon document read failed:", `not plain JSON (${plain.problem.code})`);
-        return { ok: false, code: "failed", message: t.documentNotRead };
-      }
-      return {
-        ok: true,
-        message: t.documentLoaded,
-        content: plain.value as JSONContent,
-        revision: outcome.document.revision,
-      };
-    }
-    case "unreadable":
-      return {
-        ok: false,
-        code: "unreadable",
-        message: t.documentUnreadable,
-        revision: outcome.revision,
-      };
-    case "missing":
-      return { ok: false, code: "missing", message: t.missing };
-  }
+  return readCallerDocument(outlineId);
 }
 
 /** Saves the caller's sermon document, made against the revision it was read at. */
