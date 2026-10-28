@@ -19,6 +19,7 @@ import {
   writeDraft,
 } from "../recovery/store";
 import type { DocumentReadOutcome, DocumentSaveOutcome, DocumentSaveRequest } from "../saving";
+import type { Connectivity } from "./connectivity";
 import { createAutosaveController, type DraftStorage } from "./controller";
 import { createSaveCoordinator, SaveCoordinatorError } from "./coordinator";
 import { autosaveStatus, jsonEqual, serverSaveStatus, type DocumentSource } from "./model";
@@ -72,6 +73,8 @@ function fakeServer(initial: JSONContent) {
   let holdReads = false;
   const readsWaiting: (() => void)[] = [];
   let reads = 0;
+  /** Reads that fail before reaching the server (A2.3B.2C): the network, not the document. */
+  let failingReads = 0;
 
   function commit(request: DocumentSaveRequest): DocumentSaveOutcome {
     const { sequence } = request;
@@ -99,6 +102,10 @@ function fakeServer(initial: JSONContent) {
       }),
     read: () => {
       reads += 1;
+      if (failingReads > 0) {
+        failingReads -= 1;
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
       const answer = (): DocumentReadOutcome =>
         server.gone
           ? { kind: "missing" }
@@ -116,6 +123,10 @@ function fakeServer(initial: JSONContent) {
     },
     holdReads() {
       holdReads = true;
+    },
+    /** The next `count` reads fail on the network. */
+    failReads(count: number) {
+      failingReads = count;
     },
     releaseRead() {
       readsWaiting.shift()?.();
@@ -153,10 +164,33 @@ function fakeSource(initial: JSONContent) {
   };
 }
 
+/** The browser's network as the test sets it (A2.3B.2C). */
+function fakeLink() {
+  let online = true;
+  const listeners = new Set<(online: boolean) => void>();
+  const connectivity: Connectivity = {
+    online: () => online,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+  return {
+    connectivity,
+    set(next: boolean) {
+      online = next;
+      for (const listener of [...listeners]) listener(next);
+    },
+  };
+}
+
 function session(storage?: DraftStorage) {
   const opened = doc("Opened");
   const editor = fakeSource(opened);
   const net = fakeServer(opened);
+  const link = fakeLink();
   const controller = createAutosaveController({
     owner,
     outlineId,
@@ -168,6 +202,7 @@ function session(storage?: DraftStorage) {
     controller,
     transport: net.transport,
     base: { content: canonical(opened), revision: R0 },
+    connectivity: link.connectivity,
   });
   const draft = async () => readDraft(owner, { outlineId, draftId: controller.draftId });
   const status = () => serverSaveStatus(controller.getState(), coordinator.getState());
@@ -179,7 +214,7 @@ function session(storage?: DraftStorage) {
     await vi.advanceTimersByTimeAsync(1500);
     await drain();
   }
-  return { editor, net, controller, coordinator, draft, status, type };
+  return { editor, net, link, controller, coordinator, draft, status, type };
 }
 
 beforeEach(async () => {
@@ -522,6 +557,236 @@ describe("disposal, storage, and ownership", () => {
     for (const call of calls) {
       expect(call).toEqual({ owner, outlineId, draftId: s.controller.draftId });
     }
+    await s.controller.dispose();
+  });
+});
+
+describe("network failures (A2.3B.2C)", () => {
+  /** Lets `ms` pass on the clock, with IndexedDB and promises run between. */
+  async function wait(ms: number) {
+    await vi.advanceTimersByTimeAsync(ms);
+    await drain();
+  }
+
+  it("a save committed after the browser stopped waiting: read back, written once, settled once", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    const [original] = s.net.attempts;
+    await wait(15_000);
+    // Timed out: the read finds the base, and the one conditional retry goes out.
+    expect(s.net.reads).toBe(1);
+    expect(s.net.attempts).toHaveLength(2);
+    // The original reaches the server late and commits; its late answer is dropped.
+    original.respond(original.commit());
+    await drain();
+    expect(s.controller.getState()).toMatchObject({ confirmedSequence: 0, saving: 1 });
+    // The retry meets stale (the original's own write) and is read back.
+    const retry = s.net.attempts[1];
+    retry.respond(retry.commit());
+    await drain();
+    expect(s.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      revision: R0 + 1,
+      reconciliation: { result: "saved" },
+      recovery: null,
+    });
+    expect(s.net.server).toMatchObject({ revision: R0 + 1, writes: 1 });
+    expect(s.net.attempts).toHaveLength(2);
+    expect(await s.draft()).toBeNull();
+    expect(s.status()).toBe("saved");
+    await s.controller.dispose();
+  });
+
+  it("both requests time out and reads fail: a bounded read settles the retry's late commit, and the original never writes", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    const [original] = s.net.attempts;
+    await wait(15_000);
+    const retry = s.net.attempts[1];
+    s.net.failReads(2);
+    await wait(15_000); // the retry times out; its read back fails
+    expect(s.coordinator.getState().recovery).toMatchObject({ retries: 0, delayMs: 1000 });
+    await wait(1000); // fails again
+    expect(s.coordinator.getState().recovery).toMatchObject({ retries: 1, delayMs: 2000 });
+    retry.commit();
+    await wait(2000);
+    expect(s.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      confirmedSequence: 1,
+      recovery: null,
+    });
+    expect(original.commit()).toMatchObject({ kind: "conflict", code: "stale" });
+    expect(s.net.server.writes).toBe(1);
+    expect(s.net.attempts).toHaveLength(2);
+    expect(await s.draft()).toBeNull();
+    await s.controller.dispose();
+  });
+
+  it("retries exhausted, then the person's recovery finds the original committed", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    const [original] = s.net.attempts;
+    s.net.failReads(100);
+    original.lose();
+    await drain();
+    await wait(31_000);
+    expect(s.net.reads).toBe(6);
+    expect(s.coordinator.getState().recovery).toMatchObject({ status: "exhausted", retries: 5 });
+    expect(s.status()).toBe("stalled");
+    // Held all along: the claim, and the words on the device.
+    expect(s.controller.getState().saving).toBe(1);
+    const kept = await s.draft();
+    expect(kept?.status === "ok" && kept.draft.content).toEqual(doc("Sent"));
+    await wait(10 * 60_000);
+    expect(s.net.reads).toBe(6);
+    // The server took the original meanwhile.
+    original.commit();
+    s.net.failReads(0);
+    await s.coordinator.recover();
+    await drain();
+    expect(s.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      revision: R0 + 1,
+      reconciliation: { result: "saved" },
+    });
+    expect(s.net.server.writes).toBe(1);
+    expect(s.net.attempts).toHaveLength(1);
+    expect(await s.draft()).toBeNull();
+    await s.controller.dispose();
+  });
+
+  it("offline editing: every snapshot reaches IndexedDB, nothing is sent, and online sends the newest once", async () => {
+    const s = session();
+    s.link.set(false);
+    for (const words of ["Offline A", "Offline B", "Offline C"]) await s.type(doc(words));
+    await wait(60_000);
+    expect(s.net.attempts).toHaveLength(0);
+    const kept = await s.draft();
+    expect(kept?.status === "ok" && kept.draft.content).toEqual(doc("Offline C"));
+    expect(s.status()).toBe("offline");
+    s.link.set(true);
+    s.link.set(true);
+    await drain();
+    expect(s.net.attempts).toHaveLength(1);
+    expect(s.net.attempts[0].request).toMatchObject({ sequence: 3, content: doc("Offline C") });
+    const attempt = s.net.attempts[0];
+    attempt.respond(attempt.commit());
+    await drain();
+    expect(s.status()).toBe("saved");
+    expect(await s.draft()).toBeNull();
+    await s.controller.dispose();
+  });
+
+  it("offline while a save is out and its answer lost: the read waits for online, then settles it", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    const [original] = s.net.attempts;
+    s.link.set(false);
+    original.lose();
+    await wait(60_000);
+    expect(s.net.reads).toBe(0);
+    expect(s.coordinator.getState().recovery).toMatchObject({ status: "offline", retries: 0 });
+    s.link.set(true);
+    await drain();
+    // The base still there: the conditional retry, which the server takes.
+    expect(s.net.reads).toBe(1);
+    const retry = s.net.attempts[1];
+    retry.respond(retry.commit());
+    await drain();
+    expect(s.status()).toBe("saved");
+    expect(s.net.server.writes).toBe(1);
+    await s.controller.dispose();
+  });
+
+  it("reconnection during a request starts nothing alongside it", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    s.link.set(false);
+    s.link.set(true);
+    s.link.set(true);
+    await drain();
+    expect(s.net.attempts).toHaveLength(1);
+    const attempt = s.net.attempts[0];
+    attempt.respond(attempt.commit());
+    await drain();
+    expect(s.status()).toBe("saved");
+    expect(s.net.attempts).toHaveLength(1);
+    expect(s.net.reads).toBe(0);
+    await s.controller.dispose();
+  });
+
+  it("a draft write fails while offline: unprotected, never saved; the next write protects it again", async () => {
+    let failing = false;
+    const s = session({
+      writeDraft: (who, input) =>
+        failing ? Promise.reject(new DraftStorageError("quota")) : writeDraft(who, input),
+      confirmDraft,
+      refuseDraft,
+    });
+    s.link.set(false);
+    failing = true;
+    await s.type(doc("Lost to storage"));
+    expect(s.controller.getState().storageError).toBe("quota");
+    expect(s.status()).toBe("unprotected");
+    failing = false;
+    await s.type(doc("Kept"));
+    expect(s.controller.getState().storageError).toBeNull();
+    expect(s.status()).toBe("offline");
+    s.link.set(true);
+    await drain();
+    const attempt = s.net.attempts[0];
+    expect(attempt.request.content).toEqual(doc("Kept"));
+    attempt.respond(attempt.commit());
+    await drain();
+    expect(s.status()).toBe("saved");
+    await s.controller.dispose();
+  });
+
+  it("invalid content corrected while offline: the refusal kept as history, the correction sent alone once online", async () => {
+    const s = session();
+    await s.type(invalid);
+    await drain();
+    expect(s.coordinator.getState().block).toMatchObject({ reason: "refused" });
+    s.link.set(false);
+    await s.type(doc("Corrected"));
+    await wait(60_000);
+    expect(s.net.attempts).toHaveLength(0);
+    expect(s.status()).toBe("offline");
+    const kept = await s.draft();
+    expect(kept?.status === "ok" && kept.draft.content).toEqual(doc("Corrected"));
+    expect(kept?.status === "ok" && currentRefusal(kept.draft)).toBeNull();
+    s.link.set(true);
+    await drain();
+    expect(s.net.attempts).toHaveLength(1);
+    expect(s.net.attempts[0].request).toMatchObject({ sequence: 2, expectedRevision: R0 });
+    const attempt = s.net.attempts[0];
+    attempt.respond(attempt.commit());
+    await drain();
+    expect(s.status()).toBe("saved");
+    expect(await s.draft()).toBeNull();
+    await s.controller.dispose();
+  });
+
+  it("disposed during backoff: the claim and the draft are kept, nothing more is read, and a new coordinator is refused", async () => {
+    const s = session();
+    await s.type(doc("Sent"));
+    s.net.failReads(100);
+    s.net.attempts[0].lose();
+    await drain();
+    expect(s.coordinator.getState().recovery).toMatchObject({ status: "scheduled" });
+    s.coordinator.dispose();
+    await wait(10 * 60_000);
+    expect(s.net.reads).toBe(1);
+    expect(s.controller.getState().saving).toBe(1);
+    const kept = await s.draft();
+    expect(kept?.status === "ok" && kept.draft.content).toEqual(doc("Sent"));
+    expect(() =>
+      createSaveCoordinator({
+        controller: s.controller,
+        transport: s.net.transport,
+        base: { content: canonical(doc("Opened")), revision: R0 },
+      }),
+    ).toThrow(SaveCoordinatorError);
     await s.controller.dispose();
   });
 });

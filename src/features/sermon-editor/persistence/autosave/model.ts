@@ -122,6 +122,62 @@ export const serverSaveTiming = { serverDebounceMs: 1500, serverMaxWaitMs: 10_00
 export type ServerSaveTiming = typeof serverSaveTiming;
 
 /**
+ * How long the coordinator waits for an answer, and how it tries again
+ * (A2.3B.2C, the owner's decisions). A timeout means the browser stopped
+ * waiting, never that the server did nothing: a save that times out is
+ * `uncertain` and read back, a read that times out is a failed read.
+ *
+ * After a read that failed (or one that found the base still there once the
+ * conditional retry was spent), and after a definite `failed` save, the next
+ * attempt is made automatically after 1, 2, 4, 8, then 16 s
+ * (`retryBaseMs · 2ⁿ`, never more than `retryMaxDelayMs`): `maxRetries`
+ * attempts, not counting the first. Then it stops (`exhausted`) until
+ * `recover()`. Never a write that could repeat an unresolved one.
+ */
+export const networkRecoveryTiming = {
+  saveTimeoutMs: 15_000,
+  readTimeoutMs: 10_000,
+  retryBaseMs: 1_000,
+  retryMaxDelayMs: 30_000,
+  maxRetries: 5,
+};
+export type NetworkRecoveryTiming = typeof networkRecoveryTiming;
+
+/** The longest delay between automatic attempts that may be configured. */
+export const maxRetryDelayMs = 30_000;
+
+/**
+ * The timing with `overrides` that make sense: a time must be a positive
+ * finite number (the delay at most `maxRetryDelayMs`), `maxRetries` a whole
+ * number from 0. Anything else keeps the default.
+ */
+export function recoveryTiming(
+  overrides: Partial<NetworkRecoveryTiming> = {},
+): NetworkRecoveryTiming {
+  const time = (value: number | undefined, fallback: number) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+  const retries = overrides.maxRetries;
+  return {
+    saveTimeoutMs: time(overrides.saveTimeoutMs, networkRecoveryTiming.saveTimeoutMs),
+    readTimeoutMs: time(overrides.readTimeoutMs, networkRecoveryTiming.readTimeoutMs),
+    retryBaseMs: time(overrides.retryBaseMs, networkRecoveryTiming.retryBaseMs),
+    retryMaxDelayMs: Math.min(
+      time(overrides.retryMaxDelayMs, networkRecoveryTiming.retryMaxDelayMs),
+      maxRetryDelayMs,
+    ),
+    maxRetries:
+      typeof retries === "number" && Number.isSafeInteger(retries) && retries >= 0
+        ? retries
+        : networkRecoveryTiming.maxRetries,
+  };
+}
+
+/** The delay before automatic attempt `retry` (0 for the first): 1, 2, 4, 8, 16 s by default. */
+export function retryDelay(timing: NetworkRecoveryTiming, retry: number): number {
+  return Math.min(timing.retryBaseMs * 2 ** retry, timing.retryMaxDelayMs);
+}
+
+/**
  * Where the save coordinator stands:
  * - `idle`: nothing due. `scheduled`: a save is due when a timer fires.
  * - `preparing`: taking and claiming a snapshot. `saving`: one request in flight.
@@ -138,9 +194,14 @@ export type ServerSaveTiming = typeof serverSaveTiming;
  *   `block.reason` with `outcome` and `reconciliation` says which. Only a
  *   `refused` block is left by an edit (A2.3B.2B.3): a newer snapshot that is
  *   not the refused content is sent as usual. Every other block is final.
- * - `failed`: the server's transaction failed and wrote nothing. Sent again
- *   only by `retry()` (A2.3B.2C adds bounded backoff).
+ * - `failed`: the transport said for certain that nothing was written (no
+ *   server answer says so since A2.3B.2B.1). Sent again by the bounded
+ *   automatic retries (`recovery`, A2.3B.2C), then only by `retry()` or
+ *   `recover()`.
  * - `disposed`: sends nothing more.
+ * While `reconciling`, reads that failed (or found the base still there
+ * once the conditional retry was spent) are made again by the same bounded
+ * retries; see `NetworkRecovery`.
  */
 export type NetworkPhase =
   "idle" | "scheduled" | "preparing" | "saving" | "reconciling" | "blocked" | "failed" | "disposed";
@@ -259,6 +320,32 @@ export type NetworkState = {
   retrying: boolean;
   /** What the latest read for the current or last submission showed; cleared when a new one is sent. */
   reconciliation: Reconciliation | null;
+  /** What the connectivity said last (A2.3B.2C): advice, never proof that the server is reached. */
+  online: boolean;
+  /** A save fell due while offline: sent once the connectivity says online. */
+  waiting: boolean;
+  /** The automatic retries of the current failure (A2.3B.2C), or null when there is none. */
+  recovery: NetworkRecovery | null;
+};
+
+/**
+ * One episode of automatic retries (A2.3B.2C): for a held save (`read`: only
+ * reads, never a write; the save's one conditional retry is governed apart and
+ * never restored), or for a definite `failed` save (`save`). It ends when the
+ * save is settled, released, or blocked.
+ * - `scheduled`: the next attempt waits `delayMs`.
+ * - `offline`: the next attempt waits for the connectivity to say online.
+ * - `running`: an attempt is in flight.
+ * - `exhausted`: `retries` reached `limit`; nothing more by itself, until
+ *   `recover()` starts a new bounded cycle. The claim and the draft are kept.
+ * `retries` counts the automatic attempts made, never the first one.
+ */
+export type NetworkRecovery = {
+  kind: "read" | "save";
+  retries: number;
+  limit: number;
+  status: "scheduled" | "offline" | "running" | "exhausted";
+  delayMs: number | null;
 };
 
 /**
@@ -268,10 +355,15 @@ export type NetworkState = {
  * - `waiting`: a save is scheduled.
  * - `unresolved`: a request's outcome is not known; nothing is sent until it is.
  * - `blocked`: the server will not take a save for now (see `block`).
- * - `failed`: a save failed and wrote nothing; waiting for `retry()`.
+ * - `failed`: a save failed and wrote nothing; tried again by itself (`recovery`).
+ * - `stalled` (A2.3B.2C): the automatic retries are spent, for a held save or
+ *   a failed one; nothing more is tried until `recover()`. The claim and the
+ *   draft are kept.
+ * - `offline` (A2.3B.2C): a save is waiting for the connectivity to say online.
  * - `disposed`: the coordinator sends nothing more.
  * - otherwise the local status (`unprotected`, `attention`, `unchanged`,
  *   `pending`, `local`), which never claims the server has anything.
+ * A3 reads `online`, `recovery`, `reconciliation`, and `block` for detail.
  */
 export type ServerSaveStatus =
   | "saved"
@@ -280,17 +372,26 @@ export type ServerSaveStatus =
   | "unresolved"
   | "blocked"
   | "failed"
+  | "stalled"
+  | "offline"
   | "disposed"
   | Exclude<AutosaveStatus, "saved">;
 
 export function serverSaveStatus(local: AutosaveState, network: NetworkState): ServerSaveStatus {
   if (network.phase === "disposed") return "disposed";
+  // A refused block with a newer snapshot due is waiting to be sent, not stopped (A2.3B.2C).
+  const resuming =
+    network.phase === "blocked" && network.block?.reason === "refused" && network.waiting;
+  if (network.phase === "blocked" && !resuming) return "blocked";
+  if (network.recovery?.status === "exhausted") return "stalled";
   if (network.phase === "reconciling") return "unresolved";
-  if (network.phase === "blocked") return "blocked";
   if (network.phase === "failed") return "failed";
   const status = autosaveStatus(local);
   if (status === "saved" || status === "unprotected" || status === "attention") return status;
   if (status === "unchanged") return status;
+  if (!network.online && network.phase !== "saving" && network.phase !== "preparing") {
+    return "offline";
+  }
   if (network.phase === "preparing" || network.phase === "saving") return "saving";
   if (network.phase === "scheduled") return "waiting";
   return status;

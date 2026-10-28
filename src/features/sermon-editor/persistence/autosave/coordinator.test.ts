@@ -9,10 +9,19 @@ import type { JsonValue } from "../json";
 import { documentLimits } from "../model";
 import { DraftStorageError } from "../recovery/store";
 import type { DocumentReadOutcome, DocumentSaveOutcome, DocumentSaveRequest } from "../saving";
+import type { Connectivity } from "./connectivity";
 import { createAutosaveController, type DraftStorage } from "./controller";
 import { createSaveCoordinator, SaveCoordinatorError } from "./coordinator";
 import { editorSource } from "./editor-adapter";
-import { jsonEqual, serverSaveStatus, type DocumentSource } from "./model";
+import {
+  jsonEqual,
+  networkRecoveryTiming,
+  recoveryTiming,
+  retryDelay,
+  serverSaveStatus,
+  type DocumentSource,
+  type NetworkRecoveryTiming,
+} from "./model";
 import { actionTransport, type DocumentActions, type DocumentTransport } from "./transport";
 
 /*
@@ -170,9 +179,19 @@ function fakeTransport(log: string[], mode: "auto" | "manual") {
     holdReads() {
       holdReads = true;
     },
+    /** Reads answer `failed` at once again (those already waiting stay waiting). */
+    failReads() {
+      holdReads = false;
+    },
     /** Answers the oldest read waiting. */
     answerRead(outcome: DocumentReadOutcome) {
       const next = readsWaiting.shift();
+      if (!next) throw new Error("no read waiting");
+      next(outcome);
+    },
+    /** Answers the newest read waiting (older ones may have timed out, A2.3B.2C). */
+    answerLatestRead(outcome: DocumentReadOutcome) {
+      const next = readsWaiting.pop();
       if (!next) throw new Error("no read waiting");
       next(outcome);
     },
@@ -201,6 +220,8 @@ type SetupOptions = {
   revision?: number;
   mode?: "auto" | "manual";
   transport?: DocumentTransport;
+  recovery?: Partial<NetworkRecoveryTiming>;
+  connectivity?: Connectivity;
 };
 
 function setup({
@@ -208,6 +229,8 @@ function setup({
   revision = 8,
   mode = "auto",
   transport,
+  recovery,
+  connectivity,
 }: SetupOptions = {}) {
   const log: string[] = [];
   const editor = fakeSource(initial);
@@ -224,6 +247,8 @@ function setup({
     controller,
     transport: transport ?? net.transport,
     base: { content: canonical(initial), revision },
+    recovery,
+    connectivity,
   });
   const status = () => serverSaveStatus(controller.getState(), coordinator.getState());
   return { log, editor, stub, controller, net, coordinator, status };
@@ -630,7 +655,11 @@ describe("the save boundary", () => {
 
 describe("one request at a time", () => {
   it("never has two requests in flight, keeps edits for the next, and never sends a sequence twice", async () => {
-    const { editor, net, controller, coordinator } = setup({ mode: "manual" });
+    // The request is held for 30 s: past the default save timeout (A2.3B.2C, tested apart).
+    const { editor, net, controller, coordinator } = setup({
+      mode: "manual",
+      recovery: { saveTimeoutMs: 60_000 },
+    });
     editor.edit(doc("First"));
     await vi.advanceTimersByTimeAsync(1500);
     expect(coordinator.getState()).toMatchObject({
@@ -871,10 +900,12 @@ describe("outcomes", () => {
     });
     await keepEditing(parts);
     expect(parts.net.requests).toHaveLength(1);
-    // Read once (B.2B.1); the stand-in's read fails, so it stays held.
-    expect(parts.net.reads).toBe(1);
+    // Read once (B.2B.1), then five more times by itself (A2.3B.2C); the stand-in's
+    // read fails each time, so it stays held, and the retries are spent: never a write.
+    expect(parts.net.reads).toBe(1 + 5);
     expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "failed" });
-    expect(parts.status()).toBe("unresolved");
+    expect(parts.coordinator.getState().recovery).toMatchObject({ status: "exhausted" });
+    expect(parts.status()).toBe("stalled");
     await parts.controller.dispose();
   });
 
@@ -916,10 +947,12 @@ describe("outcomes", () => {
       await keepEditing(parts);
       await parts.coordinator.retry();
       expect(parts.net.requests).toHaveLength(1);
-      expect(parts.net.reads).toBe(1);
+      // The first read and five automatic ones (A2.3B.2C), all failed: reads, never a write.
+      expect(parts.net.reads).toBe(1 + 5);
       // The newer words are still kept on the device.
       expect(parts.controller.getState().localSequence).toBeGreaterThan(1);
-      expect(parts.status()).toBe("unresolved");
+      expect(parts.controller.getState().saving).toBe(1);
+      expect(parts.status()).toBe("stalled");
       await parts.controller.dispose();
     }
   });
@@ -1024,11 +1057,14 @@ describe("outcomes", () => {
     expect(parts.controller.getState().confirmedSequence).toBe(0);
     await keepEditing(parts);
     expect(parts.net.requests).toHaveLength(1);
-    expect(parts.status()).toBe("unresolved");
+    // Its reads failed and were retried until spent (A2.3B.2C): still held, never written.
+    expect(parts.coordinator.getState().submission).toMatchObject({ sequence: 1 });
+    expect(parts.controller.getState().confirmedSequence).toBe(0);
+    expect(parts.status()).toBe("stalled");
     await parts.controller.dispose();
   });
 
-  it("after a failure that wrote nothing, sends again only on retry()", async () => {
+  it("after a failure that wrote nothing, tries again by itself after 1 s, or at once on retry()", async () => {
     const parts = await inFlight();
     parts.net.answer((r) => ({ kind: "failed", sequence: r.sequence, uncertain: false }));
     await settle();
@@ -1036,20 +1072,39 @@ describe("outcomes", () => {
       phase: "failed",
       block: null,
       submission: null,
+      recovery: { kind: "save", retries: 0, status: "scheduled", delayMs: 1000 },
     });
     expect(parts.controller.getState().saving).toBeNull();
     expect(parts.status()).toBe("failed");
     parts.editor.edit(doc("Newer"));
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(999);
     expect(parts.net.requests).toHaveLength(1);
-    const retried = parts.coordinator.retry();
-    await settle();
+    await vi.advanceTimersByTimeAsync(1);
+    // The automatic attempt (A2.3B.2C) claims the newest snapshot, against the same revision.
     expect(parts.net.requests).toHaveLength(2);
     expect(parts.net.requests[1]).toMatchObject({ expectedRevision: 8, content: doc("Newer") });
+    expect(parts.coordinator.getState().recovery).toMatchObject({ retries: 1, status: "running" });
+    parts.net.answer((r) => ({ kind: "failed", sequence: r.sequence, uncertain: false }));
+    await settle();
+    expect(parts.coordinator.getState().recovery).toMatchObject({
+      retries: 1,
+      status: "scheduled",
+      delayMs: 2000,
+    });
+    // retry() goes now, and gives back no attempts.
+    const retried = parts.coordinator.retry();
+    await settle();
+    expect(parts.net.requests).toHaveLength(3);
     parts.net.answer();
     await retried;
-    expect(parts.coordinator.getState()).toMatchObject({ phase: "idle", revision: 9 });
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "idle",
+      revision: 9,
+      recovery: null,
+    });
     expect(parts.status()).toBe("saved");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(parts.net.requests).toHaveLength(3);
     await parts.controller.dispose();
   });
 });
@@ -1147,8 +1202,11 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await settle();
   }
 
-  /** Edits and lets time pass: nothing is sent and nothing more is read. */
-  async function nothingMore(parts: Parts, reads = 1, requests = 1) {
+  /**
+   * Edits and lets time pass: nothing is sent, and nothing more is read
+   * (`reads`; null where A2.3B.2C's automatic reads follow, which never write).
+   */
+  async function nothingMore(parts: Parts, reads: number | null = 1, requests = 1) {
     for (let i = 0; i < 5; i += 1) {
       parts.editor.edit(doc(`Later ${i}`));
       await vi.advanceTimersByTimeAsync(2000);
@@ -1158,7 +1216,7 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.coordinator.retry();
     await parts.coordinator.retryUnchanged();
     expect(parts.net.requests).toHaveLength(requests);
-    expect(parts.net.reads).toBe(reads);
+    if (reads !== null) expect(parts.net.reads).toBe(reads);
   }
 
   /** Still unknown: the claim, the submission, and revision 8 stay; nothing confirmed. */
@@ -1316,7 +1374,9 @@ describe("reconciliation (A2.3B.2B.1)", () => {
       retrying: false,
       submission: { attempts: 2 },
     });
-    await nothingMore(parts, 2, 2);
+    // The retry is spent: A2.3B.2C reads again by itself (held reads time out), never a third save.
+    await nothingMore(parts, null, 2);
+    expect(parts.net.reads).toBeGreaterThan(2);
     await parts.controller.dispose();
   });
 
@@ -1466,29 +1526,42 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.controller.dispose();
   });
 
-  it("I: a failed read stays held, reads nothing more by itself, and reads again only when asked", async () => {
+  it("I: a failed read stays held and is read again by itself after 1 s (A2.3B.2C), never written", async () => {
     const parts = await unanswered();
     await read(parts, { kind: "failed" });
     expectHeld(parts, { result: "failed", revision: null });
-    await nothingMore(parts);
-    const again = parts.coordinator.reconcile();
-    await settle();
+    expect(parts.coordinator.getState().recovery).toMatchObject({
+      kind: "read",
+      retries: 0,
+      limit: 5,
+      status: "scheduled",
+      delayMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(parts.net.reads).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
     expect(parts.net.reads).toBe(2);
-    expect(parts.coordinator.getState().reading).toBe(true);
+    expect(parts.coordinator.getState()).toMatchObject({
+      reading: true,
+      recovery: { retries: 1, status: "running" },
+    });
+    expect(parts.net.requests).toHaveLength(1);
     parts.net.answerRead(found(opened(), 8));
     await settle();
-    // Unchanged: the one retry, then its read back, all in the call asked for.
+    // Unchanged: the one conditional retry, then its read back, as B.2B.2 does.
     expect(parts.net.requests).toHaveLength(2);
     parts.net.reject(new TypeError("offline"));
     await settle();
     parts.net.answerRead({ kind: "failed" });
-    const state = await again;
-    expect(state).toMatchObject({
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
       phase: "reconciling",
       reading: false,
       retrying: false,
       reconciliation: { result: "failed" },
       submission: { attempts: 2 },
+      // The same episode: its count goes on, and the next read waits 2 s.
+      recovery: { retries: 1, status: "scheduled", delayMs: 2000 },
     });
     expect(parts.net.reads).toBe(3);
     await parts.controller.dispose();
@@ -1804,7 +1877,9 @@ describe("reconciliation (A2.3B.2B.1)", () => {
     await parts.coordinator.reconcile();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(actions.save).toHaveBeenCalledTimes(2);
-    expect(actions.read).toHaveBeenCalledTimes(3);
+    // Two, the one asked for, and five automatic ones (A2.3B.2C, the retry spent): reads only.
+    expect(actions.read).toHaveBeenCalledTimes(2 + 1 + 5);
+    expect(parts.coordinator.getState().recovery).toMatchObject({ status: "exhausted" });
     expect(parts.controller.getState().saving).toBe(1);
     await parts.controller.dispose();
   });
@@ -2120,13 +2195,18 @@ describe("conditional retry (A2.3B.2B.2)", () => {
       await settle();
       expectStillHeld(parts);
       expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "unchanged" });
+      // The retry spent and the base still there: read again after 1 s (A2.3B.2C), never resent.
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "scheduled",
+        delayMs: 1000,
+      });
       await noThirdRequest(parts);
-      expect(parts.net.reads).toBe(2);
+      expect(parts.net.reads).toBeGreaterThan(2);
       await parts.controller.dispose();
     },
   );
 
-  it("the read back unavailable: held, and asked again only by reconcile(), never resent", async () => {
+  it("the read back unavailable: held, read again by itself or when asked, never resent", async () => {
     const parts = await retrying();
     parts.net.reject(new TypeError("offline"));
     await settle();
@@ -2136,9 +2216,10 @@ describe("conditional retry (A2.3B.2B.2)", () => {
     expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "failed" });
     await noThirdRequest(parts);
     // An explicit read that finds the base again still sends nothing: the retry is spent.
+    // (The automatic reads left waiting by the held transport timed out; this one is the newest.)
     const asked = parts.coordinator.reconcile();
     await settle();
-    parts.net.answerRead(found(opened(), 8));
+    parts.net.answerLatestRead(found(opened(), 8));
     await asked;
     expectStillHeld(parts);
     expect(parts.net.requests).toHaveLength(2);
@@ -2626,5 +2707,733 @@ describe("refusals: recorded, and resumed from (A2.3B.2B.3)", () => {
     });
     expect(parts.coordinator.getState().phase).toBe("blocked");
     await parts.controller.dispose();
+  });
+});
+
+describe("network failures (A2.3B.2C)", () => {
+  const sent = () => canonical(doc("Sent"));
+  const opened = () => canonical(doc("Opened"));
+  const found = (content: JSONContent, revision: number): DocumentReadOutcome => ({
+    kind: "found",
+    content: JSON.parse(JSON.stringify(content)) as JSONContent,
+    revision,
+  });
+  const delays = [1000, 2000, 4000, 8000, 16_000];
+
+  /** Connectivity the test sets; it tells every listener, even of the same news. */
+  function fakeConnectivity(initial = true) {
+    let online = initial;
+    const listeners = new Set<(online: boolean) => void>();
+    const connectivity: Connectivity = {
+      online: () => online,
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    };
+    return {
+      connectivity,
+      set(next: boolean) {
+        online = next;
+        for (const listener of [...listeners]) listener(next);
+      },
+      get listeners() {
+        return listeners.size;
+      },
+    };
+  }
+
+  /** A save sent against 8 that got no answer, on the network `link` says. */
+  async function unanswered(options: { holdReads?: boolean; online?: boolean } = {}) {
+    const link = fakeConnectivity(options.online ?? true);
+    const parts = setup({ mode: "manual", connectivity: link.connectivity });
+    if (options.holdReads) parts.net.holdReads();
+    parts.editor.edit(doc("Sent"));
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(parts.net.requests).toHaveLength(1);
+    parts.net.reject(new TypeError("Failed to fetch"));
+    await settle();
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      submission: { sequence: 1 },
+    });
+    return { ...parts, link };
+  }
+  type Parts = Awaited<ReturnType<typeof unanswered>>;
+
+  /** Held, never written: the claim, the submission, revision 8. */
+  function expectHeld(parts: Parts, requests = 1) {
+    expect(parts.coordinator.getState()).toMatchObject({
+      phase: "reconciling",
+      revision: 8,
+      confirmedSequence: 0,
+      submission: { sequence: 1, expectedRevision: 8 },
+    });
+    expect(parts.controller.getState()).toMatchObject({ saving: 1, confirmedSequence: 0 });
+    expect(parts.net.requests).toHaveLength(requests);
+  }
+
+  describe("the timing", () => {
+    it("defaults to 15 s, 10 s, and 1, 2, 4, 8, 16 s; a configured delay never passes 30 s", () => {
+      const timing = recoveryTiming();
+      expect(timing).toEqual(networkRecoveryTiming);
+      expect(timing).toMatchObject({ saveTimeoutMs: 15_000, readTimeoutMs: 10_000, maxRetries: 5 });
+      expect([0, 1, 2, 3, 4].map((n) => retryDelay(timing, n))).toEqual(delays);
+      expect(retryDelay(timing, 9)).toBe(30_000);
+      expect(recoveryTiming({ retryMaxDelayMs: 120_000 }).retryMaxDelayMs).toBe(30_000);
+      expect(retryDelay(recoveryTiming({ retryBaseMs: 60_000 }), 0)).toBe(30_000);
+      for (const bad of [Number.NaN, -1, 0, Number.POSITIVE_INFINITY]) {
+        expect(
+          recoveryTiming({ saveTimeoutMs: bad, readTimeoutMs: bad, retryBaseMs: bad }),
+        ).toEqual(networkRecoveryTiming);
+      }
+      for (const bad of [-1, 1.5, Number.NaN]) {
+        expect(recoveryTiming({ maxRetries: bad }).maxRetries).toBe(5);
+      }
+      expect(recoveryTiming({ maxRetries: 0 }).maxRetries).toBe(0);
+    });
+  });
+
+  describe("timeouts", () => {
+    it("a save not answered in 15 s is no answer: held and read back; its late confirmation is dropped", async () => {
+      const parts = setup({ mode: "manual" });
+      parts.net.holdReads();
+      parts.editor.edit(doc("Sent"));
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(parts.coordinator.getState().phase).toBe("saving");
+      expect(parts.net.reads).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "reconciling",
+        block: { reason: "uncertain", origin: "server" },
+        outcome: { kind: "failed", sequence: 1, uncertain: true },
+        reading: true,
+      });
+      expect(parts.net.reads).toBe(1);
+      // The server committed after the browser stopped waiting; its answer arrives late.
+      parts.net.answer();
+      await settle();
+      expect(parts.controller.getState()).toMatchObject({ saving: 1, confirmedSequence: 0 });
+      expect(parts.coordinator.getState().outcome).toMatchObject({ kind: "failed" });
+      // The read is what settles it, at exactly R0 + 1 with what was sent.
+      parts.net.answerRead(found(sent(), 9));
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "idle",
+        revision: 9,
+        reconciliation: { result: "saved" },
+        recovery: null,
+      });
+      expect(parts.controller.getState()).toMatchObject({ saving: null, confirmedSequence: 1 });
+      expect(parts.net.requests).toHaveLength(1);
+      await parts.controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a save that times out before the server commits: the base still there gets the one conditional retry", async () => {
+      const parts = setup({ mode: "manual" });
+      parts.net.holdReads();
+      parts.editor.edit(doc("Sent"));
+      await vi.advanceTimersByTimeAsync(1500 + 15_000);
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expect(parts.net.requests).toHaveLength(2);
+      expect(parts.net.requests[1]).toEqual(parts.net.requests[0]);
+      expect(parts.coordinator.getState().submission).toMatchObject({ attempts: 2 });
+      await parts.controller.dispose();
+    });
+
+    it("the conditional retry not answered in 15 s is read back, and never sent a third time", async () => {
+      const parts = setup({ mode: "manual" });
+      parts.net.holdReads();
+      parts.editor.edit(doc("Sent"));
+      await vi.advanceTimersByTimeAsync(1500);
+      parts.net.reject(new TypeError("Failed to fetch"));
+      await settle();
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expect(parts.coordinator.getState().retrying).toBe(true);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(parts.coordinator.getState()).toMatchObject({ retrying: false, reading: true });
+      expect(parts.net.reads).toBe(2);
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      // Every attempt the budget allows is a read; the save is never sent again.
+      for (let i = 0; i < 5; i += 1) {
+        await vi.advanceTimersByTimeAsync(30_000);
+        if (parts.net.readsWaiting) parts.net.answerLatestRead({ kind: "failed" });
+        await settle();
+      }
+      expect(parts.coordinator.getState().recovery).toMatchObject({ status: "exhausted" });
+      expect(parts.net.requests).toHaveLength(2);
+      // The retry's answer comes in late (it committed): it is not taken as evidence.
+      expect(parts.net.waiting).toBe(1);
+      parts.net.answer();
+      await settle();
+      expect(parts.controller.getState()).toMatchObject({ saving: 1, confirmedSequence: 0 });
+      await parts.controller.dispose();
+    });
+
+    it("a read not answered in 10 s is a failed read; its late answer is dropped", async () => {
+      const parts = await unanswered({ holdReads: true });
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(parts.coordinator.getState().reading).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(parts.coordinator.getState()).toMatchObject({
+        reading: false,
+        reconciliation: { result: "failed" },
+        recovery: { status: "scheduled", retries: 0, delayMs: 1000 },
+      });
+      // The late answer shows the base; taken, it would send the conditional retry. It is dropped.
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expect(parts.coordinator.getState().reconciliation).toMatchObject({ result: "failed" });
+      expectHeld(parts);
+      await parts.controller.dispose();
+    });
+
+    it("once disposed nothing times out: a confirmation 20 s late still reaches the same controller", async () => {
+      const { editor, net, controller, coordinator, log } = setup({ mode: "manual" });
+      editor.edit(doc("Late"));
+      await vi.advanceTimersByTimeAsync(1500);
+      coordinator.dispose();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(controller.getState().saving).toBe(1);
+      net.answer();
+      await settle();
+      expect(controller.getState()).toMatchObject({ saving: null, confirmedSequence: 1 });
+      expect(log).toContain("clear:1");
+      expect(net.reads).toBe(0);
+      await controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe("bounded retries", () => {
+    it("reads again after 1, 2, 4, 8, 16 s, then stops (exhausted), holding the claim", async () => {
+      const parts = await unanswered();
+      const seen: string[] = [];
+      parts.coordinator.subscribe((state) => {
+        if (state.recovery) seen.push(`${state.recovery.status}:${state.recovery.retries}`);
+      });
+      expect(parts.net.reads).toBe(1);
+      for (const [n, delay] of delays.entries()) {
+        expect(parts.coordinator.getState().recovery).toMatchObject({
+          kind: "read",
+          retries: n,
+          status: "scheduled",
+          delayMs: delay,
+        });
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(parts.net.reads).toBe(1 + n);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(parts.net.reads).toBe(2 + n);
+      }
+      expect(parts.coordinator.getState().recovery).toEqual({
+        kind: "read",
+        retries: 5,
+        limit: 5,
+        status: "exhausted",
+        delayMs: null,
+      });
+      expect(parts.status()).toBe("stalled");
+      expectHeld(parts);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(6);
+      expect(seen.at(-1)).toBe("exhausted:5");
+      await parts.controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a read that fails once, then succeeds, settles the save and ends the episode", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parts.net.reads).toBe(2);
+      parts.net.answerRead(found(sent(), 9));
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "idle",
+        revision: 9,
+        recovery: null,
+        reconciliation: { result: "saved" },
+      });
+      expect(parts.status()).toBe("saved");
+      // The next save that is lost has a budget of its own.
+      parts.editor.edit(doc("Next"));
+      await vi.advanceTimersByTimeAsync(1500);
+      parts.net.reject(new TypeError("Failed to fetch"));
+      await settle();
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      expect(parts.coordinator.getState().recovery).toMatchObject({ retries: 0, delayMs: 1000 });
+      await parts.controller.dispose();
+    });
+
+    it("with the conditional retry spent and the base still there, reads again and settles a late commit", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      parts.net.reject(new TypeError("Failed to fetch")); // the retry, lost
+      await settle();
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        reconciliation: { result: "unchanged" },
+        submission: { attempts: 2 },
+        recovery: { status: "scheduled", retries: 0, delayMs: 1000 },
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parts.net.reads).toBe(3);
+      // Still the base: read again later, never resent.
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      expect(parts.net.requests).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(parts.net.reads).toBe(4);
+      // One of the two requests committed meanwhile.
+      parts.net.answerRead(found(sent(), 9));
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "idle",
+        revision: 9,
+        recovery: null,
+        reconciliation: { result: "saved" },
+      });
+      expect(parts.net.requests).toHaveLength(2);
+      await parts.controller.dispose();
+    });
+
+    it.each([
+      ["diverged", (): DocumentReadOutcome => found(canonical(doc("Other")), 8)],
+      [
+        "unverifiable",
+        (): DocumentReadOutcome => found({ type: "doc", content: [{ type: "x" }] }, 9),
+      ],
+      ["unreadable at R0", (): DocumentReadOutcome => ({ kind: "unreadable", revision: 8 })],
+    ])("a read that answered (%s) is not retried by itself", async (_name, outcome) => {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead(outcome());
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({ phase: "reconciling", recovery: null });
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(1);
+      expectHeld(parts);
+      expect(parts.status()).toBe("unresolved");
+      await parts.controller.dispose();
+    });
+
+    it("neither reconcile() nor a listener multiplies the budget; reconcile() takes the timer's place", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      const asked: Promise<unknown>[] = [];
+      parts.coordinator.subscribe((state) => {
+        if (state.reading) asked.push(parts.coordinator.reconcile(), parts.coordinator.recover());
+      });
+      const first = parts.coordinator.reconcile();
+      const second = parts.coordinator.reconcile();
+      expect(second).toBe(first);
+      await settle();
+      expect(parts.net.reads).toBe(2);
+      expect(asked.length).toBeGreaterThan(0);
+      expect(asked.every((promise) => promise === first)).toBe(true);
+      // Asked for, so not counted; the timer it replaced is gone.
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        retries: 0,
+        status: "running",
+      });
+      parts.net.answerRead({ kind: "failed" });
+      await first;
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        retries: 0,
+        status: "scheduled",
+        delayMs: 1000,
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parts.net.reads).toBe(3);
+      expect(parts.coordinator.getState().recovery).toMatchObject({ retries: 1 });
+      await parts.controller.dispose();
+    });
+  });
+
+  describe("connectivity", () => {
+    it("offline before a save is due: waits, keeps every snapshot on the device, and sends once online, once", async () => {
+      const link = fakeConnectivity(true);
+      const parts = setup({ mode: "auto", connectivity: link.connectivity });
+      link.set(false);
+      parts.editor.edit(doc("Offline 1"));
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(parts.net.requests).toHaveLength(0);
+      expect(parts.coordinator.getState()).toMatchObject({ online: false, waiting: true });
+      expect(parts.status()).toBe("offline");
+      for (let i = 2; i <= 5; i += 1) {
+        parts.editor.edit(doc(`Offline ${i}`));
+        await vi.advanceTimersByTimeAsync(3000);
+      }
+      await parts.coordinator.saveNow();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(parts.net.requests).toHaveLength(0);
+      expect(parts.controller.getState()).toMatchObject({ localSequence: 5, sequence: 5 });
+      expect(parts.status()).toBe("offline");
+      link.set(true);
+      link.set(true);
+      link.set(true);
+      await settle();
+      expect(parts.net.requests).toHaveLength(1);
+      expect(parts.net.requests[0]).toMatchObject({ sequence: 5, content: doc("Offline 5") });
+      expect(parts.coordinator.getState()).toMatchObject({ waiting: false, online: true });
+      expect(parts.status()).toBe("saved");
+      link.set(false);
+      link.set(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(parts.net.requests).toHaveLength(1);
+      await parts.controller.dispose();
+    });
+
+    it("offline during a save: the request goes on; the read of a lost answer waits for online, uncounted", async () => {
+      const link = fakeConnectivity(true);
+      const parts = setup({ mode: "manual", connectivity: link.connectivity });
+      parts.editor.edit(doc("Sent"));
+      await vi.advanceTimersByTimeAsync(1500);
+      link.set(false);
+      expect(parts.coordinator.getState().phase).toBe("saving");
+      parts.net.reject(new TypeError("Failed to fetch"));
+      await settle();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "reconciling",
+        recovery: { status: "offline", retries: 0 },
+      });
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(0);
+      expect(parts.controller.getState().saving).toBe(1);
+      link.set(true);
+      await settle();
+      expect(parts.net.reads).toBe(1);
+      // The fake read failed: the first automatic retry follows, after 1 s.
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        retries: 0,
+        status: "scheduled",
+        delayMs: 1000,
+      });
+      await parts.controller.dispose();
+    });
+
+    it("offline during a read: the next read waits; online makes one at once, counted; repeated news makes none", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.link.set(false);
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "offline",
+        retries: 0,
+      });
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(1);
+      parts.link.set(true);
+      parts.link.set(true);
+      await settle();
+      expect(parts.net.reads).toBe(2);
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "running",
+        retries: 1,
+      });
+      // Offline and online again while that read is in flight: nothing more.
+      parts.link.set(false);
+      parts.link.set(true);
+      await settle();
+      expect(parts.net.reads).toBe(2);
+      expectHeld(parts);
+      await parts.controller.dispose();
+    });
+
+    it("online news while already online changes nothing: the retry keeps its delay", async () => {
+      const parts = await unanswered();
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "scheduled",
+        delayMs: 1000,
+      });
+      for (let i = 0; i < 10; i += 1) parts.link.set(true);
+      await settle();
+      expect(parts.net.reads).toBe(1);
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        retries: 0,
+        status: "scheduled",
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parts.net.reads).toBe(2);
+      await parts.controller.dispose();
+    });
+
+    it("online again with a retry pending: one attempt at once in place of the timer", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      expect(parts.coordinator.getState().recovery).toMatchObject({ status: "scheduled" });
+      parts.link.set(false);
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "offline",
+        delayMs: null,
+      });
+      parts.link.set(true);
+      await settle();
+      expect(parts.net.reads).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(parts.net.reads).toBe(2);
+      await parts.controller.dispose();
+    });
+
+    it("a browser that says online but reaches nothing: the same five attempts, then online changes nothing", async () => {
+      const parts = await unanswered();
+      for (let i = 0; i < 12; i += 1) {
+        parts.link.set(false);
+        parts.link.set(true);
+        await settle();
+      }
+      expect(parts.net.reads).toBe(6);
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        status: "exhausted",
+        retries: 5,
+      });
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(6);
+      expect(parts.status()).toBe("stalled");
+      expectHeld(parts);
+      await parts.controller.dispose();
+    });
+
+    it("a connectivity that throws on subscribe: the error is the caller's, and nothing is left behind", async () => {
+      const log: string[] = [];
+      const editor = fakeSource(doc("Opened"));
+      const stub = stubStorage(log);
+      const controller = createAutosaveController({
+        owner,
+        outlineId,
+        revision: 8,
+        source: editor.source,
+        storage: stub.storage,
+      });
+      const net = fakeTransport(log, "auto");
+      const failure = new Error("no network API");
+      const broken: Connectivity = {
+        online: () => true,
+        subscribe: () => {
+          throw failure;
+        },
+      };
+      const make = (connectivity?: Connectivity) =>
+        createSaveCoordinator({
+          controller,
+          transport: net.transport,
+          base: { content: canonical(doc("Opened")), revision: 8 },
+          connectivity,
+        });
+      expect(() => make(broken)).toThrow(failure);
+      expect(vi.getTimerCount()).toBe(0);
+      // A change listener left behind would arm its own save: none is ever sent.
+      editor.edit(doc("Typed"));
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(net.requests).toHaveLength(0);
+      expect(net.reads).toBe(0);
+      expect(controller.getState()).toMatchObject({ saving: null, localSequence: 1 });
+      expect(vi.getTimerCount()).toBe(0);
+      // The same controller still takes a working coordinator, which alone sends, once.
+      const link = fakeConnectivity(true);
+      const coordinator = make(link.connectivity);
+      expect(link.listeners).toBe(1);
+      editor.edit(doc("Typed again"));
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(net.requests).toHaveLength(1);
+      expect(coordinator.getState()).toMatchObject({ phase: "idle", revision: 9 });
+      await controller.dispose();
+      expect(link.listeners).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("is unsubscribed on dispose, and news after it changes nothing", async () => {
+      const parts = await unanswered();
+      expect(parts.link.listeners).toBe(1);
+      parts.coordinator.dispose();
+      expect(parts.link.listeners).toBe(0);
+      parts.link.set(false);
+      parts.link.set(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(parts.net.reads).toBe(1);
+      expect(parts.controller.getState().saving).toBe(1);
+      await parts.controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe("manual recovery", () => {
+    /** Exhausted after the conditional retry was spent: 2 requests, 7 reads. */
+    async function exhaustedAfterRetry() {
+      const parts = await unanswered({ holdReads: true });
+      parts.net.answerRead(found(opened(), 8));
+      await settle();
+      parts.net.reject(new TypeError("Failed to fetch"));
+      await settle();
+      parts.net.failReads();
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(parts.coordinator.getState().recovery).toMatchObject({ status: "exhausted" });
+      expect(parts.net.reads).toBe(7);
+      expect(parts.net.requests).toHaveLength(2);
+      return parts;
+    }
+
+    it("recover() after exhaustion reads, never writes, and starts one new bounded cycle", async () => {
+      const parts = await exhaustedAfterRetry();
+      const one = parts.coordinator.recover();
+      const two = parts.coordinator.recover();
+      expect(two).toBe(one);
+      await one;
+      expect(parts.net.reads).toBe(8);
+      expect(parts.net.requests).toHaveLength(2);
+      expect(parts.coordinator.getState().recovery).toMatchObject({
+        retries: 0,
+        status: "scheduled",
+        delayMs: 1000,
+      });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(parts.net.reads).toBe(13);
+      expect(parts.coordinator.getState().recovery).toMatchObject({ status: "exhausted" });
+      expect(parts.coordinator.getState().submission).toMatchObject({ attempts: 2 });
+      expectHeld(parts, 2);
+      await parts.controller.dispose();
+    });
+
+    it("recover() that finds the base still there with the retry spent sends nothing", async () => {
+      const parts = await exhaustedAfterRetry();
+      parts.net.holdReads();
+      const asked = parts.coordinator.recover();
+      await settle();
+      parts.net.answerLatestRead(found(opened(), 8));
+      await asked;
+      expect(parts.net.requests).toHaveLength(2);
+      expect(parts.coordinator.getState()).toMatchObject({
+        reconciliation: { result: "unchanged" },
+        recovery: { retries: 0, status: "scheduled" },
+      });
+      await parts.controller.dispose();
+    });
+
+    it("recover() that finds the save written settles it", async () => {
+      const parts = await exhaustedAfterRetry();
+      parts.net.holdReads();
+      const asked = parts.coordinator.recover();
+      await settle();
+      parts.net.answerLatestRead(found(sent(), 9));
+      await asked;
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "idle",
+        revision: 9,
+        recovery: null,
+      });
+      expect(parts.controller.getState()).toMatchObject({ saving: null, confirmedSequence: 1 });
+      expect(parts.status()).toBe("saved");
+      await parts.controller.dispose();
+    });
+
+    it("recover() that finds another writer releases it as a conflict", async () => {
+      const parts = await exhaustedAfterRetry();
+      parts.net.holdReads();
+      const asked = parts.coordinator.recover();
+      await settle();
+      parts.net.answerLatestRead(found(canonical(doc("Elsewhere")), 10));
+      await asked;
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "blocked",
+        block: { reason: "conflict" },
+        recovery: null,
+        submission: null,
+      });
+      expect(parts.status()).toBe("blocked");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(parts.net.requests).toHaveLength(2);
+      await parts.controller.dispose();
+    });
+
+    it("recover() after failed saves are exhausted makes one save and a new cycle", async () => {
+      const parts = setup({ mode: "auto" });
+      const save = parts.net.transport.save as ReturnType<typeof vi.fn>;
+      save.mockImplementation((request: DocumentSaveRequest) =>
+        Promise.resolve({ kind: "failed", sequence: request.sequence, uncertain: false }),
+      );
+      parts.editor.edit(doc("Never through"));
+      await vi.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(save).toHaveBeenCalledTimes(6);
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "failed",
+        recovery: { kind: "save", status: "exhausted", retries: 5 },
+      });
+      expect(parts.status()).toBe("stalled");
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(save).toHaveBeenCalledTimes(6);
+      save.mockImplementation((request: DocumentSaveRequest) =>
+        Promise.resolve(confirmedFor(request)),
+      );
+      await parts.coordinator.recover();
+      expect(parts.coordinator.getState()).toMatchObject({
+        phase: "idle",
+        revision: 9,
+        recovery: null,
+      });
+      expect(parts.status()).toBe("saved");
+      await parts.controller.dispose();
+    });
+
+    it("recover() does nothing while idle or disposed", async () => {
+      const parts = setup();
+      expect(await parts.coordinator.recover()).toMatchObject({ phase: "idle" });
+      parts.coordinator.dispose();
+      expect(await parts.coordinator.recover()).toMatchObject({ phase: "disposed" });
+      expect(parts.net.requests).toHaveLength(0);
+      expect(parts.net.reads).toBe(0);
+      await parts.controller.dispose();
+    });
+  });
+
+  describe("disposal", () => {
+    it("during backoff: no timer is left and nothing more is read", async () => {
+      const parts = await unanswered();
+      expect(parts.coordinator.getState().recovery).toMatchObject({ status: "scheduled" });
+      parts.coordinator.dispose();
+      // Cancelled at once, not left to find itself disposed.
+      expect(vi.getTimerCount()).toBe(0);
+      expect(parts.coordinator.getState().recovery).toBeNull();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(1);
+      expect(parts.controller.getState().saving).toBe(1);
+      await parts.controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("during a read: its late answer is classified, nothing is scheduled, and the claim is kept", async () => {
+      const parts = await unanswered({ holdReads: true });
+      parts.coordinator.dispose();
+      parts.net.answerRead({ kind: "failed" });
+      await settle();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(1);
+      expect(parts.controller.getState().saving).toBe(1);
+      await parts.controller.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("the controller disposed before a scheduled retry: the coordinator goes with it, reading nothing", async () => {
+      const parts = await unanswered();
+      await parts.controller.dispose();
+      expect(parts.coordinator.getState().phase).toBe("disposed");
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(parts.net.reads).toBe(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });

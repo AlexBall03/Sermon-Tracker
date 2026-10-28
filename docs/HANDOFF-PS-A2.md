@@ -1490,7 +1490,7 @@ The read back uses B.2B.1's classification unchanged. If it finds `unchanged` ag
 
 **Why a refusal of the retry is held.** By B.2B.1's rule, only what can never be written is released. The retry's refusal says what the server does now; it does not show the original can never commit (across a deployment, for example). The save stays held with its draft. A3 or B.3 decides what the person is offered.
 
-**Why both attempts cannot be written.** Only the server's `UPDATE … WHERE revision = R0` guarantees it. Nothing in the browser stands in for that. The original's answer always arrives before `reconciling` (that answer is what puts the coordinator there), so only its commit on the server can come late. The integration test runs that against a server that writes only at the revision named.
+**Why both attempts cannot be written.** Only the server's `UPDATE … WHERE revision = R0` guarantees it. Nothing in the browser stands in for that. The original's answer always arrives before `reconciling` (that answer is what puts the coordinator there), so only its commit on the server can come late. *(No longer universally true since A2.3B.2C: a save that times out enters `reconciling` while its request may still be pending, and its answer may arrive later or never. The server's condition is still what keeps both from being written; see A2.3B.2C, "The Server Action queue".)* The integration test runs that against a server that writes only at the revision named.
 
 **Disposal.** No read or retry starts after `dispose()`. A retry already sent may still answer:
 - a late confirmation at R0 + 1 goes to the same controller;
@@ -1652,5 +1652,209 @@ Each runs against a server that writes only at the named revision and asserts th
 - **A3:** show `serverSaveStatus`, with `reconciliation`, `submission.attempts`, `retrying`, and the controller's `refusalRecord` for detail. A `failed` `refusalRecord` means the refusal is not on the device; the words may still be.
 - **A2.3C:** read a draft's refusal through `currentRefusal`. `stale` and `missing` are conflicts for the person; an older `invalid` or `too_large` is history.
 - **B.3:** take over a claim held by a disposed coordinator (a new session through recovery), never by releasing it.
+
+### Ready for owner review
+
+
+## A2.3B.2C: Network failure, timeout, and retry hardening (27 October 2026)
+
+**Status:** built and verified. Not committed, not deployed, not mounted, and no migration. B.3 (page lifecycle) and A3 (mounting) are not started.
+
+**Git:** began on `dev` at `2060390` ("This phase is now done!", the expected HEAD) with a clean tree. Ends there, with the files below changed or new and nothing staged.
+
+### Approved by the owner (binding)
+
+1. **Automatic retries:** five, after 1, 2, 4, 8, then 16 s. A configured delay is capped at 30 s, and the first attempt is not counted.
+2. **Timeouts:** 15 s for a save, 10 s for a read. A timeout proves nothing about the server.
+3. **Online again:** one attempt at once, with repeated news coalesced.
+4. **Exhaustion:** stop and keep the claim and the draft; recovery is manual. For a held save, manual recovery reads and never writes blindly. The one conditional resend stays one.
+5. **Asked this session:** automatic reads also follow a read that found `unchanged` once the conditional retry is spent. A late commit of either request is then settled without the person, and those reads never write. This changes B.2B.2's "only an explicit `reconcile()` reads again" on purpose.
+
+### What was found
+
+- **No server answer is a definite `failed` any longer** (B.2B.1). Backoff therefore matters almost only for reads. The `failed` phase (a transport that promises nothing was written) gets the same bounded schedule, and its retries are saves; no other retry path can write.
+- **A request that never settled** left the coordinator in `saving` (or a read in flight) forever. With the timeout, it ends in the established reconciliation path.
+- **Disposal and timeouts conflict.** Timing out after `dispose()` would have turned a late confirmation (B.2A delivers it to the same controller) into a synthetic `uncertain`, leaving a claim held that the server had confirmed. So `dispose()` cancels the timeouts, and a request sent before it waits for its own answer.
+- **The Server Action queue (found in the final review).** See the section of that name below. Recovery reads through `actionTransport` cannot overtake a save still pending. That limits liveness in production; it is not a known data-integrity defect.
+
+### Operation classification
+
+| Operation | Repeated automatically? | Why |
+| --- | --- | --- |
+| Read (`transport.read`) | yes, within the budget | read only |
+| Save with a definite `failed` (nothing written) | yes, within the budget | the transport says nothing was written; it claims the newest snapshot against the same revision |
+| Save timed out, thrown, malformed, or `failed` from the server (uncertain) | **never** | may have committed: held, `reconciling`, read back |
+| Conditional retry | once per submission (B.2B.2), only after an `unchanged` read | the budget here is never the retry's |
+| `invalid`, `too_large`, `stale`, `missing`, `unauthorized`, conflict, `unverifiable`, `diverged`, `unreadable`, `unsettled` | never | definite or needing a person |
+
+### State machine additions
+
+- **`timed(start, ms, fallback)`**, inside the coordinator:
+  - It wraps the three network calls: the save (15 s), the read (10 s), and the conditional retry (15 s).
+  - A throw, a rejection, or the timeout gives the fallback: `unansweredOutcome` for a save, `{ kind: "failed" }` for a read.
+  - The late value is dropped. The surrounding state machine settles exactly as for no answer.
+  - Its timers are kept in a set that `dispose()` clears.
+  - There is no abort. Server Actions cannot be cancelled, and an abort proves nothing.
+- **Episode** (internal; observable as `NetworkState.recovery`):
+  - **Fields:** `{ kind: "read" | "save", retries, limit, status: scheduled | offline | running | exhausted, delayMs }`.
+  - **Key:** the held `Submission` object (`read`), or a failure object kept across `retry()` while it keeps failing for certain (`save`).
+  - **When it ends:** at any settlement, release, block, local return to idle, or disposal.
+  - **Timers:** one at a time. A callback runs only if its episode is still the current one and the coordinator is not disposed.
+- **Scheduling.** `afterRecoveryWork()` runs when a read, retry, or save has settled and nothing else is in flight. It schedules only from `running`, so it never makes a second timer and never counts twice. When `retries` reaches the limit, the episode is `exhausted`.
+- **Counting:**
+  - Counted: an attempt started by the timer or by coming back online.
+  - Not counted: the first attempt (including a first read deferred while offline), and an explicit `reconcile()` or `retry()`, which cancel a pending timer and take its place.
+  - Nothing gives attempts back except `recover()`, and it does so only after exhaustion.
+- **Connectivity** (`autosave/connectivity.ts`):
+  - `Connectivity = { online(), subscribe(listener) }` is injected and defaults to `alwaysOnline`. There is no `window` or `navigator` in persistence code; A3 wires the browser's signal.
+  - It is advice and never proof, so timeouts and the budget hold either way.
+  - **Offline:**
+    - a save that falls due, or `saveNow()`, waits (`NetworkState.waiting`);
+    - a scheduled attempt waits (`status: "offline"`), with its count kept;
+    - the first read of a lost save waits, uncounted;
+    - nothing in flight is cancelled;
+    - the controller still writes every snapshot to IndexedDB.
+  - **Online again:**
+    - a waiting attempt goes at once, counted;
+    - otherwise a waiting save is sent once;
+    - news that repeats the last, and news while something is in flight, starts nothing.
+  - The listener is removed on dispose.
+- **`recover()`** (new):
+  - While `reconciling`, it is one read through `reconcile()`'s path. The conditional retry follows only if it is unspent, and nothing resets `retried`.
+  - While `failed`, it is one save through `retry()`.
+  - If the episode was `exhausted`, it first sets the count to 0: one new bounded cycle.
+  - It is single flight (a call during a read gets that read's promise), keeps every claim, and does nothing elsewhere or once disposed.
+  - `reconcile()`, `retryUnchanged()`, and `retry()` keep their contracts. `retry()` also cancels a pending automatic attempt.
+- **`NetworkState`** gains `online`, `waiting`, and `recovery`.
+- **`serverSaveStatus`** gains:
+  - `stalled`: retries exhausted and manual action needed; checked after `blocked`, before `unresolved` and `failed`;
+  - `offline`: a save waiting for online; checked after the local `saved`, `unprotected`, `attention`, and `unchanged`;
+  - a `refused` block with a corrected save waiting offline reads `offline`, not `blocked`.
+  - Nothing new ever says saved.
+- **`model.ts`** gains `networkRecoveryTiming`, `recoveryTiming(overrides)` (bad values fall back to the defaults, and the cap is clamped to `maxRetryDelayMs`, 30 s), `retryDelay`, and `NetworkRecovery`.
+
+### Invariants kept
+
+- **Single flight:** one save (`running`), and one read or retry (`inFlight`), as before. Timers, connectivity, `recover()`, and listeners all enter through those two, so no new path overlaps them.
+- **Conditional retry:** at most one per submission (`retried`, by identity). The bounded retries call `reconcile()`'s path, where `retryable()` is false once it is spent. So at most two writes of one submission.
+- **Revisions:** every save still names the revision it was made against. Nothing writes unconditionally.
+- **Claims:** held through timeouts, failed reads, exhaustion, offline, and dispose. They are released only by B.2B's rules.
+- **Local durability:** the controller is untouched. `serverSaveStatus` never says saved from a draft, and offline work reads `offline`, `pending`, or `unprotected`, never `saved`.
+- **Refusals:** an uncertain or timed-out answer is never recorded as a refusal. Exhaustion records nothing.
+- **Disposal:** cancels the save timers, the episode, the timeouts, and the connectivity listener. Late answers follow B.2A and B.2B.
+- **Accounts:** the controller's owner, outline, and session are unchanged; nothing new touches storage.
+- **No logging**, and no content in any new state.
+
+### Changed tests (deliberately)
+
+These B.2A and B.2B tests asserted "reads nothing more by itself", "waits for `retry()`", or a request held open for 30 s:
+- **Unexpected revisions (4), threw or no answer, rejected confirmation:** now 1 + 5 reads, `exhausted`, `stalled`, never a write.
+- **A definite `failed`:** now retried after 1 s, and `retry()` still goes at once.
+- **Case C, the seven non-settling answers to the retry, the read back unavailable, the same server failure:** their write counts are unchanged; their read counts now include the automatic reads.
+- **Test I:** rewritten to the 1 s re-read.
+- **The 30 s in-flight test:** passes a 60 s save timeout.
+
+### Files
+
+- **New:** `persistence/autosave/connectivity.ts`
+- **Changed:**
+  - `autosave/coordinator.ts` (timeouts, episodes, connectivity, `recover()`)
+  - `autosave/model.ts` (timing, `NetworkRecovery`, state, status)
+  - `autosave/transport.ts` (comment only)
+  - tests: `coordinator.test.ts`, `integration.test.ts`
+  - `AGENTS.md`, `ARCHITECTURE.md`, this handoff
+- **No change** to the controller, recovery, `saving.ts`, the server, actions, schema, or migrations.
+
+### Verification
+
+- **Autosave:** `vitest run src/features/sermon-editor/persistence/autosave`, 5 files, 223 passed (222, then the setup-cleanup test from the final corrections; it fails when the old subscription order is restored).
+  - `coordinator.test.ts`: 153, of which 31 are new under "network failures (A2.3B.2C)":
+    - timing defaults and clamping;
+    - timeouts (a commit after a save timeout, a timeout before the commit, the retry timing out, a read timeout with its late answer dropped, a confirmation 20 s after dispose);
+    - bounded retries (exact 1/2/4/8/16 s with exhaustion, fail then succeed, spent-unchanged re-reads settling a late commit, three answered results never retried, `reconcile()` and listener re-entry not multiplying the budget);
+    - connectivity (offline before a due save, during a save, during a read, online while already online, online with a timer, an "online" that reaches nothing, unsubscription);
+    - manual recovery (after exhaustion with a spent retry, `unchanged`, saved, conflict, failed saves, inert elsewhere);
+    - disposal (during backoff, during a read, the controller first).
+  - `integration.test.ts`: 22, of which 9 are new. Each runs on the real store in fake-indexeddb with a server that writes only at R0, and asserts writes, revisions, and drafts:
+    - a commit after a timeout, settled once;
+    - both requests timed out with failing reads, the retry's late commit settled;
+    - exhaustion, then `recover()` finding the original's commit;
+    - offline editing, sending the newest once;
+    - offline during a lost save;
+    - reconnecting during a request;
+    - a draft write failing offline;
+    - invalid content corrected offline;
+    - dispose during backoff, with a new coordinator refused.
+- **Broader:** `vitest run src/features/sermon-editor/persistence src/features/sermon-editor/document src/features/editor-lab/v4`, 23 files, 604 passed.
+- **Mutations** (each reverted from a backup, autosave tests):
+
+| # | Mutation | Tests failed |
+| --- | --- | --- |
+| 1 | budget reset on online | 1 |
+| 2 | no save timeout | 5 |
+| 3 | no read timeout | 10 |
+| 4 | episode kept on dispose | 1 (0 before a test was added) |
+| 5 | `recover()` restoring the conditional retry | 2 |
+| 6 | no coalescing of repeated news | 1 (0 before a test was added) |
+| 7 | no exhaustion | 16 |
+| 8 | every held result re-read | 9 |
+| 9 | timeouts kept after dispose | 2 |
+| 10 | offline sending anyway | 4 |
+| 11 | a lost save's first read not deferred offline | 2 |
+| 12 | explicit `reconcile()` counted | 20 |
+
+- **Tooling:** `tsc --noEmit`, ESLint on `persistence`, and Prettier on `persistence`: clean.
+- **Whole unit suite** (`vitest run`): 178 files, 3,150 tests, 3,147 passed, 3 failed. None is this phase's:
+  - `preferences.test.ts` fails to load (its `@/features/admin/clerk` mock has no `deleteIdentity`; known since B.2B).
+  - Two `bible-reader.test.tsx` tests and one `church-ministry-settings.test.tsx` test timed out under the full run. Both files pass alone (161 tests).
+- **Not run:** a build, end-to-end tests, a real browser, a real database. Nothing is mounted and no server code changed.
+
+### Limitations
+
+- **The browser's connectivity is not wired.** `alwaysOnline` is the default until A3 passes a real signal. Per this repository's rule, `navigator.onLine` is advice; a device wrongly reporting offline holds saves back, with the words kept on the device.
+- **Explicit `reconcile()` is not counted.** A caller that calls it in reaction to every state still reads without pause (B.2B.1's warning stands). `recover()` renews the budget only from `exhausted`, so a `recover()` racing an explicit `reconcile()` begun after exhaustion does not renew it.
+- **A late answer after a timeout is dropped even when it would settle the save.** A later read that reaches the server settles it instead. Through today's Server Action transport, that read may not reach the server until the save itself has finished (next section), so nothing guarantees it happens at once after the timeout.
+- **`failed`-phase backoff** is reachable only through a transport that promises nothing was written. The real transport never says so.
+- **Five automatic attempts take about 31 s plus timeouts.** After that, a held save waits for the person; A3 shows `stalled` and offers `recover()`.
+- **The coordinator's own setup.** If `connectivity.subscribe` throws, the coordinator is not made and the error is the caller's. Connectivity is subscribed first, so nothing is registered when it throws; if a controller subscription throws after it, everything registered is undone.
+
+### The Server Action queue (a liveness limit, found in the final review)
+
+The bundled Next.js documentation says Server Functions are dispatched and awaited one at a time per client (`node_modules/next/dist/docs/01-app/02-guides/server-actions.md`, "Sequential dispatch on the client"; also `01-getting-started/07-mutating-data.md`). `actionTransport` sends both `saveOutlineDocument` and `readOutlineDocument` as Server Actions. So:
+
+1. **A timeout does not stop the server.** A save that times out may still be processed, and may commit.
+2. **Recovery reads queue behind it.** While that save is pending, every recovery read waits in the client's action queue behind it. A read cannot learn the save's fate independently.
+3. **The read timeout can expire in the queue.** The 10 s deadline is measured from the call, so a read can time out before it reaches the server.
+4. **The budget can be spent waiting.** Five automatic reads can each time out in the queue, leaving the save `stalled` although the server may already hold it.
+5. **Timed-out requests still run.** Queued requests are sent when the save finishes, after their promises have timed out. That is at most six reads, plus a conditional retry if one had been sent. Their answers are dropped.
+6. **Safe, not live.** Every claim and draft stays protected: nothing is said to be saved, nothing is released, and the server's `WHERE revision = R0` still allows only one write of R0. This limits liveness, not data integrity.
+7. **B.2B.2's assumption no longer holds universally.** It held that the original's answer always arrives before reconciliation. With B.2C's timeouts, `reconciling` can begin while the original is still pending, and its answer may never be used.
+
+Where a save fails fast (a network error, a thrown action), nothing is left pending and the reads behave as designed. The tests use a transport that does not serialize, so they do not show this queue.
+
+### Approved before A3: a GET Route Handler for recovery reads
+
+The owner approved a dedicated, authenticated GET Route Handler for authoritative recovery reads. It is a **prerequisite to A3** and is **not built in B.2C**: it is built and tested immediately before A3's integration. Its requirements:
+
+- **No queue:** a plain `fetch` GET, never a Server Action, so it bypasses the client's action serialization.
+- **Access:** the same owner-scoped authorization as `readOutlineDocument`: `authorize("active")`, the owner from the session, and `outlineIdSchema`. It never returns or reveals another account's document; another account's outline answers `missing`.
+- **Logic:** reuses the established canonical reading: `documents.getDocument` (owner in its WHERE clause), then `toPlainJson`, ideally by moving `readOutlineDocument`'s body into one shared function both call. No second reader.
+- **Caching:** no response caching anywhere (`Cache-Control: no-store`, a dynamic route, nothing kept by the service worker, which already answers no `/api`).
+- **Read only:** never creates, converts, repairs, or writes.
+- **Semantics:** the same `DocumentReadOutcome` (`found`, `missing`, `unreadable`, `unauthorized`, `failed`), through the same `readOutcome` mapping or an exact equivalent.
+- **Logging:** never logs a document or a database error that may carry one.
+- **Interface:** the coordinator's interface is kept. Only the transport's `read` changes, through `DocumentTransport`.
+- **Proof:** an integration test with a delayed save proves the read runs independently, completing while the save is still pending.
+- **Safeguards:** every revision and reconciliation safeguard is kept: the classification, the conditional retry's limit, claim holding, and the budget.
+
+### For A2.3B.3 and A3
+
+- **Before A3:** build the GET Route Handler above and give `actionTransport`'s `read` (or a new transport) to it.
+- **A3:**
+  - pass a `Connectivity` built from the browser's `online` and `offline` events (advisory);
+  - show `serverSaveStatus` with `recovery` for detail;
+  - offer `recover()` on `stalled`;
+  - never call `recover()` or `reconcile()` from a state listener.
+- **B.3:** `saveNow()` offline marks the save `waiting` and sends nothing. The page lifecycle should treat `offline`, `stalled`, `unresolved`, and `failed` as unsaved work.
 
 ### Ready for owner review

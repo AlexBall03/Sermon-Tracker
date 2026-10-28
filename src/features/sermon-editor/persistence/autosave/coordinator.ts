@@ -3,10 +3,15 @@ import type { JSONContent } from "@tiptap/core";
 import { canonicalDocument } from "../canonical";
 import type { JsonValue } from "../json";
 import { unansweredOutcome, type DocumentReadOutcome, type DocumentSaveOutcome } from "../saving";
+import { alwaysOnline, type Connectivity } from "./connectivity";
 import type { AutosaveController, ClaimedSnapshot } from "./controller";
 import {
   jsonEqual,
+  recoveryTiming,
+  retryDelay,
   serverSaveTiming,
+  type NetworkRecovery,
+  type NetworkRecoveryTiming,
   type NetworkBlockReason,
   type NetworkPhase,
   type NetworkState,
@@ -43,8 +48,7 @@ import type { DocumentTransport } from "./transport";
  *   that cannot be built on, holds the claim and stops every automatic save
  *   (`reconciling`). A definite refusal, conflict, or unauthorized account
  *   stops them too (`blocked`, holding no claim); a failure that wrote
- *   nothing waits for `retry()` (`failed`). There is no automatic retry here
- *   (A2.3B.2C).
+ *   nothing is `failed`, tried again by the bounded retries below.
  * - One coordinator per claim. A controller whose claim is still held (an
  *   earlier coordinator's unresolved save) is refused at creation.
  *
@@ -77,6 +81,27 @@ import type { DocumentTransport } from "./transport";
  * the claim. One retry per submission, spent before it is sent and never
  * given back: at most one save, one read, one retry, and one read back.
  * Reads and the retry share one slot in flight.
+ *
+ * Network failures (A2.3B.2C):
+ * - Timeouts. A save or the conditional retry not answered in 15 s is no
+ *   answer (`uncertain`, read back); a read not answered in 10 s is a failed
+ *   read. The browser only stops waiting: the request may still be written,
+ *   and its late answer is dropped, never taken as evidence (the next read
+ *   is). Once disposed, nothing times out: a late confirmation still reaches
+ *   the same controller.
+ * - Bounded retries. After a read that failed, or one that found the base
+ *   still at R0 once the conditional retry was spent (the owner's decision),
+ *   the document is read again after 1, 2, 4, 8, then 16 s; after a definite
+ *   `failed` save, the save is tried again on the same schedule. One episode
+ *   at a time, tied to the submission held (or to the failure), with one
+ *   timer; five automatic attempts, never counting the first, then
+ *   `exhausted` until `recover()`. Nothing else gives attempts back. These
+ *   reads never write: the conditional retry stays once per submission.
+ * - Connectivity (advice, never proof). Offline, a save that falls due waits
+ *   (`waiting`), the next automatic attempt waits, and nothing in flight is
+ *   cancelled; the controller keeps every snapshot on the device. Online
+ *   again, one attempt is made at once, counted as usual; repeated events and
+ *   events while something is in flight start nothing.
  *
  * It logs nothing.
  */
@@ -115,6 +140,10 @@ export type SaveCoordinatorOptions = {
   /** The authoritative document; its revision must be the controller's. */
   base: AuthoritativeBase;
   timing?: Partial<ServerSaveTiming>;
+  /** Timeouts and automatic retries (A2.3B.2C); `networkRecoveryTiming` by default. */
+  recovery?: Partial<NetworkRecoveryTiming>;
+  /** What the browser says of the network (A2.3B.2C); always online by default. */
+  connectivity?: Connectivity;
 };
 
 export type SaveCoordinator = {
@@ -127,8 +156,24 @@ export type SaveCoordinator = {
    * settled; never rejects.
    */
   saveNow(): Promise<NetworkState>;
-  /** After `failed` only: one more attempt. Does nothing in any other phase. */
+  /**
+   * After `failed` only: one more attempt now (a pending automatic one is
+   * cancelled). Gives back no automatic attempts. Does nothing in any other
+   * phase.
+   */
   retry(): Promise<NetworkState>;
+  /**
+   * The person's way back (A2.3B.2C), for when automatic attempts are spent
+   * (`recovery.status === "exhausted"`) or not to be waited for. While
+   * `reconciling`: one read, exactly as `reconcile()` (never a write of its
+   * own; the conditional retry follows only if it is not spent, and a spent
+   * one is never given back). While `failed`: one save, as `retry()`. If the
+   * automatic attempts were exhausted, a new bounded cycle follows it. A call
+   * while a read or retry is in flight gets its promise. Anywhere else, or
+   * once disposed, it does nothing. Keeps every claim. Never rejects. Never
+   * call it from a state listener as a reaction to state.
+   */
+  recover(): Promise<NetworkState>;
   /**
    * While `reconciling` only: reads the document once and settles the save
    * if the read shows what became of it (A2.3B.2B.1). Never writes. A call
@@ -192,9 +237,26 @@ type Settled = Exclude<NetworkPhase, "scheduled" | "disposed">;
 
 type Refusal = Extract<DocumentSaveOutcome, { kind: "refused" }>;
 
+/**
+ * One episode of automatic retries (A2.3B.2C). `key` is what it is for: the
+ * held `Submission` (`read`), or the failure (`save`). `free`: the next
+ * attempt is the first one, deferred while offline, and is not counted.
+ */
+type Episode = {
+  kind: "read" | "save";
+  key: object;
+  retries: number;
+  status: NetworkRecovery["status"];
+  delayMs: number | null;
+  timer: ReturnType<typeof setTimeout> | null;
+  free: boolean;
+};
+
 export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoordinator {
   const { controller, transport } = options;
   const timing = { ...serverSaveTiming, ...options.timing };
+  const network = recoveryTiming(options.recovery);
+  const connectivity = options.connectivity ?? alwaysOnline;
   const opened = controller.getState();
   if (opened.disposed) throw new SaveCoordinatorError("disposed");
   // A claim still held is a save whose outcome is not known: starting again would forget it (A2.3B.2B reads first).
@@ -246,7 +308,23 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
    */
   let refused: { sequence: number; predicted: JSONContent | null; outcome: Refusal } | null = null;
 
+  /** The automatic retries of the current failure (A2.3B.2C): at most one, with at most one timer. */
+  let episode: Episode | null = null;
+  /** The timeouts of requests in flight; cleared on dispose, so a late answer is still awaited. */
+  const timeouts = new Set<ReturnType<typeof setTimeout>>();
+  let online = readOnline();
+  /** A save fell due while offline. */
+  let waitingForNetwork = false;
+
   const listeners = new Set<(state: NetworkState) => void>();
+
+  function readOnline(): boolean {
+    try {
+      return connectivity.online() !== false;
+    } catch {
+      return true;
+    }
+  }
 
   function getState(): NetworkState {
     return {
@@ -270,6 +348,15 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       reading: readInFlight,
       retrying: retryInFlight,
       reconciliation: reconciliation && { ...reconciliation },
+      online,
+      waiting: waitingForNetwork,
+      recovery: episode && {
+        kind: episode.kind,
+        retries: episode.retries,
+        limit: network.maxRetries,
+        status: episode.status,
+        delayMs: episode.delayMs,
+      },
     };
   }
 
@@ -328,7 +415,20 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       publish();
       return;
     }
-    if (phase === "idle" || resumable()) void run();
+    if (phase === "idle" || resumable()) startSave();
+  }
+
+  /** Starts a save, unless the connectivity says offline: then it waits for online. */
+  function startSave() {
+    if (!online) {
+      if (!waitingForNetwork) {
+        waitingForNetwork = true;
+        publish();
+      }
+      return;
+    }
+    waitingForNetwork = false;
+    void run();
   }
 
   /** Arms the idle timer once, when work is waiting and nothing else will start a save. */
@@ -347,10 +447,11 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     if (running) return running;
     running = save().finally(() => {
       running = null;
+      afterRecoveryWork();
       if (disposed || phase !== "idle") return;
       if (due) {
         due = false;
-        void run();
+        startSave();
       } else {
         armIfWaiting();
       }
@@ -367,6 +468,8 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     due = false;
     phase = next;
     block = reason ? { reason, origin } : null;
+    // A block is not a network failure: nothing is retried from it.
+    if (next === "blocked") endEpisode();
     publish();
   }
 
@@ -409,11 +512,14 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     // From a refusal (A2.3B.2B.3), a save that finds nothing newer goes back to it, never to idle.
     const resuming = resumable();
     due = false;
+    // Whatever was waiting for online is this save now.
+    waitingForNetwork = false;
     phase = "preparing";
     publish();
 
     const back = () => {
       phase = resuming ? "blocked" : "idle";
+      endEpisode();
       publish();
     };
     const claimed = await claim();
@@ -481,27 +587,70 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     phase = "saving";
     publish();
 
-    let answer: DocumentSaveOutcome;
-    try {
-      answer = await transport.save({
-        outlineId: controller.outlineId,
-        content: sent.content,
-        expectedRevision: sent.expectedRevision,
-        sequence: sent.sequence,
-      });
-    } catch {
-      answer = unansweredOutcome(sent.sequence);
-    }
+    // No answer in time is no answer: `uncertain`, read back, never sent again blindly.
+    const answer = await timed(
+      () =>
+        transport.save({
+          outlineId: controller.outlineId,
+          content: sent.content,
+          expectedRevision: sent.expectedRevision,
+          sequence: sent.sequence,
+        }),
+      network.saveTimeoutMs,
+      () => unansweredOutcome(sent.sequence),
+    );
     settle(sent, answer);
-    // Unknown: read once what the server holds. Never again by itself.
+    // Unknown: read once what the server holds (offline, once online again).
     // (`settle` moved the phase; TypeScript still narrows it to `saving`.)
-    if (!disposed && (phase as Settled) === "reconciling") void reconcile();
+    if (!disposed && (phase as Settled) === "reconciling") firstRead(sent);
+  }
+
+  /**
+   * Waits for `start()`'s answer at most `ms` (A2.3B.2C), then answers
+   * `fallback()`; a throw or a rejection is `fallback()` too. Never rejects.
+   * The late answer is dropped: it never reaches the state. Once disposed,
+   * there is no timeout, so a late answer is still what is given.
+   */
+  function timed<T>(start: () => Promise<T>, ms: number, fallback: () => T): Promise<T> {
+    return new Promise<T>((resolve) => {
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const finish = (value: T) => {
+        if (done) return;
+        done = true;
+        if (timer !== null) {
+          clearTimeout(timer);
+          timeouts.delete(timer);
+        }
+        resolve(value);
+      };
+      if (!disposed) {
+        const armed = setTimeout(() => {
+          timeouts.delete(armed);
+          timer = null;
+          finish(fallback());
+        }, ms);
+        timer = armed;
+        timeouts.add(armed);
+      }
+      let pending: Promise<T>;
+      try {
+        pending = start();
+      } catch {
+        pending = Promise.resolve(fallback());
+      }
+      Promise.resolve(pending).then(finish, () => finish(fallback()));
+    });
   }
 
   /** What the answer to `sent` means. Only `sent`'s own answer can confirm anything. */
   function settle(sent: Submission, answer: DocumentSaveOutcome) {
     const own = typeof answer === "object" && answer !== null && answer.sequence === sent.sequence;
     outcome = own ? answer : unansweredOutcome(sent.sequence);
+    // A save's own retries (`failed`) go on only while it keeps failing for certain.
+    if (episode?.kind === "save" && !(own && answer.kind === "failed" && !answer.uncertain)) {
+      endEpisode();
+    }
     if (!own) {
       // Not an answer to what was sent: the server may hold it. The claim is held.
       stop("reconciling", "uncertain", "server");
@@ -571,6 +720,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       .catch(() => undefined)
       .then(() => {
         if (inFlight === promise) inFlight = null;
+        afterRecoveryWork();
         done(getState());
       });
     return promise;
@@ -582,6 +732,8 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
       return Promise.resolve(getState());
     }
     const held = submission;
+    // Any read takes the place of the automatic one waiting (its count is kept).
+    if (episode?.key === held) markRunning(episode);
     return single(async () => {
       await readBack(held);
       // The base is still at R0: the one conditional retry, if it has not been sent (A2.3B.2B.2).
@@ -592,13 +744,13 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
   async function readBack(held: Submission): Promise<void> {
     readInFlight = true;
     publish();
-    let answer: DocumentReadOutcome;
-    try {
-      // Always after a tick, even if the transport throws at once: `inFlight` is set by then.
-      answer = await Promise.resolve().then(() => transport.read(controller.outlineId));
-    } catch {
-      answer = { kind: "failed" };
-    }
+    // Always after a tick, even if the transport throws at once: `inFlight` is set by then.
+    // No answer in time is a failed read, never a sign that the document is gone.
+    const answer = await timed<DocumentReadOutcome>(
+      () => Promise.resolve().then(() => transport.read(controller.outlineId)),
+      network.readTimeoutMs,
+      () => ({ kind: "failed" }),
+    );
     readInFlight = false;
     // Only the submission read for is settled; nothing else can replace it while it is held.
     if (submission === held) classify(held, answer);
@@ -640,19 +792,19 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     retried = held;
     retryInFlight = true;
     publish();
-    let answer: DocumentSaveOutcome;
-    try {
-      answer = await Promise.resolve().then(() =>
-        transport.save({
-          outlineId: controller.outlineId,
-          content: held.content,
-          expectedRevision: held.expectedRevision,
-          sequence: held.sequence,
-        }),
-      );
-    } catch {
-      answer = unansweredOutcome(held.sequence);
-    }
+    const answer = await timed(
+      () =>
+        Promise.resolve().then(() =>
+          transport.save({
+            outlineId: controller.outlineId,
+            content: held.content,
+            expectedRevision: held.expectedRevision,
+            sequence: held.sequence,
+          }),
+        ),
+      network.saveTimeoutMs,
+      () => unansweredOutcome(held.sequence),
+    );
     retryInFlight = false;
     if (submission !== held) {
       publish();
@@ -708,6 +860,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
 
   /** The server confirmed `sent` at `confirmed` (= R0 + 1) and the controller took it. */
   function settleConfirmed(sent: Submission, confirmed: number) {
+    endEpisode();
     revision = confirmed;
     confirmedSequence = sent.sequence;
     base = { content: sent.predicted, revision: confirmed };
@@ -819,6 +972,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     content: JSONContent,
     submitted: ReconciliationMatch,
   ) {
+    endEpisode();
     revision = readRevision;
     confirmedSequence = held.sequence;
     base = { content, revision: readRevision };
@@ -842,22 +996,197 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     }
     if (phase !== "idle" && !resumable()) return getState();
     clearTimers();
+    if (!online) {
+      // Offline, it waits for online like a save that fell due.
+      startSave();
+      return getState();
+    }
+    waitingForNetwork = false;
     await run();
     return getState();
   }
 
   async function retry(): Promise<NetworkState> {
     if (disposed || phase !== "failed") return getState();
+    if (episode?.kind === "save") markRunning(episode);
     phase = "idle";
     block = null;
     await run();
     return getState();
   }
 
+  function recover(): Promise<NetworkState> {
+    if (disposed || (phase !== "reconciling" && phase !== "failed")) {
+      return Promise.resolve(getState());
+    }
+    // Only the person renews the automatic attempts, and only once they are spent.
+    if (episode?.status === "exhausted") episode.retries = 0;
+    return phase === "failed" ? retry() : reconcile();
+  }
+
+  // --- Automatic retries (A2.3B.2C) ---
+
+  /** Ends the current episode and its timer. */
+  function endEpisode() {
+    if (!episode) return;
+    if (episode.timer) clearTimeout(episode.timer);
+    episode = null;
+  }
+
+  /** Marks `ep` as having an attempt in flight, cancelling its timer. Counts nothing. */
+  function markRunning(ep: Episode) {
+    if (ep.timer) clearTimeout(ep.timer);
+    ep.timer = null;
+    ep.status = "running";
+    ep.delayMs = null;
+    ep.free = false;
+  }
+
+  /** The episode for `key`, made if there is none or it was for something else. */
+  function episodeFor(kind: Episode["kind"], key: object): Episode {
+    if (episode && episode.kind === kind && episode.key === key) return episode;
+    endEpisode();
+    episode = { kind, key, retries: 0, status: "running", delayMs: null, timer: null, free: false };
+    return episode;
+  }
+
+  /** The first read of a held save: now, or once online, uncounted. */
+  function firstRead(held: Submission) {
+    if (online) {
+      void reconcile();
+      return;
+    }
+    const ep = episodeFor("read", held);
+    ep.free = true;
+    ep.status = "offline";
+    publish();
+  }
+
+  /**
+   * Whether a held save is to be read again by itself: its latest read
+   * failed, or found the base still at R0 once its conditional retry was
+   * spent (the owner's decision). Nothing a read answered otherwise
+   * (`diverged`, `unverifiable`, `unreadable`, `unsettled`): those wait for
+   * a person.
+   */
+  function readAgain(held: Submission): boolean {
+    if (reconciliation?.sequence !== held.sequence) return false;
+    return (
+      reconciliation.result === "failed" ||
+      (reconciliation.result === "unchanged" && retried === held)
+    );
+  }
+
+  /**
+   * Once a read, a retry, or a save has settled with nothing else in flight:
+   * arms the next automatic attempt if one is due, or ends the episode.
+   */
+  function afterRecoveryWork() {
+    if (disposed || inFlight || running) return;
+    const before = episode && { status: episode.status, retries: episode.retries };
+    if (phase === "reconciling" && submission !== null) {
+      // A first read still waiting for online stays waiting.
+      if (episode?.key === submission && episode.free) return;
+      if (readAgain(submission)) schedule(episodeFor("read", submission));
+      else endEpisode();
+    } else if (phase === "failed") {
+      schedule(episode?.kind === "save" ? episode : episodeFor("save", {}));
+    } else {
+      endEpisode();
+    }
+    if (before?.status !== episode?.status || before?.retries !== episode?.retries) publish();
+  }
+
+  /** Arms the next attempt of `ep` after its attempt settled, unless none is left. */
+  function schedule(ep: Episode) {
+    // Only from an attempt that has just settled: never a second timer.
+    if (ep.status !== "running") return;
+    if (ep.retries >= network.maxRetries) {
+      ep.status = "exhausted";
+      return;
+    }
+    if (!online) {
+      ep.status = "offline";
+      return;
+    }
+    const delay = retryDelay(network, ep.retries);
+    ep.status = "scheduled";
+    ep.delayMs = delay;
+    const timer = setTimeout(() => {
+      if (ep.timer !== timer) return;
+      ep.timer = null;
+      if (disposed || episode !== ep) return;
+      if (!online) {
+        ep.status = "offline";
+        ep.delayMs = null;
+        publish();
+        return;
+      }
+      attempt(ep);
+    }, delay);
+    ep.timer = timer;
+  }
+
+  /** One automatic attempt of `ep`, now: counted, unless it is the deferred first one. */
+  function attempt(ep: Episode) {
+    if (disposed || episode !== ep || inFlight || running) return;
+    const free = ep.free;
+    markRunning(ep);
+    if (!free) ep.retries += 1;
+    if (ep.kind === "read") {
+      if (phase === "reconciling" && submission === ep.key) {
+        void reconcile();
+        return;
+      }
+    } else if (phase === "failed") {
+      phase = "idle";
+      block = null;
+      void run();
+      return;
+    }
+    endEpisode();
+    publish();
+  }
+
+  /** What the connectivity said. The same news again changes nothing. */
+  function onConnectivity(next: boolean) {
+    if (disposed || next === online) return;
+    online = next;
+    if (!online) {
+      // The next automatic attempt waits for online; nothing in flight is cancelled.
+      if (episode?.status === "scheduled") {
+        if (episode.timer) clearTimeout(episode.timer);
+        episode.timer = null;
+        episode.status = "offline";
+        episode.delayMs = null;
+      }
+      publish();
+      return;
+    }
+    // While something is in flight, it arms what follows when it settles.
+    if (!inFlight && !running) {
+      if (episode && (episode.status === "offline" || episode.status === "scheduled")) {
+        attempt(episode);
+        return;
+      }
+      if (waitingForNetwork && (phase === "idle" || resumable())) {
+        startSave();
+        return;
+      }
+    }
+    publish();
+  }
+
   function dispose() {
     if (disposed) return;
     clearTimers();
     due = false;
+    // Nothing more is tried; a request in flight may still answer, and nothing follows it.
+    endEpisode();
+    // A request in flight is no longer timed out: its own answer, however late, is what counts.
+    for (const timer of timeouts) clearTimeout(timer);
+    timeouts.clear();
+    unsubscribeConnectivity();
     unsubscribeChanges();
     unsubscribeState();
     const state = { ...getState(), phase: "disposed" as const };
@@ -867,10 +1196,22 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     listeners.clear();
   }
 
-  const unsubscribeChanges = controller.onDocumentChange(onChange);
-  const unsubscribeState = controller.subscribe((state) => {
-    if (state.disposed) dispose();
-  });
+  // Connectivity first: if it throws, nothing is registered yet and its error is the caller's.
+  const unsubscribeConnectivity = connectivity.subscribe((next) => onConnectivity(next !== false));
+  let unsubscribeChanges = () => {};
+  let unsubscribeState = () => {};
+  try {
+    unsubscribeChanges = controller.onDocumentChange(onChange);
+    unsubscribeState = controller.subscribe((state) => {
+      if (state.disposed) dispose();
+    });
+  } catch (error) {
+    // A coordinator that was never made leaves nothing behind.
+    unsubscribeChanges();
+    unsubscribeConnectivity();
+    clearTimers();
+    throw error;
+  }
 
   return {
     getState,
@@ -885,6 +1226,7 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     retry,
     reconcile,
     retryUnchanged,
+    recover,
     getBase: () => base,
     getSubmission: () => submission,
     dispose,

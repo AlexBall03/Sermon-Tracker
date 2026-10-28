@@ -41,8 +41,10 @@ const answered = (value: unknown): value is { ok: boolean } =>
 /**
  * The transport over the Server Actions. A throw (the network, a 413, a
  * crash) or something that is not an answer is `failed` and `uncertain`: the
- * server may have saved it. No timeout here; a request that never settles
- * keeps the coordinator `saving`, which sends nothing more (A2.3B.2C).
+ * server may have saved it. No timeout here: the coordinator stops waiting
+ * after `networkRecoveryTiming` (A2.3B.2C) and treats that as no answer. There
+ * is no abort either: a Server Action cannot be cancelled, and stopping to
+ * wait would prove nothing about what the server wrote.
  */
 export function actionTransport(actions: DocumentActions): DocumentTransport {
   return {
