@@ -737,7 +737,7 @@ Nothing is dropped without the person choosing, and Discard on the row asks firs
 
 ### Sermon documents
 
-Preacher Studio phases A2.1–A2.3B.2D ([handoff](docs/HANDOFF-PS-A2.md)), `src/features/sermon-editor/persistence`. Nothing in the application calls it yet; A2.3B.3 adds the page lifecycle and A3 mounts the editor on a real route.
+Preacher Studio phases A2.1–A2.3B.3 ([handoff](docs/HANDOFF-PS-A2.md)), `src/features/sermon-editor/persistence`. Nothing in the application calls it yet; A3 mounts the editor session on a real route.
 
 - **On the server** (A2.1, A2.2): one schema v4 document per outline in `sermon_outline_documents`, with its own revision, read and written only by `documents.ts` behind `actions.ts`. A save is the whole document, made against a revision; a stale one writes nothing. A row is the outline's content authority. `convertOutline` makes the first one from the legacy entries.
 - **Size** (A2.3A): `documentLimits.bytes` is 3 MiB of UTF-8 JSON, checked by `prepareDocument`. Saves travel through a Server Action, so `experimental.serverActions.bodySizeLimit` in `next.config.ts` is 4 MB: above the document limit, below Vercel's 4.5 MB request cap. `transport.test.ts` keeps the two in step and encodes a save at the limit as the client does.
@@ -771,6 +771,28 @@ Preacher Studio phases A2.1–A2.3B.2D ([handoff](docs/HANDOFF-PS-A2.md)), `src/
     - Manual: `recover()` reads (while `reconciling`) or saves (while `failed`) once, and only after exhaustion starts a new bounded cycle. `reconcile()` and `retry()` never give attempts back. Nothing restores the conditional retry.
   - `serverSaveStatus` combines the local status with the coordinator's phase: `saved`, `saving`, `waiting`, `unresolved`, `blocked`, `failed`, `stalled` (automatic retries spent; `recover()` is the way on), `offline` (a save waiting for online), `disposed`, or a local status.
 - **Recovery drafts** (`recovery/`, A2.3A): the newest snapshot of each editor session is kept in the offline database's `accountData` store as `[users.id, "documentDraft", "<outlineId>:<draftId>"]`, with its sequence, the highest confirmed sequence, the revision its next save names, and any refusal (an oversized snapshot is marked `too_large` in its own write; `currentRefusal` says whether a refusal is still the content's: `stale` and `missing` always, `invalid` and `too_large` only for the snapshot they name). Every operation is one IndexedDB transaction that compares before it writes: an older write never replaces a newer snapshot, and a confirmation of snapshot N deletes the draft only if it still holds N, otherwise keeping N+1. A draft survives reloads, sign-out, and another account signing in; it is removed only by an exact confirmation, the person's discard, or account deletion (`forgetAccount`). An unreadable record is reported, never skipped or written over. A draft is never a save, and IndexedDB is not encrypted.
+- **Editor sessions** (`session/`, A2.3B.3; not mounted): `createEditorSession` is one tab's right to edit and save one outline for one account. It creates the controller and coordinator, and changes neither.
+  - **Two independent conditions** come before `active`:
+    - **Exclusive ownership:** the outline's Web Lock (`sermon-tracker-editor:<owner>:<outline>`), held in this browser profile, for the identity signed in when the session opened.
+    - **Recovery clearance:** the server's document read through the GET route, and `assessRecovery` finding no draft from another session that differs from it in canonical form.
+    - **Why both:** a free lock never shows an earlier save finished, and the server's `WHERE revision = R0` stays the only write authority. Different devices are coordinated by that alone.
+  - **States** (`EditorSessionState`):
+    - `acquiring`, `verifying`, `ready` (open the editor from `base`, then `attach`), `active`, `relinquishing`
+    - `read_only` (`available`, `declined`, `unanswered`), `takeover_pending`
+    - `recovery_required` (`drafts` with content-free candidates, or `inspection_failed`), `verification_failed`
+    - terminal: `lost` (`handedOff`, `suspended`, `lockLost`), `identity_invalidated`, `unavailable` (no or failing Web Locks: never an unguarded editor), `disposed`
+  - **Read-only tabs** stay read-only until "Edit here" (`requestTakeover`), even when the editor closes. The request goes over a BroadcastChannel (advice, identifiers only) while the tab waits for the lock (cancellable).
+  - **Handing over:** the editing tab stops editing, flushes, waits for a save in flight (at most 20 s), and saves if one may start. It lets go only once IndexedDB has answered, and declines if its words are not on the device. A takeover gives up after 25 s (`unanswered`); there's no force. Both limits are waiting limits, never evidence.
+  - **Claims are never transferred.** An earlier session's unresolved save crosses only as its draft, which blocks editing until the person resolves it and `recheck()`. A draft equal to the server's document is kept and does not block.
+  - **The end** (handover, `pagehide`, identity change, `dispose()`) runs in order:
+    1. coordinator disposed;
+    2. controller disposed, meaning the last snapshot is taken and the IndexedDB queue finishes;
+    3. lock released.
+    - A request already sent may still be answered, only to its own controller.
+    - A page restored from the back-forward cache is `lost` and needs a new session.
+    - In one tab, a session waits for the previous one's end before asking for the lock (React Strict Mode).
+  - **Edits and saves are gated.** `sessionWriteGuard` refuses every document-changing transaction unless `canEdit()`. The coordinator's transport refuses a save outside `active`/`relinquishing`, the lock, or the identity as "not sent".
+  - **Lifecycle saves:** hiding the page flushes and calls `saveNow()` only from `active` with the coordinator `idle` or `scheduled`. There is no `beforeunload` or beacon save.
 
 ### Scripture
 

@@ -21,7 +21,8 @@
     "db:stamp": "node scripts/db/cli.mjs stamp",
     "brand:assets": "node scripts/generate-brand-assets.mjs",
     "test:e2e:lab": "playwright test -c playwright.lab.config.ts",
-    "test:e2e:lab:prod": "playwright test -c playwright.lab-prod.config.ts"
+    "test:e2e:lab:prod": "playwright test -c playwright.lab-prod.config.ts",
+    "test:e2e:ownership": "playwright test -c playwright.ownership.config.ts"
   },
   "engines": {
     "node": ">=22"

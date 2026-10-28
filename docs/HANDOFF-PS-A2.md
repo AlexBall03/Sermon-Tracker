@@ -1963,3 +1963,178 @@ Next.js dispatches a client's Server Actions one at a time (bundled docs, `01-ap
 
 - A3 builds the transport as `documentTransport({ save: saveOutlineDocument })`. Everything else under "For A2.3B.3 and A3" in B.2C stands.
 - The prerequisite to mounting the coordinator is met. Mounting it is still A3's. A2.3B.3 (page lifecycle, multi-tab) may be planned.
+
+## A2.3B.3: Lifecycle and multi-tab coordination (28 October 2026)
+
+**Status:** built and verified. Not committed, not deployed, not mounted, no migration, no server change. A3 mounts it.
+
+**Git:** began on `dev` at `3d03106` with a clean tree. Ends there, with the files below new or changed and nothing staged.
+
+### Approved by the owner (binding)
+
+1. **Stay read-only.** One editing tab per account and outline per browser profile. Other tabs stay read-only until the person chooses "Edit here", even when the editing tab closes, crashes, or hands over. There's no queue of waiting editors and no polling.
+2. **Block editing on a different previous-session draft.** If the device holds a draft from another session that differs from the server's document, the outline is read-only (`recovery_required`) until the person resolves it. A draft equal to the server's document does not block, and is not proof that its request finished. Failed inspection blocks.
+3. **Review corrections**, all applied:
+   - cancellation-safe locks;
+   - handover only after IndexedDB answered;
+   - lifecycle saves checked at the moment they start;
+   - no load exception in the write guard;
+   - Strict Mode and same-tab duplicates tested;
+   - waiting limits are not evidence;
+   - the gate never deletes;
+   - minimal scope.
+
+### What was found (checkpoint A)
+
+- **Drafts don't record a submission.** A draft holds content, `sequence`, `confirmedSequence`, and `baseRevision`; the claim lives only in the controller's memory. A draft left by a closed tab can't say whether its save was unsent, refused, or still on its way.
+  - **Decision:** claims are never transferred. The draft is the only evidence that crosses sessions, and the gate quarantines it. No new durable metadata, schema, or migration was needed: every case in the brief is either "differs from the server" (blocks) or "equals it" (nothing to lose).
+- **`controller.dispose()`** resolves when its IndexedDB queue settles. A late `confirmSave` still reaches it.
+- **`coordinator.dispose()`** sends nothing more, and an answer already on its way still reaches the controller. But a save that timed out is `uncertain`, and its late answer is dropped by design.
+- **`saveNow()` while a save is preparing or running** makes the next one due. The coordinator itself refuses to send while unresolved.
+- **`loadV4` loads by replacing the editor's state**, not by dispatching a transaction. So the write guard needs no exception at all.
+- **The Web Locks spec refuses `signal` together with `ifAvailable`** (`NotSupportedError`). The first version passed both; only the real-browser test showed it (see Defects).
+
+### What was built (`src/features/sermon-editor/persistence/session/`)
+
+- `model.ts`:
+  - `EditorSessionState`, the discriminated union. ARCHITECTURE.md lists the states.
+  - `ownershipTiming`: 20 s relinquish wait, 25 s takeover wait.
+  - `lockName`, `channelName`, the zod `ownershipMessage` schema, and `RecoveryCandidate` (no content).
+  - `holdsUnsavedWork(status)`. It settles B.2A/B.2C's open item: everything but `saved`, `local`, `unchanged`, and `disposed` holds.
+- `ownership.ts`: the Web Lock.
+  - `tryAcquire` (`ifAvailable`, no signal) and `waitFor(signal)`.
+  - `release()`, `dispose(after?)`, and `onLost`.
+  - A grant nobody waits for any more is given straight back.
+  - In a tab, `ReleaseRegistry` makes a new session wait for an ending one's release (or its pending request), registered synchronously when disposal begins. Each session releases only its own lock.
+- `channel.ts`: the takeover BroadcastChannel. It parses with zod, ignores other owners or outlines and junk, dedupes by request, and carries identifiers only.
+- `recovery-gate.ts`: `assessRecovery`.
+  - Canonical-equal drafts are listed as `equivalent` and don't block.
+  - Every other draft blocks: pending, conflict, unsupported, or unreadable.
+  - A listing failure is `inspection_failed`.
+  - It never writes.
+- `write-guard.ts`: `sessionWriteGuard(canEdit)`, one ProseMirror `filterTransaction`. It refuses any `docChanged` transaction unless `canEdit()` (or if the question throws). It has no metadata exception.
+- `lifecycle.ts`: `bindPageLifecycle` covers `visibilitychange`, `pagehide`, and `pageshow`. There's no `beforeunload`.
+- `session.ts`: `createEditorSession`, which composes the above around the existing controller and coordinator, unchanged.
+- `testing.ts` (tests only): shared fake Web Locks with manual grants and tab crashes, a fake channel bus (drop, duplicate, hold, reorder, forge), fake page, identity, connectivity, a conditional server, and a source.
+- No change to `controller.ts`, `coordinator.ts`, `store.ts`, `recovery/model.ts`, the transport, the route, the schema, or any server code.
+
+### Ordering
+
+**Handover (cooperative):**
+
+1. `relinquishing` (edits refused).
+2. `controller.flush()`.
+3. Wait for a save being prepared or in flight to settle (≤ 20 s).
+4. `saveNow()` if the phase is `idle` or `scheduled`, bounded by the same wait.
+5. `controller.flush()` again, so the newest words' write and any confirmation are finished in IndexedDB.
+6. If `autosaveStatus` is `unprotected` or `pending`, decline and return to `active`.
+7. Otherwise answer `releasing`, dispose the coordinator, `await controller.dispose()`, then release the lock.
+
+**Every other end** (`pagehide`, identity, `dispose()`, lock lost) runs step 7's disposals in the same order. Nothing awaits the browser; the lock is released only in the promise that follows the controller's IndexedDB queue (verified: the lock is still held while a draft write is held).
+
+**Abrupt termination** (crash, kill): nothing runs. The browser frees the lock; IndexedDB keeps whatever transactions committed (each is atomic). Only snapshots IndexedDB has confirmed are durable: everything after the last one is lost, and no fixed interval bounds that loss (the 2 s local timing only says when a snapshot is taken; its write may be slow, queued, or failing when the tab dies). The next session's gate sees whatever draft exists. No code depends on a flush finishing during termination.
+
+### Safety guarantees kept
+
+- **IndexedDB recovery:** write-ahead, sequences, watermark, and refusal recording are unchanged. Nothing new deletes a draft: the gate lists, the session disposes. A handover never happens with words that are only in the editor.
+- **Conditional revisions:**
+  - Every save is still the coordinator's, against the revision it holds.
+  - A new session's base is a fresh GET read, and `attach` refuses an editor that doesn't hold it (`mismatch`).
+  - A previous tab's late commit makes the new session's save `stale`, never an overwrite (tested both orders).
+- **Unresolved submissions / no third write:** no session resends, adopts, or releases another's submission. The conditional retry stays the coordinator's, once per submission. Tests count requests per logical submission: never more than 2.
+- **Canonical documents:** the base is checked with `canonicalDocument` before `ready`. The gate compares canonical forms.
+- **Authorization:** unchanged. Browser coordination authorizes nothing: the server still authorizes every read and save.
+- **Account isolation:**
+  - The lock name, drafts, and controller are scoped to the immutable `owner`.
+  - Any identity change, heard or found at the next check (an event, `visibilitychange`, `pageshow`, a lifecycle save, `canEdit`, the transport guard), ends the session.
+  - States and channel messages carry no draft content.
+- **Bounded retries:** unchanged. The session adds no timer but the two waiting limits, never polls, and never calls `recover()` or `reconcile()`.
+
+### Verification
+
+- **Unit:**
+  - `session/ownership.test.ts`: 16.
+  - `session/write-guard.test.ts`: 7. Real v4 editor: typing, commands, paste, keys, Undo/Redo, document attributes, forged metadata.
+  - `session/session.test.ts`: 52 (4 added in the pre-commit review). Checkpoints B–F and the owner's nine required tests, with real controllers, coordinators, and fake-indexeddb, and a check after every state change that no two sessions of one outline can edit.
+  - All 75 pass.
+- **Mutation checks:** 10 guards broken one at a time, each caught by at least one test:
+  - gate always clear
+  - `canEdit` ignoring lock or identity
+  - transport guard off
+  - lock released before IndexedDB
+  - handover ignoring durability
+  - lifecycle save ignoring phase
+  - lifecycle save ignoring identity
+  - late grant accepted
+  - no same-tab wait
+  - takeover ignoring abandonment
+- **Real browser:** `npm run test:e2e:ownership` (`playwright.ownership.config.ts`, `tests/lab/editor-ownership.spec.ts`, `tests/lab/ownership-harness.ts`).
+  - How it runs: Chromium, pages of one context as tabs. The session modules are bundled by esbuild and served with a conditional stand-in server from `127.0.0.1`. No dev server, no database, no app route.
+  - 6 pass:
+    - read-only second tab that is never promoted;
+    - simultaneous open gives exactly one editor;
+    - clean handover with save;
+    - a tab closed with a save in flight (draft survives in real IndexedDB, recovery required, nothing resent, original lands, recheck clears);
+    - reopening after every tab closed;
+    - navigation ends the session, frees the lock, and keeps the draft.
+- **Tooling:** `npm run typecheck` clean; ESLint clean on the new files; Prettier applied to the new files; the full unit suite was run once at the end.
+
+### Defects found and fixed
+
+1. **`ifAvailable` with `signal`** made every real-browser session `unavailable`. It failed safe, but was wrong. `tryAcquire` no longer passes a signal; abandonment is handled in the grant callback. The fake now refuses the combination as Chromium does, so the unit suite catches it.
+2. **Strict Mode:** a remount could find its predecessor's lock still held, or a request still pending, and come up read-only. Disposal now registers its end synchronously, and the next session in the tab waits for it.
+3. **Test harness:** a crashed tab's session object still answered `canEdit()`. Crashed tabs are now excluded from the two-writers check: a real crashed tab runs nothing.
+
+### Limitations
+
+- **Browser lifecycle is best effort.**
+  - A page may be frozen or killed before an IndexedDB write commits. Only IndexedDB-confirmed snapshots are durable; words after the last one are lost, and no maximum interval can be guaranteed after an abrupt crash.
+  - `pagehide` cannot await anything.
+- **Back-forward cache: verified in unit tests only.** Playwright's Chromium (headless, under automation) did not restore any page from the cache, even with `--disable-back-forward-cache` removed: a bare page without a session wasn't restored either. The real-browser test checks that the page coming back cannot edit, which holds either way. Any page that leaves ends its session at `pagehide`, so a restored page is `lost` by construction.
+- **A restore loses the session.** A restored or reopened page with unsaved local words comes back to `recovery_required` (its own old draft). This is safe, and it costs a step until A2.3C's resolve UI exists.
+- **A frozen tab blocks takeover.** A tab frozen while holding the lock (rare: it ended its session at `pagehide`; a background-frozen tab doesn't fire it) holds it until the browser discards it. Takeover ends `unanswered`, by design (no force).
+- **Equal content isn't a finished request.** An equivalent draft doesn't block, but its request may still be in flight. If it lands later, it's a `stale` refusal for whichever save comes second, never an overwrite.
+- **Offline open.** A session opened offline can't verify (`verification_failed`/`offline`). Editing an outline document offline is A3's decision.
+- **Different devices** are coordinated only by the server's revision (a conflict), as before.
+- **Insecure origins and old browsers** without Web Locks get `unavailable` (read-only).
+
+### For A3
+
+- **Create** one session per mounted editor:
+  ```ts
+  createEditorSession({
+    owner, // users.id
+    outlineId,
+    identity, // from Clerk: current() = the signed-in user ID, subscribe to its changes
+    transport: documentTransport({ save: saveOutlineDocument }),
+    connectivity, // from the online and offline events
+  });
+  ```
+  - Create it in an effect; `dispose()` in its cleanup. Key the component by owner and outline, so a change of either makes a new session.
+- **Editor:**
+  - Add `sessionWriteGuard(() => session.canEdit())` to the editor's extensions.
+  - On `ready`, load `state.base.content` with `loadV4` and call `session.attach(editorSource(editor))`. `attach` refuses an editor that doesn't hold the base.
+  - Call `setEditable(session.canEdit())` on each state change for the view's sake; the guard is the boundary.
+- **Show:**
+  - `read_only`: offer "Edit here", which calls `requestTakeover()`. Show `declined` (`unprotected`, `starting`) and `unanswered`.
+  - `recovery_required`: show `candidates`. Restore or discard through A2.3C, then call `recheck()`. Restoring a draft must be an edit on top of a freshly verified `ready` base, saved normally: never a confirmation.
+  - `verification_failed`: offer `recheck()`. `lost`, `identity_invalidated`, `unavailable`: remount for a new session.
+- **Indicator:** `getAutosave()` gives the controller and coordinator. Use `serverSaveStatus`, and `holdUnsavedWork` while `holdsUnsavedWork(status)`.
+- **Never** call `recover()` or `reconcile()` from a state listener.
+- **SPA navigation** needs nothing more: unmounting disposes the session, which keeps the draft. Leave-guarding uses `holdUnsavedWork`.
+
+### Ready for owner review
+
+### Pre-commit review (28 October 2026)
+
+- **Durability wording corrected.** "About 2 s at most" was not a guarantee: only snapshots IndexedDB has confirmed are durable, and no maximum loss interval holds after an abrupt crash. The code never relied on a flush finishing during termination.
+- **Sending is checked at the moment of sending.** The coordinator publishes `saving` synchronously just before it calls the transport, and sends the conditional retry a microtask after publishing `retrying`; it does not look at the session in between. The session's guarded transport is therefore the real boundary. Four regression tests now pin it:
+  - the session ending just before a save goes out;
+  - the account changing unheard;
+  - the session ending just before the conditional retry (the original's claim and draft are kept, nothing is sent again);
+  - the lock taken away.
+    Turning the guard off fails three of them.
+- **Reviewed and unchanged.**
+  - A refused first save releases only a claim that was never sent; a refused retry keeps the claim.
+  - A late grant after a takeover's deadline is released only in a later task than the grant, which the browser's event loop guarantees.
+  - The lock is never read as a save.
