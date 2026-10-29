@@ -1,9 +1,15 @@
 import type { JSONContent } from "@tiptap/core";
 import { and, eq, sql } from "drizzle-orm";
 
-import { sermonOutlineDocuments, type SermonOutlineDocument } from "@/db/schema";
+import {
+  ideas,
+  sermonOutlineDocuments,
+  sermonOutlines,
+  type SermonOutlineDocument,
+} from "@/db/schema";
 import { isForeignKeyViolation } from "@/db/types";
 import type { Database } from "@/db/types";
+import { markDeveloped } from "@/features/ideas/ideas";
 import { restoreSermonDocument } from "@/features/sermon-editor/document";
 import { prepareDocument } from "./canonical";
 import {
@@ -30,13 +36,17 @@ import {
  * - Every document written is first accepted by `restoreSermonDocument`, and
  *   what is stored is its `doc.toJSON()`. A refused document is never stored
  *   or repaired.
- * - The document's revision is its own. `sermon_outlines` is never read or
- *   written here (its rows are `src/features/outlines`'s): the outline's
- *   existence and owner are checked by the foreign key, in the insert itself.
- * - Nothing here touches the outline's entries, its revision, the sermon, or
- *   `markDeveloped`. What document work counts as development is still open.
- * - Each write is one statement, atomic by itself: no read before a write
- *   decides what is written. A failure of the database is thrown.
+ * - The document's revision is its own. `sermon_outlines` is never written
+ *   here (its rows are `src/features/outlines`'s): the outline's existence
+ *   and owner are checked by the foreign key, in the insert itself. A save
+ *   reads it only to find, and hold, the outline's sermon.
+ * - Nothing here touches the outline's entries or its revision. A save that
+ *   changes what the document says calls `markDeveloped` on its sermon in
+ *   the save's own transaction (A3, the owner's decision); nothing else here
+ *   writes to the sermon.
+ * - A create is one statement. A save is one transaction: the sermon's row,
+ *   then the document's row, then the conditional write, whose revision check
+ *   stays in its own WHERE clause. A failure of the database is thrown.
  */
 
 const ofOutline = (ownerId: string, outlineId: string) =>
@@ -61,7 +71,7 @@ const refusal = (refused: { ok: false } & DocumentRefusal): DocumentRefusal =>
     : { status: "too_large", bytes: refused.bytes, limit: refused.limit };
 
 /** The current revision of the owner's document for an outline, or null. */
-async function currentRevision(db: Database, ownerId: string, outlineId: string) {
+async function currentRevision(db: Pick<Database, "select">, ownerId: string, outlineId: string) {
   const [row] = await db
     .select({ revision: sermonOutlineDocuments.revision })
     .from(sermonOutlineDocuments)
@@ -175,23 +185,65 @@ export async function updateDocument(
   const prepared = prepareDocument(json);
   if (!prepared.ok) return refusal(prepared);
 
-  const [updated] = await db
-    .update(sermonOutlineDocuments)
-    .set({
-      content: prepared.content,
-      revision: sql`${sermonOutlineDocuments.revision} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(ofOutline(ownerId, outlineId), eq(sermonOutlineDocuments.revision, expectedRevision)),
-    )
-    .returning({
-      revision: sermonOutlineDocuments.revision,
-      updatedAt: sermonOutlineDocuments.updatedAt,
-    });
-  if (updated) return { status: "updated", ...updated };
+  return db.transaction(async (tx): Promise<UpdateDocumentOutcome> => {
+    // The sermon's row first, then the document's: the order every other
+    // write takes (`lockOutlineRows`: idea, then outline; deleting a sermon:
+    // idea, outline, document), so a save and a sermon's deletion never
+    // deadlock. Every save takes it, whether or not it changes anything.
+    const [sermon] = await tx
+      .select({ id: ideas.id })
+      .from(ideas)
+      .innerJoin(sermonOutlines, eq(sermonOutlines.sermonId, ideas.id))
+      .where(
+        and(
+          eq(sermonOutlines.id, outlineId),
+          eq(sermonOutlines.ownerId, ownerId),
+          eq(ideas.ownerId, ownerId),
+        ),
+      )
+      .limit(1)
+      .for("no key update", { of: ideas });
+    if (!sermon) return { status: "missing" };
 
-  // Nothing was written; say why.
-  const revision = await currentRevision(db, ownerId, outlineId);
-  return revision === null ? { status: "missing" } : { status: "stale", revision };
+    // Whether the save says something different from what is stored, compared
+    // by the database (jsonb equality) on the row about to be written, which
+    // stays locked to the end.
+    const [current] = await tx
+      .select({
+        same: sql<boolean>`${sermonOutlineDocuments.content} = ${JSON.stringify(prepared.content)}::jsonb`,
+      })
+      .from(sermonOutlineDocuments)
+      .where(
+        and(ofOutline(ownerId, outlineId), eq(sermonOutlineDocuments.revision, expectedRevision)),
+      )
+      .for("update");
+
+    if (current) {
+      const [updated] = await tx
+        .update(sermonOutlineDocuments)
+        .set({
+          content: prepared.content,
+          revision: sql`${sermonOutlineDocuments.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(ofOutline(ownerId, outlineId), eq(sermonOutlineDocuments.revision, expectedRevision)),
+        )
+        .returning({
+          revision: sermonOutlineDocuments.revision,
+          updatedAt: sermonOutlineDocuments.updatedAt,
+        });
+      if (updated) {
+        // Work on the sermon's outline develops the sermon (A3, the owner's
+        // decision), counted only when what the document says changed, and in
+        // this transaction, so it commits or rolls back with the save.
+        if (!current.same) await markDeveloped(tx, ownerId, sermon.id);
+        return { status: "updated", ...updated };
+      }
+    }
+
+    // Nothing was written; say why.
+    const revision = await currentRevision(tx, ownerId, outlineId);
+    return revision === null ? { status: "missing" } : { status: "stale", revision };
+  });
 }

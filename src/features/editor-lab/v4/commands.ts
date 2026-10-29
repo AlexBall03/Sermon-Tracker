@@ -824,29 +824,106 @@ function anchorIndex(state: EditorState): number | null {
  * the new passage is selected. Its ID comes from the identity step.
  */
 export function insertPassage(reference: ScriptureReference): Command {
+  return insertAfterLine(
+    (state, depth) =>
+      state.schema.nodes.scripturePassage.create({
+        ...reference,
+        translation: null,
+        print: "full",
+        depth,
+      }),
+    (tr, at) => NodeSelection.create(tr.doc, at),
+  );
+}
+
+/**
+ * A block made by `make` straight after the block the selection is in, by
+ * the passage's rule above: the anchor's own depth first, then each
+ * shallower one, taken only where no block already in the document changes
+ * owner. One transaction (one undo step); `select` places the selection in
+ * the new block.
+ */
+function insertAfterLine(
+  make: (state: EditorState, depth: number) => ProseMirrorNode,
+  select: (tr: Transaction, at: number) => Selection,
+): Command {
   return (state, dispatch) => {
     const index = anchorIndex(state);
     if (index === null) return false;
     const structure = analyze(state.doc);
     const anchor = structure.blocks[index];
     const at = anchor.pos + anchor.node.nodeSize;
-    const { scripturePassage } = state.schema.nodes;
     for (let depth = Math.min(anchor.depth, maxDepth); depth >= 0; depth -= 1) {
-      const node = scripturePassage.create({
-        ...reference,
-        translation: null,
-        print: "full",
-        depth,
-      });
-      const tr = state.tr.insert(at, node);
+      const tr = state.tr.insert(at, make(state, depth));
       if (reparented(structure, tr.doc, tr.mapping) > 0) continue;
       if (dispatch) {
-        tr.setSelection(NodeSelection.create(tr.doc, at));
+        tr.setSelection(select(tr, at));
         dispatch(structural(tr).scrollIntoView());
       }
       return true;
     }
     return false;
+  };
+}
+
+/** The caret at the start of the new container's first paragraph. */
+const intoContainer = (tr: Transaction, at: number) => TextSelection.create(tr.doc, at + 2);
+
+/**
+ * A preacher note (A3's Insert menu) after the line the caret is on, by the
+ * passage's placement rule, with one empty paragraph to write in. Its kind is
+ * the schema's default.
+ */
+export const insertNote: Command = insertAfterLine(
+  (state, depth) =>
+    state.schema.nodes.preacherNote.create({ depth }, state.schema.nodes.paragraph.create()),
+  intoContainer,
+);
+
+/** A script (A3's Insert menu): words to say as written, placed as a note is. */
+export const insertScript: Command = insertAfterLine(
+  (state, depth) =>
+    state.schema.nodes.script.create({ depth }, state.schema.nodes.paragraph.create()),
+  intoContainer,
+);
+
+/**
+ * A new main point playing a role (A3's Insert menu), where it belongs: an
+ * introduction before the first main point (after the caret's line when the
+ * sermon has none yet), a conclusion at the end. Only where no block already
+ * in the document changes owner, and only while the sermon has none (one of
+ * each). To give the role to a point that exists instead, `setRole`.
+ */
+export function insertRolePoint(role: PointRole): Command {
+  return (state, dispatch) => {
+    let taken = false;
+    let firstPoint: number | null = null;
+    let pos = 0;
+    state.doc.forEach((node) => {
+      if (node.type.name === "point") {
+        if (node.attrs.role === role) taken = true;
+        if (firstPoint === null && node.attrs.depth === 1) firstPoint = pos;
+      }
+      pos += node.nodeSize;
+    });
+    if (taken) return false;
+    let at: number;
+    if (role === "conclusion") at = state.doc.content.size;
+    else if (firstPoint !== null) at = firstPoint;
+    else {
+      const index = anchorIndex(state);
+      if (index === null) return false;
+      const anchor = analyze(state.doc).blocks[index];
+      at = anchor.pos + anchor.node.nodeSize;
+    }
+    const structure = analyze(state.doc);
+    const tr = state.tr.insert(at, state.schema.nodes.point.create({ depth: 1, role }));
+    if (reparented(structure, tr.doc, tr.mapping) > 0) return false;
+    if (dispatch) {
+      tr.setSelection(TextSelection.create(tr.doc, at + 1));
+      dispatch(structural(tr).scrollIntoView());
+    }
+    return true;
   };
 }
 

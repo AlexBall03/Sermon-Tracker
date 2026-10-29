@@ -9,8 +9,12 @@ import { getDb } from "@/db";
 import { requireActiveUser } from "@/features/auth/access";
 import { getIdea } from "@/features/ideas/ideas";
 import { OutlineEditor } from "@/features/outlines/components/outline-editor";
-import { getOutline } from "@/features/outlines/outlines";
+import { getOutline, getOutlineSermon } from "@/features/outlines/outlines";
 import { outlineIdSchema } from "@/features/outlines/schemas";
+import { ConvertOnOpen } from "@/features/sermon-editor/host/convert-on-open";
+import { OutlineDocumentHost } from "@/features/sermon-editor/host/outline-document-host";
+import { hasDocument } from "@/features/sermon-editor/persistence/authority";
+import { conversionEnabled } from "@/features/sermon-editor/persistence/rollout";
 import { getT } from "@/i18n/server";
 import { routes } from "@/lib/site";
 
@@ -20,8 +24,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * One outline, open in its editor. An ID that is malformed, unknown, or
- * someone else's is the same "not found": the query itself is limited to the
+ * someone else's is the same "not found": every query is limited to the
  * signed-in owner.
+ *
+ * Which editor (A3):
+ * - An outline with a sermon document is the document's, whatever the
+ *   rollout switch says, and opens in the sermon editor (`OutlineDocumentHost`),
+ *   which reads the document itself through its session. The page sends no
+ *   content of it.
+ * - One without, while conversion is on (`conversionEnabled`), is converted
+ *   once the page is in the browser (`ConvertOnOpen`), never while it renders.
+ * - One without, while conversion is off, opens in the outline editor as
+ *   before.
  *
  * The outline of a sermon that has since been archived, or filed as something
  * else, still opens here and can still be changed (`getOutline` returns it on
@@ -31,13 +45,39 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   const user = await requireActiveUser();
   const id = outlineIdSchema.safeParse((await params).id);
   if (!id.success) notFound();
+  const db = getDb();
 
-  const outline = await getOutline(getDb(), user.id, id.data);
-  if (!outline) notFound();
+  const found = await getOutlineSermon(db, user.id, id.data);
+  if (!found) notFound();
+  const host = {
+    owner: user.id,
+    clerkUserId: user.clerkUserId,
+    outlineId: found.id,
+    sermon: {
+      id: found.sermon.id,
+      title: found.sermon.title,
+      kind: found.sermon.kind,
+      archivedAt: found.sermon.archivedAt?.toISOString() ?? null,
+    },
+  };
+  // The authority is the row (A2.2): with one, the legacy editor is never offered.
+  if (await hasDocument(db, user.id, found.id)) return <OutlineDocumentHost {...host} />;
+
+  const legacy = await LegacyOutline({ ownerId: user.id, outlineId: found.id });
+  if (!legacy) notFound();
+  if (!conversionEnabled()) return legacy;
+  return <ConvertOnOpen {...host} legacy={legacy} />;
+}
+
+/** The outline editor's page, as it was before A3: for an outline with no document. */
+async function LegacyOutline({ ownerId, outlineId }: { ownerId: string; outlineId: string }) {
+  const db = getDb();
+  const outline = await getOutline(db, ownerId, outlineId);
+  if (!outline) return null;
   const t = (await getT("outlines")).page;
   const { sermon } = outline;
   // The sermon's own passages, main text first, for the editor to offer on each entry.
-  const idea = await getIdea(getDb(), user.id, sermon.id);
+  const idea = await getIdea(db, ownerId, sermon.id);
   const passages = idea?.references ?? [];
   const sermonReferences = [...passages]
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))

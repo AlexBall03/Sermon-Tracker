@@ -14,12 +14,16 @@ const state = vi.hoisted(() => ({
   getOutlineForSermon: vi.fn(),
   getIdea: vi.fn(),
   editor: vi.fn(),
+  hasDocument: false,
+  conversion: false,
+  host: vi.fn(),
+  convert: vi.fn(),
 }));
 
 vi.mock("@/features/auth/access", () => ({
   requireActiveUser: async () => {
     if (!state.signedIn) throw new Error("redirect:/sign-in");
-    return { id: "owner-1", role: "user", status: "active" };
+    return { id: "owner-1", clerkUserId: "user_clerk", role: "user", status: "active" };
   },
 }));
 vi.mock("next/navigation", () => ({
@@ -37,6 +41,11 @@ vi.mock("@/features/outlines/outlines", () => ({
     state.getOutline(...args);
     return state.outline;
   },
+  getOutlineSermon: async (...args: unknown[]) => {
+    state.getOutline(...args);
+    const found = state.outline as { id: string; sermon: unknown } | null;
+    return found ? { id: found.id, sermon: found.sermon } : null;
+  },
   getOutlineForSermon: async (...args: unknown[]) => {
     state.getOutlineForSermon(...args);
     return state.sermonOutline;
@@ -53,6 +62,24 @@ vi.mock("@/features/outlines/components/outline-editor", () => ({
   OutlineEditor: (props: unknown) => {
     state.editor(props);
     return <div data-testid="editor" />;
+  },
+}));
+vi.mock("@/features/sermon-editor/persistence/authority", () => ({
+  hasDocument: async () => state.hasDocument,
+}));
+vi.mock("@/features/sermon-editor/persistence/rollout", () => ({
+  conversionEnabled: () => state.conversion,
+}));
+vi.mock("@/features/sermon-editor/host/outline-document-host", () => ({
+  OutlineDocumentHost: (props: unknown) => {
+    state.host(props);
+    return <div data-testid="document-host" />;
+  },
+}));
+vi.mock("@/features/sermon-editor/host/convert-on-open", () => ({
+  ConvertOnOpen: ({ legacy, ...props }: { legacy: React.ReactNode }) => {
+    state.convert(props);
+    return <div data-testid="convert-on-open">{legacy}</div>;
   },
 }));
 
@@ -111,6 +138,8 @@ beforeEach(() => {
   state.outline = outline();
   state.sermonOutline = null;
   state.idea = sermon();
+  state.hasDocument = false;
+  state.conversion = false;
 });
 
 describe("the outline editor's page", () => {
@@ -192,6 +221,45 @@ describe("the outline editor's page", () => {
     await openEditor();
     expect(screen.getByRole("heading", { level: 1, name: "Bosquejo" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Volver al sermón" })).toBeInTheDocument();
+  });
+});
+
+describe("which editor an outline opens in (A3)", () => {
+  const host = {
+    owner: "owner-1",
+    clerkUserId: "user_clerk",
+    outlineId,
+    sermon: { id: sermonId, title: "It is Well", kind: "sermon", archivedAt: null },
+  };
+
+  it("opens an outline with a sermon document in the sermon editor, whatever the switch says", async () => {
+    state.hasDocument = true;
+    for (const conversion of [false, true]) {
+      state.conversion = conversion;
+      const { unmount } = await openEditor();
+      expect(screen.getByTestId("document-host")).toBeInTheDocument();
+      // Never the legacy editor, and no entries read for it.
+      expect(screen.queryByTestId("editor")).toBeNull();
+      unmount();
+    }
+    expect(state.host).toHaveBeenLastCalledWith(host);
+    expect(state.getIdea).not.toHaveBeenCalled();
+  });
+
+  it("converts a legacy outline once in the browser while conversion is on, with the legacy editor kept for a refusal", async () => {
+    state.conversion = true;
+    await openEditor();
+    expect(state.convert).toHaveBeenCalledWith(host);
+    // The legacy editor is what a refused conversion falls back to; it is not a blank document.
+    expect(screen.getByTestId("convert-on-open")).toContainElement(screen.getByTestId("editor"));
+    expect(state.host).not.toHaveBeenCalled();
+  });
+
+  it("opens a legacy outline in the outline editor while conversion is off", async () => {
+    await openEditor();
+    expect(screen.getByTestId("editor")).toBeInTheDocument();
+    expect(state.convert).not.toHaveBeenCalled();
+    expect(state.host).not.toHaveBeenCalled();
   });
 });
 

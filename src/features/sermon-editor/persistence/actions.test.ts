@@ -62,6 +62,8 @@ async function outlined(owner: string) {
 }
 
 beforeEach(async () => {
+  // The rollout switch is on for these tests; "while conversion is switched off" turns it off.
+  vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "on");
   db = await createTestDatabase();
   state.db = db;
   state.locale = "en";
@@ -77,6 +79,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("sermon document actions", () => {
@@ -383,5 +386,32 @@ describe("readOutlineDocument (A2.3A.1)", () => {
     });
     expect(logged.mock.calls).toEqual([["Sermon document read failed:", "Error (08006)"]]);
     expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+  });
+});
+
+describe("while conversion is switched off (A3)", () => {
+  it("refuses to convert before reading anything, and still saves a converted outline", async () => {
+    signInAs(me);
+    expect(await convertOutlineDocument(outlineId)).toMatchObject({ ok: true });
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "off");
+    expect(await convertOutlineDocument(theirs)).toEqual({
+      ok: false,
+      code: "disabled",
+      message: "This outline opens in the outline editor for now.",
+    });
+    const rows = await db.select().from(sermonOutlineDocuments);
+    expect(rows.map((row) => row.outlineId)).toEqual([outlineId]);
+    // A document that exists stays the outline's: saving it is not conversion.
+    expect(await saveOutlineDocument(outlineId, sermon("Grace, again"), 0)).toMatchObject({
+      ok: true,
+      revision: 1,
+    });
+  });
+
+  it("is off for anything but exactly 'on'", async () => {
+    signInAs(me);
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "true");
+    expect(await convertOutlineDocument(outlineId)).toMatchObject({ code: "disabled" });
+    expect(await db.select().from(sermonOutlineDocuments)).toHaveLength(0);
   });
 });

@@ -67,18 +67,20 @@ describe("useLeaveGuard", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("tells an update of the application that work is unsaved, for as long as it is", () => {
+  it("tells an update of the application that work is unsaved, for as long as it is", async () => {
     render(<Page />);
     expect(hasUnsavedWork()).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
     expect(hasUnsavedWork()).toBe(false);
+    await removed();
   });
 
-  it("warns before the tab is closed or reloaded", () => {
+  it("warns before the tab is closed or reloaded", async () => {
     render(<Page />);
     expect(unloadIsWarned()).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
     expect(unloadIsWarned()).toBe(false);
+    await removed();
   });
 
   it("holds a link to another page and asks; staying keeps the page", async () => {
@@ -127,7 +129,7 @@ describe("useLeaveGuard", () => {
   it("undoes the Back button and asks, keeping the router out of it", async () => {
     render(<Page />);
     // The guard added one entry for the same page, marked as its own.
-    expect(window.history.state).toMatchObject({ __leaveGuard: true });
+    expect(window.history.state).toMatchObject({ __leaveGuard: expect.any(String) });
 
     const router = vi.fn();
     window.addEventListener("popstate", router);
@@ -138,7 +140,7 @@ describe("useLeaveGuard", () => {
 
     expect(router).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledTimes(1);
-    expect(window.history.state).toMatchObject({ __leaveGuard: true });
+    expect(window.history.state).toMatchObject({ __leaveGuard: expect.any(String) });
     await dialog();
 
     const go = vi.spyOn(window.history, "go").mockImplementation(() => {});
@@ -164,14 +166,116 @@ describe("useLeaveGuard", () => {
     vi.restoreAllMocks();
   });
 
-  it("adds its history entry once, however often the page becomes unsaved", () => {
+  it("never adds more than one history entry, however often the page becomes unsaved", async () => {
     render(<Page startDirty={false} />);
     const entries = window.history.length;
     const toggle = screen.getByRole("button", { name: "Toggle" });
-    fireEvent.click(toggle);
-    expect(window.history.length).toBe(entries + 1);
-    fireEvent.click(toggle);
-    fireEvent.click(toggle);
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      fireEvent.click(toggle);
+      expect(window.history.length).toBe(entries + 1);
+      expect(marked()).toBe(true);
+      fireEvent.click(toggle);
+      await removed();
+    }
     expect(window.history.length).toBe(entries + 1);
   });
+
+  it("takes its entry away once nothing is unsaved, without the router seeing it", async () => {
+    const router = vi.fn();
+    window.addEventListener("popstate", router);
+    render(<Page />);
+    expect(marked()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+    await removed();
+    // Back on the page's own entry, at the same address, and the router never told.
+    expect(window.location.pathname).toBe("/library/1");
+    expect(router).not.toHaveBeenCalled();
+    window.removeEventListener("popstate", router);
+  });
+
+  it("lets the person's own Back through after the entry is gone", async () => {
+    render(<Page />);
+    fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+    await removed();
+    // A later popstate is the person's, never swallowed (the removal's wait has ended).
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const router = vi.fn();
+    window.addEventListener("popstate", router);
+    act(() => void window.dispatchEvent(new PopStateEvent("popstate")));
+    expect(router).toHaveBeenCalledTimes(1);
+    window.removeEventListener("popstate", router);
+  });
+
+  it("moves no history when the page goes away or leaving was agreed", async () => {
+    const back = vi.spyOn(window.history, "back");
+    const { unmount } = render(<Page />);
+    unmount();
+    await settle();
+    expect(back).not.toHaveBeenCalled();
+
+    window.history.replaceState(null, "", "/library/1");
+    render(<Page />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+    await settle();
+    expect(back).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("takes away only its own entry, on top, at its own address", async () => {
+    const back = vi.spyOn(window.history, "back");
+    render(<Page />);
+    // The entry on top is no longer the guard's (another page's code replaced it).
+    window.history.replaceState({ other: true }, "", "/library/1");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+    await settle();
+    expect(back).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the entry while another guard on the page still holds work", async () => {
+    const back = vi.spyOn(window.history, "back");
+    render(
+      <>
+        <Page />
+        <Second />
+      </>,
+    );
+    expect(marked()).toBe(true);
+    fireEvent.click(screen.getAllByRole("button", { name: "Toggle" })[0]);
+    await settle();
+    expect(back).not.toHaveBeenCalled();
+    expect(marked()).toBe(true);
+    // The last one done: now it goes.
+    fireEvent.click(screen.getByRole("button", { name: "Toggle second" }));
+    await settle();
+    expect(back).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
 });
+
+function Second() {
+  const [dirty, setDirty] = useState(true);
+  const guard = useLeaveGuard(dirty, "Second form unsaved.");
+  return (
+    <>
+      <button onClick={() => setDirty((value) => !value)}>Toggle second</button>
+      {guard.dialog}
+    </>
+  );
+}
+
+const marked = () => {
+  const state: unknown = window.history.state;
+  return typeof state === "object" && state !== null && "__leaveGuard" in state;
+};
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 60)));
+/** Waits for the guard's own Back to land on the page's entry beneath. */
+async function removed() {
+  await act(async () => {
+    for (let i = 0; i < 40 && marked(); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  });
+  expect(marked()).toBe(false);
+}

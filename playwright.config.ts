@@ -29,5 +29,11 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    // The sermon editor (A3) converts an outline on opening only while this is "on". The
+    // legacy outline specs need it off: `SERMON_DOCUMENT_CONVERSION=off npx playwright test …`.
+    env: {
+      ...(process.env as Record<string, string>),
+      SERMON_DOCUMENT_CONVERSION: process.env.SERMON_DOCUMENT_CONVERSION ?? "on",
+    },
   },
 });

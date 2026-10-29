@@ -56,6 +56,7 @@ export const outlines = {
       "This outline can't become a sermon document without changing what it says, so it stays as it is.",
     conversionTooLarge: (limit: string) =>
       `As a sermon document this outline would be larger than ${limit}, so it stays as it is. Nothing was removed from it.`,
+    conversionDisabled: "This outline opens in the outline editor for now.",
   },
   page: {
     metaTitle: "Outline",

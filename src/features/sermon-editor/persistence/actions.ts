@@ -11,6 +11,7 @@ import { getLocale } from "@/i18n/server";
 import type { ActionResult } from "@/lib/action-result";
 import * as documents from "./documents";
 import { convertOutline } from "./conversion";
+import { conversionEnabled } from "./rollout";
 import { failure } from "./failure";
 import { readCallerDocument, type DocumentReadResult } from "./reader";
 import type { ConversionProblem, DocumentRefusal } from "./model";
@@ -22,14 +23,24 @@ import type { ConversionProblem, DocumentRefusal } from "./model";
  * are the same answer. Reading a document is not an action: a page calls
  * `getDocument` itself, behind `requireActiveUser`.
  *
- * Nothing in the application calls these yet (A2.3 and A3 do), and nothing is
- * revalidated: no page shows a document. A failure is logged as its kind and
- * code only, never with the document (`failure`).
+ * The outline page (A3) converts through `convertOutlineDocument`, behind the
+ * rollout switch (`rollout.ts`), and its editor session saves through
+ * `saveOutlineDocument`. Nothing is revalidated: the page reads a document
+ * through its session, never from a cached render. A failure is logged as its
+ * kind and code only, never with the document (`failure`).
  */
 
 /** Why an action did not do what was asked, for code to act on. `stale` means read the document again. */
 export type DocumentActionCode =
-  "invalid" | "too_large" | "missing" | "exists" | "stale" | "unreadable" | "unsafe" | "failed";
+  | "invalid"
+  | "too_large"
+  | "missing"
+  | "exists"
+  | "stale"
+  | "unreadable"
+  | "unsafe"
+  | "disabled"
+  | "failed";
 
 export type DocumentActionResult = ActionResult & {
   code?: DocumentActionCode;
@@ -89,6 +100,8 @@ export async function convertOutlineDocument(outlineId: unknown): Promise<Docume
   const messages = await context();
   const { locale, t } = messages;
 
+  // The rollout switch (rollout.ts), on the server: a browser asking cannot convert while it is off.
+  if (!conversionEnabled()) return refused("disabled", t.conversionDisabled);
   const id = outlineIdSchema.safeParse(outlineId);
   if (!id.success) return refused("invalid", t.invalid);
 

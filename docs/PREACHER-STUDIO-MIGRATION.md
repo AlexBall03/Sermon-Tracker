@@ -767,6 +767,12 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - **Implemented:** classification, lineage units, exact-identity guarded restore and discard, confirmation evidence (cleanup markers), and idempotent cleanup.
         - **Not yet:** the recovery dialog and production mounting (A3), offline authority integration (A2.3D).
     - **A3:** full signed-in editor integration.
+      - **A3 (built, 29 October 2026; not yet committed):** the production editor on `/outlines/[id]` ([handoff](HANDOFF-PS-A3.md)). No migration.
+        - **Decided (owner):** conversion on opening behind a server-side switch that fails closed and stays off in production until A2.3D and A2.2's Vercel checks are done (an outline that has a document always opens in the new editor); a minimal Insert menu in A3 (part of UI.3 pulled forward, not the whole of it); `markDeveloped` on a confirmed save whose stored content changed, in the save's transaction.
+        - **Implemented:** `OutlineDocumentHost` (one editor session at a time, Clerk identity, browser connectivity, guarded editing), `ConvertOnOpen`, the save indicator, full-page recovery with switchable read-only previews, read-only tabs with "Edit here", the Insert menu, and the developed rule.
+        - **Release dependencies (not A3's):** A2.3D, then the owner's Vercel checks, then `SERMON_DOCUMENT_CONVERSION=on` in production.
+        - **Cutover regressions (open):** the new editor has no Add from Saved Point, no Expand/Collapse All, and no link from a passage to the Bible reader. To be built or accepted before conversion is turned on in production.
+        - **Still approved and unbuilt:** UI.2B.3, UI.2C (title and subtitle header, footer), the rest of UI.3, UI.2D, UI.4.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.
     - The PS-phase rows above still govern the data model, synchronization, and the workspace shell these checkpoints reach.

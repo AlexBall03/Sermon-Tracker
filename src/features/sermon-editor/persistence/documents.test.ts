@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { JSONContent } from "@tiptap/core";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ideas, outlineEntries, sermonOutlineDocuments, sermonOutlines, users } from "@/db/schema";
@@ -293,6 +293,87 @@ describe("revisions", () => {
   });
 });
 
+describe("developing the sermon (A3)", () => {
+  const sermonRow = async (id = sermonId) =>
+    (await db.select().from(ideas).where(eq(ideas.id, id)))[0];
+
+  beforeEach(async () => {
+    await createDocument(db, me, outlineId, sermon("Draft"));
+    await createDocument(db, other, theirs, sermon("Theirs"));
+  });
+
+  it("marks the sermon developed when a save changes what the document says", async () => {
+    const before = await sermonRow();
+    expect(before.lastDevelopedAt).toBeNull();
+    expect(await updateDocument(db, me, outlineId, sermon("Grace"), 0)).toMatchObject({
+      status: "updated",
+      revision: 1,
+    });
+    const after = await sermonRow();
+    expect(after.lastDevelopedAt).not.toBeNull();
+    expect(after.updatedAt.getTime()).toBeGreaterThan(old.getTime());
+    expect(after.lastDevelopedAt?.getTime()).toBe(after.updatedAt.getTime());
+    // Nothing else of the sermon: not its revision, status, title, or archive.
+    expect(after.revision).toBe(before.revision);
+    expect(after.status).toBe(before.status);
+    expect(after.title).toBe(before.title);
+    expect(after.archivedAt).toBe(before.archivedAt);
+  });
+
+  it("does not mark it for a save of the same content, which still moves the revision", async () => {
+    expect(await updateDocument(db, me, outlineId, sermon("Draft"), 0)).toMatchObject({
+      status: "updated",
+      revision: 1,
+    });
+    const after = await sermonRow();
+    expect(after.lastDevelopedAt).toBeNull();
+    expect(after.updatedAt).toEqual(old);
+  });
+
+  it("does not mark it for a stale, refused, or missing save", async () => {
+    expect((await updateDocument(db, me, outlineId, sermon("Stale"), 5)).status).toBe("stale");
+    expect((await updateDocument(db, me, outlineId, { type: "nope" }, 0)).status).toBe("invalid");
+    const huge = sermon("Big", [proseV4("x".repeat(documentLimits.bytes), 1)]);
+    expect((await updateDocument(db, me, outlineId, huge, 0)).status).toBe("too_large");
+    expect((await updateDocument(db, me, nowhere, sermon("Nowhere"), 0)).status).toBe("missing");
+    const after = await sermonRow();
+    expect(after.lastDevelopedAt).toBeNull();
+    expect(after.updatedAt).toEqual(old);
+  });
+
+  it("never marks another account's sermon, and refuses a save to their outline", async () => {
+    const theirSermon = (
+      await db.select().from(sermonOutlines).where(eq(sermonOutlines.id, theirs))
+    )[0].sermonId;
+    expect((await updateDocument(db, me, theirs, sermon("Mine now"), 0)).status).toBe("missing");
+    await updateDocument(db, me, outlineId, sermon("Grace"), 0);
+    expect((await sermonRow(theirSermon)).lastDevelopedAt).toBeNull();
+    expect((await documentRows()).find((row) => row.outlineId === theirs)?.revision).toBe(0);
+  });
+
+  it("rolls the save back with the mark: neither is kept when either fails", async () => {
+    await db.execute(sql`
+      create function refuse_development() returns trigger language plpgsql as
+        $$ begin raise exception 'refused for the test'; end $$
+    `);
+    await db.execute(sql`
+      create trigger refuse_development before update on ideas
+        for each row execute function refuse_development()
+    `);
+    const [before] = (await documentRows()).filter((row) => row.outlineId === outlineId);
+    await expect(updateDocument(db, me, outlineId, sermon("Grace"), 0)).rejects.toThrow();
+    const [after] = (await documentRows()).filter((row) => row.outlineId === outlineId);
+    expect(after).toEqual(before);
+    expect((await sermonRow()).lastDevelopedAt).toBeNull();
+
+    // A save that changes nothing never reaches the sermon, so the trigger does not stop it.
+    expect((await updateDocument(db, me, outlineId, sermon("Draft"), 0)).status).toBe("updated");
+    await db.execute(sql`drop trigger refuse_development on ideas`);
+    expect((await updateDocument(db, me, outlineId, sermon("Grace"), 1)).status).toBe("updated");
+    expect((await sermonRow()).lastDevelopedAt).not.toBeNull();
+  });
+});
+
 describe("size", () => {
   const limit = documentLimits.bytes;
   const withText = (text: string) => sermon("Long", [proseV4(text, 1)]);
@@ -365,11 +446,19 @@ describe("the legacy outline", () => {
     const sermonBefore = await idea();
 
     await createDocument(db, me, outlineId, sermon("Grace"));
+    // Creating a document is not developing the sermon.
+    expect(await idea()).toEqual(sermonBefore);
     await updateDocument(db, me, outlineId, sermon("Grace, again"), 0);
     expect(await getOutline(db, me, outlineId)).toEqual(outline);
     expect(await listEntries(db, me, outlineId)).toEqual(entries);
-    // Not the sermon either: no date moves, and nothing counts as developing it.
-    expect(await idea()).toEqual(sermonBefore);
+    // A save that changes the words develops the sermon (A3): its two dates, and nothing else.
+    const sermonAfter = await idea();
+    expect(sermonAfter.lastDevelopedAt).not.toBeNull();
+    expect({ ...sermonAfter, updatedAt: null, lastDevelopedAt: null }).toEqual({
+      ...sermonBefore,
+      updatedAt: null,
+      lastDevelopedAt: null,
+    });
 
     // Since A2.2 the document is the outline's authority: a legacy write is
     // refused, and neither the entries nor the document change.

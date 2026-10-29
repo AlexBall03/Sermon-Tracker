@@ -1,6 +1,7 @@
 "use client";
 
 import { undo } from "@tiptap/pm/history";
+import type { Extensions } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { ArrowLeft, Settings2, SlidersHorizontal, TextQuote } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { AppearanceDialogsProvider, useAppearanceDialogs } from "./appearance/dialogs";
 import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
 import { noticeText } from "./notice";
+import { InsertMenu } from "./insert-menu";
 import { StructureTools } from "./structure-tools";
 import "@/features/editor-lab/v4/lab-v4.css";
 
@@ -59,6 +61,13 @@ export type SermonWorkspaceProps = {
   aside?: (editor: Editor) => React.ReactNode;
   /** Called once the editor exists and holds the document. */
   onReady?: (editor: Editor) => void;
+  /** Called instead of `onReady` when the document is refused: nothing is open to edit. */
+  onRefused?: () => void;
+  /**
+   * More behaviour, added after the editor's own (A3: the session's write
+   * guard). Read once, when the editor is made; it changes nothing in the schema.
+   */
+  extensions?: Extensions;
 };
 
 /**
@@ -88,6 +97,8 @@ export function SermonWorkspace({
   headerEnd,
   aside,
   onReady,
+  onRefused,
+  extensions: extra,
 }: SermonWorkspaceProps) {
   const t = useT("editorLab");
   const locale = useLocale();
@@ -113,7 +124,9 @@ export function SermonWorkspace({
           setClipboardNotice(next);
         },
         printLayout: { initial: initialWorkspaceLayout },
-      }),
+      }).concat(extra ?? []),
+    // `extra` is read when the editor is made, as the editor reads its extensions once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [locale, componentLabels],
   );
 
@@ -138,6 +151,7 @@ export function SermonWorkspace({
         // Nothing to edit: never an empty document that could be mistaken for this one.
         created.setEditable(false);
         setRefused(loaded.problems);
+        onRefused?.();
       } else {
         onReady?.(created);
       }
@@ -185,6 +199,7 @@ export function SermonWorkspace({
               label={t.toolbar.label}
               end={<ViewControls page={page} pageSetup="menu" layoutSwitch={!desktop} />}
             >
+              <InsertMenu editor={editor} />
               <HistoryGroup editor={editor} />
               <StyleGroup editor={editor}>
                 {/* Beside the style menu it belongs to: Outline Settings, on the text style in use. */}

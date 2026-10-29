@@ -23,6 +23,11 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("outlines with sermons, the library, and the Bible, signed in", () => {
   test.skip(!email, "Set E2E_CLERK_USER_EMAIL to a development Clerk user to run these.");
+  // The legacy outline editor is reached only while outlines are not converted on opening (A3).
+  test.skip(
+    (process.env.SERMON_DOCUMENT_CONVERSION ?? "on") === "on",
+    "Legacy outline editor: run with SERMON_DOCUMENT_CONVERSION=off.",
+  );
   test.skip(
     Boolean(email) && !development,
     "Signed-in tests run against the development Clerk instance only.",

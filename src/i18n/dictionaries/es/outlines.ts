@@ -54,6 +54,7 @@ export const outlines: Untranslated<typeof english> = {
       "Este bosquejo no puede convertirse en documento del sermón sin cambiar lo que dice, así que se queda como está.",
     conversionTooLarge: (limit: string) =>
       `Como documento del sermón, este bosquejo superaría ${limit}, así que se queda como está. No se le quitó nada.`,
+    conversionDisabled: "Por ahora, este bosquejo se abre en el editor de bosquejos.",
   },
   page: {
     metaTitle: "Bosquejo",
