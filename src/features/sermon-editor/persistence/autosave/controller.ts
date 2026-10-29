@@ -6,6 +6,7 @@ import {
   confirmDraft,
   DraftStorageError,
   refuseDraft,
+  settleCleanups,
   writeDraft,
   type DraftStorageErrorKind,
 } from "../recovery/store";
@@ -51,6 +52,8 @@ export type DraftStorage = {
   writeDraft: typeof writeDraft;
   confirmDraft: typeof confirmDraft;
   refuseDraft: typeof refuseDraft;
+  /** For a restored session (A2.3C): finishes the cleanups its confirmations made due. */
+  settleCleanups?: typeof settleCleanups;
 };
 
 /** A snapshot claimed for a save (A2.3B.2): send `content` against `expectedRevision`. */
@@ -130,6 +133,15 @@ export type AutosaveOptions = {
   source: DocumentSource;
   timing?: Partial<AutosaveTiming>;
   storage?: DraftStorage;
+  /**
+   * A restored session (A2.3C): the attached document is snapshot `sequence`
+   * of draft `draftId`, already kept on the device by `adoptDraft` and never
+   * confirmed. It is this session's own work from the start: `local`, never
+   * `unchanged` or `saved`, and claimable for a save. Only an editor session
+   * passes it, and only with the draft its own adoption made; it is never a
+   * way to take over another session's draft.
+   */
+  resume?: { draftId: string; sequence: number };
 };
 
 type Snapshot = {
@@ -153,17 +165,31 @@ function parsed<T>(
 export function createAutosaveController(options: AutosaveOptions): AutosaveController {
   const owner = parsed<string>(draftInputs.owner, options.owner);
   const outlineId = parsed<string>(draftInputs.outlineId, options.outlineId);
-  const draftId = parsed<string>(draftInputs.draftId, crypto.randomUUID());
+  const resumed = options.resume
+    ? {
+        draftId: parsed<string>(draftInputs.draftId, options.resume.draftId),
+        sequence: parsed<number>(draftInputs.sequence, options.resume.sequence),
+      }
+    : null;
+  const draftId = resumed?.draftId ?? parsed<string>(draftInputs.draftId, crypto.randomUUID());
   let revision = parsed<number>(draftInputs.revision, options.revision);
   const timing = { ...autosaveTiming, ...options.timing };
-  const storage = options.storage ?? { writeDraft, confirmDraft, refuseDraft };
+  const storage = options.storage ?? { writeDraft, confirmDraft, refuseDraft, settleCleanups };
   const { source } = options;
 
-  // The document as attached is snapshot 0: never written, only compared with.
-  let latest = snapshotOf(0, source.read());
+  // The document as attached is snapshot 0, never written, only compared with;
+  // or, restored (A2.3C), the snapshot its adoption already kept.
+  let latest = snapshotOf(resumed?.sequence ?? 0, source.read());
   let refusal: AutosaveRefusal | null = latest.refusal;
   let changed = false;
-  let localSequence = 0;
+  let localSequence = resumed?.sequence ?? 0;
+  /**
+   * A restored session's confirmation not recorded on the device (its
+   * transaction failed), and cleanups not yet finished: tried again after the
+   * next confirmation and when the session ends. Never a server request.
+   */
+  let unrecorded: { sequence: number; revision: number } | null = null;
+  let settlePending = false;
   let confirmedSequence = 0;
   let storageError: DraftStorageErrorKind | null = null;
   let saving: number | null = null;
@@ -397,12 +423,46 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
           sequence,
           revision: confirmedRevision,
         });
+        if (unrecorded && unrecorded.sequence <= sequence) unrecorded = null;
+        if (resumed) settlePending = true;
       } catch {
         // The draft stays, holding what the server has: a candidate recovery finds equal and discards.
+        // A restored session keeps the evidence, to record it again (A2.3C).
+        if (resumed && (!unrecorded || unrecorded.sequence < sequence)) {
+          unrecorded = { sequence, revision: confirmedRevision };
+        }
       }
+      await settle();
     });
     publish();
     return true;
+  }
+
+  /**
+   * A restored session's follow-up (A2.3C): records a confirmation whose
+   * transaction failed, then finishes the cleanups. Local only, best effort,
+   * and safe to repeat; a failure leaves it for the next confirmation, the end
+   * of the session, or the next session (`settleCleanups` on opening).
+   */
+  async function settle() {
+    if (!resumed) return;
+    if (unrecorded) {
+      const evidence = unrecorded;
+      try {
+        await storage.confirmDraft(owner, { outlineId, draftId, ...evidence });
+        if (unrecorded === evidence) unrecorded = null;
+        settlePending = true;
+      } catch {
+        // Kept for the next try.
+      }
+    }
+    if (!settlePending || !storage.settleCleanups) return;
+    try {
+      await storage.settleCleanups(owner, outlineId);
+      settlePending = false;
+    } catch {
+      // The marker stays: it is the evidence, and the next try finishes it.
+    }
   }
 
   function releaseSave(sequence: number): boolean {
@@ -456,6 +516,7 @@ export function createAutosaveController(options: AutosaveOptions): AutosaveCont
     if (disposed) return chain;
     unsubscribe();
     capture();
+    if (resumed && (unrecorded || settlePending)) void enqueue(settle);
     disposed = true;
     clearTimers();
     // The last state is told once; nothing after it.

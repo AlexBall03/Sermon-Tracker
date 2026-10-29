@@ -71,10 +71,28 @@ const harness = {
     const state = session?.getState();
     return state?.kind === "read_only" ? state.takeover : null;
   },
+  /** A2.3C: the units the recovery inspection shows, by draft ID. */
+  async units() {
+    const inspection = await session?.inspectRecovery();
+    if (!inspection?.ok) return null;
+    return inspection.units.map((unit) => ({
+      head: unit.head.draftId,
+      ancestors: unit.ancestors.map((ancestor) => ancestor.draftId),
+      restorable: unit.restorable,
+    }));
+  },
+  /** A2.3C: restores the one blocking unit's head, as the person's choice. */
+  async restore() {
+    const inspection = await session?.inspectRecovery();
+    if (!session || !inspection?.ok || !inspection.single) return "none";
+    const unit = inspection.units.find((candidate) => candidate.blocking)!;
+    return (await session.restore(unit.head.token)).outcome;
+  },
   attach() {
     const state = session?.getState();
     if (!session || state?.kind !== "ready") return false;
-    current = state.base.content;
+    // Restored work (A2.3C) is what the editor opens, not the base.
+    current = state.restored ? state.restored.content : state.base.content;
     return session.attach({
       subscribe(onChange) {
         change = onChange;

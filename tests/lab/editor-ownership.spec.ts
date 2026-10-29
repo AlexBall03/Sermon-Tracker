@@ -138,6 +138,10 @@ type Harness = {
   recheck(): void;
   status(): string | null;
   drafts(owner: string, outline: string): Promise<string[]>;
+  units(): Promise<
+    { head: string | null; ancestors: (string | null)[]; restorable: boolean }[] | null
+  >;
+  restore(): Promise<string>;
   dispose(): Promise<void>;
 };
 declare global {
@@ -289,4 +293,67 @@ test("navigating away ends the session, keeps the draft, and frees the lock", as
   });
   expect(restored.canEdit).toBe(false);
   expect(["lost", "none"]).toContain(restored.kind);
+});
+
+test("A2.3C: restores a closed tab's unsent words, saves them conditionally, then cleans up the original", async ({
+  context,
+}) => {
+  doc.hold = true;
+  const a = await tab(context);
+  await editor(a);
+  expect(await a.evaluate(() => window.harness.edit("Never answered"))).toBe(true);
+  await expect.poll(() => doc.saves).toBe(1);
+  await expect.poll(() => drafts(a)).toEqual(["ok"]);
+  await a.close();
+  // The request is lost: the server never wrote it.
+  held.splice(0);
+  doc.hold = false;
+
+  const b = await tab(context);
+  await expect.poll(() => kind(b)).toBe("recovery_required");
+  expect(await b.evaluate(() => window.harness.restore())).toBe("restored");
+  await expect.poll(() => kind(b)).toBe("ready");
+  // Durable before editing: the original and the restored draft are both in real IndexedDB.
+  expect(await drafts(b)).toEqual(["ok", "ok"]);
+  expect(await b.evaluate(() => window.harness.attach())).toBe(true);
+  expect(await b.evaluate(() => window.harness.status())).not.toBe("saved");
+  await expect
+    .poll(() => b.evaluate(() => window.harness.status()), { timeout: 15_000 })
+    .toBe("saved");
+  expect(doc.writes).toBe(1);
+  expect(JSON.stringify(doc.content)).toContain("Never answered");
+  await expect.poll(() => drafts(b)).toEqual([]);
+});
+
+test("A2.3C: a tab closed straight after restoring leaves the work for the next one, with its original", async ({
+  context,
+}) => {
+  doc.hold = true;
+  const a = await tab(context);
+  await editor(a);
+  await a.evaluate(() => window.harness.edit("Left behind"));
+  await expect.poll(() => drafts(a)).toEqual(["ok"]);
+  await a.close();
+  held.splice(0);
+  doc.hold = false;
+
+  const b = await tab(context);
+  await expect.poll(() => kind(b)).toBe("recovery_required");
+  expect(await b.evaluate(() => window.harness.restore())).toBe("restored");
+  await b.close();
+
+  const c = await tab(context);
+  await expect.poll(() => kind(c)).toBe("recovery_required");
+  const units = await c.evaluate(() => window.harness.units());
+  expect(units).toHaveLength(1);
+  expect(units![0].ancestors).toHaveLength(1);
+  expect(units![0].restorable).toBe(true);
+  expect(await c.evaluate(() => window.harness.restore())).toBe("restored");
+  await expect.poll(() => kind(c)).toBe("ready");
+  expect(await c.evaluate(() => window.harness.attach())).toBe(true);
+  await expect
+    .poll(() => c.evaluate(() => window.harness.status()), { timeout: 15_000 })
+    .toBe("saved");
+  expect(doc.writes).toBe(1);
+  await expect.poll(() => drafts(c)).toEqual([]);
 });

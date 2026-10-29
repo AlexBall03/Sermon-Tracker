@@ -101,7 +101,7 @@ describe("recovery drafts", () => {
     expect(await confirmDraft(bob, { ...at, sequence: 1, revision: 4 })).toBe("ignored");
     expect(await refuseDraft(bob, { ...at, sequence: 1, code: "stale" })).toBe("ignored");
     expect(await discardDraft(bob, { ...at, sequence: 1 })).toBe("ignored");
-    expect(await discardUnreadableDraft(bob, `${outline}:${tab}`)).toBe("ignored");
+    expect(await discardUnreadableDraft(bob, `${outline}:${tab}`, null)).toBe("ignored");
     // Bob's own draft at the same outline and session is his, beside Alice's.
     await write(bob, 5, "Bob's words");
     expect((await ok(alice)).draft.content).toEqual(doc("Alice's words"));
@@ -263,8 +263,16 @@ describe("recovery drafts", () => {
     expect(await listDrafts(alice, outline)).toHaveLength(3);
 
     // Only the person's explicit choice removes one, and never a readable draft that way.
-    expect(await discardUnreadableDraft(alice, `${outline}:${tab}`)).toBe("ignored");
-    expect(await discardUnreadableDraft(alice, damaged)).toBe("discarded");
+    const stored = await (await openOfflineDb()).get("accountData", [alice, draftKind, damaged]);
+    const readable = await (
+      await openOfflineDb()
+    ).get("accountData", [alice, draftKind, `${outline}:${tab}`]);
+    expect(await discardUnreadableDraft(alice, `${outline}:${tab}`, readable)).toBe("ignored");
+    // Only the record reviewed (A2.3C): another one written under the same key since is kept.
+    expect(await discardUnreadableDraft(alice, damaged, { ...stored, data: { format: 1 } })).toBe(
+      "changed",
+    );
+    expect(await discardUnreadableDraft(alice, damaged, stored)).toBe("discarded");
     expect(await listDrafts(alice, outline)).toHaveLength(2);
   });
 

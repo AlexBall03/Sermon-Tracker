@@ -56,8 +56,41 @@ export type DocumentDraftData = {
   baseRevision: number;
   /** Set when the server refused this line of work; the content is kept whole. */
   refusal?: DraftRefusal;
+  /**
+   * Set when this draft began as a restored recovery candidate (A2.3C): the
+   * drafts it was restored from, newest first, each as it was when restored.
+   * Those drafts are kept until the server confirms this one's work.
+   */
+  adoption?: DraftAdoption;
   createdAt: number;
 };
+
+/**
+ * A draft as it was when it was restored (A2.3C): its session, its sequence,
+ * and its record's update time. Every write to a draft moves its update time,
+ * so a draft that still matches its link is the one that was restored.
+ */
+export type AdoptionLink = { draftId: string; sequence: number; updatedAt: number };
+
+/** Where a restored draft came from: its parent first, then the parent's own ancestors. */
+export type DraftAdoption = { lineage: AdoptionLink[] };
+
+/** The most generations a lineage keeps (a restore of a restore …). Beyond it, a restore is refused. */
+export const maxLineage = 64;
+
+/** Whether `read` is exactly the draft `link` names. */
+export const linkMatches = (link: AdoptionLink, read: DraftRead) =>
+  read.status === "ok" &&
+  read.draftId === link.draftId &&
+  read.draft.sequence === link.sequence &&
+  read.updatedAt === link.updatedAt;
+
+/** The link that names `read` as it is now. */
+export const linkTo = (read: Extract<DraftRead, { status: "ok" }>): AdoptionLink => ({
+  draftId: read.draftId,
+  sequence: read.draft.sequence,
+  updatedAt: read.updatedAt,
+});
 
 /**
  * Refusals of the line of work rather than of one snapshot: the server's
@@ -126,6 +159,11 @@ const contentSchema = z.custom<JSONContent>(
     (value as { type?: unknown }).type === "doc",
 );
 
+const linkSchema = z.object({ draftId: uuid, sequence, updatedAt: time });
+
+/** A lineage as `adoptDraft` takes it. */
+export const lineageInput = z.array(linkSchema).min(1).max(maxLineage);
+
 const dataSchema = z.object({
   format: z.literal(draftFormat),
   content: contentSchema,
@@ -140,6 +178,7 @@ const dataSchema = z.object({
       at: time,
     })
     .optional(),
+  adoption: z.object({ lineage: z.array(linkSchema).min(1).max(maxLineage) }).optional(),
   createdAt: time,
 });
 
@@ -187,4 +226,56 @@ export function readDraftRecord(
   if (data.data.confirmedSequence >= data.data.sequence) return malformed;
   const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : data.data.createdAt;
   return { status: "ok", ...ids, draft: data.data as DocumentDraftData, updatedAt };
+}
+
+/*
+ * Cleanup markers (A2.3C): the durable evidence that the server confirmed a
+ * restored draft's work, kept until the drafts it was restored from are
+ * removed. `[owner, "documentDraftCleanup", "<outlineId>:<adopter draftId>"]`,
+ * written only in the transaction that records that confirmation
+ * (`confirmDraft`) and removed only by `settleCleanups`. A marker holds no
+ * words, and only a readable one is evidence of anything.
+ */
+
+/** The `accountData` kind of a cleanup marker. */
+export const cleanupKind = "documentDraftCleanup";
+
+export type CleanupMarkerData = {
+  format: typeof draftFormat;
+  /** The session whose confirmed save is the evidence. */
+  adopter: string;
+  /** The confirmed sequence, and the revision it was confirmed at. */
+  sequence: number;
+  revision: number;
+  /** The drafts the adopter was restored from, as they were then: each removed only while it still matches. */
+  ancestors: AdoptionLink[];
+  at: number;
+};
+
+export type CleanupRead =
+  | { status: "ok"; outlineId: string; adopter: string; marker: CleanupMarkerData }
+  /** Not a marker this code can read: kept, and never taken as evidence. */
+  | { status: "malformed"; id: string };
+
+const cleanupSchema = z.object({
+  format: z.literal(draftFormat),
+  adopter: uuid,
+  sequence,
+  revision,
+  ancestors: z.array(linkSchema).min(1).max(maxLineage),
+  at: time,
+});
+
+export function readCleanupRecord(
+  owner: string,
+  record: { owner?: unknown; kind?: unknown; id?: unknown; data?: unknown },
+): CleanupRead {
+  const id = typeof record.id === "string" ? record.id : "";
+  const ids = splitId(id);
+  if (!ids || record.owner !== owner || record.kind !== cleanupKind) {
+    return { status: "malformed", id };
+  }
+  const data = cleanupSchema.safeParse(record.data);
+  if (!data.success || data.data.adopter !== ids.draftId) return { status: "malformed", id };
+  return { status: "ok", outlineId: ids.outlineId, adopter: ids.draftId, marker: data.data };
 }

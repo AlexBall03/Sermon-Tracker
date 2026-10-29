@@ -762,6 +762,10 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - **Decided (owner), implemented:** the document limit is 3 MiB of UTF-8 (replacing A2.1's 512 KiB), with a 4 MB Server Action body limit. Verified by encoding a save at the limit as the client does.
         - **Implemented:** account-scoped recovery drafts (`persistence/recovery`) with compare-and-set sequences, and the save contract (`persistence/saving.ts`).
         - **Not yet:** the autosave controller (A2.3B), the recovery interface (A2.3C), offline authority integration (A2.3D).
+      - **A2.3C (built, 29 October 2026; not yet committed):** recovery resolution contracts ([handoff](HANDOFF-PS-A2.md#a23c-recovery-resolution-29-october-2026)). No migration, no UI, not mounted.
+        - **Decided (owner):** a restored original is kept until the restored work's save is confirmed (A); switchable read-only previews, no diff or merge (B, built in A3); restoring needs durable local protection, not a server save (C); an oversized draft can be restored and is never sent until it fits; every other divergent draft is resolved before restoring one.
+        - **Implemented:** classification, lineage units, exact-identity guarded restore and discard, confirmation evidence (cleanup markers), and idempotent cleanup.
+        - **Not yet:** the recovery dialog and production mounting (A3), offline authority integration (A2.3D).
     - **A3:** full signed-in editor integration.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.

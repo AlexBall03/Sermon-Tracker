@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import { z } from "zod";
 
 import type { ServerSaveStatus } from "../autosave/model";
+import type { Provenance } from "../recovery/classify";
 import type { DraftStorageErrorKind } from "../recovery/store";
 
 /*
@@ -44,6 +45,23 @@ export const channelName = "sermon-tracker-editor";
 export type VerifiedBase = { content: JSONContent; revision: number };
 
 /**
+ * Recovered work a session restored (A2.3C), kept on the device as its own
+ * draft's snapshot 1 before `ready` says so. Open the editor from `content`
+ * (not the base), then `attach`. It is unsaved: the first save sends it
+ * against `base.revision`, conditionally, as any edit.
+ */
+export type RestoredWork = {
+  /** The restored document, as the editor must hold it (canonical, or the core's form when oversized). */
+  content: JSONContent;
+  /** The new draft that holds it: this session's own. */
+  draftId: string;
+  /** The draft it was restored from. */
+  from: string;
+  /** Over the save limit: kept here and never sent until it fits. */
+  oversized: boolean;
+};
+
+/**
  * A recovery draft that blocks editing. Never its content: A2.3C reads the
  * draft itself (`readDraft`) when the person chooses.
  */
@@ -55,6 +73,8 @@ export type RecoveryCandidate =
       sequence: number;
       baseRevision: number;
       updatedAt: number;
+      /** Its part in a restore (A2.3C): a restored draft and the drafts it came from are resolved as one. */
+      provenance: Provenance;
     }
   /** Written by a newer version of the application: kept, never guessed at. */
   | { status: "unsupported"; id: string; draftId: string }
@@ -85,7 +105,7 @@ export type EditorSessionState =
    * Holding the lock, both conditions met: open the editor from `base`
    * (read only), then `attach`.
    */
-  | { kind: "ready"; base: VerifiedBase }
+  | { kind: "ready"; base: VerifiedBase; restored?: RestoredWork }
   /** Editing and saving. */
   | { kind: "active"; base: VerifiedBase }
   /** Asked to hand over: editing is off; the newest words are being kept and, if possible, saved. */
@@ -110,6 +130,12 @@ export type EditorSessionState =
   | ({ kind: "recovery_required"; base: VerifiedBase } & RecoveryBlock)
   /** Holding the lock, but the server's document could not be read. Only `recheck()` tries again. */
   | { kind: "verification_failed"; reason: VerificationFailure }
+  /**
+   * Holding the lock, carrying out what the person chose for a recovery draft (A2.3C):
+   * restoring it (reading the server again, keeping it as this session's own) or discarding it.
+   * Nothing is edited or saved; a takeover request is declined (`starting`).
+   */
+  | { kind: "resolving"; action: "restore" | "discard" }
   /**
    * The session ended. `handedOff`: another tab took over. `suspended`: the
    * page was hidden for good or put in the back-forward cache. `lockLost`: the

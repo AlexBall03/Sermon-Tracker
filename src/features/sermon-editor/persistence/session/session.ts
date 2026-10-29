@@ -1,3 +1,5 @@
+import type { JSONContent } from "@tiptap/core";
+
 import { alwaysOnline, type Connectivity } from "../autosave/connectivity";
 import {
   createAutosaveController,
@@ -17,8 +19,16 @@ import {
 import type { DocumentTransport } from "../autosave/transport";
 import { canonicalDocument } from "../canonical";
 import type { JsonValue } from "../json";
-import { draftInputs } from "../recovery/model";
-import { DraftStorageError, listDrafts } from "../recovery/store";
+import { classifyRecovery, restoreForRecovery, type RecoveryRecords } from "../recovery/classify";
+import { sameRecord } from "../recovery/identity";
+import { draftInputs, linkTo, maxLineage, type DraftRead } from "../recovery/model";
+import {
+  adoptDraft,
+  discardReviewedDraft,
+  DraftStorageError,
+  inspectRecoveryRecords,
+  settleCleanups,
+} from "../recovery/store";
 import { browserChannel, openOwnershipChannel, type ChannelFactory } from "./channel";
 import { bindPageLifecycle, browserPage, type PageLifecycleTarget } from "./lifecycle";
 import {
@@ -27,6 +37,7 @@ import {
   ownershipTiming,
   type EditorSessionState,
   type OwnershipTiming,
+  type RestoredWork,
   type VerifiedBase,
 } from "./model";
 import {
@@ -37,6 +48,13 @@ import {
   type ReleaseRegistry,
 } from "./ownership";
 import { assessRecovery } from "./recovery-gate";
+import type {
+  CandidateView,
+  DiscardResult,
+  RecoveryInspection,
+  RecoveryToken,
+  RestoreResult,
+} from "./resolution";
 
 /*
  * An editor session (A2.3B.3): one tab's right to edit and save one outline
@@ -91,7 +109,10 @@ export type EditorSessionOptions = {
   page?: PageLifecycleTarget | null;
   /** This tab's registry of ending locks (tests give each pretend tab its own). */
   releases?: ReleaseRegistry;
-  listDrafts?: typeof listDrafts;
+  /** The device's recovery records of the outline (`inspectRecoveryRecords`). */
+  inspectDrafts?: typeof inspectRecoveryRecords;
+  /** Finishes confirmed restores' cleanups before checking (`settleCleanups`, A2.3C). */
+  settleCleanups?: typeof settleCleanups;
   timing?: Partial<OwnershipTiming>;
   autosave?: {
     timing?: Partial<AutosaveTiming>;
@@ -131,6 +152,23 @@ export type EditorSession = {
   recheck(): void;
   /** The controller and coordinator while `active` or `relinquishing`, for the indicator. */
   getAutosave(): SessionAutosave | null;
+  /**
+   * From `recovery_required` (A2.3C): what the device holds, compared with
+   * the server's document as verified, with a token for each record. Reads
+   * only; never restores, removes, or sends anything.
+   */
+  inspectRecovery(): Promise<RecoveryInspection>;
+  /** The recovered document a token names, as the editor would open it (read only); null when it cannot be restored. */
+  previewRecovered(token: RecoveryToken): JSONContent | null;
+  /**
+   * Restores the unit a token heads (A2.3C): reads the server again, checks
+   * that nothing changed since the review, and keeps the draft as this
+   * session's own before `ready` (with `restored`) says so. Nothing is
+   * removed: what it came from stays until the server confirms its work.
+   */
+  restore(token: RecoveryToken): Promise<RestoreResult>;
+  /** Removes the record a token names, only if it is still the one reviewed, then checks again. */
+  discard(token: RecoveryToken): Promise<DiscardResult>;
   /** Ends the session (idempotent). Resolves once the lock is released. */
   dispose(): Promise<void>;
 };
@@ -188,7 +226,8 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
   const timing = { ...ownershipTiming, ...options.timing };
   const { identity, transport } = options;
   const connectivity = options.connectivity ?? alwaysOnline;
-  const list = options.listDrafts ?? listDrafts;
+  const inspect = options.inspectDrafts ?? inspectRecoveryRecords;
+  const settle = options.settleCleanups ?? settleCleanups;
   const newId = options.newId ?? (() => crypto.randomUUID());
 
   let identityKey: string | null = null;
@@ -206,7 +245,13 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
   /** Raised on every change of course: an answer begun before it is not acted on. */
   let generation = 0;
   let base: VerifiedBase | null = null;
+  let restoredWork: RestoredWork | null = null;
   let autosave: SessionAutosave | null = null;
+  /** Each token's review (A2.3C): good only for the generation it was made in. */
+  const reviews = new WeakMap<
+    RecoveryToken,
+    { gen: number; recordId: string; record: unknown; read: DraftRead; server: VerifiedBase }
+  >();
   let takeover: {
     requestId: string;
     abort: AbortController;
@@ -354,7 +399,17 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
       return set({ kind: "verification_failed", reason: "unreadable" });
     }
     const verified: VerifiedBase = { content: read.content, revision: read.revision };
-    const assessment = await assessRecovery({ owner, outlineId, base: read.content, list });
+    // Cleanups a confirmation made due (A2.3C) are finished first, with the lock held. Best effort:
+    // a marker left is still evidence, and its drafts still do not block.
+    await settle(owner, outlineId).catch(() => undefined);
+    if (gen !== generation || isTerminal(state)) return;
+    const assessment = await assessRecovery({
+      owner,
+      outlineId,
+      base: read.content,
+      revision: read.revision,
+      inspect,
+    });
     if (gen !== generation || isTerminal(state)) return;
     if (!identityOk()) return void end({ kind: "identity_invalidated" });
     if (!held()) return void end({ kind: "lost", reason: "lockLost" });
@@ -366,6 +421,7 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
       return set({ kind: "recovery_required", base: verified, ...block });
     }
     base = verified;
+    restoredWork = null;
     set({ kind: "ready", base: verified });
   }
 
@@ -379,18 +435,22 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
       void end({ kind: "lost", reason: "lockLost" });
       return { ok: false, reason: "state" };
     }
-    // The editor must hold what was verified: autosave's baseline is the editor's document.
+    // The editor must hold what was verified, or what was restored (A2.3C): autosave's
+    // baseline is the editor's document.
+    const restored = state.restored ?? null;
+    if (restored && restored !== restoredWork) return { ok: false, reason: "state" };
     let opened;
     try {
-      opened = canonicalDocument(source.read());
+      opened = restored ? restoreForRecovery(source.read()) : canonicalDocument(source.read());
     } catch {
       return { ok: false, reason: "failed" };
     }
     const server = canonicalDocument(base.content);
+    const expected = restored ? restored.content : server.ok ? server.content : null;
     if (
       !opened.ok ||
-      !server.ok ||
-      !jsonEqual(opened.content as JsonValue, server.content as JsonValue)
+      expected === null ||
+      !jsonEqual(opened.content as JsonValue, expected as JsonValue)
     ) {
       return { ok: false, reason: "mismatch" };
     }
@@ -403,6 +463,8 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
         source,
         timing: options.autosave?.timing,
         storage: options.autosave?.storage,
+        // Restored: the editor holds the adopted snapshot, this session's own unsaved work.
+        ...(restored ? { resume: { draftId: restored.draftId, sequence: 1 } } : {}),
       });
       const coordinator = createSaveCoordinator({
         controller,
@@ -510,6 +572,7 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
         void end({ kind: "lost", reason: "handedOff" });
         return;
       case "verifying":
+      case "resolving":
         channel.answer(requestId, "declined", "starting");
         return;
       default:
@@ -566,6 +629,237 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
     await end({ kind: "lost", reason: "handedOff" });
   }
 
+  /** Every check a resolution step makes after waiting: still this course, account, and lock. */
+  function stillOurs(gen: number): "ok" | "state" | "identity" | "lock" {
+    if (gen !== generation || isTerminal(state)) return "state";
+    if (!identityOk()) {
+      void end({ kind: "identity_invalidated" });
+      return "identity";
+    }
+    if (!held()) {
+      void end({ kind: "lost", reason: "lockLost" });
+      return "lock";
+    }
+    return "ok";
+  }
+
+  const recordIdOf = (read: DraftRead) =>
+    read.status === "ok" ? `${read.outlineId}:${read.draftId}` : read.id;
+
+  function views(records: RecoveryRecords, server: VerifiedBase, gen: number) {
+    const classification = classifyRecovery({
+      records,
+      server: server.content,
+      serverRevision: server.revision,
+    });
+    const byRecord = new Map<string, CandidateView>();
+    const drafts = classification.drafts.map((classified, index) => {
+      const entry = records.drafts[index];
+      const token = Object.freeze({}) as RecoveryToken;
+      reviews.set(token, {
+        gen,
+        recordId: classified.recordId,
+        record: entry.record,
+        read: entry.read,
+        server,
+      });
+      const view: CandidateView = { ...classified, token };
+      byRecord.set(classified.recordId, view);
+      return view;
+    });
+    const units = classification.units.map((unit) => ({
+      head: byRecord.get(unit.head)!,
+      ancestors: unit.members.slice(1).map((id) => byRecord.get(id)!),
+      blocking: unit.blocking,
+      restorable: unit.restorable,
+    }));
+    return { drafts, units, single: units.filter((unit) => unit.blocking).length === 1 };
+  }
+
+  async function inspectRecovery(): Promise<RecoveryInspection> {
+    if (state.kind !== "recovery_required") return { ok: false, reason: "state" };
+    const server = state.base;
+    const gen = generation;
+    const first = stillOurs(gen);
+    if (first !== "ok") return { ok: false, reason: first };
+    let records: RecoveryRecords;
+    try {
+      records = await inspect(owner, outlineId);
+    } catch (error) {
+      return {
+        ok: false,
+        reason: "inspection_failed",
+        error: error instanceof DraftStorageError ? error.kind : "failed",
+      };
+    }
+    const after = stillOurs(gen);
+    if (after !== "ok") return { ok: false, reason: after };
+    if (state.kind !== "recovery_required") return { ok: false, reason: "state" };
+    return { ok: true, server, ...views(records, server, gen) };
+  }
+
+  function previewRecovered(token: RecoveryToken): JSONContent | null {
+    const review = reviews.get(token);
+    if (!review || review.gen !== generation || review.read.status !== "ok") return null;
+    const restored = restoreForRecovery(review.read.draft.content);
+    return restored.ok ? restored.content : null;
+  }
+
+  /** Back to checking, after a resolution step that did not finish: never left `resolving`. */
+  function checkAgain(gen: number) {
+    if (gen === generation && !isTerminal(state)) void verify(gen);
+  }
+
+  async function restore(token: RecoveryToken): Promise<RestoreResult> {
+    const review = reviews.get(token);
+    if (!review || review.gen !== generation) return { outcome: "unknown_token" };
+    if (state.kind !== "recovery_required") return { outcome: "state" };
+    const first = stillOurs(generation);
+    if (first !== "ok") return { outcome: first };
+    // A change of course: every token given before this is spent.
+    const gen = (generation += 1);
+    set({ kind: "resolving", action: "restore" });
+
+    // The server's document now, through the same GET as opening.
+    const read = await transport.read(outlineId).catch(() => ({ kind: "failed" as const }));
+    let check = stillOurs(gen);
+    if (check !== "ok") return { outcome: check };
+    if (read.kind !== "found") {
+      const reason =
+        read.kind === "failed" ? (connectivity.online() ? "failed" : "offline") : read.kind;
+      set({ kind: "verification_failed", reason });
+      return { outcome: "read_failed", reason };
+    }
+    const fresh = canonicalDocument(read.content);
+    if (!fresh.ok || !draftInputs.revision.safeParse(read.revision).success) {
+      set({ kind: "verification_failed", reason: "unreadable" });
+      return { outcome: "read_failed", reason: "unreadable" };
+    }
+    const reviewed = canonicalDocument(review.server.content);
+    if (
+      read.revision !== review.server.revision ||
+      !reviewed.ok ||
+      !jsonEqual(fresh.content as JsonValue, reviewed.content as JsonValue)
+    ) {
+      // Reviewed against another document: the person looks again.
+      checkAgain(gen);
+      return { outcome: "server_changed" };
+    }
+    const server: VerifiedBase = { content: read.content, revision: read.revision };
+
+    let records: RecoveryRecords;
+    try {
+      records = await inspect(owner, outlineId);
+    } catch (error) {
+      checkAgain(gen);
+      return {
+        outcome: "storage_failed",
+        error: error instanceof DraftStorageError ? error.kind : "failed",
+      };
+    }
+    check = stillOurs(gen);
+    if (check !== "ok") return { outcome: check };
+
+    const refuse = (outcome: Extract<RestoreResult, { outcome: string }>["outcome"]) => {
+      checkAgain(gen);
+      return { outcome } as RestoreResult;
+    };
+    const index = records.drafts.findIndex((entry) => recordIdOf(entry.read) === review.recordId);
+    const entry = index >= 0 ? records.drafts[index] : null;
+    if (!entry || sameRecord(entry.record, review.record) !== "equal") return refuse("changed");
+    if (entry.read.status !== "ok") return refuse("not_restorable");
+    const classification = classifyRecovery({
+      records,
+      server: server.content,
+      serverRevision: server.revision,
+    });
+    if (classification.drafts[index].kind === "equivalent") return refuse("equivalent");
+    const unit = classification.units.find((candidate) => candidate.head === review.recordId);
+    if (!unit || !unit.restorable) return refuse("not_restorable");
+    if (classification.units.some((other) => other !== unit && other.blocking)) {
+      return refuse("other_candidates");
+    }
+    const restored = restoreForRecovery(entry.read.draft.content);
+    if (!restored.ok) return refuse("not_restorable");
+    const okReads = new Map(
+      records.drafts
+        .map((candidate) => candidate.read)
+        .filter(
+          (candidate): candidate is Extract<DraftRead, { status: "ok" }> =>
+            candidate.status === "ok",
+        )
+        .map((candidate) => [recordIdOf(candidate), candidate]),
+    );
+    const lineage = unit.members.map((id) => linkTo(okReads.get(id)!));
+    if (lineage.length > maxLineage) return refuse("not_restorable");
+
+    const draftId = newId();
+    let adopted;
+    try {
+      adopted = await adoptDraft(owner, {
+        outlineId,
+        draftId,
+        content: restored.content,
+        baseRevision: server.revision,
+        oversized: restored.oversized,
+        lineage,
+        head: { recordId: review.recordId, record: entry.record },
+        reviewed: records.drafts.map((candidate) => ({
+          recordId: recordIdOf(candidate.read),
+          record: candidate === entry ? entry.record : candidate.record,
+        })),
+      });
+    } catch (error) {
+      checkAgain(gen);
+      return {
+        outcome: "storage_failed",
+        error: error instanceof DraftStorageError ? error.kind : "failed",
+      };
+    }
+    if (adopted === "changed") return refuse("changed");
+    // Kept on the device: whatever happens now, the next session finds it.
+    check = stillOurs(gen);
+    if (check !== "ok") return { outcome: "interrupted" };
+    const work: RestoredWork = {
+      content: restored.content,
+      draftId,
+      from: entry.read.draftId,
+      oversized: restored.oversized,
+    };
+    base = server;
+    restoredWork = work;
+    set({ kind: "ready", base: server, restored: work });
+    return { outcome: "restored", restored: work };
+  }
+
+  async function discard(token: RecoveryToken): Promise<DiscardResult> {
+    const review = reviews.get(token);
+    if (!review || review.gen !== generation) return { outcome: "unknown_token" };
+    if (state.kind !== "recovery_required") return { outcome: "state" };
+    const first = stillOurs(generation);
+    if (first !== "ok") return { outcome: first };
+    const gen = (generation += 1);
+    set({ kind: "resolving", action: "discard" });
+    let result;
+    try {
+      result = await discardReviewedDraft(owner, {
+        outlineId,
+        recordId: review.recordId,
+        record: review.record,
+      });
+    } catch (error) {
+      checkAgain(gen);
+      return {
+        outcome: "storage_failed",
+        error: error instanceof DraftStorageError ? error.kind : "failed",
+      };
+    }
+    const check = stillOurs(gen);
+    if (check !== "ok") return { outcome: result === "changed" ? "changed" : check };
+    checkAgain(gen);
+    return { outcome: result };
+  }
+
   function recheck() {
     if (state.kind !== "recovery_required" && state.kind !== "verification_failed") return;
     if (!held()) return void end({ kind: "lost", reason: "lockLost" });
@@ -593,6 +887,10 @@ export function createEditorSession(options: EditorSessionOptions): EditorSessio
     requestTakeover,
     recheck,
     getAutosave: () => autosave,
+    inspectRecovery,
+    previewRecovered,
+    restore,
+    discard,
     dispose: () => end({ kind: "disposed" }),
   };
 }

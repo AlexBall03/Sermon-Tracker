@@ -405,7 +405,7 @@ describe("recovery clearance", () => {
   it("blocks when the drafts cannot be inspected", async () => {
     const w = world();
     const a = tab(w, "A", {
-      listDrafts: () => Promise.reject(new DraftStorageError("unavailable")),
+      inspectDrafts: () => Promise.reject(new DraftStorageError("unavailable")),
     });
     await drain();
     expect(a.session.getState()).toMatchObject({

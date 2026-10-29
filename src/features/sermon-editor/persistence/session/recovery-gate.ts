@@ -1,16 +1,17 @@
 import type { JSONContent } from "@tiptap/core";
 
-import { jsonEqual } from "../autosave/model";
-import { canonicalDocument } from "../canonical";
-import type { JsonValue } from "../json";
-import { draftStatus } from "../recovery/model";
-import { DraftStorageError, listDrafts } from "../recovery/store";
+import {
+  classifyRecovery,
+  type RecoveryClassification,
+  type RecoveryRecords,
+} from "../recovery/classify";
+import { DraftStorageError, inspectRecoveryRecords } from "../recovery/store";
 import type { RecoveryBlock, RecoveryCandidate } from "./model";
 
 /*
- * The recovery gate (A2.3B.3): whether this device holds work from another
- * editing session of the outline that the server's document does not, before
- * a new session may edit.
+ * The recovery gate (A2.3B.3, A2.3C): whether this device holds work from
+ * another editing session of the outline that the server's document does
+ * not, before a new session may edit.
  *
  * A draft records what a session kept, never whether its save was sent or
  * answered: one left by a closed tab may be unsent, refused, or still on its
@@ -21,62 +22,87 @@ import type { RecoveryBlock, RecoveryCandidate } from "./model";
  *   kept, and it proves nothing about its request, which may still arrive;
  *   the new session's saves stay conditional on the revision it read, so
  *   such a request lands as a conflict, never under the new session's words.
+ * - A draft a confirmed restore came from (a readable cleanup marker names
+ *   it, and it has not changed since) does not block: the server confirmed
+ *   the work restored from it (A2.3C). `settleCleanups` removes it.
  * - Any other draft blocks: pending, refused (`conflict`), from a newer
  *   version of the application, or unreadable.
  * - Drafts that cannot be listed block: unknown is never "none".
- * It reads only the owner's drafts of the one outline (`listDrafts` keys by
- * owner), and returns no content.
+ * The judgement is `classifyRecovery`'s, the same one resolution uses. It
+ * reads only the owner's records of the one outline, and returns no content.
  */
 
 export type RecoveryAssessment =
-  { clear: true; equivalent: string[] } | ({ clear: false; equivalent: string[] } & RecoveryBlock);
+  | {
+      clear: true;
+      equivalent: string[];
+      classification: RecoveryClassification;
+      records: RecoveryRecords;
+    }
+  | ({
+      clear: false;
+      equivalent: string[];
+      classification: RecoveryClassification | null;
+      records: RecoveryRecords | null;
+    } & RecoveryBlock);
 
 export async function assessRecovery({
   owner,
   outlineId,
   base,
-  list = listDrafts,
+  revision,
+  inspect = inspectRecoveryRecords,
 }: {
   owner: string;
   outlineId: string;
-  /** The server's document as just read. */
+  /** The server's document as just read, and its revision. */
   base: JSONContent;
-  list?: typeof listDrafts;
+  revision: number;
+  inspect?: typeof inspectRecoveryRecords;
 }): Promise<RecoveryAssessment> {
-  let drafts;
+  let records: RecoveryRecords;
   try {
-    drafts = await list(owner, outlineId);
+    records = await inspect(owner, outlineId);
   } catch (error) {
     const kind = error instanceof DraftStorageError ? error.kind : "failed";
-    return { clear: false, equivalent: [], reason: "inspection_failed", error: kind };
+    return {
+      clear: false,
+      equivalent: [],
+      classification: null,
+      records: null,
+      reason: "inspection_failed",
+      error: kind,
+    };
   }
 
-  const server = canonicalDocument(base);
-  const candidates: RecoveryCandidate[] = [];
+  const classification = classifyRecovery({ records, server: base, serverRevision: revision });
   const equivalent: string[] = [];
-  for (const read of drafts) {
+  const candidates: RecoveryCandidate[] = [];
+  records.drafts.forEach(({ read }, index) => {
+    const classified = classification.drafts[index];
     if (read.status === "unsupported") {
       candidates.push({ status: "unsupported", id: read.id, draftId: read.draftId });
-      continue;
+      return;
     }
     if (read.status === "malformed") {
       candidates.push({ status: "unreadable", id: read.id, draftId: read.draftId });
-      continue;
+      return;
     }
-    const kept = canonicalDocument(read.draft.content);
-    if (server.ok && kept.ok && jsonEqual(kept.content as JsonValue, server.content as JsonValue)) {
+    if (classified.kind === "equivalent") {
       equivalent.push(read.draftId);
-      continue;
+      return;
     }
+    if (!classified.blocking) return;
     candidates.push({
-      status: draftStatus(read.draft),
+      status: classified.status ?? "pending",
       draftId: read.draftId,
       sequence: read.draft.sequence,
       baseRevision: read.draft.baseRevision,
       updatedAt: read.updatedAt,
+      provenance: classified.provenance,
     });
-  }
+  });
   return candidates.length
-    ? { clear: false, equivalent, reason: "drafts", candidates }
-    : { clear: true, equivalent };
+    ? { clear: false, equivalent, classification, records, reason: "drafts", candidates }
+    : { clear: true, equivalent, classification, records };
 }

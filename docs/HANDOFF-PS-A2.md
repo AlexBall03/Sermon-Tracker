@@ -2138,3 +2138,131 @@ Next.js dispatches a client's Server Actions one at a time (bundled docs, `01-ap
   - A refused first save releases only a claim that was never sent; a refused retry keeps the claim.
   - A late grant after a takeover's deadline is released only in a later task than the grant, which the browser's event loop guarantees.
   - The lock is never read as a save.
+
+## A2.3C: Recovery resolution (29 October 2026)
+
+**Status:** built, not committed, not mounted. No migration, no UI, no new server code. Baseline `ef619d8` (A2.3B.3).
+
+### Owner decisions (final)
+
+- **A, retention:** a restored original stays on the device until the restored work's save is confirmed by the server. An IndexedDB write, or sending a save, is not a confirmation.
+- **B, comparison:** A3 shows full, switchable, read-only previews of the recovered and the saved document. No diff, no merge, no version history.
+- **C, restore:** restoring needs durable local protection, not a server save. The restored work is then saved by ordinary autosave, conditionally.
+- **Oversized drafts** can be restored, are flagged too large, and are never sent until they fit.
+- **Several drafts:** every other divergent draft is resolved explicitly before one is restored. Nothing supersedes, merges, or discards by itself.
+- **Plan review corrections:**
+  1. verified lineage between a restored draft and its original;
+  2. durable confirmation evidence and recoverable cleanup;
+  3. exact unreadable-record identity.
+
+### What was built
+
+- **C.1, classification** (`recovery/classify.ts`, pure). `classifyRecovery({ records, server, serverRevision })` gives each record:
+  - its kind: `equivalent`, `divergent`, `unsupported`, or `malformed`;
+  - its status and current refusal (`draftStatus`, `currentRefusal`), and `behindServer` (advice only);
+  - `restorable`: `{ ok, oversized, bytes }` or `invalid`;
+  - its provenance: `none`, `restored`, `protected`, `cleanup_pending`, or `unknown`;
+  - whether it blocks.
+
+  It also gives the **units** the person resolves: a draft, or a restored draft with the drafts it came from. `restoreForRecovery` gives the preview: canonical, or validated by the core when only too large; a document the core refuses gets none. The gate (`assessRecovery`) now uses the same classification.
+- **Exact identity** (`recovery/identity.ts`). `sameRecord(a, b)` returns `equal`, `different`, or `unknown`.
+  - It compares exactly: primitives (`Object.is`), plain objects, dense arrays, `Date`s, `ArrayBuffer`s, and typed arrays and `DataView`s byte for byte.
+  - Anything else (`Map`, `Set`, `Blob`, `RegExp`, boxed values, class instances) is `unknown`, even when the type tags match. `unknown` refuses deletion and adoption.
+- **C.2, storage** (`recovery/store.ts`; the existing `accountData` store, no IndexedDB version change):
+  - `inspectRecoveryRecords`: one outline's drafts and cleanup markers, with their stored records, in one read.
+  - `adoptDraft`: one transaction.
+    - It checks that the head and every draft of the outline are exactly as reviewed, and that no new draft has appeared (one that disappeared is fine).
+    - It writes the new session's draft: sequence 1, `confirmedSequence` 0, the server revision just read, `adoption.lineage`, and `too_large` when oversized.
+    - It removes nothing.
+  - `discardReviewedDraft`: removes one record only while `sameRecord` says `equal`.
+  - `discardUnreadableDraft(owner, id, expected)`: now requires the reviewed record. It never removes a readable draft.
+  - `writeDraft` carries `adoption` forward. `DocumentDraftData.adoption` is an optional field, so older code reads such a draft as an ordinary one.
+- **C.3, session adoption** (`session/session.ts`; its contract is `session/resolution.ts`):
+  - `inspectRecovery()` gives a `RecoveryInspection`: the server base, units with opaque tokens, every record, and `single`.
+  - `previewRecovered(token)` gives the recovered document.
+  - `restore(token)` gives a `RestoreResult`. It moves through `resolving` (a takeover is declined as `starting`) to `ready { base, restored }`.
+  - `discard(token)` gives a `DiscardResult`, then checks again by itself.
+  - `attach` with `restored` requires the editor to hold `restored.content`, and gives the controller `resume: { draftId, sequence: 1 }`.
+  - Controller `resume`: the attached document is that snapshot, already kept on the device. So the status is `local` (never `unchanged` or `saved`), and the snapshot is claimable.
+  - Coordinator: one `armIfWaiting()` at creation, so a restored first snapshot is saved on the usual 1.5 s / 10 s timers. A fresh session starts at sequence 0, so nothing changes for it.
+- **C.4, confirmation and cleanup:**
+  - `confirmDraft` of a draft with `adoption` writes a **cleanup marker** (`documentDraftCleanup`, keyed `<outlineId>:<adopter>`) naming the lineage, in the confirmation's own transaction. On `advanced` it drops `adoption` from the draft, since the marker now holds the lineage.
+  - `settleCleanups(owner, outline)`: one transaction, idempotent.
+    - For each readable marker, it removes each named draft that still matches its link and that no other unconfirmed lineage names, then removes the marker.
+    - It counts changed drafts as `kept`; they are independent work.
+    - It leaves unreadable markers alone.
+  - When it runs:
+    - The controller of a restored session runs `settleCleanups` after each confirmation and when it ends.
+    - If a confirmation's transaction failed, that controller records the evidence again from memory: locally, with no server request.
+    - The session also runs it in `verify`, with the lock held, before the gate. The gate itself still deletes nothing.
+
+### Restore safety
+
+- **Durable before editing.** `ready` with `restored` is set only after `adoptDraft` has committed. If the tab dies before then, nothing is written. If it dies after, the next session finds the restored draft and its original as one unit and can restore it, through any number of generations.
+- **New-session unsaved work.** The work goes into a new draft ID made by the session; the earlier session's claim, sequence, or submission is never used. The editor loads it with `loadV4`, which replaces the state with no transaction: no faked edit, and no write-guard exception. Undo stops at the restored document.
+- **Conditional save.** The first save names the revision the restore read. If the earlier session's request commits late, the save gets `stale` and becomes a `conflict`. Nothing is overwritten and there is no third write. The restored draft keeps the refusal, and the original is kept.
+- **Retained originals** are removed only by `settleCleanups`, on a marker that only a server confirmation writes.
+
+### Cleanup eligibility (exact)
+
+A draft X is removed only when all of these hold:
+
+1. A readable cleanup marker names X's link. Only `confirmDraft` writes markers, and only for a confirmed sequence of a draft with `adoption`.
+2. X is readable and matches the link: the same session, sequence, and record update time.
+3. No other present draft has a lineage that names X's link. The adopter, and the drafts this marker answers for, don't count.
+
+Content equality, a higher revision, or a higher local sequence is never evidence.
+
+| State | On the device | Blocks |
+|---|---|---|
+| Restore not confirmed | draft with `adoption` | as one unit with its originals |
+| Confirmed, cleanup pending | cleanup marker | no (`cleanup_pending`) |
+| Cleanup done | neither | no |
+| Lineage or confirmation unknown | a named draft that changed, or an unreadable marker | yes, as independent work |
+
+### Concurrency and lifecycle
+
+- **Web Locks and identity** are checked before each step, and after every wait, together with the generation. If anything changed, the step stops: `state`, `identity`, `lock`, or `interrupted` once the adoption has committed.
+- **Tokens** are made by the session's own inspection, spent at any change of course, and carry the exact reviewed record. A draft ID from the UI never authorizes anything.
+- **When the review no longer holds:**
+  - the server moved on: `server_changed`, then a recheck;
+  - a draft changed: `changed`, and nothing is done;
+  - IndexedDB failed: `storage_failed`, and nothing is written;
+  - the GET failed: `read_failed`, then `verification_failed`.
+- **An interrupted cleanup** leaves the marker, which the next confirmation, the session's end, or the next session's `verify` finishes.
+
+### Verification (actually run)
+
+- **New tests:** `npx vitest run src/features/sermon-editor/persistence/recovery/resolution.test.ts src/features/sermon-editor/persistence/session/recovery-resolution.test.ts` ran 50 tests, all passing. They cover every scenario in the phase brief, including several generations of crash and restore, and a malformed record replaced under the same key.
+- **Mutation checks:** with each of these safeguards removed, tests fail:
+  - the coordinator's initial arm: 6 tests;
+  - lineage protection: 2;
+  - adoption's identity check: 1;
+  - the other-candidates rule: 2.
+- **Editor suites:** `npx vitest run src/features/sermon-editor src/features/editor-lab` ran 39 files and 1121 tests, all passing. That includes the existing autosave, coordinator, session, and recovery suites. Two existing tests were adjusted: one for the renamed `inspectDrafts` option, one for `discardUnreadableDraft`'s new argument.
+- **Real browser:** `npm run test:e2e:ownership` (Chromium) ran 8 tests, all passing. Two are new:
+  - a closed tab's unsent words are restored, saved conditionally, and the original is cleaned up in real IndexedDB;
+  - a tab closed straight after restoring leaves the unit for the next tab, which restores and saves it.
+- **Tooling:** `npm run typecheck` is clean, ESLint is clean on the changed files, and Prettier was applied to them.
+- **Not run:** `npm run build`. It runs `migrate deploy`, and these are unmounted client modules, so a production build isn't called for here.
+
+### Limitations
+
+- **No UI.** A3 builds the dialog (decision B) from `inspectRecovery` and `previewRecovered`, with the server document from `state.base`.
+- **Older application versions,** if one were still running on the device, would drop `adoption` on their next write of such a draft. The original would then block as independent work: safe, but it costs the person a discard.
+- **An unreadable record holding a value type `sameRecord` cannot compare** cannot be discarded through resolution. It stays and blocks, by design (correction 3).
+- **Equivalent drafts are kept,** as in A2.3B.3. They can be discarded through resolution; nothing removes them by itself.
+
+### For A3
+
+- **On `recovery_required`:**
+  - Call `inspectRecovery()` and show each blocking unit: the head, with its ancestors shown as "restored earlier".
+  - Show the server's document from `state.base.content` and the recovered one from `previewRecovered(unit.head.token)`, switchable and read only.
+  - Offer Restore only on a unit with `restorable`, and only while `single`. Otherwise ask the person to resolve the others first, through Discard (`discard(token)`).
+- **After `restore`:**
+  - `restored`: load `state.restored.content` with `loadV4`, then call `attach(editorSource(editor))`.
+  - `server_changed`, `changed`, or `other_candidates`: inspect again.
+  - `read_failed`: show the reason and offer `recheck()`.
+  - `storage_failed`: say the device couldn't keep it.
+- **Wording:** label restored work as kept on the device until the indicator says `saved`. For `restored.oversized`, say it is too large to save until it is shortened.
+- **Never** restore or discard from a state listener.

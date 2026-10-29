@@ -1212,6 +1212,9 @@ export function createSaveCoordinator(options: SaveCoordinatorOptions): SaveCoor
     clearTimers();
     throw error;
   }
+  // Work the controller already holds unsent (a restored session's first snapshot, A2.3C) is
+  // due as an edit would be. A fresh session starts at snapshot 0: nothing is armed.
+  armIfWaiting();
 
   return {
     getState,
