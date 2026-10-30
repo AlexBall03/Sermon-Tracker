@@ -12,6 +12,7 @@ import {
   type PageMetrics,
   type PageSetup,
 } from "./geometry";
+import { printingKey } from "./printing";
 
 /*
  * Print Layout (PS-1B.2B.1, a feasibility prototype in the lab). The same
@@ -290,9 +291,38 @@ class Paginator {
     doc.fonts?.ready.then(() => this.schedule()).catch(() => undefined);
     // A document font arrives when text first uses it (`fonts.ts`): its lines change, so measure again.
     doc.fonts?.addEventListener?.("loadingdone", this.onFonts);
+    doc.defaultView?.addEventListener("beforeprint", this.onBeforePrint);
+    doc.defaultView?.addEventListener("afterprint", this.onAfterPrint);
   }
 
   private readonly onFonts = () => this.schedule();
+
+  /**
+   * Before the browser prints (A3.1): the view state that hides content on
+   * screen is set aside (`printing.ts`), and the pages are measured again here,
+   * synchronously, while the screen's media and layout are still in force, so
+   * the print has the complete document on correctly fitted pages. Never a
+   * document change. In an editor without that state there is nothing to set aside.
+   */
+  private readonly onBeforePrint = () => {
+    if (!this.attached || this.view.isDestroyed) return;
+    if (printingKey.getState(this.view.state)) {
+      this.view.dispatch(
+        this.view.state.tr.setMeta(printingKey, true).setMeta("addToHistory", false),
+      );
+    }
+    this.measure();
+  };
+
+  /** After printing: the screen's view state is drawn again, and the pages follow it. */
+  private readonly onAfterPrint = () => {
+    if (!this.attached || this.view.isDestroyed) return;
+    if (printingKey.getState(this.view.state)?.printing) {
+      this.view.dispatch(
+        this.view.state.tr.setMeta(printingKey, false).setMeta("addToHistory", false),
+      );
+    }
+  };
 
   /** Starts following the editor's size (again, after a document was loaded). */
   attach() {
@@ -308,7 +338,12 @@ class Paginator {
   update(view: EditorView, previous: EditorState) {
     this.view = view;
     const now = printLayoutKey.getState(view.state);
-    if (view.state.doc !== previous.doc || now !== printLayoutKey.getState(previous)) {
+    if (
+      view.state.doc !== previous.doc ||
+      now !== printLayoutKey.getState(previous) ||
+      // View state that changes what is drawn (folding, collapsed Scripture, printing; A3.1).
+      printingKey.getState(view.state) !== printingKey.getState(previous)
+    ) {
       this.beforePaint();
     }
   }
@@ -337,7 +372,10 @@ class Paginator {
     this.observer?.disconnect();
     // The paginator lives as long as its view, which ProseMirror never reattaches once destroyed.
     if (!this.view.dom.isConnected) {
-      this.view.dom.ownerDocument.fonts?.removeEventListener?.("loadingdone", this.onFonts);
+      const doc = this.view.dom.ownerDocument;
+      doc.fonts?.removeEventListener?.("loadingdone", this.onFonts);
+      doc.defaultView?.removeEventListener("beforeprint", this.onBeforePrint);
+      doc.defaultView?.removeEventListener("afterprint", this.onAfterPrint);
     }
   }
 
@@ -439,6 +477,8 @@ class Paginator {
   private fitBreaks(dom: HTMLElement, metrics: PageMetrics, offset: (y: number) => number) {
     let changed = false;
     for (const element of dom.querySelectorAll<HTMLElement>(":scope > .lab-page-break")) {
+      // A break inside folded content is not drawn: it is fitted when it is shown again.
+      if (!drawn(element)) continue;
       const { fill, atTop } = breakFill(metrics, offset(element.getBoundingClientRect().top));
       const was = Number.parseFloat(element.style.getPropertyValue("--fill") || "NaN");
       const wasAtTop = element.dataset.atTop === "true";
@@ -454,10 +494,16 @@ class Paginator {
   /** Where the last block ends, from the top of the first sheet. */
   private contentBottom(dom: HTMLElement, metrics: PageMetrics, offset: (y: number) => number) {
     let last = dom.lastElementChild as HTMLElement | null;
-    while (last && last === this.root) last = last.previousElementSibling as HTMLElement | null;
+    // Not the pages themselves, and not a block that is not drawn (folded, A3.1): it has no bottom.
+    while (last && (last === this.root || !drawn(last))) {
+      last = last.previousElementSibling as HTMLElement | null;
+    }
     return last ? offset(last.getBoundingClientRect().bottom) : metrics.top;
   }
 }
+
+/** Whether an element takes part in the layout (one hidden with `display: none` has no boxes). */
+const drawn = (element: Element) => element.getClientRects().length > 0;
 
 /** The editor's current layout state. */
 export const printLayoutOf = (state: EditorState) => printLayoutKey.getState(state);

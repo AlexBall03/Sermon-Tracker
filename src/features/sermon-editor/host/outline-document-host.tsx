@@ -24,6 +24,9 @@ import { useT } from "@/i18n/client";
 import { holdUnsavedWork, releaseUnsavedWork } from "@/lib/unsaved-work";
 import { routes } from "@/lib/site";
 import { cn } from "@/lib/utils";
+import type { PassageLink } from "@/features/editor-lab/schema/scripture";
+import { readerHref, referenceLocation } from "@/features/scripture/reader-location";
+import { foldKey } from "../folding-storage";
 import { saveOutlineDocument } from "../persistence/actions";
 import { editorSource } from "../persistence/autosave/editor-adapter";
 import { documentTransport } from "../persistence/autosave/transport";
@@ -232,6 +235,19 @@ function SessionView({
     () => [sessionWriteGuard(() => session.canEdit())],
     [session],
   );
+  // A passage's way to the Bible (A3.1): the reader's own address, with this outline as the way back.
+  // A link in this tab, which the leave guard sees first; nothing here releases it.
+  const router = useRouter();
+  const bible = useT("scripture").field;
+  const openInBible: PassageLink = useMemo(
+    () => ({
+      href: (reference) => readerHref(referenceLocation(reference, { outline: session.outlineId })),
+      label: bible.openNamed,
+      title: bible.openInTheBible,
+      navigate: (href) => router.push(href),
+    }),
+    [session, bible, router],
+  );
   const onReady = useCallback(
     (ready: Editor) => {
       editor.current = ready;
@@ -288,6 +304,8 @@ function SessionView({
           documentKey={opened.key}
           back={{ href: `${routes.library}/${sermon.id}`, label: back }}
           extensions={extensions}
+          foldKey={foldKey(session.owner, session.outlineId)}
+          openInBible={openInBible}
           onReady={onReady}
           onRefused={() => setRefused(true)}
           headerStart={

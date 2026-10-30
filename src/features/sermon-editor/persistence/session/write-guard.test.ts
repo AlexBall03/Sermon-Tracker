@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
 import { documentV4, pointV4, proseV4 } from "@/features/editor-lab/v4/fixtures";
+import { foldingOf } from "@/features/editor-lab/v4/folding";
 import { caret, press } from "@/features/editor-lab/v4/testing";
 import type { JsonValue } from "../json";
 import { jsonEqual } from "../autosave/model";
@@ -106,6 +107,13 @@ describe("sessionWriteGuard", () => {
     const at = editor.state.doc.content.size - 2;
     editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, at)));
     expect(editor.state.selection.from).toBe(at);
+    // A3.1: folding points and collapsing Scripture are view state, so they pass a guard that refuses edits.
+    const json = editor.getJSON();
+    expect(foldingOf(editor.state).foldable).toBeGreaterThan(0);
+    editor.commands.setAllPointsFolded(true);
+    expect(foldingOf(editor.state).folded).toBe(foldingOf(editor.state).foldable);
+    editor.commands.setPassagesCollapsedInPrint(true);
+    expect(editor.getJSON()).toEqual(json);
   });
 
   it("asks at the moment of each transaction, and refuses when the question throws", () => {

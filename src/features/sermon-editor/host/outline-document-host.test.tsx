@@ -36,13 +36,18 @@ const state = vi.hoisted(() => ({
   editors: [] as Editor[],
   sessions: [] as EditorSession[],
   replaced: [] as string[],
+  pushed: [] as string[],
+  workspace: null as null | {
+    foldKey?: string;
+    openInBible?: import("@/features/editor-lab/schema/scripture").PassageLink;
+  },
 }));
 
 vi.mock("@clerk/nextjs", () => ({ useAuth: () => state.auth }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: (href: string) => state.replaced.push(href),
-    push: vi.fn(),
+    push: (href: string) => state.pushed.push(href),
     refresh: vi.fn(),
   }),
 }));
@@ -74,12 +79,18 @@ vi.mock("../sermon-workspace", async () => {
       onRefused?: () => void;
       headerStart?: React.ReactNode;
       headerEnd?: React.ReactNode;
+      foldKey?: string;
+      openInBible?: import("@/features/editor-lab/schema/scripture").PassageLink;
     }) => {
       const host = useRef<HTMLDivElement>(null);
       useEffect(() => {
+        state.workspace = { foldKey: props.foldKey, openInBible: props.openInBible };
         const editor = new Editor({
           element: host.current!,
-          extensions: [...labV4Extensions({}), ...(props.extensions ?? [])],
+          extensions: [
+            ...labV4Extensions({ openInBible: props.openInBible ?? null }),
+            ...(props.extensions ?? []),
+          ],
         });
         state.editors.push(editor);
         const loaded = loadV4(editor, props.document, props.documentKey);
@@ -184,6 +195,8 @@ beforeEach(async () => {
   state.editors = [];
   state.sessions = [];
   state.replaced = [];
+  state.pushed = [];
+  state.workspace = null;
 });
 
 afterEach(async () => {
@@ -191,6 +204,31 @@ afterEach(async () => {
   await drain();
   vi.useRealTimers();
   await closeOfflineDb();
+});
+
+describe("legacy compatibility restoration", () => {
+  it("gives passages this outline's way to the Bible, and folding sends nothing", async () => {
+    const w = world();
+    host(w, "A");
+    await drain();
+    const props = state.workspace!;
+    expect(props.foldKey).toBe(`${owner}:${outlineId}`);
+    const reference = { book: 19, chapterStart: 23, verseStart: 1, chapterEnd: null, verseEnd: 3 };
+    expect(props.openInBible!.href(reference)).toBe(
+      `/bible?book=19&chapter=23&verse=1&through=3&outline=${outlineId}`,
+    );
+    // The page's own navigation, in this tab; nothing else is released or saved by it.
+    props.openInBible!.navigate("/bible?book=19&chapter=23");
+    expect(state.pushed).toEqual(["/bible?book=19&chapter=23"]);
+
+    const editor = latestEditor();
+    editor.commands.setAllPointsFolded(true);
+    editor.commands.setAllPointsFolded(false);
+    editor.commands.setPassagesCollapsedInPrint(true);
+    await advance(12_000);
+    expect(w.net.sent).toHaveLength(0);
+    expect(screen.getByTestId("save-status").dataset.label).toBe("unchanged");
+  });
 });
 
 describe("opening (A3.1)", () => {

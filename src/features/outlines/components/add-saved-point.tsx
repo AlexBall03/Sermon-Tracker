@@ -37,6 +37,14 @@ type AddSavedPointProps = {
    */
   onAdd: (point: { id: string; title: string }, place: SavedPointPlace) => boolean;
   onClose: () => void;
+  /**
+   * Words of the editor that opened it, in place of the legacy outline's
+   * (A3.1: the sermon editor copies the title only, and places a point with
+   * no anchor before its conclusion).
+   */
+  words?: { description?: string; atEnd?: string };
+  /** Said when `onAdd` answers false; without it, the editor says it for itself. */
+  refused?: string;
 };
 
 /** As in `RelateIdea`: a centred dialog where there is room, the whole of a small screen otherwise. */
@@ -52,7 +60,7 @@ const roomToFloat = "(min-width: 48rem) and (min-height: 34rem)";
  * The same point may be placed again, here or in another outline, so nothing
  * is marked as used up. The dialog stays open after each and closes with Done.
  */
-export function AddSavedPoint({ target, onAdd, onClose }: AddSavedPointProps) {
+export function AddSavedPoint({ target, onAdd, onClose, words, refused }: AddSavedPointProps) {
   // What was last asked for stays drawn while the dialog closes over it.
   const [shown, setShown] = useState(target);
   if (target && target !== shown) setShown(target);
@@ -79,6 +87,8 @@ export function AddSavedPoint({ target, onAdd, onClose }: AddSavedPointProps) {
             box={box}
             onAdd={onAdd}
             onClose={onClose}
+            words={words}
+            refused={refused}
           />
         )}
       </DialogContent>
@@ -91,11 +101,15 @@ function PointPicker({
   box,
   onAdd,
   onClose,
+  words,
+  refused,
 }: {
   target: SavedPointTarget;
   box: React.RefObject<HTMLInputElement | null>;
   onAdd: AddSavedPointProps["onAdd"];
   onClose: () => void;
+  words: AddSavedPointProps["words"];
+  refused: AddSavedPointProps["refused"];
 }) {
   const id = useId();
   const t = useT("outlines").editor.savedPoint;
@@ -114,7 +128,10 @@ function PointPicker({
   });
 
   function add(match: IdeaMatch) {
-    if (!onAdd({ id: match.id, title: match.title }, place)) return;
+    if (!onAdd({ id: match.id, title: match.title }, place)) {
+      if (refused) setSaid(refused);
+      return;
+    }
     setPlaced((current) => new Map(current).set(match.id, (current.get(match.id) ?? 0) + 1));
     setSaid(t.added(match.title));
   }
@@ -125,7 +142,7 @@ function PointPicker({
         <div className="min-w-0">
           <DialogTitle>{t.title}</DialogTitle>
           <DialogDescription className="mt-0.5 text-sm text-pretty text-muted-foreground">
-            {t.description}
+            {words?.description ?? t.description}
           </DialogDescription>
         </div>
         <DialogClose label={search.close} className="-mr-2" />
@@ -144,7 +161,7 @@ function PointPicker({
             ]}
           />
         ) : (
-          <p className="text-[0.8125rem] text-muted-foreground">{t.atEnd}</p>
+          <p className="text-[0.8125rem] text-muted-foreground">{words?.atEnd ?? t.atEnd}</p>
         )}
       </div>
 

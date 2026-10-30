@@ -132,6 +132,7 @@ export const sermonEditor: Untranslated<typeof english> = {
     introduction: "Introducción",
     point: "Punto principal",
     subpoint: "Subpunto",
+    savedPoint: "Punto guardado…",
     scripture: "Pasaje bíblico…",
     note: "Nota del predicador",
     script: "Guion",
@@ -140,6 +141,7 @@ export const sermonEditor: Untranslated<typeof english> = {
       introduction: "Abre el sermón",
       point: "Después del punto actual",
       subpoint: "Dentro del punto actual",
+      savedPoint: "Una de tus ideas de punto, por su título",
       scripture: "Su texto, después de esta línea",
       note: "Para ti, no para la congregación",
       script: "Palabras para decir tal como están",
@@ -151,5 +153,21 @@ export const sermonEditor: Untranslated<typeof english> = {
     scriptureNowhere: "Aquí no puede ir un pasaje. Pon el cursor en otra línea.",
     scriptureInsert: "Insertar",
     cancel: "Cancelar",
+    savedPointDescription:
+      "El título del punto se añade a este bosquejo como un punto nuevo. Sus notas y pasajes se quedan en el punto guardado, que no cambia.",
+    savedPointAtEnd: "Se añade como punto principal después del último, antes de la conclusión.",
+    savedPointRefused:
+      "No se pudo añadir aquí. Puede que la edición se haya detenido en esta pestaña o que el lugar sea demasiado profundo.",
+    thisPoint: "este punto",
+  },
+  view: {
+    label: "Ver",
+    menu: "Opciones de vista",
+    expandPoints: "Expandir todos los puntos",
+    collapsePoints: "Contraer todos los puntos",
+    expandScripture: "Expandir todos los pasajes",
+    collapseScripture: "Contraer todos los pasajes",
+    collapsePoint: "Contraer punto",
+    expandPoint: "Expandir punto",
   },
 };

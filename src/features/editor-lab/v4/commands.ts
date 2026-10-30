@@ -1,3 +1,4 @@
+import { closeHistory } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import { liftListItem, sinkListItem } from "@tiptap/pm/schema-list";
 import {
@@ -754,6 +755,78 @@ export function addPoint(kind: "sibling" | "child"): Command {
     const tr = state.tr.insert(at, state.schema.nodes.point.create({ depth }));
     tr.setSelection(TextSelection.create(tr.doc, at + 1));
     dispatch(structural(tr).scrollIntoView());
+    return true;
+  };
+}
+
+/** Where a saved point goes (A3.1): beside or under the point with this ID, or after the last main point (null). */
+export type SavedPointTarget = { anchorId: string | null; place: "below" | "under" };
+
+/** The point the caret is in or under (its ID and heading words), or null outside any point. */
+export function pointAtCaret(state: EditorState): { id: string; title: string } | null {
+  const index = blockIndex(state.selection.$from);
+  if (index === null) return null;
+  const structure = analyze(state.doc);
+  const point = nearestPoint(structure, index);
+  if (point === null) return null;
+  const { node } = structure.blocks[point];
+  return typeof node.attrs.id === "string" ? { id: node.attrs.id, title: node.textContent } : null;
+}
+
+/** The top-level index of the point with this ID, or null. */
+function pointIndexById(structure: Structure, id: string): number | null {
+  const index = structure.blocks.findIndex((block) => block.isPoint && block.node.attrs.id === id);
+  return index < 0 ? null : index;
+}
+
+/**
+ * A copy of a saved point idea (A3.1, Add from Saved Point): a new point
+ * whose heading is the idea's title and which remembers the idea in
+ * `sourcePointId`. Nothing else is copied (owner's decision): no notes, no
+ * passages, no role, no legacy link; the idea itself is never touched, and
+ * the same idea may be placed any number of times. Its ID comes from the
+ * identity step.
+ *
+ * The anchor is found by its ID, never by position, so a picker that places
+ * several copies keeps placing them where it was asked to. `below` is after
+ * the anchor's whole group at its level; `under`, its last subpoint. With no
+ * anchor, a main point after the last main point (before the conclusion,
+ * when there is one). Refused where the anchor is gone, the depth would pass
+ * `maxDepth`, or any block already in the document would change owner. One
+ * transaction, its own undo step; the caret ends the new heading.
+ */
+export function insertSavedPoint(
+  point: { id: string; title: string },
+  target: SavedPointTarget,
+): Command {
+  return (state, dispatch) => {
+    const structure = analyze(state.doc);
+    let at: number;
+    let depth: number;
+    if (target.anchorId !== null) {
+      const anchor = pointIndexById(structure, target.anchorId);
+      if (anchor === null) return false;
+      at = groupRange(structure, anchor).to;
+      depth = structure.blocks[anchor].depth + (target.place === "under" ? 1 : 0);
+    } else {
+      const conclusion = structure.blocks.find(
+        (block) => block.isPoint && block.node.attrs.role === "conclusion",
+      );
+      at = conclusion ? conclusion.pos : state.doc.content.size;
+      depth = 1;
+    }
+    if (depth > maxDepth) return false;
+    const title = point.title.trim();
+    const heading = state.schema.nodes.point.create(
+      { depth, sourcePointId: point.id },
+      title ? state.schema.text(title) : undefined,
+    );
+    const tr = state.tr.insert(at, heading);
+    if (reparented(structure, tr.doc, tr.mapping) > 0) return false;
+    if (dispatch) {
+      tr.setSelection(TextSelection.create(tr.doc, at + heading.nodeSize - 1));
+      dispatch(closeHistory(structural(tr)).scrollIntoView());
+    }
     return true;
   };
 }

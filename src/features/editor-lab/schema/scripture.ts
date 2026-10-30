@@ -74,7 +74,22 @@ function passageFromElement(element: HTMLElement, extra: (element: HTMLElement) 
     : false;
 }
 
-export type ScriptureNodeOptions = { locale: Locale };
+/**
+ * A way from a passage to the Bible reader (A3.1), given by the page that
+ * mounts an editor (the production host names its outline); none in the
+ * schema, a preview, or the lab. Only a view's option: nothing of it is stored.
+ */
+export type PassageLink = {
+  /** The reader's address for a reference (`readerHref`, `reader-location.ts`). */
+  href: (reference: ScriptureReference) => string;
+  /** The link's accessible name, given the formatted reference. */
+  label: (reference: string) => string;
+  title: string;
+  /** Goes to the address in this tab, once nothing has stopped the click (the leave guard first). */
+  navigate: (href: string) => void;
+};
+
+export type ScriptureNodeOptions = { locale: Locale; openInBible?: PassageLink | null };
 
 export const ScriptureReferenceNode = Node.create<ScriptureNodeOptions>({
   name: "scriptureReference",

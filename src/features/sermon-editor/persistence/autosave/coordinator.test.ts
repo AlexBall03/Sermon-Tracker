@@ -470,6 +470,9 @@ describe("the editor (a real v4 editor)", () => {
     editor.commands.focus();
     editor.commands.blur();
     editor.commands.setPassagesExpanded(true);
+    editor.commands.setPassagesCollapsedInPrint(true);
+    editor.commands.setAllPointsFolded(true);
+    editor.commands.setAllPointsFolded(false);
     editor.commands.setLayout("print");
     await vi.advanceTimersByTimeAsync(30_000);
     expect(net.requests).toHaveLength(0);

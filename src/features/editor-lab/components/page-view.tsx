@@ -164,11 +164,14 @@ export function ViewControls({
   page,
   pageSetup = "inline",
   layoutSwitch = true,
+  passages = true,
 }: {
   page: PageView;
   pageSetup?: "inline" | "menu";
   /** Whether Regular and Print can be chosen here (the sermon editor's desktop is Print only, A1-UI.1). */
   layoutSwitch?: boolean;
+  /** Whether the passages' expansion button is here (the sermon editor has its own View menu, A3.1). */
+  passages?: boolean;
 }) {
   const t = useT("editorLab");
   const { view } = page;
@@ -204,7 +207,7 @@ export function ViewControls({
         press does; it is not coloured as "on". Where Print Layout is the
         only layout, the button would never act, so it is not shown.
       */}
-      {layoutSwitch && (
+      {layoutSwitch && passages && (
         <Tool
           label={
             page.print

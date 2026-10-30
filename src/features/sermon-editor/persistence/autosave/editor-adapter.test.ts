@@ -75,6 +75,9 @@ describe("editorSource", () => {
     target.commands.focus();
     target.commands.blur();
     target.commands.setPassagesExpanded(true);
+    target.commands.setPassagesCollapsedInPrint(true);
+    target.commands.setAllPointsFolded(true);
+    target.commands.setAllPointsFolded(false);
     target.commands.setLayout("print");
     target.commands.setStylesPreview(null);
     target.commands.setAppearanceTarget("p-1");

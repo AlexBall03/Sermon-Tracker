@@ -128,6 +128,7 @@ export const sermonEditor = {
     introduction: "Introduction",
     point: "Main point",
     subpoint: "Subpoint",
+    savedPoint: "Saved point…",
     scripture: "Scripture passage…",
     note: "Preacher note",
     script: "Script",
@@ -136,6 +137,7 @@ export const sermonEditor = {
       introduction: "Opens the sermon",
       point: "After the current point",
       subpoint: "Under the current point",
+      savedPoint: "One of your point ideas, by its title",
       scripture: "Its text, after this line",
       note: "For you, not the congregation",
       script: "Words to say as written",
@@ -147,5 +149,23 @@ export const sermonEditor = {
     scriptureNowhere: "A passage can't go here. Put the cursor on another line.",
     scriptureInsert: "Insert",
     cancel: "Cancel",
+    savedPointDescription:
+      "The point's title is added to this outline as a new point. Its notes and passages stay with the saved point, which is not changed.",
+    savedPointAtEnd: "It is added as a main point after the last one, before the conclusion.",
+    savedPointRefused:
+      "It couldn't be added here. Editing may have stopped in this tab, or the place is too deep.",
+    /** The point a saved point goes beside, when its heading has no words yet. */
+    thisPoint: "this point",
+  },
+  view: {
+    label: "View",
+    menu: "View options",
+    expandPoints: "Expand all points",
+    collapsePoints: "Collapse all points",
+    expandScripture: "Expand all Scripture",
+    collapseScripture: "Collapse all Scripture",
+    /** The chevron and menu item of one point. */
+    collapsePoint: "Collapse point",
+    expandPoint: "Expand point",
   },
 };

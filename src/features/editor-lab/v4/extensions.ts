@@ -8,10 +8,13 @@ import { GapCaret } from "../gap-caret";
 import { NodeIdentity, type IdFactory } from "../identity";
 import { PassageExpansion } from "../pagination/expansion";
 import { PrintLayout, type PrintLayoutOptions } from "../pagination/plugin";
+import { PrintPreparation } from "../pagination/printing";
+import type { PassageLink } from "../schema/scripture";
 import { ScripturePassageNodeView } from "../schema/scripture-view";
 import { DocumentStylesExtension } from "../styles/plugin";
 import type { PresetId } from "../styles/presets";
 import { CaretSync } from "./caret-sync";
+import { PointFolding, type FoldingOptions } from "./folding";
 import { V4Keymap } from "./keymap";
 import { ComponentLabelsV4, type ComponentLabels } from "./labels";
 import { PaperV4 } from "./paper";
@@ -32,6 +35,10 @@ export type V4ExtensionOptions = {
   preset?: PresetId;
   /** The words that say what a note or a script is (drawn and given to assistive technology); none when left out. */
   componentLabels?: ComponentLabels;
+  /** Point folding (A3.1): the folds to open with, where to remember them, and the chevron's words. */
+  folding?: Partial<FoldingOptions>;
+  /** A passage's way to the Bible reader (A3.1); none where the page gives none. */
+  openInBible?: PassageLink | null;
 };
 
 /**
@@ -55,10 +62,17 @@ export function labV4Extensions({
   roles,
   preset = "balanced",
   componentLabels,
+  folding,
+  openInBible = null,
 }: V4ExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
-    ...v4SchemaExtensions({ locale, passage: ScripturePassageNodeView }),
+    ...v4SchemaExtensions({
+      locale,
+      passage: openInBible
+        ? ScripturePassageNodeView.configure({ openInBible })
+        : ScripturePassageNodeView,
+    }),
     DocumentStylesExtension.configure({ preset }),
     NumberingV4.configure({ roles: roles ?? "subpoints" }),
     NodeIdentity.configure({ newId: ids }),
@@ -71,6 +85,8 @@ export function labV4Extensions({
     GapCaret,
     ClickPlacement,
     PassageExpansion,
+    folding ? PointFolding.configure(folding) : PointFolding,
+    PrintPreparation,
     printLayout ? PrintLayout.configure(printLayout) : PrintLayout,
   ];
 }

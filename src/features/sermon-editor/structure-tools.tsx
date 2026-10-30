@@ -5,8 +5,11 @@ import {
   ArrowDown,
   ArrowLeftToLine,
   ArrowUp,
+  ChevronsDownUp,
+  ChevronsUpDown,
   CircleSlash,
   Copy,
+  ExternalLink,
   CornerDownRight,
   Ellipsis,
   ListIndentDecrease,
@@ -18,6 +21,8 @@ import {
   Plus,
   Trash,
 } from "lucide-react";
+import { NodeSelection } from "@tiptap/pm/state";
+import Link from "next/link";
 
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -44,6 +49,9 @@ import {
   proseToPoint,
   setRole,
 } from "@/features/editor-lab/v4/commands";
+import { foldTargetAtCaret } from "@/features/editor-lab/v4/folding";
+import { referenceFrom } from "@/features/editor-lab/schema/scripture";
+import type { ScriptureReference } from "@/features/scripture/reference";
 import { useT } from "@/i18n/client";
 import { componentAtSelection } from "./appearance/target";
 
@@ -61,12 +69,17 @@ import { componentAtSelection } from "./appearance/target";
 export function StructureTools({
   editor,
   onAppearance,
+  bibleHref,
 }: {
   editor: Editor;
   /** Opens Appearance on the selected component (A1-UI.2B.2). */
   onAppearance?: () => void;
+  /** The reader's address for a selected passage (A3.1); without it, no "Open in the Bible" here. */
+  bibleHref?: (reference: ScriptureReference) => string;
 }) {
   const t = useT("editorLab");
+  const view = useT("sermonEditor").view;
+  const bible = useT("scripture").field;
   const a = t.v4.actions;
   const keeper = useKeptSelection(editor);
   const can = useEditorState({
@@ -90,6 +103,8 @@ export function StructureTools({
         conclusion: check(setRole("conclusion")),
         clearRole: check(setRole(null)),
         component: componentAtSelection(e.state) !== null,
+        fold: foldTargetAtCaret(e.state),
+        passage: selectedPassage(e.state.selection),
       };
     },
   });
@@ -181,10 +196,39 @@ export function StructureTools({
                   {t.appearance.structureAction}
                 </DropdownMenuItem>
               )}
+              {/* View state, never an edit (A3.1): the point the caret is in or under, with all it owns. */}
+              <DropdownMenuItem
+                data-testid="structure-fold"
+                disabled={!can.fold}
+                onClick={() => {
+                  if (!can.fold) return;
+                  editor.chain().focus().setPointFolded(can.fold.id, !can.fold.folded).run();
+                }}
+              >
+                {can.fold?.folded ? <ChevronsUpDown aria-hidden /> : <ChevronsDownUp aria-hidden />}
+                {can.fold?.folded ? view.expandPoint : view.collapsePoint}
+              </DropdownMenuItem>
+              {/* A link, so the leave guard sees it as it sees every link (A3.1). */}
+              {bibleHref && can.passage && (
+                <DropdownMenuItem
+                  data-testid="structure-open-bible"
+                  render={<Link href={bibleHref(can.passage)} />}
+                >
+                  <ExternalLink aria-hidden />
+                  {bible.openInTheBible}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </Group>
     </>
   );
+}
+
+/** The passage the selection is, when it is one passage block. */
+function selectedPassage(selection: { constructor: unknown }): ScriptureReference | null {
+  if (!(selection instanceof NodeSelection)) return null;
+  if (selection.node.type.name !== "scripturePassage") return null;
+  return referenceFrom(selection.node.attrs);
 }

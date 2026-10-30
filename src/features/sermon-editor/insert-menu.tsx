@@ -3,6 +3,7 @@
 import { useEditorState, type Editor } from "@tiptap/react";
 import {
   BookOpen,
+  Bookmark,
   ChevronDown,
   CornerDownRight,
   Flag,
@@ -30,8 +31,15 @@ import {
   insertNote,
   insertPassage,
   insertRolePoint,
+  insertSavedPoint,
   insertScript,
+  pointAtCaret,
 } from "@/features/editor-lab/v4/commands";
+import {
+  AddSavedPoint,
+  type SavedPointPlace,
+  type SavedPointTarget,
+} from "@/features/outlines/components/add-saved-point";
 import { parseReference } from "@/features/scripture/reference";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
@@ -49,7 +57,15 @@ import { cn } from "@/lib/utils";
  */
 
 type Item = {
-  key: "introduction" | "point" | "subpoint" | "scripture" | "note" | "script" | "conclusion";
+  key:
+    | "introduction"
+    | "point"
+    | "subpoint"
+    | "savedPoint"
+    | "scripture"
+    | "note"
+    | "script"
+    | "conclusion";
   icon: typeof Plus;
   command: Command | null;
 };
@@ -58,6 +74,8 @@ const items: Item[] = [
   { key: "introduction", icon: Sunrise, command: insertRolePoint("introduction") },
   { key: "point", icon: Plus, command: addPoint("sibling") },
   { key: "subpoint", icon: CornerDownRight, command: addPoint("child") },
+  // A point idea's title, chosen in its picker (A3.1): the dialog runs `insertSavedPoint`.
+  { key: "savedPoint", icon: Bookmark, command: null },
   // The passage needs a reference first: its dialog runs `insertPassage`.
   { key: "scripture", icon: BookOpen, command: null },
   { key: "note", icon: MessageSquareText, command: insertNote },
@@ -74,10 +92,17 @@ const anyPassage = insertPassage({
   verseEnd: null,
 });
 
+/** Whether a saved point can be placed at all: a main point with no anchor always can, while editing. */
+const anySavedPoint = insertSavedPoint(
+  { id: "probe", title: "" },
+  { anchorId: null, place: "below" },
+);
+
 export function InsertMenu({ editor }: { editor: Editor }) {
   const t = useT("sermonEditor").insert;
   const keeper = useKeptSelection(editor);
   const [scripture, setScripture] = useState(false);
+  const [savedPoint, setSavedPoint] = useState<SavedPointTarget | null>(null);
   // A choice was made in the menu now closing (see the content's `onKeyDownCapture`).
   const chosen = useRef(false);
   const can = useEditorState({
@@ -89,6 +114,7 @@ export function InsertMenu({ editor }: { editor: Editor }) {
         introduction: check(insertRolePoint("introduction")),
         point: check(addPoint("sibling")),
         subpoint: check(addPoint("child")),
+        savedPoint: check(anySavedPoint),
         scripture: check(anyPassage),
         note: check(insertNote),
         script: check(insertScript),
@@ -142,6 +168,14 @@ export function InsertMenu({ editor }: { editor: Editor }) {
               data-testid={`insert-${key}`}
               disabled={!can[key]}
               onClick={() => {
+                if (key === "savedPoint") {
+                  const point = pointAtCaret(editor.state);
+                  return setSavedPoint({
+                    anchor: point
+                      ? { id: point.id, name: point.title.trim() || t.thisPoint }
+                      : null,
+                  });
+                }
                 if (!command) return setScripture(true);
                 chosen.current = true;
                 keeper.apply(command);
@@ -165,8 +199,40 @@ export function InsertMenu({ editor }: { editor: Editor }) {
         }}
         onInsert={(command) => keeper.apply(command)}
       />
+      <AddSavedPoint
+        target={savedPoint}
+        words={{ description: t.savedPointDescription, atEnd: t.savedPointAtEnd }}
+        refused={t.savedPointRefused}
+        onAdd={(point, place) => placeSavedPoint(editor, point, savedPoint, place)}
+        onClose={() => {
+          setSavedPoint(null);
+          editor.commands.focus();
+        }}
+      />
     </div>
   );
+}
+
+/**
+ * Places a copy of a saved point through the editor's own dispatch, so it
+ * passes the session's write guard and its autosave like any edit. True only
+ * when the document really changed: a session that may not edit (another
+ * tab, a lost lock) refuses the transaction, and that is never said to be
+ * added. The anchor is the point's ID, so several copies from one opening of
+ * the picker all go where it was asked.
+ */
+export function placeSavedPoint(
+  editor: Editor,
+  point: { id: string; title: string },
+  target: SavedPointTarget | null,
+  place: SavedPointPlace,
+): boolean {
+  if (!target || editor.isDestroyed || !editor.isEditable) return false;
+  const before = editor.state.doc;
+  const command = insertSavedPoint(point, { anchorId: target.anchor?.id ?? null, place });
+  if (!command(editor.state)) return false;
+  command(editor.state, editor.view.dispatch);
+  return editor.state.doc !== before;
 }
 
 /** Asks for a reference, then inserts its passage where the caret was. */

@@ -31,14 +31,17 @@ import { pageMetrics } from "@/features/editor-lab/pagination/geometry";
 import { namedStyleOf } from "@/features/editor-lab/styles/resolve";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
 import type { V4Notice } from "@/features/editor-lab/v4/model";
+import type { PassageLink } from "@/features/editor-lab/schema/scripture";
 import type { DocumentProblem } from "@/features/editor-lab/validate";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { AppearanceDialogsProvider, useAppearanceDialogs } from "./appearance/dialogs";
 import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
+import { readFolded, storeFolded } from "./folding-storage";
 import { noticeText } from "./notice";
 import { InsertMenu } from "./insert-menu";
 import { StructureTools } from "./structure-tools";
+import { ViewMenu } from "./view-menu";
 import "@/features/editor-lab/v4/lab-v4.css";
 
 export type SermonWorkspaceProps = {
@@ -68,6 +71,18 @@ export type SermonWorkspaceProps = {
    * guard). Read once, when the editor is made; it changes nothing in the schema.
    */
   extensions?: Extensions;
+  /**
+   * Where this device remembers which points are folded (A3.1,
+   * `folding-storage.ts`): one account's outline. Without it folds last only
+   * as long as the workspace. Read when the editor is made.
+   */
+  foldKey?: string;
+  /**
+   * A passage's way to the Bible reader, in this tab (A3.1): the page that
+   * mounts the workspace knows which outline it is. Without it passages have
+   * no link. Read when the editor is made.
+   */
+  openInBible?: PassageLink;
 };
 
 /**
@@ -99,8 +114,11 @@ export function SermonWorkspace({
   onReady,
   onRefused,
   extensions: extra,
+  foldKey,
+  openInBible,
 }: SermonWorkspaceProps) {
   const t = useT("editorLab");
+  const viewWords = useT("sermonEditor").view;
   const locale = useLocale();
   const [notice, setNotice] = useState<V4Notice | null>(null);
   const [clipboardNotice, setClipboardNotice] = useState<ClipboardNotice | null>(null);
@@ -124,10 +142,16 @@ export function SermonWorkspace({
           setClipboardNotice(next);
         },
         printLayout: { initial: initialWorkspaceLayout },
+        folding: {
+          initial: () => (foldKey ? readFolded(foldKey) : []),
+          onChange: foldKey ? (ids) => storeFolded(foldKey, ids) : null,
+          labels: { collapse: viewWords.collapsePoint, expand: viewWords.expandPoint },
+        },
+        openInBible: openInBible ?? null,
       }).concat(extra ?? []),
-    // `extra` is read when the editor is made, as the editor reads its extensions once.
+    // `extra`, `foldKey`, and `openInBible` are read when the editor is made, as it reads its extensions once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locale, componentLabels],
+    [locale, componentLabels, viewWords],
   );
 
   const editor = useEditor({
@@ -197,7 +221,17 @@ export function SermonWorkspace({
           <div className="border-b bg-surface">
             <ToolbarRow
               label={t.toolbar.label}
-              end={<ViewControls page={page} pageSetup="menu" layoutSwitch={!desktop} />}
+              end={
+                <>
+                  <ViewMenu editor={editor} />
+                  <ViewControls
+                    page={page}
+                    pageSetup="menu"
+                    layoutSwitch={!desktop}
+                    passages={false}
+                  />
+                </>
+              }
             >
               <InsertMenu editor={editor} />
               <HistoryGroup editor={editor} />
@@ -210,7 +244,7 @@ export function SermonWorkspace({
               <ListGroup editor={editor}>
                 <QuoteTool editor={editor} />
               </ListGroup>
-              <StructureToolsWithAppearance editor={editor} />
+              <StructureToolsWithAppearance editor={editor} bibleHref={openInBible?.href} />
             </ToolbarRow>
           </div>
         )}
@@ -342,9 +376,21 @@ function EditStylesTool({ editor }: { editor: Editor }) {
 }
 
 /** The structure tools, whose menu opens Component Appearance on the selected component. */
-function StructureToolsWithAppearance({ editor }: { editor: Editor }) {
+function StructureToolsWithAppearance({
+  editor,
+  bibleHref,
+}: {
+  editor: Editor;
+  bibleHref?: PassageLink["href"];
+}) {
   const dialogs = useAppearanceDialogs();
-  return <StructureTools editor={editor} onAppearance={() => dialogs.openComponentAppearance()} />;
+  return (
+    <StructureTools
+      editor={editor}
+      onAppearance={() => dialogs.openComponentAppearance()}
+      bibleHref={bibleHref}
+    />
+  );
 }
 
 /** A quotation: a block like a list, toggled on the selected blocks. */
