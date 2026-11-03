@@ -1,11 +1,13 @@
 import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { entryLabel, type NumberingConfig } from "@/features/outlines/numbering";
 import { isTextOnly } from "../changes";
 import { layoutNumbering } from "../layout";
+import { draftNumbering } from "../styles/draft";
+import { documentStylesKey, type Preview } from "../styles/plugin";
 import { analyze, type Structure } from "./ownership";
 
 /*
@@ -138,13 +140,36 @@ export function columnsByDepth(structure: Structure, labels: Map<number, string>
   return columns;
 }
 
-type NumberingState = { decorations: DecorationSet };
+type NumberingState = {
+  decorations: DecorationSet;
+  /** The numbering the Appearance draft previews (A4.2A, view state), or undefined. */
+  preview: NumberingConfig | undefined;
+};
 
 export const numberingV4Key = new PluginKey<NumberingState>("labV4Numbering");
 
-function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
+/*
+ * The numbering drawn: the Appearance draft's while it previews one (A4.2A,
+ * view state), else the document's. The preview is read from the
+ * transaction that sets it (`setStylesPreview`), never from the state being
+ * built, whose other plugins may not have applied it yet. The same preview is
+ * the same object, so the labels are rebuilt only when it changes, never per
+ * keystroke.
+ */
+function previewIn(tr: Transaction, previous: NumberingConfig | undefined) {
+  const meta = tr.getMeta(documentStylesKey) as Preview | undefined;
+  if (meta === undefined) return previous;
+  return meta && "draft" in meta ? draftNumbering(meta.draft) : undefined;
+}
+
+function build(
+  doc: ProseMirrorNode,
+  roles: RoleNumbering,
+  preview: NumberingConfig | undefined,
+): NumberingState {
   const structure = analyze(doc);
-  const labels = labelsByIndex(structure, layoutNumbering(doc.attrs.layout), roles);
+  const numbering = preview ?? layoutNumbering(doc.attrs.layout);
+  const labels = labelsByIndex(structure, numbering, roles);
   const columns = columnsByDepth(structure, labels);
   const decorations: Decoration[] = [];
   structure.blocks.forEach((block, index) => {
@@ -153,7 +178,9 @@ function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
     if (label) {
       attrs["data-label"] = label;
       attrs.class = "lab-numbered";
-      attrs.style = `--x-label: ${columns.get(block.node.attrs.depth as number) ?? labelEm(label)}em`;
+      const em = columns.get(block.node.attrs.depth as number) ?? labelEm(label);
+      // In em of the heading, and as a bare number for a number drawn at its own size (A4.2A).
+      attrs.style = `--x-label: ${em}em; --x-label-n: ${em}`;
     }
     const irregular = structure.irregular[index];
     if (irregular) attrs["data-irregular"] = irregular;
@@ -161,7 +188,7 @@ function build(doc: ProseMirrorNode, roles: RoleNumbering): NumberingState {
       decorations.push(Decoration.node(block.pos, block.pos + block.node.nodeSize, attrs));
     }
   });
-  return { decorations: DecorationSet.create(doc, decorations) };
+  return { decorations: DecorationSet.create(doc, decorations), preview };
 }
 
 export const NumberingV4 = Extension.create<{ roles: RoleNumbering }>({
@@ -175,13 +202,16 @@ export const NumberingV4 = Extension.create<{ roles: RoleNumbering }>({
       new Plugin<NumberingState>({
         key: numberingV4Key,
         state: {
-          init: (_, state) => build(state.doc, roles),
-          apply(tr, previous, _old, state) {
+          init: (_, state) => build(state.doc, roles, undefined),
+          apply(tr, previous, old) {
+            const preview = previewIn(tr, previous.preview);
+            // A previewed numbering came, went, or changed (A4.2A): every label again.
+            if (preview !== previous.preview) return build(tr.doc, roles, preview);
             if (!tr.docChanged) return previous;
-            if (isTextOnly([tr])) {
-              return { decorations: previous.decorations.map(tr.mapping, tr.doc) };
+            if (isTextOnly([tr]) && tr.doc.attrs.layout === old.doc.attrs.layout) {
+              return { decorations: previous.decorations.map(tr.mapping, tr.doc), preview };
             }
-            return build(state.doc, roles);
+            return build(tr.doc, roles, preview);
           },
         },
         props: { decorations: (state) => numberingV4Key.getState(state)?.decorations },

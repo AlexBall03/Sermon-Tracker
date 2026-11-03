@@ -35,9 +35,9 @@ review), **Deferred** (approved for a named later checkpoint, not built).
   always taken as it is. It changes no document and dispatches nothing.
 - **Review fix (A4.1 review):** ProseMirror also asks `createSelectionBetween`
   while reading a change the browser typed itself (IME composition), about the
-  *new* document. The first version answered with the old document's
+  _new_ document. The first version answered with the old document's
   selection, and ProseMirror threw `RangeError: Selection passed to
-  setSelection must point at the current document`. It now answers only about
+setSelection must point at the current document`. It now answers only about
   the current document (unit test, and the browser spec fails on any page
   error).
 - **Checked:** unit `src/features/editor-lab/v4/navigation.test.ts` (7);
@@ -121,6 +121,93 @@ review), **Deferred** (approved for a named later checkpoint, not built).
 - The test's mock of `@/features/admin/clerk` predated `deleteIdentity`, which
   account deletion now imports, so the file failed to load. The mock gains that
   one function; no assertion changed. 31 tests pass.
+
+## UX-002: Minimal's reminder and script looked alike
+
+- **Severity:** P2. **Status:** Fixed in revision 2 of Minimal (A4.2A).
+- **Found:** A1-UI.2B.1. Seen again in the A4.2A review (Chromium screenshot of the component gallery): a reminder and a script were both thin outlined boxes without a fill, told apart only by their small label.
+- **Fix:** in Minimal's revision 2, a script is a double rule beside its words and has no box (`presets.ts`, `revisionTwo`).
+  - Revision 1 is unchanged (owner's safeguard), so an outline stored before A4.2A keeps the old look until a person chooses the preset again or accepts "Use the updated design".
+- **Checked:** screenshots of revisions 1 and 2, light and dark.
+  - `levels.test.ts`: revision 1's values are unchanged and revision 2 has the refinement.
+  - `preset-parity.spec.ts`: revision 1 has the same computed styles as `7c9d3b6`.
+
+## A1 limitation: deeper subpoints shared the subpoint style
+
+- **Status:** Fixed (A4.2A). Levels (`styles.levels`) give each depth its own typography, spacing, and number. They are edited in Outline Settings → Appearance → Levels.
+
+## BUG-008: `tests/lab/v4.spec.ts` was written against fixtures and controls that later changed
+
+- **Severity:** P2 (tests only). **Status:** Fixed (A4.2A acceptance pass); not caused by A4.2A.
+- **Cause (traced in git):**
+  - `openV4` waited for `[data-id="p-a"]`, which is only in the "Writing that belongs to a parent point" fixture. The lab has opened "When Idols Fall" by default since `6dd3556`; the spec dates from `a62d28d`.
+  - "Print Layout paginates" clicked a "Print" radio. A desktop window has always been in Print Layout with no switch since A1-UI.1 (`f94ef8b`, `layoutSwitch={!desktop}`).
+- **Fix:**
+  - `openV4` chooses that fixture as a person would (the Document menu).
+  - The print test uses the switch only where one is shown, and still asserts `data-layout="print"`, page gaps, and typing in Print Layout.
+  - No assertion was removed or loosened.
+- **Checked:** desktop Chromium, dev server. 13 of 14 tests pass. The 14th is BUG-009, which fails identically on `7c9d3b6`.
+
+## BUG-009: no notice when the browser's own deletion is refused at a heading
+
+- **Severity:** P2. **Status:** Deferred: the notice is approved, to be built in a later editor-reliability checkpoint. Pre-existing; not caused by A4.2A.
+- **Test:** `tests/lab/v4.spec.ts`, "a deletion the browser makes on its own never merges a heading into writing". It uses `document.execCommand("forwardDelete")` at the end of the writing just before a subpoint heading.
+  - The protection works: the heading is not merged, and both of the test's text assertions pass.
+  - The expected notice (`sermon-editor-notice`) never appears.
+- **Reproduced on `7c9d3b6`:** the same spec was run against a `git archive` copy of that commit and failed identically, so this predates A4.2A.
+- A4.2A changed no guard, keymap, command, or notice code (`git diff --name-only`).
+- **Open question for the owner:** should a silently prevented browser deletion still tell the person? The test says yes. PS-ER1 says the guard "says when it refuses", but this deletion may now be prevented before the guard (`beforeinput`).
+
+## TOOL-001: `next dev --webpack` draws the application without Tailwind's utilities
+
+- **Status:** Closed, not a defect (unsupported configuration; nothing to fix).
+- **Cause:** since the initial commit Tailwind is processed only by the Turbopack loader (`turbopack.rules` → `@tailwindcss/turbopack`, `next.config.ts`). There is no PostCSS configuration, so webpack never runs Tailwind.
+- **Supported workflows are all Turbopack:** `npm run dev`, `next build` / `npm run build` (Vercel), and the lab and e2e Playwright configurations. Nothing in the repository uses `--webpack`.
+- **Where it touched A4.2A:** only the preset-parity baseline. It was recorded from a `git archive` copy of `7c9d3b6` on webpack, because Turbopack refuses a `node_modules` linked from outside the project.
+  - That comparison reads the computed styles of the editor's own CSS (which webpack does load), and it passes on both bundlers.
+  - On Turbopack the colors of borders that are not drawn are ignored; they differ only by the bundler's CSS order.
+
+## BUG-010: printing on a desktop printed the editor's toolbar, in Regular Layout
+
+- **Severity:** P1. **Status:** Fixed (A4.2A acceptance, approved by the owner). Pre-existing since A1-UI.1 (`f94ef8b`); not caused by A4.2A.
+- **Reported:** the owner, 3 November 2026. Chrome's own print preview (Ctrl+P) of `/lab/editor/v4` showed the header, the toolbar, the layout switch on "Regular", and the outline in Regular Layout.
+- **Cause:**
+  - On a desktop the workspace is in Print Layout only while the window matches `desktopQuery`, `(min-width: 64rem) and (pointer: fine)`.
+  - A print is laid out at the paper's width (Letter is 816px), under 64rem. So `useDesktop` turned false mid-print, and `SermonWorkspace` switched to Regular Layout.
+  - The print stylesheet (`lab.css`) hides the application only around `.lab-editor[data-layout="print"]`.
+- **Fix** (the existing print infrastructure; no second renderer, no workspace redesign):
+  - `useDesktop` (`sermon-editor/layout.ts`) keeps its answer from `beforeprint` to `afterprint`, and while print media matches. A print is never "a smaller window". Once the print ends it follows the window again.
+  - The Paginator's `beforeprint` (`pagination/plugin.ts`), only where `printsInPrintLayout` is set:
+    - It puts an editor in Regular Layout into Print Layout in the same view-only transaction that sets `printing`, then measures.
+    - `afterprint` gives the layout back.
+    - Only `labV4Extensions` sets the option, so a sermon prints in Print Layout from either layout, while the v3 lab, the unchanged baseline, prints as before.
+  - The print root no longer prints the theme's background behind the sermon editor's pages (`html`, `v4/lab-v4.css`; `lab.css` is unchanged). With background graphics on, it had shown as a tint with white bands at the page gaps.
+  - Metadata transactions only: no document step, no history, no tab layout written, nothing autosave or recovery sees.
+- **Regression tests:**
+  - `src/features/sermon-editor/layout.test.ts` (4): print media and `beforeprint` never turn a desktop into a smaller window; a real resize is followed after the print.
+  - `src/features/editor-lab/v4/print.test.ts` (3): Regular is printed in Print Layout and restored; the document is identical, there are no history steps, and every transaction is metadata only; the v3 lab is unchanged; Print Layout stays.
+  - `tests/lab/print-workspace.spec.ts` (2, desktop Chromium): `beforeprint`, then a paper-wide viewport and print media, then `afterprint`. In Print Layout with nothing outside the editor shown, from a desktop and from a window in Regular Layout; the layout is restored and the document is unchanged.
+    - **Against `7c9d3b6` it fails exactly as reported:** Regular Layout, 44 controls outside the editor printed.
+- **PDFs, opened in installed Google Chrome's own viewer:**
+  - Made through `beforeprint` and `page.pdf`, for "When Idols Fall" (3 pages) and the "Print Layout test" (7 pages): Minimal r1, Minimal r2, Balanced, Expressive.
+  - Every page is the document alone on white paper, with page numbers, no toolbar, controls, sidebar, or scrollbars.
+  - Minimal r2's script is a rule beside the words; r1's is a box.
+- **Not changed:** pagination. `pagination.spec.ts` passes 14 of 14, including P11 (print breaks where the screen does, Letter and A4) and P1 (the v3 lab's plain print reference).
+  - Headings left apart from their writing at a page's foot (the Conclusion; "Under subpoint 3") are BUG-002, deferred.
+- **Not checked:** Chrome's own Print dialog after the fix (owner's check); Firefox and Safari printing.
+
+## TEST-001: Playwright's `page.pdf()` of the sermon workspace
+
+- **Status:** Resolved. Its toolbar and blank pages were BUG-010. After the fix the same PDFs are the document alone.
+
+## BUG-009 decision
+
+- The owner approved a brief, nonintrusive notice when the structural guard refuses a destructive edit. **Deferred** to a later editor-reliability checkpoint (not built in A4.2A).
+
+## Note: pagination P3 on a long-running dev server
+
+- In the acceptance pass `pagination.spec.ts` P3 (the caret across a page gap) failed against the owner's dev server that had been running all session.
+- It passed against a fresh Turbopack server with the same code, and on webpack with both `7c9d3b6` and the working tree. No defect was found; no entry is open for it.
 
 ## Open, carried from earlier handoffs (not yet re-run in A4.1)
 

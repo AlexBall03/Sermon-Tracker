@@ -24,7 +24,9 @@ import {
 } from "@/features/editor-lab/styles/draft";
 import type { ComponentStyle, DocumentStyles } from "@/features/editor-lab/styles/model";
 import { documentStylesKey } from "@/features/editor-lab/styles/plugin";
-import { presets, type Preset, type PresetId } from "@/features/editor-lab/styles/presets";
+import { presetAt, type Preset, type PresetId } from "@/features/editor-lab/styles/presets";
+import { layoutParses } from "@/features/editor-lab/layout";
+import { readNumbering, type NumberingConfig } from "@/features/outlines/numbering";
 import { readStyles } from "@/features/editor-lab/styles/resolve";
 
 /*
@@ -52,6 +54,10 @@ export type AppearanceSession = {
   merged: DocumentStyles | null;
   presetId: PresetId;
   preset: Preset;
+  /** Whether the outline's stored layout can be read, so its numbering can be changed (A4.2A). */
+  layoutReadable: boolean;
+  /** The outline's committed numbering (the default when its layout cannot be read). */
+  numbering: NumberingConfig;
   /** The target component's committed own appearance (null when none, or no target). */
   appearance: ComponentStyle | null;
   dirty: boolean;
@@ -62,6 +68,8 @@ export type AppearanceSession = {
   /** Replaces the draft (a reset worked out elsewhere). */
   change: (next: Draft) => void;
   set: (path: Path, value: unknown) => void;
+  /** Several edits as one change of the draft (a preset with its revision, A4.2A). */
+  setMany: (edits: [Path, unknown][]) => void;
   reset: (layer: LayerPath) => void;
   /** Applies the draft; true when it was written. */
   apply: () => boolean;
@@ -95,6 +103,7 @@ export function useAppearanceSession(
           .map((edit) => keyOf(edit.path))
           .join("\n"),
         orphans: orphansOf(draft, doc).length,
+        layout: doc.attrs.layout as unknown,
       };
     },
     equalityFn: (x, y) =>
@@ -103,7 +112,8 @@ export function useAppearanceSession(
       x!.fallback === y!.fallback &&
       x!.appearance === y!.appearance &&
       x!.conflicts === y!.conflicts &&
-      x!.orphans === y!.orphans,
+      x!.orphans === y!.orphans &&
+      x!.layout === y!.layout,
   });
   const stored = committed?.styles ?? null;
   const merged = useMemo(() => mergeStyles(stored, draft), [stored, draft]);
@@ -114,6 +124,12 @@ export function useAppearanceSession(
     [conflictList],
   );
   const dirty = isDirty(draft);
+  const layout = committed?.layout;
+  const layoutReadable = layoutParses(layout);
+  const numbering = useMemo(
+    () => readNumbering(layoutReadable ? (layout as { numbering: unknown }).numbering : undefined),
+    [layout, layoutReadable],
+  );
 
   // The outline shows the draft while there is one: view state only, never the document's.
   useEffect(() => {
@@ -153,7 +169,10 @@ export function useAppearanceSession(
     stored,
     merged,
     presetId,
-    preset: presets[presetId],
+    // Drawn in the revision the draft would leave (A4.2A): the first when the outline names none.
+    preset: presetAt(presetId, merged?.presetRevision),
+    layoutReadable,
+    numbering,
     appearance: committed?.appearance ?? null,
     dirty,
     conflictCount: conflictKeys.size,
@@ -163,6 +182,14 @@ export function useAppearanceSession(
     change,
     set: (path, value) =>
       change(setEdit(draft, path, value, committedAt(stored, editor.state.doc, path))),
+    setMany: (edits) =>
+      change(
+        edits.reduce(
+          (next, [path, value]) =>
+            setEdit(next, path, value, committedAt(stored, editor.state.doc, path)),
+          draft,
+        ),
+      ),
     reset: (layer) => change(resetLayer(draft, stored, editor.state.doc, layer)),
     apply: () => {
       if (editor.commands.applyAppearanceDraft(draft)) {

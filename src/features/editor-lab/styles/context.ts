@@ -45,11 +45,13 @@ export function resolveAt(
           ? "point"
           : "subpoint";
     // Its own appearance comes before its own format, as they are drawn (`render.ts`).
+    // Its depth's level comes after its type's style (A4.2A); a role's heading has none.
     const resolved = resolveComponent(
       styles,
       kind,
       ownAppearance(block, preset, appearanceOf),
       preset,
+      kind === "point" || kind === "subpoint" ? (block.attrs.depth as number) : null,
     );
     // Where components are drawn, a heading's words are in its title color when it has one.
     const color =

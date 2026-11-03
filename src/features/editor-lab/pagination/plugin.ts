@@ -68,6 +68,12 @@ export type PrintLayoutOptions = {
   initial: () => PrintLayoutState;
   /** Told after a measurement that changed the pages, with how many there are. */
   onPages?: (pages: number) => void;
+  /**
+   * Whether a print is always in Print Layout (BUG-010): the sermon editor's
+   * (`labV4Extensions`). Left out, an editor in Regular Layout prints as it
+   * flows, as the v3 lab, the unchanged baseline, always has.
+   */
+  printsInPrintLayout?: boolean;
 };
 
 type PrintLayoutStorage = { current: PrintLayoutState | null };
@@ -276,6 +282,8 @@ class Paginator {
   private queued = false;
   private observer: ResizeObserver | null = null;
   private attached = false;
+  /** The layout this editor was in when a print began, while it is printed in Print Layout (BUG-010). */
+  private printedFrom: LayoutMode | null = null;
 
   constructor(
     private view: EditorView,
@@ -303,25 +311,48 @@ class Paginator {
    * synchronously, while the screen's media and layout are still in force, so
    * the print has the complete document on correctly fitted pages. Never a
    * document change. In an editor without that state there is nothing to set aside.
+   *
+   * In the sermon editor a print is always in Print Layout
+   * (`printsInPrintLayout`, BUG-010): an editor in Regular Layout is put in
+   * Print Layout in the same view-only transaction, measured, and given its
+   * layout back after the print. The print stylesheet (`lab.css`)
+   * draws only an editor in Print Layout, so this is what keeps the workspace
+   * around it off the paper. Neither the tab's remembered layout nor the
+   * document is written.
    */
   private readonly onBeforePrint = () => {
     if (!this.attached || this.view.isDestroyed) return;
+    const tr = this.view.state.tr;
+    let viewChanged = false;
     if (printingKey.getState(this.view.state)) {
-      this.view.dispatch(
-        this.view.state.tr.setMeta(printingKey, true).setMeta("addToHistory", false),
-      );
+      tr.setMeta(printingKey, true);
+      viewChanged = true;
     }
+    const layout = printLayoutKey.getState(this.view.state)?.layout;
+    if (this.options.printsInPrintLayout && layout && layout !== "print") {
+      this.printedFrom = layout;
+      tr.setMeta(printLayoutKey, { layout: "print" });
+      viewChanged = true;
+    }
+    if (viewChanged) this.view.dispatch(tr.setMeta("addToHistory", false));
     this.measure();
   };
 
-  /** After printing: the screen's view state is drawn again, and the pages follow it. */
+  /** After printing: the screen's view state (and layout) is drawn again, and the pages follow it. */
   private readonly onAfterPrint = () => {
     if (!this.attached || this.view.isDestroyed) return;
+    const tr = this.view.state.tr;
+    let viewChanged = false;
     if (printingKey.getState(this.view.state)?.printing) {
-      this.view.dispatch(
-        this.view.state.tr.setMeta(printingKey, false).setMeta("addToHistory", false),
-      );
+      tr.setMeta(printingKey, false);
+      viewChanged = true;
     }
+    if (this.printedFrom) {
+      tr.setMeta(printLayoutKey, { layout: this.printedFrom });
+      this.printedFrom = null;
+      viewChanged = true;
+    }
+    if (viewChanged) this.view.dispatch(tr.setMeta("addToHistory", false));
   };
 
   /** Starts following the editor's size (again, after a document was loaded). */

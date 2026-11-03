@@ -58,6 +58,13 @@ export const sampleIds: Record<ComponentKind, string> = {
   conclusion: "preview-conclusion",
 };
 
+/** Which point of the sample shows each of the first three levels (A4.2A). */
+export const sampleLevelIds: Record<1 | 2 | 3, string> = {
+  1: sampleIds.point,
+  2: sampleIds.subpoint,
+  3: "preview-deeper",
+};
+
 /**
  * A short representative sermon with every component and text style the
  * Appearance settings reach, in the person's language. Psalm 119:105 is read
@@ -90,6 +97,8 @@ export function sampleOutline(words: SampleWords): JSONContent[] {
     prose(words.subpointText, 2),
     container("preacherNote", sampleIds.preacherNote, words.note, 2),
     container("script", sampleIds.script, words.script, 2),
+    // A third level (A4.2A), so a level's own look and a deeper number can be seen.
+    point(sampleLevelIds[3], words.deeper, 3),
     point(sampleIds.conclusion, words.conclusion, 1, "conclusion"),
     prose(words.conclusionText, 1),
   ];
@@ -192,6 +201,16 @@ export function AppearancePreview({
       preview.state.tr.setDocAttribute("styles", stored).setMeta("addToHistory", false),
     );
   }, [preview, stored, content]);
+
+  // The outline's committed layout (its numbering, A4.2A), followed after an Apply or an Undo.
+  const layout = live.state.doc.attrs.layout as unknown;
+  useEffect(() => {
+    if (!preview || preview.isDestroyed) return;
+    if (preview.state.doc.attrs.layout === layout) return;
+    preview.view.dispatch(
+      preview.state.tr.setDocAttribute("layout", layout).setMeta("addToHistory", false),
+    );
+  }, [preview, layout, content]);
 
   // The draft, as the outline shows it.
   const { draft } = session;

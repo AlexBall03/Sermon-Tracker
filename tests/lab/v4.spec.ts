@@ -24,6 +24,10 @@ async function openV4(page: Page) {
     timeout: 60_000,
   });
   await expect(page.locator("html")).not.toHaveAttribute("data-splash", /.+/, { timeout: 30_000 });
+  // These tests are written against the parent-prose fixture, which the lab no longer opens
+  // first (it opens "When Idols Fall" since 6dd3556): choose it, as a person would (BUG-008).
+  await page.getByRole("combobox", { name: "Document" }).click();
+  await page.getByRole("option", { name: "Writing that belongs to a parent point" }).click();
   await expect(editor(page).locator('[data-id="p-a"]')).toBeVisible({ timeout: 30_000 });
 }
 
@@ -358,7 +362,10 @@ test.describe("schema v4 prototype, signed in", () => {
 
     await page.getByRole("combobox", { name: "Document" }).click();
     await page.getByRole("option", { name: /Print Layout test/ }).click();
-    await page.getByRole("radio", { name: "Print" }).check({ force: true });
+    // A window wide enough is always in Print Layout and shows no switch (A1-UI.1, f94ef8b);
+    // a narrower one switches to it (BUG-008).
+    const printLayout = page.getByRole("radio", { name: "Print" });
+    if (await printLayout.count()) await printLayout.check({ force: true });
     await expect(editor(page)).toHaveAttribute("data-layout", "print");
     const gaps = await editor(page).locator(".lab-page-gap").count();
     expect(gaps).toBeGreaterThan(0);

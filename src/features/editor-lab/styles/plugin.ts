@@ -18,9 +18,10 @@ import {
   type ComponentKind,
   type ComponentStyle,
   type DocumentStyles,
+  type PresetRevision,
   type UserPresetId,
 } from "./model";
-import { presets, type Preset, type PresetId } from "./presets";
+import { presetAt, type Preset, type PresetId } from "./presets";
 import { appearanceStyle, styleSheet } from "./render";
 import { resolveAt } from "./context";
 import { readStyles, resolveComponent, type ResolvedBlock } from "./resolve";
@@ -116,10 +117,31 @@ const mergeCache = new WeakMap<
   Draft,
   { stored: DocumentStyles | null; styles: DocumentStyles | null }
 >();
+/*
+ * The last merge, by the edits it was made from: a later draft whose edits
+ * other than its numbering are the very same edit objects (`setEdit` keeps
+ * every edit it does not change) has the same styles (A4.2A), so typing a
+ * numbering prefix does not redraw the sheet or every decoration.
+ */
+let lastMerge: {
+  stored: DocumentStyles | null;
+  edits: unknown[];
+  styles: DocumentStyles | null;
+} | null = null;
+const styleEdits = (draft: Draft) =>
+  [...draft.edits.entries()].filter(([key]) => key !== "numbering").map(([, edit]) => edit);
 function merged(stored: DocumentStyles | null, draft: Draft): DocumentStyles | null {
   const cached = mergeCache.get(draft);
   if (cached && cached.stored === stored) return cached.styles;
-  const styles = mergeStyles(stored, draft);
+  const edits = styleEdits(draft);
+  const styles =
+    lastMerge &&
+    lastMerge.stored === stored &&
+    lastMerge.edits.length === edits.length &&
+    lastMerge.edits.every((edit, index) => edit === edits[index])
+      ? lastMerge.styles
+      : mergeStyles(stored, draft);
+  lastMerge = { stored, edits, styles };
   mergeCache.set(draft, { stored, styles });
   return styles;
 }
@@ -165,9 +187,14 @@ export function presetIdOf(styles: DocumentStyles | null, state: EditorState): P
 export const presetIdInForce = (state: EditorState): PresetId =>
   presetIdOf(stylesInForce(state), state);
 
-/** The presentation preset the editor draws with (the baseline when it has none). */
+/** The revision of its preset an outline is drawn with (A4.2A): the first when it names none. */
+export const presetRevisionOf = (styles: DocumentStyles | null): PresetRevision =>
+  styles?.presetRevision ?? 1;
+
+/** The presentation preset the editor draws with (the baseline when it has none), in its revision. */
 export function presetInForce(state: EditorState): Preset {
-  return presets[presetIdInForce(state)];
+  const styles = stylesInForce(state);
+  return presetAt(presetIdOf(styles, state), presetRevisionOf(styles));
 }
 
 export const isUserPresetId = (value: unknown): value is UserPresetId =>
@@ -262,9 +289,13 @@ export const DocumentStylesExtension = Extension.create<{ preset: PresetId }>({
           // The whole plan is checked before anything is written: all of it, or nothing.
           const plan = applyPlan(draft, readStyles(state.doc.attrs.styles), state.doc);
           if (!plan.ok) return false;
-          if (plan.styles === undefined && !plan.instances.length) return false;
+          if (plan.styles === undefined && plan.layout === undefined && !plan.instances.length) {
+            return false;
+          }
           if (dispatch) {
             if (plan.styles !== undefined) tr.setDocAttribute("styles", plan.styles);
+            // The numbering (A4.2A), over the layout that was read; never a replaced one.
+            if (plan.layout !== undefined) tr.setDocAttribute("layout", plan.layout);
             // Attributes only: no position moves, so each one found still holds.
             for (const { pos, appearance } of plan.instances) {
               tr.setNodeAttribute(pos, "appearance", appearance);
@@ -300,22 +331,28 @@ export const DocumentStylesExtension = Extension.create<{ preset: PresetId }>({
         props: {
           attributes: (state): Record<string, string> => {
             const preset = presetIdInForce(state);
-            return preset === "baseline"
-              ? { "data-sheet": id, "data-preset": preset }
-              : { "data-sheet": id, "data-preset": preset, "data-studio": "" };
+            if (preset === "baseline") return { "data-sheet": id, "data-preset": preset };
+            // A later revision's CSS refinements are drawn under its attribute only (A4.2A).
+            const revision = presetRevisionOf(stylesInForce(state));
+            return {
+              "data-sheet": id,
+              "data-preset": preset,
+              "data-studio": "",
+              ...(revision > 1 ? { "data-preset-revision": String(revision) } : {}),
+            };
           },
         },
         view(view) {
           const element = view.dom.ownerDocument.createElement("style");
           element.dataset.labSheet = id;
           view.dom.ownerDocument.head.append(element);
-          let shown: { styles: DocumentStyles | null; preset: PresetId } | undefined;
+          let shown: { styles: DocumentStyles | null; preset: Preset } | undefined;
           const draw = (state: EditorState) => {
             const styles = stylesInForce(state);
-            const preset = presetIdOf(styles, state);
+            const preset = presetInForce(state);
             if (shown && styles === shown.styles && preset === shown.preset) return;
             shown = { styles, preset };
-            element.textContent = styleSheet(styles, scope, presets[preset]);
+            element.textContent = styleSheet(styles, scope, preset);
           };
           draw(view.state);
           return { update: (next) => draw(next.state), destroy: () => element.remove() };
@@ -413,7 +450,7 @@ function appearances(
   set: DecorationSet,
 ): DecorationSet {
   const styles = stylesInForce(state);
-  const preset = presets[presetIdOf(styles, state)];
+  const preset = presetInForce(state);
   if (!preset.componentColors) return set === DecorationSet.empty ? set : DecorationSet.empty;
   const added: Decoration[] = [];
   state.doc.nodesBetween(from, to, (node, pos) => {

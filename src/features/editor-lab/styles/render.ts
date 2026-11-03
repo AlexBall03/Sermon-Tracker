@@ -2,6 +2,7 @@ import { colorVariants, inkOn, type ColorValue } from "./colors";
 import { fontStack } from "./font-stack";
 import {
   componentKinds,
+  isLevelKey,
   type ComponentKind,
   type ComponentStyle,
   type DocumentStyles,
@@ -10,8 +11,10 @@ import {
 import { paragraphCss } from "./paragraph-css";
 import { presets, type Preset } from "./presets";
 import {
+  componentLayers,
   resolveComponent,
   resolveNamed,
+  sourceOf,
   type ResolvedBlock,
   type ResolvedComponent,
 } from "./resolve";
@@ -66,6 +69,11 @@ type Rule = {
   typographyOnly?: boolean;
   /** An introduction's or a conclusion's heading, whose space before is under the section's rule. */
   section?: boolean;
+  /** Further declarations (a point's number, A4.2A), light and paper; and their dark variants. */
+  extra?: string[];
+  darkExtra?: string[];
+  /** Whole rules of its own (a point's number shown or not, hanging or not), with the rule's selector as `&`. */
+  more?: string[];
 };
 
 /** Ordinary paragraphs, not titles and not a passage's verses (drawn by its node view). */
@@ -107,6 +115,62 @@ const componentSelectors = (scope: string): [ComponentKind, string][] => [
  */
 const pointNamedSelector = (scope: string, name: NamedStyle) =>
   `${scope} p.lab-v4-point[data-depth][data-style-name="${name}"]`;
+
+/*
+ * One semantic depth's points (A4.2A), not a role's heading: as specific as
+ * the main point's rule and later, so a level wins over its type's style; a
+ * point with a named style (later still) keeps that style's look; a node's own
+ * appearance still wins through its instance properties.
+ */
+const levelSelector = (scope: string, depth: number) =>
+  `${scope} p.lab-v4-point[data-depth="${depth}"]:not([data-role])`;
+
+/** The depths a level layer sets anything for, the preset's or the outline's, in order. */
+function levelDepths(styles: DocumentStyles | null, preset: Preset): number[] {
+  const keys = new Set([...Object.keys(preset.levels ?? {}), ...Object.keys(styles?.levels ?? {})]);
+  return [...keys]
+    .filter(isLevelKey)
+    .map(Number)
+    .sort((a, b) => a - b);
+}
+
+/*
+ * A point's number (A4.2A), drawn by the studio CSS (`v4/lab-v4.css`) from
+ * `--x-marker-*`: each is set only when a style says it, so a number no style
+ * customizes is drawn exactly as before. Whether it is shown, and whether it
+ * hangs, are rules of their own on the numbered heading.
+ */
+const hangColumn =
+  "max(var(--ps-step), calc(var(--x-label-n, 0) * var(--x-marker-size, 1em) + var(--x-marker-gap, 0.35em)))";
+
+function markerDeclarations(resolved: ResolvedComponent): { lines: string[]; more: string[] } {
+  const lines: string[] = [];
+  const more: string[] = [];
+  if (resolved.markerFont !== undefined)
+    lines.push(`--x-marker-font: ${fontStack(resolved.markerFont)}`);
+  if (resolved.markerSize !== undefined) lines.push(`--x-marker-size: ${resolved.markerSize}pt`);
+  if (resolved.markerBold !== undefined)
+    lines.push(`--x-marker-weight: ${resolved.markerBold ? 700 : 400}`);
+  if (resolved.markerItalic !== undefined)
+    lines.push(`--x-marker-style: ${resolved.markerItalic ? "italic" : "normal"}`);
+  if (resolved.markerAlign !== undefined) lines.push(`--x-marker-align: ${resolved.markerAlign}`);
+  if (resolved.markerGap !== undefined) lines.push(`--x-marker-gap: ${resolved.markerGap}pt`);
+  const hidden = resolved.markerVisible === false;
+  if (resolved.markerVisible !== undefined) {
+    more.push(`&.lab-numbered::before { content: ${hidden ? "none" : "attr(data-label)"}; }`);
+  }
+  // A hidden number takes no column; a number that does not hang sits in the line.
+  if (hidden || resolved.hanging === false) more.push("&.lab-numbered { --x-hang: 0px; }");
+  else if (resolved.markerVisible !== undefined || resolved.hanging !== undefined)
+    more.push(`&.lab-numbered { --x-hang: ${hangColumn}; }`);
+  return { lines, more };
+}
+
+/** A color as a custom property's light and dark values; null is the theme's text. */
+function inkPair(value: ColorValue | null): { light: string; dark: string } | null {
+  if (value === null) return { light: "var(--foreground)", dark: "var(--foreground)" };
+  return colorVariants(value, "ink");
+}
 
 /**
  * A single component's own text properties (A1-UI.2B.1), as the custom
@@ -176,15 +240,19 @@ function componentRule(
   selector: string,
   resolved: ResolvedComponent,
   preset: Preset,
+  marker = false,
 ): Rule {
   const hang = preset.hangingNumbers && titled.has(kind);
-  if (!preset.componentColors) return { selector, block: resolved, hang };
+  // A v4 point's number (A4.2A), where a style says how it looks.
+  const numberRule = marker ? markerDeclarations(resolved) : { lines: [], more: [] };
+  const number = { extra: numberRule.lines, more: numberRule.more };
+  if (!preset.componentColors) return { selector, block: resolved, hang, ...number };
   const instance = componentNames[kind];
   const typographyOnly = kind === "scripture";
   const section = kind === "introduction" || kind === "conclusion";
   const block = { ...resolved, color: textColorOf(kind, resolved) };
   if (titled.has(kind) || !resolved.fill)
-    return { selector, block, hang, instance, typographyOnly, section };
+    return { selector, block, hang, instance, typographyOnly, section, ...number };
   return {
     selector,
     block,
@@ -218,8 +286,16 @@ function rules(styles: DocumentStyles | null, scope: string, preset: Preset): Ru
       block: resolveNamed(styles, name, null, preset),
     })),
     ...componentSelectors(scope).map(([kind, selector]) =>
-      componentRule(kind, selector, resolveComponent(styles, kind, null, preset), preset),
+      componentRule(
+        kind,
+        selector,
+        resolveComponent(styles, kind, null, preset),
+        preset,
+        (kind === "point" || kind === "subpoint") && selector.includes("lab-v4-point"),
+      ),
     ),
+    // Each depth a level sets anything for (A4.2A), after the types it refines.
+    ...levelDepths(styles, preset).map((depth) => levelRule(styles, scope, preset, depth)),
     // A passage's text (A1-UI.2B.1), in a preset that draws components: the baseline never drew one.
     ...(preset.componentColors
       ? [
@@ -237,6 +313,33 @@ function rules(styles: DocumentStyles | null, scope: string, preset: Preset): Ru
       hang: preset.hangingNumbers,
     })),
   ];
+}
+
+/**
+ * One depth's points (A4.2A): the whole cascade with the depth's levels, read
+ * through its type's instance properties so a single point's own appearance
+ * still wins. A number color a level sets is drawn as the number's, after a
+ * single point's own (`--ps-<type>-i-notation`).
+ */
+function levelRule(
+  styles: DocumentStyles | null,
+  scope: string,
+  preset: Preset,
+  depth: number,
+): Rule {
+  const kind: ComponentKind = depth === 1 ? "point" : "subpoint";
+  const resolved = resolveComponent(styles, kind, null, preset, depth);
+  const rule = componentRule(kind, levelSelector(scope, depth), resolved, preset, true);
+  const source = sourceOf(componentLayers(styles, kind, null, preset, depth), "notationColor");
+  if (preset.componentColors && (source === "level" || source === "presetLevel")) {
+    const pair = inkPair(resolved.notationColor ?? null);
+    if (pair) {
+      const own = `--ps-${componentNames[kind]}-i-notation`;
+      rule.extra = [...(rule.extra ?? []), `--x-notation: var(${own}, ${pair.light})`];
+      rule.darkExtra = [...(rule.darkExtra ?? []), `--x-notation: var(${own}-d, ${pair.dark})`];
+    }
+  }
+  return rule;
 }
 
 /** How each component is named in its custom properties. */
@@ -363,6 +466,11 @@ export function appearanceStyle(
   for (const field of Object.keys(instanceKeys) as (keyof typeof instanceKeys)[]) {
     if (set.has(field)) lines.push(`${prefix}-${instanceKeys[field]}: ${text[field]()}`);
   }
+  // A point's own number color (A4.2A), read before a level's (`levelRule`).
+  if (set.has("notationColor") && (kind === "point" || kind === "subpoint")) {
+    const pair = inkPair(resolved.notationColor ?? null);
+    if (pair) lines.push(`${prefix}-notation: ${pair.light}`, `${prefix}-notation-d: ${pair.dark}`);
+  }
   // The text color: a title's own, or the words on the fill this node has.
   if (set.has("color") || set.has("titleColor") || (set.has("fill") && !titled.has(kind))) {
     const color = textColorOf(kind, resolved);
@@ -392,6 +500,10 @@ export function styleSheet(
     `line-height: ${normal.lineHeight}`,
     // The shared structural face (`Preset.structureFont`); each label reads its own property first.
     ...(preset.structureFont ? [`--ps-structure-font: ${fontStack(preset.structureFont)}`] : []),
+    // The outline's indent per level (A4.2A), in a preset that draws levels; else the CSS's step.
+    ...(preset.componentColors && typeof styles?.defaults?.levelIndent === "number"
+      ? [`--ps-step: ${styles.defaults.levelIndent}pt`]
+      : []),
     ...componentVariables(styles, preset),
   ];
   const css: string[] = [`${scope} { ${own.join("; ")}; }`];
@@ -402,7 +514,11 @@ export function styleSheet(
   );
   for (const [index, rule] of rules(styles, scope, preset).entries()) {
     const { selector, block, onFill: judged, hang, instance, typographyOnly, section } = rule;
-    const lines = declarations(block, hang, instance, typographyOnly, section);
+    const lines = [
+      ...declarations(block, hang, instance, typographyOnly, section),
+      ...(rule.extra ?? []),
+    ];
+    const darkLines = [...(rule.darkExtra ?? [])];
     const variants =
       judged !== undefined
         ? judged
@@ -423,9 +539,11 @@ export function styleSheet(
       const light = own("", variants?.light);
       const darkColor = own("-d", variants?.dark);
       lines.push(`color: ${light}`);
-      dark.push(`.dark ${darkSelectors[index]} { color: ${darkColor}; }`);
+      darkLines.push(`color: ${darkColor}`);
     }
+    if (darkLines.length) dark.push(`.dark ${darkSelectors[index]} { ${darkLines.join("; ")}; }`);
     css.push(`${selector} { ${lines.join("; ")}; }`);
+    for (const more of rule.more ?? []) css.push(more.replaceAll("&", selector));
   }
   if (dark.length) css.push(`@media screen { ${dark.join(" ")} }`);
   return css.join("\n");

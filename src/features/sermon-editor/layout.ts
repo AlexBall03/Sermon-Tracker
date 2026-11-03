@@ -19,17 +19,51 @@ import {
  *
  * Crossing the line (a resized window, a rotated tablet) changes only the
  * view, never the outline, its selection, or its history.
+ *
+ * Printing is not crossing it (BUG-010): the browser lays a print out at the
+ * paper's width, under the desktop's, and the query's `change` then said
+ * "not a desktop", so the workspace turned to Regular Layout and printed its
+ * toolbar. From `beforeprint` to `afterprint`, and while print media
+ * matches, the answer is held at what it was before the print.
  */
+
+let printing = false;
+let held: boolean | null = null;
+
+const printMedia = () =>
+  typeof window.matchMedia === "function" && window.matchMedia("print").matches;
+
+/** Whether this window counts as a desktop now; while printing, what it was before the print. */
+export function desktopNow(): boolean {
+  if (held !== null && (printing || printMedia())) return held;
+  held = isDesktop();
+  return held;
+}
 
 function subscribe(onChange: () => void) {
   const query = window.matchMedia(desktopQuery);
+  const before = () => {
+    // The screen's media and layout are still in force here (A3.1): what the window is.
+    held = isDesktop();
+    printing = true;
+  };
+  const after = () => {
+    printing = false;
+    onChange();
+  };
   query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
+  window.addEventListener("beforeprint", before);
+  window.addEventListener("afterprint", after);
+  return () => {
+    query.removeEventListener("change", onChange);
+    window.removeEventListener("beforeprint", before);
+    window.removeEventListener("afterprint", after);
+  };
 }
 
-/** Whether this window counts as a desktop, following it as it changes. */
+/** Whether this window counts as a desktop, following it as it changes, never because of a print. */
 export function useDesktop(): boolean {
-  return useSyncExternalStore(subscribe, isDesktop, () => false);
+  return useSyncExternalStore(subscribe, desktopNow, () => false);
 }
 
 /** The layout for a desktop or a smaller window. */

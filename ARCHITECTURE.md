@@ -108,32 +108,32 @@ Conventions:
 
 ## Routing
 
-| Path                        | Purpose                                     | Phase | Indexed |
-| --------------------------- | ------------------------------------------- | ----- | ------- |
-| `/`                         | Public landing page                         | 1A    | Yes     |
-| `/sign-in`                  | Clerk sign-in                               | 1B    | No      |
-| `/sign-up`                  | Open account creation (Clerk sign-up)       | Launch | No     |
-| `/accept-invitation`        | Account creation from an invitation link    | 1B    | No      |
-| `/access-denied`            | Shown to disabled or unauthorised accounts  | 1B    | No      |
-| `/onboarding`               | Account setup: first time, or from Settings | 4A    | No      |
-| `/dashboard`                | Authenticated home                          | 1C.1  | No      |
-| `/settings`                 | Settings overview; categories beneath it    | 5B.1  | No      |
-| `/admin`                    | Restricted administration                   | 1B    | No      |
-| `/library`                  | Library overview: the way to its sections   | 2E.2  | No      |
-| `/library/sermon-ideas`     | The owner's ideas: search, filter, browse   | 2B.2  | No      |
-| `/library/saved-scripture`  | Saved Scripture                             | 2C.1B | No      |
-| `/library/preaching-record` | Preaching Record                            | 2E.2  | No      |
-| `/library/<id>`             | One idea: edit, reclassify, delete          | 2A    | No      |
-| `/bible`                    | The Bible reader                            | 2C.1A | No      |
-| `/outlines`                 | The owner's outlines: search, order, open   | 3C    | No      |
-| `/outlines/<id>`            | One outline, in its editor                  | 3B    | No      |
-| `/outlines/new?sermon=<id>` | Gives a sermon its outline, or opens it     | 3B    | No      |
-| `/api/bible/…`              | A chapter, its marks, or a word search      | 2A    | No      |
-| `/api/ideas/search`         | The account's own ideas, found by name      | 2C.1C | No      |
-| `/offline`                  | Kept by the service worker; offline notice  | 5A    | No      |
-| `/sw.js`                    | The service worker                          | 5A    | No      |
-| `/manifest.webmanifest`     | The web app manifest                        | 5A    | No      |
-| `/analytics`                | Statistics (not in the route map yet)       | Later | No      |
+| Path                        | Purpose                                     | Phase  | Indexed |
+| --------------------------- | ------------------------------------------- | ------ | ------- |
+| `/`                         | Public landing page                         | 1A     | Yes     |
+| `/sign-in`                  | Clerk sign-in                               | 1B     | No      |
+| `/sign-up`                  | Open account creation (Clerk sign-up)       | Launch | No      |
+| `/accept-invitation`        | Account creation from an invitation link    | 1B     | No      |
+| `/access-denied`            | Shown to disabled or unauthorised accounts  | 1B     | No      |
+| `/onboarding`               | Account setup: first time, or from Settings | 4A     | No      |
+| `/dashboard`                | Authenticated home                          | 1C.1   | No      |
+| `/settings`                 | Settings overview; categories beneath it    | 5B.1   | No      |
+| `/admin`                    | Restricted administration                   | 1B     | No      |
+| `/library`                  | Library overview: the way to its sections   | 2E.2   | No      |
+| `/library/sermon-ideas`     | The owner's ideas: search, filter, browse   | 2B.2   | No      |
+| `/library/saved-scripture`  | Saved Scripture                             | 2C.1B  | No      |
+| `/library/preaching-record` | Preaching Record                            | 2E.2   | No      |
+| `/library/<id>`             | One idea: edit, reclassify, delete          | 2A     | No      |
+| `/bible`                    | The Bible reader                            | 2C.1A  | No      |
+| `/outlines`                 | The owner's outlines: search, order, open   | 3C     | No      |
+| `/outlines/<id>`            | One outline, in its editor                  | 3B     | No      |
+| `/outlines/new?sermon=<id>` | Gives a sermon its outline, or opens it     | 3B     | No      |
+| `/api/bible/…`              | A chapter, its marks, or a word search      | 2A     | No      |
+| `/api/ideas/search`         | The account's own ideas, found by name      | 2C.1C  | No      |
+| `/offline`                  | Kept by the service worker; offline notice  | 5A     | No      |
+| `/sw.js`                    | The service worker                          | 5A     | No      |
+| `/manifest.webmanifest`     | The web app manifest                        | 5A     | No      |
+| `/analytics`                | Statistics (not in the route map yet)       | Later  | No      |
 
 Route groups separate the three shells without affecting URLs:
 
@@ -169,17 +169,17 @@ One service, `src/features/account/deletion.ts`, used by Settings → Account & 
 
 The proxy is never the only check. Every page under `(app)` and every server action authorises itself, because a layout does not re-run on navigation and a server action can be called directly.
 
-| Situation                                   | Result                       |
-| ------------------------------------------- | ---------------------------- |
-| Guest visits `/`                            | Landing page                 |
-| Guest visits `/dashboard` or `/admin`       | Redirect to `/sign-in`       |
-| Signed-in visitor on `/` or `/sign-in`      | Redirect to `/dashboard`     |
-| Standard user visits `/admin`               | Redirect to `/access-denied` |
+| Situation                                    | Result                       |
+| -------------------------------------------- | ---------------------------- |
+| Guest visits `/`                             | Landing page                 |
+| Guest visits `/dashboard` or `/admin`        | Redirect to `/sign-in`       |
+| Signed-in visitor on `/` or `/sign-in`       | Redirect to `/dashboard`     |
+| Standard user visits `/admin`                | Redirect to `/access-denied` |
 | Disabled or unverified account, any app path | Redirect to `/access-denied` |
-| Administrator visits `/admin`               | Administration               |
-| New account, setup unfinished, any app path | Redirect to `/onboarding`    |
-| New account, setup unfinished, an action    | Refused, nothing written     |
-| Guest visits `/onboarding`                  | Redirect to `/sign-in`       |
+| Administrator visits `/admin`                | Administration               |
+| New account, setup unfinished, any app path  | Redirect to `/onboarding`    |
+| New account, setup unfinished, an action     | Refused, nothing written     |
+| Guest visits `/onboarding`                   | Redirect to `/sign-in`       |
 
 ### Provisioning
 
@@ -671,7 +671,6 @@ Changes about one thing go one at a time: a record waits while an older one abou
 
 Answers: `applied` and `duplicate` remove the record; `conflict` keeps it as `conflict` until the person chooses (today, a capture whose tags were deleted: save without them, or delete); `rejected` keeps it as `failed`; `auth` and `wrongAccount` stop the run and leave it untouched. No answer or a server error is passing: the wait doubles from 2 s to 10 min, and after `maxAutoAttempts` (6) the record is `failed` until the person tries again. Handlers for changes to existing things (Phase 5D) compare `baseRevision` in the same transaction and answer `conflict` instead of overwriting.
 
-
 ### Offline ideas
 
 Phase 5D.1 ([handoff](docs/HANDOFF-5D.1.md)), `src/features/offline/ideas` and `src/features/sync`. The account's ideas are kept on each device that has "Keep my ideas on this device" on (Offline Storage, on by default, a device preference like the others), and are read, searched, changed, archived, restored, and deleted there without the server.
@@ -693,12 +692,14 @@ Phase 5D.2 ([handoff](docs/HANDOFF-5D.2.md)), `src/features/offline/outlines`, `
 **The copy** (`store.ts`): one `accountData` record per outline, `[owner, "outline", id]`, holding `server` and `local` as an idea's does. Each copy is the outline with its entries as the editor holds them, its numbering, and its sermon as it was when downloaded (title, kind, status, archive, passages). A copy known to be older than the server's is marked `behind`. `generation` moves only when something outside the editor changed what is shown (a conflict settled, changes discarded), so an editor open on it starts again from it. How far the download is lives in `"state"/"outlines"`.
 
 **Downloading** (`refresh.ts`, Web Lock `sermon-tracker-outlines:<owner>`) follows the ideas download:
+
 - `GET /api/offline/outlines` (`authorize("active")`, `private, no-store`) returns the session's ID, then every outline's revision, `updatedAt`, and sermon (`outlineManifest` in `outlines.ts`). That includes outlines of archived or refiled sermons, which still open.
 - `?ids=` then fetches, 25 at a time, the outlines whose revision or `updatedAt` differ, read whole through `getOutline`.
 - Only `server` is written, an outline with queued work is never forgotten, another account's answer is refused, and `complete` is set only after the last batch.
 - `OfflineAgent` refreshes outlines on the same occasions as ideas when the setting is on.
 
 **One owner in the browser, one queue to the server.** The editor's store (`editor/store.ts`) is unchanged in what it does: it keeps its in-memory queue and its autosave. On the offline page it saves through `createDeviceOutlineApi` (`operations.ts`), an `OutlineApi` with the server actions' signatures and answers. Each call works as follows:
+
 - It checks the change with the outline's own schemas and the same `tree.ts` plans the server uses.
 - It checks the revision named: the outline's for a change of shape, the entry's for words or passages.
 - It writes `local` and the change for the sync engine (`putMutation`) in **one IndexedDB transaction**.
@@ -707,6 +708,7 @@ Phase 5D.2 ([handoff](docs/HANDOFF-5D.2.md)), `src/features/offline/outlines`, `
 - Every queued change to an outline has the outline's ID as its `entityId`, so `sendable` sends one outline's changes strictly in order, an entry's addition before its words. Only the 5C engine ever sends them.
 
 **On the application's page** the same editor saves through `useOutlineSaving` (`routing.ts`):
+
 - To the server, as before, while nothing about the outline is queued.
 - When an action throws and this device keeps outlines, the change is written to the device instead. It is made on the outline as the store last heard it from the server: the store keeps that view (`confirmedSnapshot`), worked out from each answer with the same `tree.ts`. Every later change follows it to the device.
 - While changes made earlier are queued, the editor shows the device's copy and its changes wait behind them.
@@ -716,15 +718,16 @@ Phase 5D.2 ([handoff](docs/HANDOFF-5D.2.md)), `src/features/offline/outlines`, `
 
 **On the server** (`apply-outlines.ts`, spread into `applyMutation`'s handlers), every write goes through `entries.ts` and `outlines.ts`, so the locks, the two revisions, `markDeveloped`, and the owner in every WHERE clause are the editor's.
 
-| Change | Types | Made against | Answers |
-| --- | --- | --- | --- |
-| Shape | `outline.entry.add`, `.move`, `.remove` | The outline's revision | Older revision: `outlineStale`. Already done, so applied: an addition already made (`existing`), a removal of what is gone, a move to where the point already is (with no revision, so a change behind it is still checked). A place that no longer exists: `placement`. |
-| Words and passages | `outline.entry.update`, `.references` | The entry's revision, with what the fields were before (`base`) | Older revision: settled field by field. A field changed only on the device is written; one already as the device has it is done; one changed in both places to different things is `entryStale`, carrying the server's entry, with nothing written. |
-| Numbering | `outline.numbering` | Nothing: the last choice stands | — |
+| Change             | Types                                   | Made against                                                    | Answers                                                                                                                                                                                                                                                                  |
+| ------------------ | --------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Shape              | `outline.entry.add`, `.move`, `.remove` | The outline's revision                                          | Older revision: `outlineStale`. Already done, so applied: an addition already made (`existing`), a removal of what is gone, a move to where the point already is (with no revision, so a change behind it is still checked). A place that no longer exists: `placement`. |
+| Words and passages | `outline.entry.update`, `.references`   | The entry's revision, with what the fields were before (`base`) | Older revision: settled field by field. A field changed only on the device is written; one already as the device has it is done; one changed in both places to different things is `entryStale`, carrying the server's entry, with nothing written.                      |
+| Numbering          | `outline.numbering`                     | Nothing: the last choice stands                                 | —                                                                                                                                                                                                                                                                        |
 
 An entry that is gone is `entryMissing`; an outline that is gone is `missing`. `afterApplied` (`sync.ts`) rebases only what a revision counts: a change of shape the shape changes behind it, a change of words that entry's word changes. When everything is acknowledged, the copy becomes the server's, marked `behind`.
 
 **Choices** (`outlineChoicesFor`, `settleOutline`), shown by `PendingChanges` as one row per outline with how many changes are waiting:
+
 - `outlineStale`: apply my changes to the outline as it is now, or use my account's version (every change to that outline dropped).
 - `entryStale`: keep mine (sent again against the server's words), or use my account's (this change and the later ones of its kind to that entry dropped, and the copy shows the account's words).
 - `entryMissing` for words or passages: add them as a new point, or discard.
@@ -736,6 +739,7 @@ Nothing is dropped without the person choosing, and Discard on the row asks firs
 **The interface.** The offline page draws `/outlines` (`OfflineOutlines`: `OutlinesProvider` with a `navigation`, the overview's own controls and cards over `searchLocalOutlines`, which answers an `OutlinesQuery` as `listOutlines` does and is held to it by a parity test) and `/outlines/<id>` (`OfflineOutline`: `OutlineEditor` with `device`), both from the copy, at their own addresses. A sermon kept on the device leads to its kept outline ("Open Outline" on its page and its card), and the hub has a "Your outlines" card. Offline, the editor offers neither deleting the outline nor adding a saved point, which say they need a connection. The copy always says it is the device's and how current it is, and a partial download says how much is missing.
 
 **Conversion awareness** (Preacher Studio A2.3D, [handoff](docs/HANDOFF-PS-A2.3D.md)). Once an outline has a sermon document, the server refuses every legacy write to it (A2.2). A device learns this, keeps it for good, and stops making legacy changes to it. Nothing it kept is lost.
+
 - **The manifest** says it of every outline: `documentAuthoritative: boolean` on each `OutlineManifestItem`. The value is `documentExistsFor` (`persistence/authority.ts`), an `EXISTS` on `sermon_outline_documents` by its primary key and owner, run inside `outlineManifest`'s own statement. That means one query and no document content. It doesn't depend on the legacy revision or `updatedAt`, which conversion doesn't move. The field is optional in the type: an older server leaves it out, and a missing field is not `false`. The whole rows (`?ids=`) are unchanged.
 - **The device's knowledge** is `KeptOutline.documentAuthoritative?: true` (`store.ts`). It means the server said so, and nothing else sets it.
   - It is only ever written true and never taken back. A later false, a missing field, a full row, an acknowledgement, a settled conflict, a discard, and removing downloads all leave it in place.
@@ -844,6 +848,36 @@ Preacher Studio phases A2.1–A2.3C ([handoff](docs/HANDOFF-PS-A2.md)), `src/fea
     - **Printing:** `PrintPreparation` (`pagination/printing.ts`): the Paginator marks `printing` and measures synchronously in `beforeprint` (Chromium runs it with screen media), so folding and collapse draw nothing in a print and the pages are the complete document’s; it also measures at once when view state changes what is drawn, and skips elements with no boxes.
     - **Open in the Bible:** an optional `PassageLink` on the passage node view (the host’s `readerHref(referenceLocation(ref, { outline }))` and `router.push`), a real link the leave guard sees first; a `Link` in the structure tools’ menu for the keyboard.
   - **Developing the sermon:** a save that changes what the document says calls `markDeveloped` in the save's own transaction (`updateDocument`), after locking the sermon's row before the document's, the order every other write takes.
+
+### Sermon document appearance
+
+A1-UI.2B.1 and 2B.2 ([handoff](docs/HANDOFF-PS-A1.md)), A4.2A ([handoff](docs/HANDOFF-PS-A4.2A.md)). `src/features/editor-lab/styles` (model, resolver, sheet, draft, presets, snapshot) and `src/features/sermon-editor/appearance` (Outline Settings, Component Appearance).
+
+- **Where it is stored:**
+  - Outline-wide appearance is `doc.attrs.styles` (`documentStylesSchema`, version 1, sparse). It holds `preset`, `presetRevision`, `defaults` (with `levelIndent`), `named`, `components`, `levels`, and `runningHeader`.
+  - A single component's own appearance is its node's `appearance` (`appearanceSchemas`, unchanged by A4.2A).
+  - The numbering is `doc.attrs.layout.numbering` (`layout.ts`). `layout.levels` is a dormant contract that nothing draws or writes.
+  - Folding, the layout (Regular or Print), and Scripture expansion are view state.
+- **The cascade** (`resolve.ts`, one resolver), later wins, one property at a time:
+  1. The preset's defaults, then the outline's defaults.
+  2. The preset's named or component style, then the outline's.
+  3. For a point that plays no role, its depth's level: the preset's, then the outline's (A4.2A).
+  4. The node's own `appearance`, then its `format`, then inline marks.
+  - A point with a named style is drawn as that style.
+  - The sheet (`render.ts`) emits a level rule only for a depth that some level layer sets. It comes after the type rules and before the named-point rules, and reads its type's instance properties, so a single point's own value still wins (checked in Chromium, `tests/lab/appearance-levels.spec.ts`).
+- **A point's number** is presentation: `markerVisible`, `markerFont`, `markerSize`, `markerBold`, `markerItalic`, `markerAlign`, `markerGap`, `hanging`, and `notationColor`.
+  - It can be set on the point and subpoint type styles and on levels, never on a single node.
+  - It is drawn as `--x-marker-*` on the numbered heading, plus rules for a hidden or non-hanging number.
+  - It never renumbers. Labels are still `v4/numbering.ts` over `entryLabel`.
+- **Presets** are code (`presets.ts`) plus the studio CSS (`v4/lab-v4.css`), and their revisions are immutable.
+  - An outline that names no `presetRevision` is drawn by revision 1, exactly as before A4.2A (`tests/lab/preset-parity.spec.ts` compares computed styles with a baseline recorded from `7c9d3b6`).
+  - Revision 2 is written only when a person chooses a preset (or accepts "Use the updated design"). Its CSS refinements are under `[data-preset-revision="2"]`.
+  - Single-valued container and section lines and spacing are now preset code, shown as numbers. A note's per-kind treatment, space relative to the text, and theme colors stay CSS, and the controls say so.
+- **Editing** happens only in the one Appearance session and draft (`draft.ts`), shared by Outline Settings (Appearance: Outline, Components, Levels; and Numbering) and Component Appearance.
+  - The numbering is one draft edit (`{ layer: "numbering" }`). Its preview is view state: the numbering plugin reads it from the preview transaction.
+  - `applyAppearanceDraft` validates the whole plan, then writes styles, layout, and node appearances in one transaction (one undo step), or nothing. An unreadable layout refuses the draft and is never replaced.
+  - Appearance resets never change the numbering.
+- **Snapshots** (`snapshot.ts`, the contract for A4.2B/C): `snapshotAppearance`, `materialize`, and `snapshotDraft`. Pure data: no storage, no second resolver, and single components are kept.
 
 ### Scripture
 

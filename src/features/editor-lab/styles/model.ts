@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { paperSizes } from "../pagination/geometry";
 import { highlightPresets, textAlignments, textColorPresets } from "../schema/model";
+import { maxDepth } from "../v4/model";
 import type { ColorValue } from "./colors";
 
 /*
@@ -203,6 +204,29 @@ const box = {
  * nothing gains a box just to have a setting. `null` turns a color off
  * (no fill, no border) or, for text colors, returns to the theme's.
  */
+/*
+ * How a point's number is drawn (A4.2A): its face, size, weight, slant,
+ * alignment in its column, the space after it, whether it hangs, and whether
+ * it is shown at all. Presentation only: what the number says is the
+ * outline's numbering (`layout.numbering`), and nothing here renumbers. Its
+ * color stays `notationColor`. A point or subpoint type style and a level's
+ * style (`levels`) may set these; a single node's `appearance` may not (its
+ * contract is unchanged).
+ */
+export const markerAlignments = ["left", "right"] as const;
+export type MarkerAlignment = (typeof markerAlignments)[number];
+export const markerLimits = { gap: { min: 0, max: 36 } } as const;
+export const markerShape = {
+  markerVisible: z.boolean().optional(),
+  markerFont: z.enum(fontKeys).optional(),
+  markerSize: fontSize.optional(),
+  markerBold: z.boolean().optional(),
+  markerItalic: z.boolean().optional(),
+  markerAlign: z.enum(markerAlignments).optional(),
+  markerGap: points(markerLimits.gap.min, markerLimits.gap.max).optional(),
+  hanging: z.boolean().optional(),
+};
+
 const componentColors = {
   introduction: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink, ...lines },
   conclusion: { titleColor: ink, notationColor: ink, border: ink, fill, accent: ink, ...lines },
@@ -223,14 +247,25 @@ const nonEmpty = (value: object) => Object.keys(value).length > 0;
 const sparse = <T extends z.ZodRawShape>(shape: T) =>
   z.object(shape).strict().refine(nonEmpty, "empty: store null instead");
 
-/** A component's style, as `styles.components[kind]` or a node's own `appearance`. */
+/** Whether a kind's type style also draws its number (A4.2A). */
+const numbered = (kind: ComponentKind) => kind === "point" || kind === "subpoint";
+
+/** A kind's type style: its node contract, and for points their number. */
+const componentTypeShape = (kind: ComponentKind) =>
+  numbered(kind) ? { ...componentShape(kind), ...markerShape } : componentShape(kind);
+
+/** A component type's style, as `styles.components[kind]`. */
 export const componentStyleSchemas = Object.fromEntries(
-  componentKinds.map((kind) => [kind, sparse(componentShape(kind))]),
+  componentKinds.map((kind) => [kind, sparse(componentTypeShape(kind))]),
 ) as unknown as Record<ComponentKind, z.ZodType<ComponentStyle>>;
 
-/** The properties a kind of component may set: what its own schema accepts. */
+/** The properties a single node of a kind may set: what its `appearance` accepts. */
 export const componentFields = (kind: ComponentKind): readonly string[] =>
   Object.keys(componentShape(kind));
+
+/** The properties a component type's style may set: a node's, and for points their number. */
+export const componentTypeFields = (kind: ComponentKind): readonly string[] =>
+  Object.keys(componentTypeShape(kind));
 
 /**
  * An appearance kept to what `kind` accepts, or null when nothing is left.
@@ -268,10 +303,55 @@ export type ComponentStyle = {
   outsideBefore?: number;
   outsideAfter?: number;
   labelFont?: FontKey;
+  markerVisible?: boolean;
+  markerFont?: FontKey;
+  markerSize?: number;
+  markerBold?: boolean;
+  markerItalic?: boolean;
+  markerAlign?: MarkerAlignment;
+  markerGap?: number;
+  hanging?: boolean;
 };
 
-/** A component node's appearance override: the same properties as its style. */
-export const appearanceSchemas = componentStyleSchemas;
+/**
+ * A component node's appearance override: its kind's own properties, never a
+ * point's number (A4.2A keeps the node contract exactly as it was).
+ */
+export const appearanceSchemas = Object.fromEntries(
+  componentKinds.map((kind) => [kind, sparse(componentShape(kind))]),
+) as unknown as Record<ComponentKind, z.ZodType<ComponentStyle>>;
+
+/*
+ * Levels (A4.2A): how the points at one semantic depth look, over their
+ * type's style (a main point's at depth 1, a subpoint's below). Keyed by the
+ * depth as a string, "1" to `maxDepth` (the v4 schema's own bound), sparse:
+ * a level left out, or a property it leaves out, inherits. Only what a point
+ * heading draws: its text, its spacing (its place is its depth's, so no
+ * indent), its title color, and its number. Never a role's heading.
+ */
+export const levelShape = {
+  ...textPropsShape,
+  lineHeight: paragraphPropsShape.lineHeight,
+  spaceBefore: paragraphPropsShape.spaceBefore,
+  spaceAfter: paragraphPropsShape.spaceAfter,
+  titleColor: ink,
+  notationColor: ink,
+  ...markerShape,
+};
+export const levelFields = Object.keys(levelShape);
+export const levelStyleSchema = sparse(levelShape);
+export type LevelStyle = Omit<ComponentStyle, "indentLeft" | "indentFirst">;
+
+/** A depth's key in `styles.levels`: "1" to `maxDepth`, the integer as written. */
+export const levelKey = (depth: number) => String(depth);
+export const isLevelKey = (key: string): boolean => {
+  if (!/^[1-9][0-9]*$/.test(key)) return false;
+  return Number(key) <= maxDepth;
+};
+export const levelsSchema = z
+  .record(z.string(), levelStyleSchema)
+  .refine((levels) => Object.keys(levels).every(isLevelKey), "invalid level")
+  .refine(nonEmpty, "empty: store null instead");
 
 /* Named styles */
 
@@ -306,11 +386,30 @@ export type UserPresetId = (typeof userPresetIds)[number];
 
 const blockStyle = sparse(blockStyleShape);
 
+/** How far each outline level is drawn in from the one above (A4.2A), in points. */
+export const levelIndentLimits = { min: 6, max: 72 } as const;
+/** The outline's defaults: a text style's properties, and the indent per outline level. */
+export const defaultsStyleSchema = sparse({
+  ...blockStyleShape,
+  levelIndent: points(levelIndentLimits.min, levelIndentLimits.max).optional(),
+});
+
+/*
+ * Which revision of its built-in preset an outline is drawn with (A4.2A).
+ * Revisions are immutable: a refinement is a new revision, written only when
+ * a person chooses a preset, so no document changes look because a preset
+ * was refined. Left out, the first revision applies: every document stored
+ * before A4.2A keeps exactly its look.
+ */
+export type PresetRevision = 1 | 2;
+export const latestPresetRevision: PresetRevision = 2;
+
 export const documentStylesSchema = z
   .object({
     version: z.literal(1),
     preset: z.enum(userPresetIds).optional(),
-    defaults: blockStyle.optional(),
+    presetRevision: z.union([z.literal(1), z.literal(2)]).optional(),
+    defaults: defaultsStyleSchema.optional(),
     named: z
       .object(Object.fromEntries(namedStyles.map((name) => [name, blockStyle.optional()])))
       .strict()
@@ -323,6 +422,7 @@ export const documentStylesSchema = z
       )
       .strict()
       .optional(),
+    levels: levelsSchema.optional(),
     runningHeader: sparse({ fontSize: fontSize.optional(), color: ink }).optional(),
   })
   .strict();

@@ -363,7 +363,8 @@ describe("treatment properties", () => {
     const css = readFileSync("src/features/editor-lab/v4/lab-v4.css", "utf8");
     for (const part of ["border-style", "border-w", "accent-w", "radius"]) {
       for (const name of ["scripture", "note", "script"]) {
-        expect(css, `${name}-${part}`).toContain(`var(--ps-${name}-${part},`);
+        // A value the preset gives in code (A4.2A) has no CSS fallback; one that varies by kind has.
+        expect(css, `${name}-${part}`).toMatch(new RegExp(`var\\(--ps-${name}-${part}[,)]`));
       }
     }
   });

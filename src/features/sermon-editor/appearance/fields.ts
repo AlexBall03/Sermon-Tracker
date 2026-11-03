@@ -1,4 +1,8 @@
-import type { ComponentKind } from "@/features/editor-lab/styles/model";
+import {
+  levelIndentLimits,
+  markerLimits,
+  type ComponentKind,
+} from "@/features/editor-lab/styles/model";
 
 /*
  * What the Appearance panel offers for each layer (A1-UI.2B.2): every
@@ -18,7 +22,8 @@ export type Control =
   | "number"
   | "align"
   | "borderStyle"
-  | "accentPosition";
+  | "accentPosition"
+  | "markerAlign";
 
 export type FieldSpec = {
   field: string;
@@ -28,7 +33,8 @@ export type FieldSpec = {
   advanced?: boolean;
 };
 
-export type GroupId = "typography" | "label" | "spacing" | "colors" | "borders" | "accents" | "box";
+export type GroupId =
+  "typography" | "label" | "spacing" | "number" | "colors" | "borders" | "accents" | "box";
 export type FieldGroup = { id: GroupId; fields: FieldSpec[] };
 
 const spacing = (advancedIndent: boolean): FieldSpec[] => [
@@ -59,11 +65,43 @@ const text = (extra: FieldSpec[] = []): FieldSpec[] => [
   ...extra,
 ];
 
-/** The outline's defaults and its named text styles: every property a style may set. */
+/** The outline's named text styles: every property a style may set. */
 export const blockGroups: FieldGroup[] = [
   { id: "typography", fields: text() },
   { id: "spacing", fields: [...spacing(false), { field: "align", control: "align" }] },
 ];
+
+/** The outline's shared defaults: a text style's, and the indent of each outline level (A4.2A). */
+export const defaultsGroups: FieldGroup[] = [
+  blockGroups[0],
+  {
+    id: "spacing",
+    fields: [
+      ...blockGroups[1].fields,
+      { field: "levelIndent", control: "number", limits: levelIndentLimits },
+    ],
+  },
+];
+
+/*
+ * A point's number (A4.2A): how it is drawn, never what it says (that is
+ * Outline Settings → Numbering). Offered on the point and subpoint types and
+ * on every level, never on a single point.
+ */
+const numberGroup: FieldGroup = {
+  id: "number",
+  fields: [
+    { field: "markerVisible", control: "toggle" },
+    { field: "notationColor", control: "ink" },
+    { field: "markerFont", control: "font" },
+    { field: "markerSize", control: "size" },
+    { field: "markerBold", control: "toggle" },
+    { field: "markerItalic", control: "toggle", advanced: true },
+    { field: "hanging", control: "toggle" },
+    { field: "markerAlign", control: "markerAlign", advanced: true },
+    { field: "markerGap", control: "number", limits: markerLimits.gap, advanced: true },
+  ],
+};
 
 const box: FieldGroup[] = [
   { id: "colors", fields: [{ field: "fill", control: "fill" }] },
@@ -116,6 +154,7 @@ const section: FieldGroup[] = [
   },
 ];
 
+/** A single point: its heading's text and spacing, and its own number color. */
 const point: FieldGroup[] = [
   {
     id: "typography",
@@ -125,6 +164,23 @@ const point: FieldGroup[] = [
     ]),
   },
   { id: "spacing", fields: spacing(true) },
+];
+
+/** Every point or subpoint (their type): a single point's properties, and its number. */
+const pointType: FieldGroup[] = [
+  { id: "typography", fields: text([{ field: "titleColor", control: "ink", advanced: true }]) },
+  { id: "spacing", fields: spacing(true) },
+  numberGroup,
+];
+
+/**
+ * One depth's points (A4.2A): their heading's text and spacing (a level's place
+ * is its depth's, so no indent) and their number.
+ */
+export const levelGroups: FieldGroup[] = [
+  { id: "typography", fields: text([{ field: "titleColor", control: "ink", advanced: true }]) },
+  { id: "spacing", fields: spacing(false).filter((spec) => !spec.field.startsWith("indent")) },
+  numberGroup,
 ];
 
 /** A container's words: its own paragraphs (a note's, a script's) are spaced and indented too. */
@@ -144,6 +200,7 @@ const containerText = (label: FieldSpec[], paragraphs: boolean): FieldGroup[] =>
     : []),
 ];
 
+/** What a single component offers (Component Appearance): its node's own contract. */
 export const componentGroups: Record<ComponentKind, FieldGroup[]> = {
   introduction: section,
   conclusion: section,
@@ -185,6 +242,13 @@ export const notDrawn: Partial<Record<ComponentKind, Record<string, string>>> = 
     indentLeft: "a passage is indented by its depth",
     indentFirst: "a passage's verses are not paragraphs",
   },
+};
+
+/** What a component type offers (Outline Settings → Components): a node's, and a point's number. */
+export const typeGroups: Record<ComponentKind, FieldGroup[]> = {
+  ...componentGroups,
+  point: pointType,
+  subpoint: pointType,
 };
 
 export const fieldsOf = (groups: FieldGroup[]): string[] =>

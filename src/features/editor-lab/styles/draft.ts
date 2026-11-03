@@ -1,10 +1,13 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
+import { numberingConfigSchema, type NumberingConfig } from "@/features/outlines/numbering";
+import { layoutParses, outlineLayoutSchema } from "../layout";
 import { componentOfNode, findComponent } from "./component-node";
 import {
   appearanceSchemas,
   componentKinds,
   documentStylesSchema,
+  levelKey,
   namedStyles,
   userPresetIds,
   type ComponentKind,
@@ -40,6 +43,14 @@ import {
  * at that moment, with the same bases, so a property set meanwhile by
  * something else is left alone.
  *
+ * Since A4.2A a draft also holds a depth's level (`level`), the preset's
+ * revision, and the outline's numbering (`numbering`: the whole
+ * configuration, one edit, `doc.attrs.layout.numbering` underneath). The
+ * numbering is the outline's layout, not its appearance: the appearance
+ * resets never touch it, and it is written beside the styles in the same one
+ * transaction only when the stored layout can be read; an unreadable layout
+ * refuses the whole draft and is never replaced or normalized.
+ *
  * Nothing here touches the editor: the plugin previews a draft (`plugin.ts`)
  * and `applyAppearanceDraft` writes the plan worked out here.
  */
@@ -49,6 +60,9 @@ export type Value = unknown;
 
 export type Path =
   | { layer: "preset" }
+  | { layer: "presetRevision" }
+  | { layer: "numbering" }
+  | { layer: "level"; depth: number; field: string }
   | { layer: "defaults"; field: string }
   | { layer: "named"; name: NamedStyle; field: string }
   | { layer: "component"; kind: ComponentKind; field: string }
@@ -65,6 +79,12 @@ export function keyOf(path: Path): string {
   switch (path.layer) {
     case "preset":
       return "preset";
+    case "presetRevision":
+      return "presetRevision";
+    case "numbering":
+      return "numbering";
+    case "level":
+      return `level|${path.depth}|${path.field}`;
     case "defaults":
       return `defaults|${path.field}`;
     case "named":
@@ -106,6 +126,8 @@ function layerOf(styles: DocumentStyles | null, path: Path): Record<string, unkn
       return styles?.components?.[path.kind] as Record<string, unknown> | undefined;
     case "runningHeader":
       return styles?.runningHeader as Record<string, unknown> | undefined;
+    case "level":
+      return styles?.levels?.[levelKey(path.depth)] as Record<string, unknown> | undefined;
     default:
       return undefined;
   }
@@ -118,6 +140,12 @@ export function committedAt(
   path: Path,
 ): Value {
   if (path.layer === "preset") return orUnset(styles?.preset);
+  if (path.layer === "presetRevision") return orUnset(styles?.presetRevision);
+  // The numbering as stored, when the layout can be read; nothing otherwise (Apply then refuses).
+  if (path.layer === "numbering") {
+    const layout = doc.attrs.layout as { numbering?: unknown } | null | undefined;
+    return layoutParses(layout) ? orUnset(layout?.numbering) : UNSET;
+  }
   if (path.layer === "instance") {
     const appearance = findComponent(doc, path.id)?.node.attrs.appearance as
       Record<string, unknown> | null | undefined;
@@ -143,6 +171,7 @@ export function setEdit(draft: Draft, path: Path, value: Value, committed: Value
 /** A layer of properties: a style, the defaults, or one component's own appearance. */
 export type LayerPath =
   | { layer: "defaults" }
+  | { layer: "level"; depth: number }
   | { layer: "named"; name: NamedStyle }
   | { layer: "component"; kind: ComponentKind }
   | { layer: "runningHeader" }
@@ -156,6 +185,7 @@ const belongs = (path: Path, layer: LayerPath): boolean =>
     layer.layer === "runningHeader" ||
     (layer.layer === "named" && path.layer === "named" && path.name === layer.name) ||
     (layer.layer === "component" && path.layer === "component" && path.kind === layer.kind) ||
+    (layer.layer === "level" && path.layer === "level" && path.depth === layer.depth) ||
     (layer.layer === "instance" && path.layer === "instance" && path.id === layer.id));
 
 /** The properties a layer sets, as committed now. */
@@ -208,9 +238,34 @@ export function restoreOutline(
   for (const kind of componentKinds) {
     next = resetLayer(next, styles, doc, { layer: "component", kind });
   }
+  // Every depth's level (A4.2A), committed or drafted, as `resetOutlineToPreset` clears them.
+  for (const depth of levelDepthsOf(styles, next)) {
+    next = resetLayer(next, styles, doc, { layer: "level", depth });
+  }
   // Outline-wide too, though not drawn yet (the header is UI.2C): the command clears it, so this does.
   return resetLayer(next, styles, doc, { layer: "runningHeader" });
 }
+
+/** The depths a level is committed or drafted for. */
+export function levelDepthsOf(styles: DocumentStyles | null, draft: Draft): number[] {
+  const depths = new Set(Object.keys(styles?.levels ?? {}).map(Number));
+  for (const { path } of draft.edits.values()) if (path.layer === "level") depths.add(path.depth);
+  return [...depths].filter(Number.isInteger).sort((a, b) => a - b);
+}
+
+/**
+ * The numbering a draft would give the outline, or undefined when it changes
+ * none or what it holds does not validate (a prefix still being typed): only
+ * a configuration the outline could store is previewed. The same edit gives
+ * the same answer, so the labels are not rebuilt while it is unchanged.
+ */
+export function draftNumbering(draft: Draft): NumberingConfig | undefined {
+  const edit = draft.edits.get("numbering");
+  if (!edit || edit.value === UNSET) return undefined;
+  if (!valid.has(edit)) valid.set(edit, numberingConfigSchema.safeParse(edit.value).success);
+  return valid.get(edit) ? (edit.value as NumberingConfig) : undefined;
+}
+const valid = new WeakMap<Edit, boolean>();
 
 /**
  * "Reset all components to outline defaults": every single component's own
@@ -304,6 +359,24 @@ export function mergeStyles(stored: DocumentStyles | null, draft: Draft): Docume
     if (preset.value === UNSET) delete next.preset;
     else next.preset = preset.value as UserPresetId;
   }
+  const revision = draft.edits.get("presetRevision");
+  if (revision) {
+    if (revision.value === UNSET) delete next.presetRevision;
+    else next.presetRevision = revision.value;
+  }
+
+  const levels: Record<string, unknown> = { ...(stored?.levels ?? {}) };
+  for (const depth of levelDepthsOf(stored, draft)) {
+    const key = levelKey(depth);
+    const layer = overlay(
+      stored?.levels?.[key] as Record<string, unknown> | undefined,
+      editsWhere(draft, (path) => path.layer === "level" && path.depth === depth),
+    );
+    if (layer) levels[key] = layer;
+    else delete levels[key];
+  }
+  if (Object.keys(levels).length) next.levels = levels;
+  else delete next.levels;
 
   const defaults = overlay(
     stored?.defaults,
@@ -412,6 +485,8 @@ export type ApplyPlan =
       ok: true;
       /** The outline's styles to write, or undefined to leave them. */
       styles?: DocumentStyles | null;
+      /** The outline's layout with the drafted numbering, or undefined to leave it. */
+      layout?: Record<string, unknown>;
       instances: { pos: number; appearance: ComponentStyle | null }[];
     }
   | { ok: false; reason: "conflict" | "orphan" | "invalid" };
@@ -428,7 +503,10 @@ export function applyPlan(
 ): ApplyPlan {
   if (orphans(draft, doc).length) return { ok: false, reason: "orphan" };
   if (conflicts(draft, stored, doc).length) return { ok: false, reason: "conflict" };
-  const outlineEdits = editsWhere(draft, (path) => path.layer !== "instance");
+  const outlineEdits = editsWhere(
+    draft,
+    (path) => path.layer !== "instance" && path.layer !== "numbering",
+  );
   let styles: DocumentStyles | null | undefined;
   if (outlineEdits.length) {
     styles = mergeStyles(stored, draft);
@@ -438,6 +516,17 @@ export function applyPlan(
     if (styles?.preset !== undefined && !userPresetIds.includes(styles.preset)) {
       return { ok: false, reason: "invalid" };
     }
+  }
+  // The numbering (A4.2A): only over a layout that reads, never replacing or repairing one.
+  let layout: Record<string, unknown> | undefined;
+  const numbering = draft.edits.get("numbering");
+  if (numbering) {
+    const stored = doc.attrs.layout as Record<string, unknown> | null | undefined;
+    if (!layoutParses(stored)) return { ok: false, reason: "invalid" };
+    const parsed = numberingConfigSchema.safeParse(numbering.value);
+    if (numbering.value === UNSET || !parsed.success) return { ok: false, reason: "invalid" };
+    layout = { ...stored, numbering: parsed.data };
+    if (!outlineLayoutSchema.safeParse(layout).success) return { ok: false, reason: "invalid" };
   }
   const ids = new Set(
     editsWhere(draft, (path) => path.layer === "instance").map(
@@ -457,7 +546,7 @@ export function applyPlan(
     }
     instances.push({ pos: found.pos, appearance });
   }
-  return { ok: true, styles, instances };
+  return { ok: true, styles, layout, instances };
 }
 
 /** Whether the draft holds anything to apply. */

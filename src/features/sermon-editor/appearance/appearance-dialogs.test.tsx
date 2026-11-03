@@ -143,7 +143,12 @@ describe("Outline Settings", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: /Expressive/ }));
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    expect(readStyles(editor.state.doc.attrs.styles)).toEqual({ version: 1, preset: "expressive" });
+    expect(readStyles(editor.state.doc.attrs.styles)).toEqual({
+      version: 1,
+      preset: "expressive",
+      // Choosing a preset draws it in its latest revision (A4.2A).
+      presetRevision: 2,
+    });
     expect(undoDepth(editor.state)).toBe(1);
     expect(screen.getByRole("status")).toHaveTextContent("Applied");
   });
@@ -162,6 +167,7 @@ describe("Outline Settings", () => {
     expect(readStyles(editor.state.doc.attrs.styles)).toEqual({
       version: 1,
       preset: "minimal",
+      presetRevision: 2,
       components: { point: { fontSize: 15 } },
     });
   });
@@ -495,5 +501,78 @@ describe("the preview's documents", () => {
       "n-1",
     ]);
     expect(componentExcerpt(doc, "missing")).toBeNull();
+  });
+});
+
+describe("Levels and Numbering (A4.2A)", () => {
+  it("customizes one level, says where each value comes from, and resets it", () => {
+    const editor = open({ version: 1, components: { subpoint: { italic: true } } });
+    show(editor);
+    act(() => api.openOutlineSettings({ tab: "levels", depth: 2 }));
+    const settings = screen.getByRole("dialog", { name: "Outline Settings" });
+    expect(within(settings).getByRole("radio", { name: "Levels" })).toBeChecked();
+    // Inherited from the subpoint style until set here.
+    const italic = settings.querySelector('[data-group="typography"] [data-field="italic"]')!;
+    expect(italic).toHaveTextContent("From Subpoints style");
+    setNumber("Size (pt)", "14");
+    expect(readStyles(editor.state.doc.attrs.styles)?.levels).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(readStyles(editor.state.doc.attrs.styles)?.levels).toEqual({ "2": { fontSize: 14 } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset level 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(readStyles(editor.state.doc.attrs.styles)?.levels).toBeUndefined();
+  });
+
+  it("offers a point's number on its type and its levels, never on one point", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ tab: "components", kind: "subpoint" }));
+    expect(screen.getByRole("region", { name: "Number" })).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+  });
+
+  it("edits the numbering in the same draft, and keeps it across the categories", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ tab: "levels", depth: 1 }));
+    setNumber("Size (pt)", "15");
+    fireEvent.click(screen.getByRole("button", { name: "Numbering" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Decimal/ }));
+    expect(editor.state.doc.attrs.layout.numbering).toEqual({ version: 1, preset: "traditional" });
+    expect(screen.getByRole("status")).toHaveTextContent("outline, numbering");
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    expect(screen.getByRole("textbox", { name: "Size (pt)" })).toHaveValue("15");
+    const depth = undoDepth(editor.state);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(undoDepth(editor.state)).toBe(depth + 1);
+    expect(editor.state.doc.attrs.layout.numbering).toEqual({ version: 1, preset: "decimal" });
+    expect(readStyles(editor.state.doc.attrs.styles)?.levels).toEqual({ "1": { fontSize: 15 } });
+  });
+
+  it("says an unreadable layout cannot be changed, and changes nothing", () => {
+    const editor = open();
+    editor.view.dispatch(editor.state.tr.setDocAttribute("layout", { version: 9 }));
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "numbering" }));
+    expect(screen.getByTestId("numbering-unreadable")).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Decimal/ })).toBeNull();
+    expect(editor.state.doc.attrs.layout).toEqual({ version: 9 });
+  });
+
+  it("speaks Spanish: levels, the number, and numbering", () => {
+    const editor = open();
+    show(editor, "es");
+    act(() => api.openOutlineSettings({ tab: "levels", depth: 3 }));
+    const settings = screen.getByRole("dialog", { name: "Ajustes del bosquejo" });
+    expect(within(settings).getByRole("radio", { name: "Niveles" })).toBeChecked();
+    expect(within(settings).getByRole("region", { name: "Número" })).toBeInTheDocument();
+    expect(within(settings).getAllByText("Mostrar el número").length).toBeGreaterThan(0);
+    expect(
+      within(settings).getByRole("button", { name: "Restablecer el nivel 3" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(settings).getByRole("button", { name: "Numeración" }));
+    expect(within(settings).getByTestId("numbering-settings")).toHaveTextContent(
+      "Apariencia → Niveles",
+    );
   });
 });

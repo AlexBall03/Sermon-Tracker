@@ -14,6 +14,7 @@ import {
   borderStyles,
   fontRegistry,
   isFontSize,
+  markerAlignments,
   userPresetIds,
   type ComponentKind,
   type FontKey,
@@ -44,20 +45,24 @@ export function pendingParts(
   draft: Draft,
   words: {
     outline: string;
+    numbering: string;
     kinds: (count: number) => string;
     components: (count: number) => string;
   },
 ): string {
   let outline = false;
+  let numbering = false;
   const kinds = new Set<string>();
   const components = new Set<string>();
   for (const { path } of draft.edits.values()) {
     if (path.layer === "component") kinds.add(path.kind);
     else if (path.layer === "instance") components.add(path.id);
+    else if (path.layer === "numbering") numbering = true;
     else outline = true;
   }
   return [
     outline ? words.outline : null,
+    numbering ? words.numbering : null,
     kinds.size ? words.kinds(kinds.size) : null,
     components.size ? words.components(components.size) : null,
   ]
@@ -69,10 +74,13 @@ export function PresetChooser({
   value,
   onChange,
   conflict,
+  update,
 }: {
   value: PresetId;
   onChange: (id: UserPresetId) => void;
   conflict: { keep: () => void; current: () => void } | null;
+  /** Offered when the outline is drawn by an earlier revision of its preset (A4.2A): never applied by itself. */
+  update?: () => void;
 }) {
   const a = useT("editorLab").appearance;
   const name = useId();
@@ -98,6 +106,18 @@ export function PresetChooser({
           <span className="pl-6 text-xs text-muted-foreground">{a.presetHints[id]}</span>
         </label>
       ))}
+      {update && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {a.presetUpdate}
+          <button
+            type="button"
+            className="min-h-9 font-medium text-primary underline underline-offset-2 pointer-coarse:min-h-11"
+            onClick={update}
+          >
+            {a.presetUpdateUse}
+          </button>
+        </p>
+      )}
       {conflict && <ConflictLine {...conflict} />}
     </fieldset>
   );
@@ -121,6 +141,8 @@ export function ConflictLine({ keep, current }: { keep: () => void; current: () 
 export type FieldListProps = {
   groups: FieldGroup[];
   kind?: ComponentKind;
+  /** The depth whose level is edited or inherited from (A4.2A), for points. */
+  depth?: number;
   layers: Layer[];
   /** The layer being edited: a property it sets is "Customized". */
   ownSource: LayerSource;
@@ -176,6 +198,7 @@ export function FieldList(props: FieldListProps) {
 function FieldRow({
   spec,
   kind,
+  depth,
   layers,
   ownSource,
   resolved,
@@ -192,13 +215,17 @@ function FieldRow({
   const own = source === ownSource;
   const label = fieldLabel(a, field, kind);
   const conflict = conflictFor(path);
-  const value = resolved[field];
+  const value = shownValue(field, resolved, preset);
   const inherited =
     source === "defaults"
       ? a.sources.defaults
       : source === "style" && kind
         ? a.sources.style(a.kinds[kind])
-        : a.sources.preset;
+        : source === "level" && depth
+          ? a.sources.level(depth)
+          : source === null && fromHeading.has(field)
+            ? a.sources.heading
+            : a.sources.preset;
   return (
     <div className="flex flex-col gap-1.5 py-2" data-field={field}>
       <div className="flex items-center justify-between gap-2">
@@ -228,6 +255,7 @@ function FieldRow({
         spec={spec}
         label={label}
         value={value}
+        unset={unsetLabel(a, field, kind)}
         own={own}
         preset={preset}
         onChange={(next) => set(path, next)}
@@ -239,6 +267,69 @@ function FieldRow({
 }
 
 type AppearanceWords = Dictionaries["editorLab"]["appearance"];
+
+/*
+ * The value a property is drawn with when no style sets it (A4.2A), for the
+ * number of a point: shown, hanging as the preset hangs numbers, and in its
+ * heading's face, size, weight, slant, and alignment. Every other property is
+ * the cascade's own value, or undefined when only the CSS draws it.
+ */
+function shownValue(field: string, resolved: Record<string, unknown>, preset: Preset): unknown {
+  const value = resolved[field];
+  if (value !== undefined) return value;
+  switch (field) {
+    case "markerVisible":
+      return true;
+    case "hanging":
+      return preset.hangingNumbers;
+    case "markerBold":
+      return resolved.bold;
+    case "markerItalic":
+      return resolved.italic;
+    case "markerFont":
+      return resolved.fontFamily;
+    case "markerSize":
+      return resolved.fontSize;
+    case "markerAlign":
+      return "left";
+    default:
+      return undefined;
+  }
+}
+
+/** The properties of a note whose preset value differs by the note's kind (`v4/lab-v4.css`). */
+/** A number property that, unset, follows its heading. */
+const fromHeading = new Set([
+  "markerFont",
+  "markerSize",
+  "markerBold",
+  "markerItalic",
+  "markerAlign",
+]);
+const byNoteKind = new Set(["accentWidth", "borderStyle", "radius", "paddingBlock"]);
+const colorFields = new Set([
+  "color",
+  "titleColor",
+  "notationColor",
+  "referenceColor",
+  "labelColor",
+  "fill",
+  "border",
+  "accent",
+]);
+
+/**
+ * What an unset value is called, as accurately as it can be said (A4.2A): a
+ * color the theme gives, a note value its kind gives, a space relative to the
+ * text, the number's gap after it, or (anything else) the preset's design.
+ */
+function unsetLabel(a: AppearanceWords, field: string, kind?: ComponentKind): string {
+  if (colorFields.has(field)) return a.themeColor;
+  if (kind === "preacherNote" && byNoteKind.has(field)) return a.byNoteKind;
+  if (field === "paddingInline") return a.relativeToText;
+  if (field === "markerGap") return a.markerGapDefault;
+  return a.presetDesign;
+}
 
 function fieldLabel(a: AppearanceWords, field: string, kind?: ComponentKind): string {
   if ((kind === "introduction" || kind === "conclusion") && field in a.sectionFields) {
@@ -262,6 +353,7 @@ function Control({
   spec,
   label,
   value,
+  unset,
   own,
   preset,
   onChange,
@@ -270,6 +362,8 @@ function Control({
   spec: FieldSpec;
   label: string;
   value: unknown;
+  /** What an unset value is called (`unsetLabel`). */
+  unset: string;
   own: boolean;
   preset: Preset;
   onChange: (value: unknown) => void;
@@ -330,7 +424,7 @@ function Control({
           value={(value as string | undefined) ?? ""}
           onChange={(next) => next && next !== value && onChange(next)}
           options={[
-            ...(value === undefined ? [{ value: "", label: a.presetDesign }] : []),
+            ...(value === undefined ? [{ value: "", label: unset }] : []),
             ...borderStyles.map((style) => ({ value: style, label: a.borderStyles[style] })),
           ]}
           className={cn("h-9 pointer-coarse:h-11", muted)}
@@ -348,6 +442,20 @@ function Control({
           options={accentPositions.map((side) => ({ value: side, label: a.accentPositions[side] }))}
         />
       );
+    case "markerAlign":
+      return (
+        <Segmented
+          label={label}
+          hideLabel
+          name={name}
+          value={(value as string | undefined) ?? "left"}
+          onChange={(next) => next !== value && onChange(next)}
+          options={markerAlignments.map((side) => ({
+            value: side,
+            label: a.markerAlignments[side],
+          }))}
+        />
+      );
     case "ink":
     case "inkOrNone":
     case "fill":
@@ -358,7 +466,7 @@ function Control({
           own={own}
           kind={spec.control === "fill" ? "fill" : "ink"}
           noneLabel={spec.control === "ink" ? undefined : a.none}
-          presetLabel={a.presetDesign}
+          presetLabel={unset}
           onChange={onChange}
         />
       );
@@ -369,7 +477,7 @@ function Control({
           label={label}
           value={value as number | undefined}
           own={own}
-          placeholder={a.presetDesign}
+          placeholder={unset}
           valid={(number) =>
             spec.control === "size"
               ? isFontSize(number)

@@ -1,5 +1,12 @@
-import { userPresetIds } from "./model";
-import type { ComponentKind, ComponentStyle, FontKey, NamedStyle } from "./model";
+import { latestPresetRevision, userPresetIds } from "./model";
+import type {
+  ComponentKind,
+  ComponentStyle,
+  FontKey,
+  LevelStyle,
+  NamedStyle,
+  PresetRevision,
+} from "./model";
 import type { ResolvedBlock } from "./resolve";
 
 /*
@@ -44,6 +51,12 @@ export type Preset = {
    * writing a point owns aligned with the heading's words (`v4/lab-v4.css`).
    */
   hangingNumbers: boolean;
+  /**
+   * How the points at one depth look over their type's style (A4.2A), by
+   * depth ("1", "2", …): the preset's own level layers. Left out, every depth
+   * looks as its type does.
+   */
+  levels?: Partial<Record<string, LevelStyle>>;
 };
 
 /** Every preset; the ones a person may choose are `userPresetIds` (`model.ts`). */
@@ -161,6 +174,52 @@ const baseline: Preset = {
  */
 const structure = "source-sans-3" as const;
 
+/*
+ * A container's and a section's lines and space (A4.2A), in points: the
+ * values the studio CSS drew as its own tokens until A4.2A, moved here so the
+ * Appearance controls show them as they are. Each is exactly the CSS value it
+ * replaces (1px is 0.75pt; the space before a container is the rhythm's 4pt,
+ * the space after the preset's own). Only values that are one value for every
+ * instance are here: a note's accent, corners, and space inside differ by its
+ * kind, a container's space beside its words is relative to the text size
+ * (and narrower on a phone), and the colors follow the theme, so those stay
+ * the CSS's (`v4/lab-v4.css`, `--k-*`).
+ */
+const sectionLines = (accentWidth: number, borderWidth: number): ComponentStyle => ({
+  accentWidth,
+  borderWidth,
+  borderStyle: "solid",
+});
+const passageBox = (accentWidth: number, radius: number, after: number): ComponentStyle => ({
+  accentWidth,
+  borderWidth: 0.75,
+  borderStyle: "solid",
+  radius,
+  paddingBlock: 4,
+  outsideBefore: 4,
+  outsideAfter: after,
+});
+const noteBox = (after: number): ComponentStyle => ({
+  borderWidth: 0.75,
+  outsideBefore: 4,
+  outsideAfter: after,
+});
+const scriptBox = (
+  accentWidth: number,
+  borderWidth: number,
+  borderStyle: "solid" | "double",
+  radius: number,
+  after: number,
+): ComponentStyle => ({
+  accentWidth,
+  borderWidth,
+  borderStyle,
+  radius,
+  paddingBlock: 4,
+  outsideBefore: 4,
+  outsideAfter: after,
+});
+
 const balanced: Preset = {
   defaults: {
     ...baseline.defaults,
@@ -220,6 +279,7 @@ const balanced: Preset = {
       lineHeight: 1.3,
       spaceBefore: 6,
       spaceAfter: 4,
+      ...sectionLines(1.125, 0.75),
     },
     conclusion: {
       fontFamily: structure,
@@ -228,6 +288,7 @@ const balanced: Preset = {
       lineHeight: 1.3,
       spaceBefore: 6,
       spaceAfter: 4,
+      ...sectionLines(1.125, 0.75),
     },
     point: {
       fontFamily: structure,
@@ -245,10 +306,16 @@ const balanced: Preset = {
       spaceBefore: 6,
       spaceAfter: 2,
     },
-    scripture: {},
-    preacherNote: { fontFamily: structure, fontSize: 10.5, lineHeight: 1.4, spaceAfter: 2 },
+    scripture: { ...passageBox(1.5, 3, 8) },
+    preacherNote: {
+      fontFamily: structure,
+      fontSize: 10.5,
+      lineHeight: 1.4,
+      spaceAfter: 2,
+      ...noteBox(8),
+    },
     // Words to be said aloud: the reading serif, given a little more air.
-    script: { lineHeight: 1.5, spaceAfter: 3 },
+    script: { lineHeight: 1.5, spaceAfter: 3, ...scriptBox(0.75, 0.75, "solid", 3.75, 8) },
   },
   componentColors: true,
   structureFont: structure,
@@ -311,6 +378,7 @@ const minimal: Preset = {
       lineHeight: 1.3,
       spaceBefore: 8,
       spaceAfter: 3,
+      ...sectionLines(0.5625, 0.5625),
     },
     conclusion: {
       fontFamily: serif,
@@ -319,6 +387,7 @@ const minimal: Preset = {
       lineHeight: 1.3,
       spaceBefore: 8,
       spaceAfter: 3,
+      ...sectionLines(0.5625, 0.5625),
     },
     point: {
       fontFamily: serif,
@@ -336,7 +405,7 @@ const minimal: Preset = {
       spaceBefore: 5,
       spaceAfter: 2,
     },
-    scripture: {},
+    scripture: { ...passageBox(0.75, 0, 6) },
     // A margin note in a printed book: the reading face, smaller and italic.
     preacherNote: {
       fontFamily: serif,
@@ -344,8 +413,9 @@ const minimal: Preset = {
       italic: true,
       lineHeight: 1.4,
       spaceAfter: 2,
+      ...noteBox(6),
     },
-    script: { lineHeight: 1.45, spaceAfter: 3 },
+    script: { lineHeight: 1.45, spaceAfter: 3, ...scriptBox(0.75, 0.75, "solid", 0, 6) },
   },
   componentColors: true,
   structureFont: serif,
@@ -412,6 +482,7 @@ const expressive: Preset = {
       lineHeight: 1.3,
       spaceBefore: 10,
       spaceAfter: 5,
+      ...sectionLines(1.875, 0.75),
     },
     conclusion: {
       fontFamily: structure,
@@ -420,6 +491,7 @@ const expressive: Preset = {
       lineHeight: 1.3,
       spaceBefore: 10,
       spaceAfter: 5,
+      ...sectionLines(1.875, 0.75),
     },
     point: {
       fontFamily: structure,
@@ -437,16 +509,69 @@ const expressive: Preset = {
       spaceBefore: 7,
       spaceAfter: 2,
     },
-    scripture: {},
-    preacherNote: { fontFamily: structure, fontSize: 10.5, lineHeight: 1.45, spaceAfter: 2 },
-    script: { lineHeight: 1.55, spaceAfter: 3 },
+    scripture: { ...passageBox(2.25, 4.5, 10) },
+    preacherNote: {
+      fontFamily: structure,
+      fontSize: 10.5,
+      lineHeight: 1.45,
+      spaceAfter: 2,
+      ...noteBox(10),
+    },
+    script: { lineHeight: 1.55, spaceAfter: 3, ...scriptBox(3, 0, "double", 0, 10) },
   },
   componentColors: true,
   structureFont: structure,
   hangingNumbers: true,
 };
 
+/** Every preset in its first revision: how every document stored before A4.2A is drawn. */
 export const presets: Record<PresetId, Preset> = { baseline, minimal, balanced, expressive };
+
+/*
+ * The second revision (A4.2A) of the presets a person may choose. It is drawn
+ * only for an outline whose styles say `presetRevision: 2`, which only
+ * choosing a preset writes. A released revision never changes: a later
+ * refinement is a third. A preset a revision leaves as it was is the same
+ * object; a revision's CSS is under `[data-preset-revision="2"]`.
+ */
+const revisionTwo: Record<PresetId, Preset> = {
+  baseline,
+  balanced,
+  expressive,
+  /*
+   * Minimal's script (A4.2A review): in revision 1 a reminder and a script
+   * were both thin outlined boxes, told apart only by their label. A script
+   * is now a double rule beside the words, never a box, so the two read apart
+   * in black and white too (its rule's color is its hairline's, `lab-v4.css`).
+   */
+  minimal: {
+    ...minimal,
+    components: {
+      ...minimal.components,
+      script: {
+        ...minimal.components.script,
+        borderWidth: 0,
+        accentWidth: 2.25,
+        borderStyle: "double",
+      },
+    },
+  },
+};
+
+const revisions: Record<PresetRevision, Record<PresetId, Preset>> = { 1: presets, 2: revisionTwo };
+
+/** A preset as a revision draws it. A document that names no revision is drawn by the first. */
+export function presetAt(id: PresetId, revision: PresetRevision | undefined): Preset {
+  return (revisions[revision ?? 1] ?? presets)[id];
+}
+
+/** Whether a preset's latest revision differs from `revision` in code or in its CSS. */
+export function presetRevised(id: PresetId, revision: PresetRevision | undefined): boolean {
+  return (revision ?? 1) < latestPresetRevision && revisedInLatest.has(id);
+}
+
+/** The presets whose latest revision draws differently from the one before (code or CSS). */
+const revisedInLatest = new Set<PresetId>(["minimal"]);
 
 export const isPresetId = (value: unknown): value is PresetId =>
   typeof value === "string" && (presetIds as readonly string[]).includes(value);

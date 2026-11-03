@@ -8,7 +8,9 @@ import {
   type ComponentStyle,
   type DocumentStyles,
   type FontKey,
+  type MarkerAlignment,
   type NamedStyle,
+  levelKey,
 } from "./model";
 import { presets, type Preset } from "./presets";
 
@@ -73,6 +75,14 @@ export type ResolvedComponent = Omit<ResolvedBlock, "align"> & {
   outsideBefore?: number;
   outsideAfter?: number;
   labelFont?: FontKey;
+  markerVisible?: boolean;
+  markerFont?: FontKey;
+  markerSize?: number;
+  markerBold?: boolean;
+  markerItalic?: boolean;
+  markerAlign?: MarkerAlignment;
+  markerGap?: number;
+  hanging?: boolean;
 };
 
 type BlockLayer = Partial<ResolvedBlock>;
@@ -118,7 +128,8 @@ const read = new WeakMap<object, DocumentStyles | null>();
  * outline's version of it, or the node's own override. The Appearance panel
  * names the last layer that sets a property as where it is inherited from.
  */
-export type LayerSource = "presetDefaults" | "defaults" | "presetStyle" | "style" | "own";
+export type LayerSource =
+  "presetDefaults" | "defaults" | "presetStyle" | "style" | "presetLevel" | "level" | "own";
 export type Layer = { source: LayerSource; values: Record<string, unknown> | null | undefined };
 
 /** The layers a named style's text is resolved from, first to last. */
@@ -137,18 +148,32 @@ export function namedLayers(
   ];
 }
 
-/** The layers a component is resolved from, first to last. */
+/**
+ * The layers a component is resolved from, first to last. A point or a
+ * subpoint given its semantic `depth` (A4.2A) also takes that depth's level,
+ * the preset's and then the outline's, after its type's style and before its
+ * own appearance: a level property left out inherits the type's, and a single
+ * point's own override still wins. A role's heading is never a level's.
+ */
 export function componentLayers(
   styles: DocumentStyles | null,
   kind: ComponentKind,
   appearance?: ComponentStyle | null,
   preset: Preset = presets.baseline,
+  depth?: number | null,
 ): Layer[] {
+  const level = depth && (kind === "point" || kind === "subpoint") ? levelKey(depth) : null;
   return [
     { source: "presetDefaults", values: preset.defaults },
     { source: "defaults", values: styles?.defaults },
     { source: "presetStyle", values: preset.components[kind] },
     { source: "style", values: styles?.components?.[kind] },
+    ...(level
+      ? ([
+          { source: "presetLevel", values: preset.levels?.[level] },
+          { source: "level", values: styles?.levels?.[level] },
+        ] as Layer[])
+      : []),
     { source: "own", values: appearance },
   ];
 }
@@ -174,15 +199,16 @@ export function resolveNamed(
   return cascadeOf<ResolvedBlock>(namedLayers(styles, name, override, preset)) as ResolvedBlock;
 }
 
-/** A semantic component, with one node's `appearance` last. */
+/** A semantic component, with its depth's level (points, A4.2A) and one node's `appearance` last. */
 export function resolveComponent(
   styles: DocumentStyles | null,
   kind: ComponentKind,
   appearance?: ComponentStyle | null,
   preset: Preset = presets.baseline,
+  depth?: number | null,
 ): ResolvedComponent {
   const { align: _align, ...resolved } = cascadeOf<ResolvedBlock & ComponentStyle>(
-    componentLayers(styles, kind, appearance, preset),
+    componentLayers(styles, kind, appearance, preset, depth),
   ) as ResolvedBlock & ComponentStyle;
   void _align;
   return resolved as ResolvedComponent;

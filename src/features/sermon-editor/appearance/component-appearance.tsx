@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { mergeAppearance } from "@/features/editor-lab/styles/draft";
+import { findComponent } from "@/features/editor-lab/styles/component-node";
 import { componentLayers, resolveComponent } from "@/features/editor-lab/styles/resolve";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,12 @@ export function ComponentAppearance({
   const { merged, preset } = session;
   const appearance = ready ? mergeAppearance(session.appearance, session.draft, target.id) : null;
 
+  // A point's level (A4.2A) is inherited before its own appearance: found by identity, as it stands now.
+  const found = findComponent(session.editor.state.doc, target.id);
+  const depth =
+    found && (found.kind === "point" || found.kind === "subpoint")
+      ? (found.node.attrs.depth as number)
+      : null;
   return (
     <AppearanceModal
       session={session}
@@ -124,9 +131,10 @@ export function ComponentAppearance({
                 session={session}
                 groups={componentGroups[target.kind]}
                 kind={target.kind}
-                layers={componentLayers(merged, target.kind, appearance, preset)}
+                depth={depth ?? undefined}
+                layers={componentLayers(merged, target.kind, appearance, preset, depth)}
                 ownSource="own"
-                resolved={resolveComponent(merged, target.kind, appearance, preset)}
+                resolved={resolveComponent(merged, target.kind, appearance, preset, depth)}
                 pathOf={(field) => ({ layer: "instance", ...target, field })}
               />
             </>

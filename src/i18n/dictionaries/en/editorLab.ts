@@ -59,13 +59,34 @@ export const editorLab = {
     settingsHint:
       "Settings for this outline only. Changes show in the preview; nothing changes until you apply it.",
     categoriesLabel: "Settings categories",
-    categories: { appearance: "Appearance" },
+    categories: { appearance: "Appearance", numbering: "Numbering" },
     tabsLabel: "What to customize",
-    tabs: { outline: "Outline", components: "Components" },
+    tabs: { outline: "Outline", components: "Components", levels: "Levels" },
     tabHints: {
       outline: "The style preset and the text styles used throughout this outline.",
       components: "Every component of one type, such as all main points or all Scripture passages.",
+      levels:
+        "The points at one outline level, such as every third-level subpoint. Anything you leave alone follows the main point or subpoint style.",
     },
+    level: "Outline level",
+    levelOption: (depth: number): string =>
+      depth === 1
+        ? "Level 1 · Main points"
+        : depth === 2
+          ? "Level 2 · Subpoints"
+          : `Level ${depth}`,
+    levelInUse: (label: string): string => `${label} (in this outline)`,
+    resetLevel: (depth: number): string => `Reset level ${depth}`,
+    previewLevel: (depth: number): string => `Preview · level ${depth}`,
+    numbering: {
+      hint: "What each point's number says. How numbers look (font, size, color, spacing) is under Appearance → Levels.",
+      unreadable:
+        "This outline's numbering settings can't be read, so they can't be changed here. Nothing was changed.",
+      invalid: "Some numbering text can't be used. Check the highlighted fields.",
+      previewHint: "The preview shows the numbering you choose before you apply it.",
+    },
+    presetUpdate: "An updated design of this preset is available.",
+    presetUpdateUse: "Use the updated design",
     componentTitle: "Customize Appearance",
     componentHint:
       "Changes affect only this component. Everything you leave alone follows the outline's style for its type.",
@@ -112,6 +133,7 @@ export const editorLab = {
       borders: "Borders",
       accents: "Accents",
       box: "Box spacing",
+      number: "Number",
     },
     more: "More options",
     fields: {
@@ -144,6 +166,15 @@ export const editorLab = {
       paddingInline: "Inside space, sides (pt)",
       outsideBefore: "Space above (pt)",
       outsideAfter: "Space below (pt)",
+      markerVisible: "Show number",
+      markerFont: "Number font",
+      markerSize: "Number size (pt)",
+      markerBold: "Bold number",
+      markerItalic: "Italic number",
+      markerAlign: "Number alignment",
+      markerGap: "Space after number (pt)",
+      hanging: "Hanging number",
+      levelIndent: "Indent per outline level (pt)",
     },
     sectionFields: {
       fill: "Section background",
@@ -160,16 +191,23 @@ export const editorLab = {
     },
     borderStyles: { solid: "Solid", dashed: "Dashed", dotted: "Dotted", double: "Double" },
     accentPositions: { left: "Left", top: "Top", right: "Right" },
+    markerAlignments: { left: "Left", right: "Right" },
     on: "On",
     off: "Off",
     none: "None",
     presetDesign: "Preset design",
+    themeColor: "Theme color",
+    byNoteKind: "Varies by note type",
+    relativeToText: "Relative to text size",
+    markerGapDefault: "0.35 em (from the heading's size)",
     customized: "Customized",
     inheritedFrom: (source: string): string => `From ${source}`,
     sources: {
       preset: "the preset",
       defaults: "shared defaults",
       style: (kinds: string): string => `${kinds} style`,
+      level: (depth: number): string => `level ${depth}`,
+      heading: "the heading",
     },
     useInherited: "Use inherited setting",
     useInheritedFor: (field: string): string => `Use inherited setting for ${field}`,
@@ -197,19 +235,21 @@ export const editorLab = {
         removes:
           "Removes this outline's style customizations: shared defaults, text styles, component type styles, and every individual component's appearance.",
         keeps:
-          "Keeps the preset you chose. Your words, structure, and text formatting are not touched.",
+          "Keeps the preset you chose and the numbering. Your words, structure, and text formatting are not touched.",
       },
       original: {
         label: (): string => "Restore original Preacher Studio defaults",
         title: (): string => "Restore original Preacher Studio defaults?",
         removes:
           "Sets the preset back to Balanced and removes every appearance customization in this outline, including individual components.",
-        keeps: "Your words, structure, points, roles, and text formatting are not touched.",
+        keeps:
+          "Keeps the numbering. Your words, structure, points, roles, and text formatting are not touched.",
       },
     },
     pending: (parts: string): string => `Not applied yet: ${parts}`,
     pendingParts: {
       outline: "outline",
+      numbering: "numbering",
       kinds: (count: number): string =>
         count === 1 ? "1 component type" : `${count} component types`,
       components: (count: number): string => (count === 1 ? "1 component" : `${count} components`),
@@ -238,6 +278,7 @@ export const editorLab = {
       pointText: "Scripture shows us where we are and where to go.",
       subpoint: "It lights the next step",
       subpointText: "Not the whole road at once, but enough to walk.",
+      deeper: "Enough for today",
       note: "Pause here and ask who is walking in the dark.",
       script: "Let me ask you: what lamp are you holding tonight?",
       conclusion: "Conclusion",

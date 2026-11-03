@@ -59,14 +59,35 @@ export const editorLab: Untranslated<typeof english> = {
     settingsHint:
       "Ajustes solo de este bosquejo. Los cambios se ven en la vista previa; nada cambia hasta que los aplique.",
     categoriesLabel: "Categorías de ajustes",
-    categories: { appearance: "Apariencia" },
+    categories: { appearance: "Apariencia", numbering: "Numeración" },
     tabsLabel: "Qué personalizar",
-    tabs: { outline: "Bosquejo", components: "Componentes" },
+    tabs: { outline: "Bosquejo", components: "Componentes", levels: "Niveles" },
     tabHints: {
       outline: "El estilo predefinido y los estilos de texto de todo el bosquejo.",
       components:
         "Todos los componentes de un tipo, como todos los puntos principales o todos los pasajes.",
+      levels:
+        "Los puntos de un nivel del bosquejo, como todos los subpuntos del tercer nivel. Lo que no cambie sigue el estilo de los puntos principales o de los subpuntos.",
     },
+    level: "Nivel del bosquejo",
+    levelOption: (depth: number): string =>
+      depth === 1
+        ? "Nivel 1 · Puntos principales"
+        : depth === 2
+          ? "Nivel 2 · Subpuntos"
+          : `Nivel ${depth}`,
+    levelInUse: (label: string): string => `${label} (en este bosquejo)`,
+    resetLevel: (depth: number): string => `Restablecer el nivel ${depth}`,
+    previewLevel: (depth: number): string => `Vista previa · nivel ${depth}`,
+    numbering: {
+      hint: "Lo que dice el número de cada punto. Cómo se ven los números (fuente, tamaño, color, espaciado) está en Apariencia → Niveles.",
+      unreadable:
+        "No se puede leer la numeración de este bosquejo, así que no se puede cambiar aquí. No se cambió nada.",
+      invalid: "Parte del texto de la numeración no se puede usar. Revise los campos marcados.",
+      previewHint: "La vista previa muestra la numeración que elija antes de aplicarla.",
+    },
+    presetUpdate: "Hay un diseño actualizado de este estilo predefinido.",
+    presetUpdateUse: "Usar el diseño actualizado",
     componentTitle: "Personalizar apariencia",
     componentHint:
       "Los cambios afectan solo a este componente. Lo que no cambie sigue el estilo del bosquejo para su tipo.",
@@ -114,6 +135,7 @@ export const editorLab: Untranslated<typeof english> = {
       borders: "Bordes",
       accents: "Acentos",
       box: "Espacio del recuadro",
+      number: "Número",
     },
     more: "Más opciones",
     fields: {
@@ -146,6 +168,15 @@ export const editorLab: Untranslated<typeof english> = {
       paddingInline: "Espacio interior, a los lados (pt)",
       outsideBefore: "Espacio encima (pt)",
       outsideAfter: "Espacio debajo (pt)",
+      markerVisible: "Mostrar el número",
+      markerFont: "Fuente del número",
+      markerSize: "Tamaño del número (pt)",
+      markerBold: "Número en negrita",
+      markerItalic: "Número en cursiva",
+      markerAlign: "Alineación del número",
+      markerGap: "Espacio después del número (pt)",
+      hanging: "Número en sangría francesa",
+      levelIndent: "Sangría por nivel del bosquejo (pt)",
     },
     sectionFields: {
       fill: "Fondo de la sección",
@@ -162,16 +193,23 @@ export const editorLab: Untranslated<typeof english> = {
     },
     borderStyles: { solid: "Continuo", dashed: "Discontinuo", dotted: "Punteado", double: "Doble" },
     accentPositions: { left: "Izquierda", top: "Arriba", right: "Derecha" },
+    markerAlignments: { left: "Izquierda", right: "Derecha" },
     on: "Sí",
     off: "No",
     none: "Ninguno",
     presetDesign: "Diseño del estilo predefinido",
+    themeColor: "Color del tema",
+    byNoteKind: "Según el tipo de nota",
+    relativeToText: "Relativo al tamaño del texto",
+    markerGapDefault: "0,35 em (según el tamaño del encabezado)",
     customized: "Personalizado",
     inheritedFrom: (source: string): string => `De ${source}`,
     sources: {
       preset: "el estilo predefinido",
       defaults: "los valores comunes",
       style: (kinds: string): string => `el estilo de ${kinds}`,
+      level: (depth: number): string => `el nivel ${depth}`,
+      heading: "el encabezado",
     },
     useInherited: "Usar el valor heredado",
     useInheritedFor: (field: string): string => `Usar el valor heredado para ${field}`,
@@ -199,7 +237,7 @@ export const editorLab: Untranslated<typeof english> = {
         removes:
           "Quita las personalizaciones de estilo de este bosquejo: valores comunes, estilos de texto, estilos de tipo de componente y la apariencia de cada componente individual.",
         keeps:
-          "Conserva el estilo predefinido elegido. Sus palabras, la estructura y el formato del texto no se tocan.",
+          "Conserva el estilo predefinido elegido y la numeración. Sus palabras, la estructura y el formato del texto no se tocan.",
       },
       original: {
         label: (): string => "Restaurar los valores originales de Preacher Studio",
@@ -207,12 +245,13 @@ export const editorLab: Untranslated<typeof english> = {
         removes:
           "Vuelve al estilo Equilibrada y quita toda personalización de apariencia de este bosquejo, incluidos los componentes individuales.",
         keeps:
-          "Sus palabras, la estructura, los puntos, los roles y el formato del texto no se tocan.",
+          "Conserva la numeración. Sus palabras, la estructura, los puntos, los roles y el formato del texto no se tocan.",
       },
     },
     pending: (parts: string): string => `Sin aplicar todavía: ${parts}`,
     pendingParts: {
       outline: "bosquejo",
+      numbering: "numeración",
       kinds: (count: number): string =>
         count === 1 ? "1 tipo de componente" : `${count} tipos de componente`,
       components: (count: number): string =>
@@ -242,6 +281,7 @@ export const editorLab: Untranslated<typeof english> = {
       pointText: "La Escritura nos muestra dónde estamos y adónde ir.",
       subpoint: "Alumbra el siguiente paso",
       subpointText: "No todo el camino a la vez, sino lo suficiente para andar.",
+      deeper: "Lo suficiente para hoy",
       note: "Haga una pausa y pregunte quién camina en la oscuridad.",
       script: "Permítame preguntarle: ¿qué lámpara lleva usted esta noche?",
       conclusion: "Conclusión",

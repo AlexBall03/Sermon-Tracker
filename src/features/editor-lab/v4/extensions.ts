@@ -89,7 +89,8 @@ export function labV4Extensions({
     PassageExpansion,
     folding ? PointFolding.configure(folding) : PointFolding,
     PrintPreparation,
-    printLayout ? PrintLayout.configure(printLayout) : PrintLayout,
+    // A sermon is always printed in Print Layout, whatever the screen shows (BUG-010).
+    PrintLayout.configure({ ...printLayout, printsInPrintLayout: true }),
   ];
 }
 

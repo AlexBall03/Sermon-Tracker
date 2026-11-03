@@ -141,12 +141,20 @@ describe("the Balanced preset", () => {
 describe("component colors", () => {
   const balanced = presets.balanced;
 
-  it("are drawn only where set: unset gives no property, so the preset's own treatment applies", () => {
-    expect(componentVariables(null, balanced)).toEqual([]);
-    // No color property is set; the structural face (A1-UI.2A) is not a color. The rules only
-    // read a single node's own properties (`--ps-*-i-*`, A1-UI.2B.1), with the style's as fallback.
+  it("are drawn only where set: unset gives no color, so the preset's own treatment applies", () => {
+    // Since A4.2A the preset's single-valued lines and space are code (`presets.ts`), drawn as
+    // the outline's properties; its colors are still the CSS's, so no color is set here.
+    const lines = componentVariables(null, balanced);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line).toMatch(
+        /-(accent-w|border-w|border-style|radius|pad-block|out-before|out-after): /,
+      );
+    }
+    expect(lines).toContain("--ps-scripture-accent-w: 1.5pt");
+    // The rules only read a single node's own properties (`--ps-*-i-*`, A1-UI.2B.1), with the
+    // style's as fallback.
     const sheet = styleSheet(null, scope, balanced);
-    expect(sheet).not.toMatch(/[{;]\s*--ps-(?!structure-font)[\w-]+\s*:/);
     expect(sheet).not.toMatch(/var\(--ps-(?![a-z]+-i-|structure-font)/);
   });
 
@@ -385,7 +393,7 @@ describe("Balanced component colors (A1-UI.2A.1)", () => {
     const found = [...css.matchAll(colorParts)];
     expect(found.length).toBeGreaterThan(20);
     for (const [, name, value] of found) {
-      expect(value, name).toMatch(/^var\(--ps-/);
+      expect(value, name).toMatch(/^var\(\s*--ps-/);
     }
   });
 
@@ -394,7 +402,7 @@ describe("Balanced component colors (A1-UI.2A.1)", () => {
     const darkParts = [...css.slice(darkStart, darkEnd).matchAll(colorParts)];
     expect(darkParts.length).toBeGreaterThan(10);
     for (const [, name, value] of darkParts) {
-      expect(value, name).toMatch(/^var\(--ps-[a-z-]+-d,/);
+      expect(value, name).toMatch(/^var\(\s*--ps-[a-z-]+-d,/);
     }
   });
 

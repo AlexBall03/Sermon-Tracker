@@ -186,9 +186,7 @@
     transparent
   );
   --k-scripture-accent: var(--sermon-scripture);
-  --k-scripture-accent-w: 2px;
   --k-scripture-line: transparent;
-  --k-scripture-radius: 4px;
   /*
    * A section (A1-UI.2B.1): the space before its opening rule, the rule, and
    * the space after its closing hairline. The space from the rule to the
@@ -199,10 +197,7 @@
   --k-section-before: 10pt;
   --k-section-after-title: 2pt;
   --k-section-accent: var(--sermon-section);
-  --k-section-accent-w: 1.5px;
   --k-section-line: var(--border);
-  --k-section-line-w: 1px;
-  --k-section-line-style: solid;
   --k-section-after: var(--rhythm-3);
   /*
    * The space between a section's last words and its closing hairline, about
@@ -288,18 +283,36 @@
  * own first-line indent (inline) replaces the hang.
  */
 .lab-editor[data-studio] > p.lab-v4-point.lab-numbered {
-  /* One step, or the label and its gap when that is wider (`--x-label`, `numbering.ts`). */
-  --x-hang: max(var(--ps-step), calc(var(--x-label, 0em) + 0.35em));
+  /*
+   * One step, or the label and its gap when that is wider (`--x-label-n`, its
+   * estimate in em, `numbering.ts`): in the number's own size when a style sets
+   * one, and with the style's gap (A4.2A; unset, the heading's size and 0.35em).
+   */
+  --x-hang: max(
+    var(--ps-step),
+    calc(var(--x-label-n, 0) * var(--x-marker-size, 1em) + var(--x-marker-gap, 0.35em))
+  );
   padding-left: calc(var(--v4-indent) + var(--x-hang));
 }
+/*
+ * The number's look (A4.2A): each property is a style's `--x-marker-*`
+ * (`styles/render.ts`) where one is set. An unset custom property makes the
+ * declaration inherit, so a number no style customizes is drawn as the
+ * heading's words are, exactly as before.
+ */
 .lab-editor[data-studio] p.lab-v4-point.lab-numbered::before {
   display: inline-block;
   box-sizing: border-box;
   min-width: var(--x-hang, 0px);
   margin-inline-end: 0;
-  padding-inline-end: 0.35em;
+  padding-inline-end: var(--x-marker-gap, 0.35em);
   text-indent: 0;
   color: var(--x-notation);
+  font-family: var(--x-marker-font);
+  font-size: var(--x-marker-size);
+  font-weight: var(--x-marker-weight);
+  font-style: var(--x-marker-style);
+  text-align: var(--x-marker-align);
 }
 
 /* A point's space above is its style's alone, so the spacing controls tell the truth. */
@@ -313,10 +326,13 @@
 }
 
 .lab-editor[data-studio] p.lab-v4-point[data-depth="1"] {
-  --x-notation: var(--ps-point-notation, var(--k-point-notation));
+  --x-notation: var(--ps-point-i-notation, var(--ps-point-notation, var(--k-point-notation)));
 }
 .lab-editor[data-studio] p.lab-v4-point:not([data-depth="1"]) {
-  --x-notation: var(--ps-subpoint-notation, var(--k-subpoint-notation));
+  --x-notation: var(
+    --ps-subpoint-i-notation,
+    var(--ps-subpoint-notation, var(--k-subpoint-notation))
+  );
 }
 
 /*
@@ -326,18 +342,18 @@
  */
 .lab-editor[data-studio] > [data-frame="introduction"] {
   --x-frame-accent: var(--ps-intro-accent, var(--k-section-accent));
-  --x-frame-accent-w: var(--ps-intro-accent-w, var(--k-section-accent-w));
+  --x-frame-accent-w: var(--ps-intro-accent-w);
   --x-frame-border: var(--ps-intro-border, var(--k-section-line));
-  --x-frame-border-w: var(--ps-intro-border-w, var(--k-section-line-w));
-  --x-frame-border-style: var(--ps-intro-border-style, var(--k-section-line-style));
+  --x-frame-border-w: var(--ps-intro-border-w);
+  --x-frame-border-style: var(--ps-intro-border-style);
   --x-frame-fill: var(--ps-intro-fill, transparent);
 }
 .lab-editor[data-studio] > [data-frame="conclusion"] {
   --x-frame-accent: var(--ps-concl-accent, var(--k-section-accent));
-  --x-frame-accent-w: var(--ps-concl-accent-w, var(--k-section-accent-w));
+  --x-frame-accent-w: var(--ps-concl-accent-w);
   --x-frame-border: var(--ps-concl-border, var(--k-section-line));
-  --x-frame-border-w: var(--ps-concl-border-w, var(--k-section-line-w));
-  --x-frame-border-style: var(--ps-concl-border-style, var(--k-section-line-style));
+  --x-frame-border-w: var(--ps-concl-border-w);
+  --x-frame-border-style: var(--ps-concl-border-style);
   --x-frame-fill: var(--ps-concl-fill, transparent);
 }
 .lab-editor[data-studio] > [data-frame] {
@@ -469,18 +485,18 @@
  */
 .lab-editor[data-studio] .lab-passage {
   --x-accent: var(--ps-scripture-accent, var(--k-scripture-accent));
-  --x-accent-w: var(--ps-scripture-accent-w, var(--k-scripture-accent-w));
+  --x-accent-w: var(--ps-scripture-accent-w);
   --x-border: var(--ps-scripture-border, var(--k-scripture-line));
-  --x-border-w: var(--ps-scripture-border-w, 1px);
-  --x-border-style: var(--ps-scripture-border-style, solid);
-  --x-radius: var(--ps-scripture-radius, var(--k-scripture-radius));
+  --x-border-w: var(--ps-scripture-border-w);
+  --x-border-style: var(--ps-scripture-border-style);
+  --x-radius: var(--ps-scripture-radius);
   --x-fill: var(--ps-scripture-fill, var(--k-scripture-fill));
   --x-reference: var(--ps-scripture-reference, var(--k-scripture-ink));
   --x-label-font: var(--ps-scripture-label-font, var(--ps-structure-font, var(--font-sans)));
-  --x-pad-block: var(--ps-scripture-pad-block, var(--rhythm-2));
+  --x-pad-block: var(--ps-scripture-pad-block);
   --x-pad-inline: var(--ps-scripture-pad-inline, 0.75rem);
-  --x-out-before: var(--ps-scripture-out-before, var(--rhythm-2));
-  --x-out-after: var(--ps-scripture-out-after, var(--rhythm-3));
+  --x-out-before: var(--ps-scripture-out-before);
+  --x-out-after: var(--ps-scripture-out-after);
   /* The accent's side stays square; the other corners are softened. */
   border-radius: 0 var(--x-radius) var(--x-radius) 0;
   background-color: var(--x-fill);
@@ -569,7 +585,6 @@
   --k-hue: var(--sermon-neutral);
   --k-fill: color-mix(in oklab, var(--sermon-neutral) var(--sermon-wash), transparent);
   --k-line: transparent;
-  --k-line-w: 1px;
   --k-accent: var(--k-line);
   --k-accent-w: 1px;
   --k-line-style: solid;
@@ -580,7 +595,7 @@
   --x-accent: var(--ps-note-accent, var(--k-accent));
   --x-accent-w: var(--ps-note-accent-w, var(--k-accent-w));
   --x-border: var(--ps-note-border, var(--k-line));
-  --x-border-w: var(--ps-note-border-w, var(--k-line-w));
+  --x-border-w: var(--ps-note-border-w);
   --x-border-style: var(--ps-note-border-style, var(--k-line-style));
   --x-radius: var(--ps-note-radius, var(--k-radius));
   --x-fill: var(--ps-note-fill, var(--k-fill));
@@ -590,8 +605,8 @@
   --x-pad-block: var(--ps-note-pad-block, var(--k-pad-block));
   --x-pad-inline: var(--ps-note-pad-inline, var(--k-pad-inline));
   --x-pad-right: var(--ps-note-pad-inline, var(--k-pad-right, var(--k-pad-inline)));
-  --x-out-before: var(--ps-note-out-before, var(--rhythm-2));
-  --x-out-after: var(--ps-note-out-after, var(--rhythm-3));
+  --x-out-before: var(--ps-note-out-before);
+  --x-out-after: var(--ps-note-out-after);
   border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
@@ -636,25 +651,21 @@
   --k-fill: color-mix(in oklab, var(--sermon-script) calc(var(--sermon-tint) * 0.7), transparent);
   --k-label: color-mix(in oklab, var(--sermon-script) var(--sermon-ink), var(--foreground));
   --k-accent: var(--k-line);
-  --k-accent-w: 1px;
-  --k-line-w: 1px;
-  --k-line-style: solid;
-  --k-radius: 5px;
   --k-pad-inline: 0.875rem;
   --x-accent: var(--ps-script-accent, var(--k-accent));
-  --x-accent-w: var(--ps-script-accent-w, var(--k-accent-w));
+  --x-accent-w: var(--ps-script-accent-w);
   --x-border: var(--ps-script-border, var(--k-line));
-  --x-border-w: var(--ps-script-border-w, var(--k-line-w));
-  --x-border-style: var(--ps-script-border-style, var(--k-line-style));
-  --x-radius: var(--ps-script-radius, var(--k-radius));
+  --x-border-w: var(--ps-script-border-w);
+  --x-border-style: var(--ps-script-border-style);
+  --x-radius: var(--ps-script-radius);
   --x-fill: var(--ps-script-fill, var(--k-fill));
   --x-ink: var(--ps-script-ink, var(--foreground));
   --x-label: var(--ps-script-label, var(--ps-script-accent, var(--k-label)));
   --x-label-font: var(--ps-script-label-font, var(--ps-structure-font, var(--font-sans)));
-  --x-pad-block: var(--ps-script-pad-block, var(--rhythm-2));
+  --x-pad-block: var(--ps-script-pad-block);
   --x-pad-inline: var(--ps-script-pad-inline, var(--k-pad-inline));
-  --x-out-before: var(--ps-script-out-before, var(--rhythm-2));
-  --x-out-after: var(--ps-script-out-after, var(--rhythm-3));
+  --x-out-before: var(--ps-script-out-before);
+  --x-out-after: var(--ps-script-out-after);
   border-radius: var(--x-radius);
   background-color: var(--x-fill);
   color: var(--x-ink);
@@ -736,10 +747,13 @@
 
 @media screen {
   .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point[data-depth="1"] {
-    --x-notation: var(--ps-point-notation-d, var(--k-point-notation));
+    --x-notation: var(--ps-point-i-notation-d, var(--ps-point-notation-d, var(--k-point-notation)));
   }
   .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point:not([data-depth="1"]) {
-    --x-notation: var(--ps-subpoint-notation-d, var(--k-subpoint-notation));
+    --x-notation: var(
+      --ps-subpoint-i-notation-d,
+      var(--ps-subpoint-notation-d, var(--k-subpoint-notation))
+    );
   }
   .dark .lab-editor[data-studio]:not([data-paper="light"]) > [data-frame="introduction"] {
     --x-frame-accent: var(--ps-intro-accent-d, var(--k-section-accent));
@@ -787,6 +801,15 @@
   .lab-editor[data-studio][data-layout="print"] :is(.lab-page-gap, .lab-page-end) {
     background: #fff;
   }
+  /*
+   * The page is the paper (BUG-010 review): the root does not print the
+   * theme's background either (`globals.css` gives it one, as the body,
+   * which `lab.css` already clears). It showed as a tint behind every page
+   * and white bands at the page gaps when background graphics are printed.
+   */
+  html:has(.lab-editor[data-studio][data-layout="print"]) {
+    background: none !important;
+  }
 }
 
 /* On a phone a container is drawn in less, as the levels are (Regular Layout only: pages are the paper's). */
@@ -814,14 +837,10 @@
   --k-scripture-ink: color-mix(in oklab, var(--foreground) 78%, transparent);
   --k-scripture-fill: transparent;
   --k-scripture-accent: color-mix(in oklab, var(--foreground) 45%, transparent);
-  --k-scripture-accent-w: 1px;
-  --k-scripture-radius: 0;
   --k-section-before: 8pt;
   --k-section-close: 8pt;
   --k-section-accent: color-mix(in oklab, var(--foreground) 55%, transparent);
-  --k-section-accent-w: 0.75px;
   --k-section-line: color-mix(in oklab, var(--foreground) 22%, transparent);
-  --k-section-line-w: 0.75px;
   --k-label-size: 0.72em;
   --k-label-case: none;
   --k-label-track: 0.02em;
@@ -860,7 +879,6 @@
   --k-line: color-mix(in oklab, var(--foreground) 30%, transparent);
   --k-fill: transparent;
   --k-label: var(--muted-foreground);
-  --k-radius: 0;
 }
 .lab-editor[data-preset="minimal"] .lab-scripture {
   background: transparent;
@@ -885,11 +903,8 @@
     var(--sermon-scripture) calc(var(--sermon-tint) * 1.5),
     transparent
   );
-  --k-scripture-accent-w: 3px;
-  --k-scripture-radius: 6px;
   --k-section-before: 12pt;
   --k-section-close: 10pt;
-  --k-section-accent-w: 2.5px;
   --k-section-line: color-mix(in oklab, var(--sermon-section) 45%, transparent);
   --k-point-notation: var(--k-section-ink);
   /* A section heading in the section ink: the style sheet falls back to it when no title color is set (`render.ts`). */
@@ -933,12 +948,8 @@
 .lab-editor[data-preset="expressive"] .lab-script {
   --k-line: color-mix(in oklab, var(--sermon-script) 55%, transparent);
   --k-fill: color-mix(in oklab, var(--sermon-script) calc(var(--sermon-tint) * 1.2), transparent);
+  /* A double rule on the left (3pt, so both lines show) and no other edge: `presets.ts`. */
   --k-accent: var(--k-line);
-  --k-accent-w: 4px;
-  --k-line-w: 0;
-  /* A double rule on the left (4px, so both lines show) and no other edge. */
-  --k-line-style: double;
-  --k-radius: 0;
 }
 .lab-editor[data-preset="expressive"] blockquote {
   font-style: italic;
