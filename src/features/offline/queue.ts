@@ -94,11 +94,21 @@ export async function putMutation(
     if (existing.owner !== owner) throw new Error("That change belongs to another account.");
     return { record: existing, added: false };
   }
+  // Read in this transaction, so two tabs adding at once still get two places in order.
+  let highest = 0;
+  let latest = 0;
+  for (const queued of await store.index("owner").getAll(owner)) {
+    highest = Math.max(highest, queued.sequence ?? 0);
+    latest = Math.max(latest, orderedAt(queued));
+  }
+  const now = Date.now();
   const record: MutationRecord = {
     ...change,
     owner,
     schemaVersion: mutationSchemaVersions[change.type],
-    createdAt: Date.now(),
+    createdAt: now,
+    orderedAt: Math.max(now, latest),
+    sequence: highest + 1,
     attempts: 0,
     status: "pending",
   };
@@ -140,9 +150,22 @@ export async function listMutations(
     .sort(byAge);
 }
 
-/** Oldest first; the opId settles a tie, so the order is the same in every tab. */
+/**
+ * The order the changes were made in, the same in every tab: by `orderedAt`,
+ * then by place in the queue (`sequence`; a clock reads the same within a
+ * millisecond), then by opId. A change queued without either (before A4.1, or
+ * by a tab still running that code until it reloads) goes by the time it was
+ * made among the rest, and first on a tie. Changes that both have a place keep
+ * their places' order, because `orderedAt` never goes back within a queue.
+ */
 export const byAge = (a: MutationRecord, b: MutationRecord) =>
-  a.createdAt - b.createdAt || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0);
+  orderedAt(a) - orderedAt(b) ||
+  (a.sequence ?? 0) - (b.sequence ?? 0) ||
+  (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0);
+
+function orderedAt(record: MutationRecord) {
+  return record.orderedAt ?? record.createdAt;
+}
 
 /**
  * The records that may be sent now: those with no older record about the same

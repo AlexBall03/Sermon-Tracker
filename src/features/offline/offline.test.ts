@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 
 import { IDBFactory } from "fake-indexeddb";
 import { openDB } from "idb";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearActiveAccount,
@@ -110,6 +110,89 @@ describe("the queue", () => {
     });
     expect(await removeMutation("owner-a", "op-1")).toBe(true);
     expect(await listMutations("owner-a")).toEqual([]);
+  });
+
+  /*
+   * A4.1: changes made within one millisecond, or after the clock moved back,
+   * keep the order they were made in. Before, a tie on `createdAt` fell to the
+   * random opId, so the older of two edits to one idea could be sent last.
+   */
+  it("keeps the order changes were made in when the clock does not move or goes back", async () => {
+    const now = vi.spyOn(Date, "now");
+    try {
+      now.mockReturnValue(1_000);
+      // Opids chosen so the old rule (opId on a tie) would give the reverse order.
+      await enqueue("owner-a", capture("op-z"));
+      await enqueue("owner-a", capture("op-m"));
+      now.mockReturnValue(500);
+      await enqueue("owner-a", capture("op-a"));
+    } finally {
+      now.mockRestore();
+    }
+    const queued = await listMutations("owner-a");
+    expect(queued.map((record) => record.opId)).toEqual(["op-z", "op-m", "op-a"]);
+    // The time each was made is still the clock's own: nothing is rewritten.
+    expect(queued.map((record) => record.createdAt)).toEqual([1_000, 1_000, 500]);
+  });
+
+  it("puts changes queued before places existed first, in their old order", async () => {
+    const db = await openOfflineDb();
+    // Two records as a device queued them before A4.1: no sequence.
+    for (const [opId, createdAt] of [
+      ["op-y", 2_000],
+      ["op-b", 2_000],
+    ] as const) {
+      await db.add("mutations", {
+        ...capture(opId),
+        owner: "owner-a",
+        schemaVersion: 1,
+        createdAt,
+        attempts: 0,
+        status: "pending",
+      });
+    }
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      await enqueue("owner-a", capture("op-new"));
+    } finally {
+      now.mockRestore();
+    }
+    const queued = await listMutations("owner-a");
+    expect(queued.map((record) => record.opId)).toEqual(["op-b", "op-y", "op-new"]);
+    // The old records are left as they were.
+    expect(queued[0].sequence).toBeUndefined();
+    expect(queued[2].sequence).toBe(1);
+  });
+
+  it("places a change from a tab still on older code by the time it was made", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      await enqueue("owner-a", capture("op-new"));
+    } finally {
+      now.mockRestore();
+    }
+    // Queued afterwards by a tab that has not reloaded since the update: no
+    // sequence, no orderedAt. Before, it went first, so the older change was
+    // sent last and, rebased, would have written over the newer one.
+    const db = await openOfflineDb();
+    await db.add("mutations", {
+      ...capture("op-old-tab"),
+      owner: "owner-a",
+      schemaVersion: 1,
+      createdAt: 2_000,
+      attempts: 0,
+      status: "pending",
+    });
+    const queued = await listMutations("owner-a");
+    expect(queued.map((record) => record.opId)).toEqual(["op-new", "op-old-tab"]);
+  });
+
+  it("numbers each owner's changes apart", async () => {
+    await enqueue("owner-a", capture("op-1"));
+    await enqueue("owner-b", capture("op-2"));
+    await enqueue("owner-a", capture("op-3"));
+    expect((await listMutations("owner-a")).map((record) => record.sequence)).toEqual([1, 2]);
+    expect((await listMutations("owner-b")).map((record) => record.sequence)).toEqual([1]);
   });
 });
 

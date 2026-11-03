@@ -777,6 +777,9 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - **Implemented:** Add from Saved Point in the Insert menu, `PointFolding` and the View menu, Print Layout’s screen-only Scripture collapse, print preparation in the Paginator, and the passage’s Open in the Bible.
         - **Release dependencies (unchanged):** A2.3D, the owner’s Vercel checks, then the switch.
         - **Still approved and unbuilt:** UI.2B.3, UI.2C (title and subtitle header, footer), the rest of UI.3, UI.2D, UI.4.
+      - **A4.1 (built, 3 November 2026; not yet committed, partly verified):** editor reliability and cursor navigation ([handoff](HANDOFF-PS-A4.1.md), [bug register](BUGS.md)). No migration.
+        - **Implemented:** `HeldSelection` for BUG-001 (a selected block the browser cannot hold is kept after a key); the offline queue ordered by when each change was made (`orderedAt`, never back within a queue) and a per-owner sequence.
+        - **Approved for later checkpoints:** keep-together and keep-with-next for short components (A4.6 / UI.4); an optional footer with bold, right-aligned page numbers (A4.3 / UI.2C).
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.
     - **C1:** advanced printing and export. **C2:** offline and PWA. **C3:** production migration and release.
     - The PS-phase rows above still govern the data model, synchronization, and the workspace shell these checkpoints reach.

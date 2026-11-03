@@ -89,6 +89,20 @@ export type MutationRecord = {
   payload: unknown;
   schemaVersion: number;
   createdAt: number;
+  /**
+   * When the change counts as made, for the queue's order (A4.1): the clock's
+   * time, or the latest of the owner's queued changes when the clock has moved
+   * back, read in the same transaction as it is added. Never before a change
+   * already queued. Records queued before A4.1 have none; theirs is `createdAt`.
+   */
+  orderedAt?: number;
+  /**
+   * Where the change stands in its owner's queue (A4.1): one more than the
+   * owner's highest when it was added, in the same transaction. It settles a
+   * tie on `orderedAt` (two changes within one millisecond). Records queued
+   * before A4.1 have none.
+   */
+  sequence?: number;
   attempts: number;
   lastAttemptAt?: number;
   status: MutationStatus;

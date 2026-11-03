@@ -29,6 +29,8 @@ vi.mock("@/features/admin/clerk", () => ({
   createInvitation: vi.fn(),
   revokeInvitation: vi.fn(),
   resendInvitation: vi.fn(),
+  // Account deletion's dependency (`account/live.ts`); these tests delete no account.
+  deleteIdentity: vi.fn(),
   describeClerkError: (_error: unknown, fallback: string) => fallback,
 }));
 vi.mock("@/features/auth/access", () => ({
