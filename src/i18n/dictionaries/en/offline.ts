@@ -78,6 +78,7 @@ export const offline = {
     discardOutlineTitle: "Discard the changes to this outline?",
     discardOutlineBody:
       "None of them has been saved to your account. Discarding them puts this outline back as this device last downloaded it.",
+    discardSending: "A change is being sent right now, so nothing was discarded. Try again soon.",
     save: "Save now",
     saving: "Saving…",
     retry: "Try again",
@@ -277,6 +278,53 @@ export const offline = {
     back: "Back to your outlines",
     waiting: (count: number) =>
       count === 1 ? "1 change is waiting to sync." : `${count} changes are waiting to sync.`,
+    /** An outline that became a sermon document in the account (A2.3D). */
+    converted: {
+      title: "This sermon now uses the new editor",
+      body: "Its outline became a sermon document in your account, and that document is what the sermon says now. The old outline can no longer be changed on this device.",
+      notMerged:
+        "Changes made here that never reached your account were not added to the document. What this device kept is below, to read and copy.",
+      open: "Open in the new editor",
+      unreachable:
+        "Your account couldn't be reached, so this device's copy is shown. The new editor opens once the connection returns.",
+      offline: "This device is offline. The new editor needs a connection to your account.",
+      unsynced: (count: number) =>
+        count === 1
+          ? "1 change made here never reached your account."
+          : `${count} changes made here never reached your account.`,
+      reviewTitle: "The old outline, as this device kept it",
+      reviewNote:
+        "This is the copy kept on this device, not the sermon document in your account. It can't be edited.",
+      nothingKept: "Nothing of the old outline is kept on this device",
+      nothingKeptBody:
+        "This device learned the sermon uses the new editor before it had the old outline, so there is nothing here to review. The sermon is in your account.",
+      emptyOutline: "The old outline kept here has no points.",
+      unkeptTitle: "Typed in this tab, never kept",
+      unkeptBody:
+        "These words were still being saved when this device learned of the new editor, so they were never kept on it. They are only on this page: copy them before you leave.",
+      unkeptLeave:
+        "Words typed in this tab were never kept on this device. If you leave, they are gone.",
+      lostTitle: "Words from parts removed elsewhere",
+      copyAll: "Copy all",
+      copy: "Copy",
+      copyOf: (name: string) => `Copy ${name}`,
+      copied: "Copied.",
+      copyFailed: "This browser wouldn't copy it. Select the text and copy it instead.",
+      discard: "Discard changes kept here",
+      discardTitle: "Discard the changes kept on this device?",
+      discardBody: (count: number) =>
+        `${
+          count === 1
+            ? "1 change to the old outline has"
+            : `${count} changes to the old outline have`
+        } never reached your account. Discarding them deletes them from this device, and they may be lost for good. The sermon document in your account is not changed. This can't be undone.`,
+      discardConfirm: "Discard for good",
+      discarded:
+        "The changes kept here were discarded. The sermon document in your account was not changed.",
+      discardSending: "A change is being sent right now, so nothing was discarded. Try again soon.",
+      discardIncomplete: "Not everything could be discarded. What is left is still kept here.",
+      discardFailed: "This device couldn't discard them. They are still kept here.",
+    },
   },
   notice: {
     title: "Sermon Tracker works offline now",

@@ -1,4 +1,4 @@
-import type { SyncOutcome } from "@/features/sync/model";
+import type { SyncConflict, SyncOutcome } from "@/features/sync/model";
 import { openOfflineDb } from "../db";
 import type { MutationRecord } from "../model";
 import {
@@ -7,6 +7,7 @@ import {
   recoverInterrupted,
   sendable,
   settleMutation,
+  type Alongside,
 } from "../queue";
 
 /*
@@ -54,6 +55,14 @@ export type RunOptions = {
   locks?: LockManagerLike | null;
   /** Called once a change is acknowledged and gone from the queue. */
   onApplied?: (record: MutationRecord, outcome: SyncOutcome) => Promise<void>;
+  /**
+   * What a conflict teaches the device beyond the record itself (A2.3D: an
+   * outline is a sermon document now), written in the same transaction as the
+   * record's settlement. If that transaction fails, neither is written: the
+   * record is left on its way, and the next run sends it again and hears the
+   * same answer.
+   */
+  conflictAlongside?: (record: MutationRecord, conflict: SyncConflict) => Alongside | undefined;
 };
 
 /**
@@ -148,10 +157,12 @@ async function drain(owner: string, send: Sender, options: RunOptions): Promise<
         await options.onApplied?.(claimed, outcome).catch(() => {});
         break;
       case "conflict":
-        await settleMutation(owner, claimed.opId, {
-          outcome: "conflict",
-          conflict: outcome.conflict,
-        });
+        await settleMutation(
+          owner,
+          claimed.opId,
+          { outcome: "conflict", conflict: outcome.conflict },
+          options.conflictAlongside?.(claimed, outcome.conflict),
+        );
         break;
       case "rejected":
         await settleMutation(owner, claimed.opId, {

@@ -8,9 +8,12 @@ import { openOfflineDb } from "../db";
 import { listMutations } from "../queue";
 import {
   announceOutlinesChange,
+  authorityOnly,
+  isAuthoritative,
   outlineKind,
   outlineRecord,
   readOutlinesState,
+  withAuthority,
   writeOutlinesState,
   type KeptOutline,
 } from "./store";
@@ -29,6 +32,12 @@ import {
  *
  * One refresh at a time per account on the device (a Web Lock), and only for
  * the account the server says it is: the session's, never the device's word.
+ *
+ * Content authority (A2.3D): the list says of each outline whether it has a
+ * sermon document. A true is written in the list's own transaction, before
+ * any row is read, so a download that fails afterwards still leaves it known;
+ * a false or no word at all never takes one back. Such an outline's legacy
+ * rows are frozen, so they are not downloaded again.
  */
 
 export type RefreshResult = "done" | "busy" | "failed" | "auth" | "wrongAccount";
@@ -95,6 +104,19 @@ async function download(owner: string, fetcher: Fetcher): Promise<RefreshResult>
     for (const item of manifest.outlines) {
       listed.add(item.id);
       const copy = kept.get(item.id);
+      // A sermon document now (A2.3D): known here for good, whatever this or a later answer says,
+      // and its frozen legacy rows are not downloaded again. Only true is taken; false or nothing
+      // never takes back what the device already knows.
+      if (item.documentAuthoritative === true || isAuthoritative(copy)) {
+        await tx.store.put(
+          outlineRecord(owner, item.id, {
+            ...(copy ?? authorityOnly()),
+            server: copy?.server ? { ...copy.server, sermon: item.sermon } : null,
+            documentAuthoritative: true,
+          }),
+        );
+        continue;
+      }
       if (
         !copy?.server ||
         copy.behind ||
@@ -112,13 +134,18 @@ async function download(owner: string, fetcher: Fetcher): Promise<RefreshResult>
     for (const [id, copy] of kept) {
       if (listed.has(id)) continue;
       // Gone from the account. Work queued about it stays; the server will say what became of it.
+      // Gone is never taken for converted, and what the device already knew of it is kept.
       if (queued.has(id)) {
         if (copy.server) await tx.store.put(outlineRecord(owner, id, { ...copy, server: null }));
+      } else if (isAuthoritative(copy)) {
+        await tx.store.put(outlineRecord(owner, id, authorityOnly()));
       } else {
         await tx.store.delete([owner, outlineKind, id]);
       }
     }
     await tx.done;
+    // Only once committed: other tabs read what is really there.
+    announceOutlinesChange();
 
     const total = manifest.outlines.length;
     let have = total - wanted.length;
@@ -168,13 +195,14 @@ async function keep(owner: string, outlines: OfflineOutline[]) {
   for (const outline of outlines) {
     const stored = await tx.store.get([owner, outlineKind, outline.id]);
     const before = stored && stored.owner === owner ? (stored.data as KeptOutline) : null;
-    await tx.store.put(
-      outlineRecord(owner, outline.id, {
-        server: outline,
-        local: before?.local ?? null,
-        generation: before?.generation,
-      }),
-    );
+    // Read in this transaction: a row that arrives after the device learned of a sermon
+    // document, in whatever order, never takes that knowledge away.
+    const next = withAuthority(before, {
+      server: outline,
+      local: before?.local ?? null,
+      generation: before?.generation,
+    })!;
+    await tx.store.put(outlineRecord(owner, outline.id, next));
   }
   await tx.done;
   announceOutlinesChange();

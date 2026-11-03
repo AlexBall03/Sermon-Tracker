@@ -17,7 +17,7 @@ import type { Database } from "@/db/types";
 import { containing, statusAsRead } from "@/features/ideas/ideas";
 import { searchTerms } from "@/features/ideas/library-query";
 import type { ArchiveView } from "@/features/ideas/model";
-import { hasDocument } from "@/features/sermon-editor/persistence/authority";
+import { documentExistsFor, hasDocument } from "@/features/sermon-editor/persistence/authority";
 import { listEntries, type DocumentAuthoritative, type PlacedEntry } from "./entries";
 import { outlinePageSize, type OutlineSort } from "./model";
 import { readNumbering, type NumberingConfig } from "./numbering";
@@ -226,9 +226,19 @@ export async function getOutlineForSermon(
 export async function outlineManifest(
   db: Reader,
   ownerId: string,
-): Promise<(OutlineRecord & { sermon: OutlineSermon & Pick<Idea, "status"> })[]> {
+): Promise<
+  (OutlineRecord & {
+    sermon: OutlineSermon & Pick<Idea, "status">;
+    /** It has a sermon document, which is what it says now (A2.2); asked in this same statement (A2.3D). */
+    documentAuthoritative: boolean;
+  })[]
+> {
   const rows = await db
-    .select({ outline: sermonOutlines, sermon: { ...sermon, status: ideas.status } })
+    .select({
+      outline: sermonOutlines,
+      sermon: { ...sermon, status: ideas.status },
+      documentAuthoritative: documentExistsFor(sermonOutlines.id, sermonOutlines.ownerId),
+    })
     .from(sermonOutlines)
     .innerJoin(
       ideas,
@@ -239,6 +249,7 @@ export async function outlineManifest(
   return rows.map((row) => ({
     ...asOutline(row.outline),
     sermon: { ...row.sermon, status: statusAsRead(row.sermon.status) },
+    documentAuthoritative: row.documentAuthoritative === true,
   }));
 }
 

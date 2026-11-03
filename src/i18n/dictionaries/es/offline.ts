@@ -80,6 +80,8 @@ export const offline: Untranslated<typeof english> = {
     discardOutlineTitle: "¿Descartar los cambios de este bosquejo?",
     discardOutlineBody:
       "Ninguno se ha guardado en tu cuenta. Al descartarlos, este bosquejo vuelve a como se descargó por última vez en este dispositivo.",
+    discardSending:
+      "Ahora mismo se está enviando un cambio, así que no se descartó nada. Inténtalo de nuevo en un momento.",
     save: "Guardar ahora",
     saving: "Guardando…",
     retry: "Volver a intentar",
@@ -284,6 +286,55 @@ export const offline: Untranslated<typeof english> = {
     back: "Volver a tus bosquejos",
     waiting: (count: number) =>
       count === 1 ? "1 cambio espera sincronizarse." : `${count} cambios esperan sincronizarse.`,
+    /** Un bosquejo que pasó a ser un documento del sermón en la cuenta (A2.3D). */
+    converted: {
+      title: "Este sermón ahora usa el nuevo editor",
+      body: "Su bosquejo pasó a ser un documento del sermón en tu cuenta, y ese documento es lo que el sermón dice ahora. El bosquejo anterior ya no se puede cambiar en este dispositivo.",
+      notMerged:
+        "Los cambios hechos aquí que nunca llegaron a tu cuenta no se añadieron al documento. Lo que este dispositivo guardó está abajo, para leerlo y copiarlo.",
+      open: "Abrir en el nuevo editor",
+      unreachable:
+        "No se pudo llegar a tu cuenta, así que se muestra la copia de este dispositivo. El nuevo editor se abre cuando vuelva la conexión.",
+      offline:
+        "Este dispositivo está sin conexión. El nuevo editor necesita conexión con tu cuenta.",
+      unsynced: (count: number) =>
+        count === 1
+          ? "1 cambio hecho aquí nunca llegó a tu cuenta."
+          : `${count} cambios hechos aquí nunca llegaron a tu cuenta.`,
+      reviewTitle: "El bosquejo anterior, como lo guardó este dispositivo",
+      reviewNote:
+        "Esta es la copia guardada en este dispositivo, no el documento del sermón de tu cuenta. No se puede editar.",
+      nothingKept: "No hay nada del bosquejo anterior en este dispositivo",
+      nothingKeptBody:
+        "Este dispositivo supo que el sermón usa el nuevo editor antes de tener el bosquejo anterior, así que aquí no hay nada que revisar. El sermón está en tu cuenta.",
+      emptyOutline: "El bosquejo anterior guardado aquí no tiene puntos.",
+      unkeptTitle: "Escrito en esta pestaña, nunca guardado",
+      unkeptBody:
+        "Estas palabras se estaban guardando cuando este dispositivo supo del nuevo editor, así que nunca se guardaron en él. Solo están en esta página: cópialas antes de salir.",
+      unkeptLeave:
+        "Lo escrito en esta pestaña nunca se guardó en este dispositivo. Si sales, se pierde.",
+      lostTitle: "Palabras de partes que se quitaron en otro lugar",
+      copyAll: "Copiar todo",
+      copy: "Copiar",
+      copyOf: (name: string) => `Copiar ${name}`,
+      copied: "Copiado.",
+      copyFailed: "Este navegador no lo copió. Selecciona el texto y cópialo.",
+      discard: "Descartar los cambios guardados aquí",
+      discardTitle: "¿Descartar los cambios guardados en este dispositivo?",
+      discardBody: (count: number) =>
+        `${
+          count === 1
+            ? "1 cambio al bosquejo anterior nunca llegó"
+            : `${count} cambios al bosquejo anterior nunca llegaron`
+        } a tu cuenta. Al descartarlos se borran de este dispositivo y puede que se pierdan para siempre. El documento del sermón de tu cuenta no cambia. No se puede deshacer.`,
+      discardConfirm: "Descartar para siempre",
+      discarded:
+        "Se descartaron los cambios guardados aquí. El documento del sermón de tu cuenta no cambió.",
+      discardSending:
+        "Ahora mismo se está enviando un cambio, así que no se descartó nada. Inténtalo de nuevo en un momento.",
+      discardIncomplete: "No se pudo descartar todo. Lo que queda sigue guardado aquí.",
+      discardFailed: "Este dispositivo no pudo descartarlos. Siguen guardados aquí.",
+    },
   },
   notice: {
     title: "Sermon Tracker ya funciona sin conexión",

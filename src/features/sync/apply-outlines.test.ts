@@ -404,3 +404,59 @@ describe("an outline that has become a sermon document (A2.2)", () => {
     expect(JSON.stringify(document.content)).toContain("Before");
   });
 });
+
+describe("the offline manifest's word on content authority (A2.3D)", () => {
+  async function secondOutline(owner: string, title: string) {
+    const sermon = await createIdea(db, owner, ideaInputSchema.parse({ kind: "sermon", title }));
+    const made = await createOutline(db, owner, sermon!.id);
+    if (made.status !== "created") throw new Error(made.status);
+    return made.outline.id;
+  }
+
+  it("says false of every outline that has no sermon document, as a boolean", async () => {
+    await point("Grace");
+    const { outlines } = await outlineManifestFor(db, me);
+    expect(outlines).toHaveLength(1);
+    expect(outlines[0].documentAuthoritative).toBe(false);
+  });
+
+  it("says true once converted, though the legacy revision and time have not moved", async () => {
+    await point("Grace");
+    const [before] = (await outlineManifestFor(db, me)).outlines;
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+    const [after] = (await outlineManifestFor(db, me)).outlines;
+    expect(after.documentAuthoritative).toBe(true);
+    // Conversion writes only the document row: nothing a device compared before would change.
+    expect({ ...after, documentAuthoritative: false }).toEqual(before);
+  });
+
+  it("says it of each outline apart, and never of another account's", async () => {
+    const plain = await secondOutline(me, "Faith");
+    const theirs = await secondOutline(other, "Hope");
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+    expect((await convertOutline(db, other, theirs)).status).toBe("converted");
+    const mine = new Map(
+      (await outlineManifestFor(db, me)).outlines.map((item) => [
+        item.id,
+        item.documentAuthoritative,
+      ]),
+    );
+    expect(mine).toEqual(
+      new Map([
+        [outlineId, true],
+        [plain, false],
+      ]),
+    );
+    expect((await outlineManifestFor(db, other)).outlines).toMatchObject([
+      { id: theirs, documentAuthoritative: true },
+    ]);
+  });
+
+  it("leaves the whole rows as they were: no document content is sent with them", async () => {
+    await point("Grace");
+    expect((await convertOutline(db, me, outlineId)).status).toBe("converted");
+    const [whole] = await offlineOutlines(db, me, [outlineId]);
+    expect(whole).not.toHaveProperty("documentAuthoritative");
+    expect(JSON.stringify(whole)).not.toContain('"type":"doc"');
+  });
+});

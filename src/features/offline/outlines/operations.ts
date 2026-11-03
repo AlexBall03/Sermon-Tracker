@@ -24,7 +24,14 @@ import { openOfflineDb } from "../db";
 import { ideaKind, shown as shownIdea, type KeptIdea } from "../ideas/store";
 import type { MutationRecord } from "../model";
 import { announceQueueChange, byAge, putMutation, type NewMutation } from "../queue";
-import { announceOutlinesChange, outlineKind, outlineRecord, type KeptOutline } from "./store";
+import {
+  announceOutlinesChange,
+  isAuthoritative,
+  outlineKind,
+  outlineRecord,
+  withAuthority,
+  type KeptOutline,
+} from "./store";
 
 /*
  * The outline editor's way of saving on this device (Phase 5D.2): an
@@ -132,6 +139,15 @@ export function createDeviceOutlineApi(
       const stored = await data.get([owner, outlineKind, outlineId]);
       const kept = stored && stored.owner === owner ? (stored.data as KeptOutline) : null;
 
+      // A sermon document now (A2.3D): refused before anything is seeded, planned, written,
+      // folded, or queued, inside this same transaction. IndexedDB runs it after any
+      // transaction that wrote the knowledge, or before it, never between: a change
+      // committed first stays queued, and every change after it is refused here.
+      if (isAuthoritative(kept)) {
+        await tx.done;
+        return { ok: false, code: "document_authoritative", message: t.documentAuthoritative };
+      }
+
       // With nothing changed here yet, a change is made on what the editor knows the server holds.
       let server = kept?.server ?? null;
       const seeded = kept?.local ? null : (options.seed?.() ?? null);
@@ -165,12 +181,16 @@ export function createDeviceOutlineApi(
       }
 
       await data.put(
-        outlineRecord(owner, outlineId, {
-          server,
-          local: { ...planned.next, updatedAt: new Date().toISOString() },
-          behind: kept?.behind,
-          generation: kept?.generation,
-        }),
+        outlineRecord(
+          owner,
+          outlineId,
+          withAuthority(kept, {
+            server,
+            local: { ...planned.next, updatedAt: new Date().toISOString() },
+            behind: kept?.behind,
+            generation: kept?.generation,
+          })!,
+        ),
       );
 
       // Folded into the outline's last change when that is a waiting change of the same kind to the same entry.

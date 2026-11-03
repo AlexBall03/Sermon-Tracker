@@ -2266,3 +2266,14 @@ Content equality, a higher revision, or a higher local sequence is never evidenc
   - `storage_failed`: say the device couldn't keep it.
 - **Wording:** label restored work as kept on the device until the indicator says `saved`. For `restored.oversized`, say it is too large to save until it is shortened.
 - **Never** restore or discard from a state listener.
+
+## A2.3D: Offline-device conversion awareness (30 October 2026)
+
+Built and verified; see [HANDOFF-PS-A2.3D.md](HANDOFF-PS-A2.3D.md) for the full record. Not committed, not deployed, no migration.
+
+- **Manifest:** `/api/offline/outlines` says `documentAuthoritative: boolean` of every outline (`documentExistsFor`, one `EXISTS` inside `outlineManifest`'s statement, no content). Optional in the type; missing is not false.
+- **Device:** `KeptOutline.documentAuthoritative?: true`, monotonic (`withAuthority`, `authorityOnly`), merged in the manifest's transaction before any row download, kept by every record writer.
+- **Boundary:** `createDeviceOutlineApi.write()` refuses `document_authoritative` inside its own IndexedDB transaction, before anything is written or queued.
+- **Sync:** a `documentAuthoritative` answer is written with its conflict in one transaction (`Alongside`); once known only "discard" settles a conflict. `dropChanges` makes every discard one transaction over the queue and the copy, and refuses while a chosen change is `sending`.
+- **Offline UI:** `ConvertedOutline` replaces the legacy editor: read-only review with copying, Open in the new editor, confirmed Discard; an open editor closes and its never-kept words stay shown.
+- **Still open:** carrying kept legacy work into a document (manual copy only, as approved), and document sync/offline editing. Production conversion stays off until the owner's A2.2 Vercel checks.

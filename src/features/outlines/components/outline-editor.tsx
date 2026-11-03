@@ -90,6 +90,12 @@ type OutlineEditorProps = {
    * offered.
    */
   device?: { api: OutlineApi; reload: () => void };
+  /**
+   * Hands the page the editor's store (the offline page only, A2.3D): when the
+   * outline turns out to be a sermon document, the page closes this editor and
+   * still shows what the store holds that was never kept.
+   */
+  onStore?: (store: OutlineStore) => void;
 };
 
 /** The server actions the editor saves through on the application's page. */
@@ -121,7 +127,13 @@ type Focus = { id: string; field: "title" | "notes"; caret?: [number | null, num
  * an entry's passages are changed through its `setReferences`: both go through
  * the same queue as everything else, and neither is saved from here.
  */
-export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: OutlineEditorProps) {
+export function OutlineEditor({
+  snapshot,
+  sermon,
+  sermonReferences,
+  device,
+  onStore,
+}: OutlineEditorProps) {
   const t = useT("outlines").editor;
   const locale = useLocale();
   const router = useRouter();
@@ -154,6 +166,7 @@ export function OutlineEditor({ snapshot, sermon, sermonReferences, device }: Ou
     return made;
   });
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
+  useEffect(() => onStore?.(store), [onStore, store]);
 
   // The page sent the outline again: the store takes what it should.
   const seen = useRef(snapshot);

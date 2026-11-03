@@ -13,7 +13,7 @@ import {
 import { syncMutation } from "@/features/sync/actions";
 import type { MutationRecord } from "../model";
 import { afterApplied as ideaApplied } from "../ideas/sync";
-import { afterApplied as outlineApplied } from "../outlines/sync";
+import { authorityAlongside, afterApplied as outlineApplied } from "../outlines/sync";
 import {
   listMutations,
   onQueueChange,
@@ -118,6 +118,9 @@ export function SyncAgent({
             const result = await runSync(account, send, {
               manual: asked,
               isCurrent: (owner) => current.current === owner,
+              // An outline that is a sermon document now is marked so with its conflict (A2.3D).
+              conflictAlongside: (record, conflict) =>
+                authorityAlongside(account, record, conflict),
               onApplied: (record, outcome) => {
                 applied = true;
                 return record.entityType === "outline"

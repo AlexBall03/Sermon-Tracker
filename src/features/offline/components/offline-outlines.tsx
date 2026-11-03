@@ -13,7 +13,7 @@ import {
   OutlinesProvider,
   type OutlinesNavigation,
 } from "@/features/outlines/components/outlines-state";
-import type { OutlineSnapshot } from "@/features/outlines/editor/store";
+import type { OutlineSnapshot, OutlineStore } from "@/features/outlines/editor/store";
 import {
   isOutlinesSearch,
   outlinesHref,
@@ -30,6 +30,7 @@ import { searchLocalOutlines } from "../outlines/search";
 import {
   emptyOutlinesState,
   getKeptOutline,
+  isAuthoritative,
   listLocalOutlines,
   onOutlinesChange,
   readOutlinesState,
@@ -38,6 +39,7 @@ import {
 } from "../outlines/store";
 import { listMutations, onQueueChange } from "../queue";
 import { useOfflineSettings } from "../settings";
+import { ConvertedOutline } from "./converted-outline";
 import type { Go } from "./offline-ideas";
 
 /*
@@ -237,11 +239,21 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
     generation: number;
     state: OutlinesState;
     waiting: number;
+    /** The device knows this outline is a sermon document now (A2.3D). */
+    authoritative: boolean;
+    hasLocal: boolean;
   } | null>(null);
   // What the editor starts from, and what it is given when it asks to read the outline again.
   const [snapshot, setSnapshot] = useState<OutlineSnapshot | null>(null);
   // The copy the editor started from: a new one is handed over only when it is to start again.
   const started = useRef<number | null>(null);
+  // The open editor's store, and the one closed because the outline became a sermon document:
+  // what it held that was never kept is still shown from it (converted-outline.tsx).
+  const editorStore = useRef<OutlineStore | null>(null);
+  const [frozen, setFrozen] = useState<OutlineStore | null>(null);
+  const onStore = useCallback((store: OutlineStore) => {
+    editorStore.current = store;
+  }, []);
 
   const read = useCallback(async () => {
     if (!account) return null;
@@ -255,6 +267,8 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
       generation: copy?.generation ?? 0,
       state,
       waiting: queued.length,
+      authoritative: isAuthoritative(copy),
+      hasLocal: Boolean(copy?.local),
     };
   }, [account, id]);
 
@@ -264,6 +278,13 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
       void read().then(
         (value) => {
           if (!current || !value) return;
+          if (value.authoritative) {
+            // The editor closes now; its store, and anything in it never kept, stays readable.
+            if (editorStore.current) setFrozen(editorStore.current);
+            editorStore.current = null;
+            setKept(value);
+            return;
+          }
           const start = value.outline ? value.generation : null;
           if (start !== started.current) {
             started.current = start;
@@ -273,7 +294,19 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
         },
         () =>
           current &&
-          setKept({ outline: null, generation: 0, state: emptyOutlinesState, waiting: 0 }),
+          setKept((before) =>
+            // Once known, a failed read never puts the old editor back.
+            before?.authoritative
+              ? before
+              : {
+                  outline: null,
+                  generation: 0,
+                  state: emptyOutlinesState,
+                  waiting: 0,
+                  authoritative: false,
+                  hasLocal: false,
+                },
+          ),
       );
     again();
     const stopOutlines = onOutlinesChange(again);
@@ -310,6 +343,35 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
     );
   }
   if (!kept) return null;
+  if (kept.authoritative) {
+    const converted = kept.outline;
+    return (
+      <div className="container-page py-10 lg:py-12">
+        <BackLink href={back}>{t.back}</BackLink>
+        <PageHeader
+          title={page.title}
+          description={
+            converted ? (
+              <>
+                {page.sermon}{" "}
+                <span className="font-serif font-medium text-foreground">
+                  {converted.sermon.title}
+                </span>
+              </>
+            ) : undefined
+          }
+        />
+        <ConvertedOutline
+          account={account}
+          outlineId={id}
+          outline={converted}
+          waiting={kept.waiting}
+          hasLocal={kept.hasLocal}
+          frozen={frozen}
+        />
+      </div>
+    );
+  }
   const outline = kept.outline;
   if (!outline || !snapshot || !device) {
     return (
@@ -352,6 +414,7 @@ export function OfflineOutline({ account, id }: { account: string | null; id: st
         sermon={sermon}
         sermonReferences={outline.sermonReferences}
         device={device}
+        onStore={onStore}
       />
     </div>
   );

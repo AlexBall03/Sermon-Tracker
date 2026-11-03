@@ -48,7 +48,16 @@ export type OfflineOutline = {
 export type OutlineManifestItem = Pick<
   OfflineOutline,
   "id" | "sermonId" | "revision" | "createdAt" | "updatedAt" | "sermon"
->;
+> & {
+  /**
+   * The outline has a sermon document, which is what it says now (A2.2), so
+   * its legacy entries and numbering can no longer be changed (A2.3D). This
+   * server says it of every outline, true or false. An older one leaves it
+   * out, and left out is not false: it says nothing. A device keeps only a
+   * true (offline/outlines/store.ts) and never takes one back.
+   */
+  documentAuthoritative?: boolean;
+};
 
 /** `GET /api/offline/outlines`: every outline's manifest item. */
 export type OutlineManifestResponse = { owner?: string; outlines: OutlineManifestItem[] };

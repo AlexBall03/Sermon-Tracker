@@ -160,32 +160,78 @@ export function sendable(records: MutationRecord[]): MutationRecord[] {
   return free;
 }
 
+export type AccountDataStore = IDBPObjectStore<
+  OfflineSchema,
+  ArrayLike<StoreNames<OfflineSchema>>,
+  "accountData",
+  "readwrite"
+>;
+
+/**
+ * Something the device learned from the same answer that settles a record,
+ * written in the record's own transaction (A2.3D: an outline known to be a
+ * sermon document). Both commit, or neither: a failure aborts the whole
+ * transaction, the record stays as it was, and `committed` is not called.
+ */
+export type Alongside = {
+  write: (data: AccountDataStore) => Promise<void>;
+  /** Called only once the transaction has committed: to tell this tab and others. */
+  committed?: () => void;
+};
+
 /**
  * Changes one of the owner's records in one transaction. `change` returns the
- * new record, `null` to delete it, or `undefined` to leave it as it is.
+ * new record, `null` to delete it, or `undefined` to leave it as it is. With
+ * `alongside`, its write is part of the same transaction.
  */
 async function update(
   owner: string,
   opId: string,
   change: (record: MutationRecord) => MutationRecord | null | undefined,
+  alongside?: Alongside,
 ): Promise<MutationRecord | null> {
   const db = await openOfflineDb();
-  const tx = db.transaction("mutations", "readwrite");
-  const record = await tx.store.get(opId);
-  if (!record || record.owner !== owner) {
+  if (!alongside) {
+    const tx = db.transaction("mutations", "readwrite");
+    const record = await tx.store.get(opId);
+    if (!record || record.owner !== owner) {
+      await tx.done;
+      return null;
+    }
+    const next = change(record);
+    if (next === undefined) {
+      await tx.done;
+      return null;
+    }
+    if (next === null) await tx.store.delete(opId);
+    else await tx.store.put(next);
     await tx.done;
-    return null;
+    changed();
+    return next;
   }
-  const next = change(record);
-  if (next === undefined) {
+
+  const tx = db.transaction(["mutations", "accountData"], "readwrite");
+  const mutations = tx.objectStore("mutations");
+  try {
+    const record = await mutations.get(opId);
+    const next = record && record.owner === owner ? change(record) : undefined;
+    if (next === null) await mutations.delete(opId);
+    else if (next) await mutations.put(next);
+    // What the server said is so whether or not the record is still here to settle.
+    await alongside.write(tx.objectStore("accountData"));
     await tx.done;
-    return null;
+    if (next !== undefined) changed();
+    alongside.committed?.();
+    return next ?? null;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {
+      // Already finished or aborted: nothing was written past the failure.
+    }
+    await tx.done.catch(() => {});
+    throw error;
   }
-  if (next === null) await tx.store.delete(opId);
-  else await tx.store.put(next);
-  await tx.done;
-  changed();
-  return next;
 }
 
 /** Marks a waiting change as on its way. `null` if it is not the owner's or not waiting. */
@@ -209,49 +255,63 @@ export type Settlement =
   /** Not now and not its fault (signed out, another account): back as it was. */
   | { outcome: "release" };
 
-/** Records how one attempt to send a change ended. */
-export function settleMutation(owner: string, opId: string, settlement: Settlement) {
-  return update(owner, opId, (record) => {
-    const now = Date.now();
-    switch (settlement.outcome) {
-      case "done":
-        return null;
-      case "release":
-        return record.status === "sending" ? { ...record, status: "pending" } : undefined;
-      case "retry": {
-        const autoAttempts = (record.autoAttempts ?? 0) + 1;
-        const stop = autoAttempts >= maxAutoAttempts;
-        return {
-          ...record,
-          attempts: record.attempts + 1,
-          autoAttempts,
-          lastAttemptAt: now,
-          status: stop ? "failed" : "pending",
-          nextAttemptAt: stop ? undefined : now + retryDelay(autoAttempts),
-          error: { kind: settlement.kind, message: settlement.message },
-        };
-      }
-      case "failed":
-        return {
-          ...record,
-          attempts: record.attempts + 1,
-          lastAttemptAt: now,
-          status: "failed",
-          nextAttemptAt: undefined,
-          error: { kind: settlement.kind, message: settlement.message },
-        };
-      case "conflict":
-        return {
-          ...record,
-          attempts: record.attempts + 1,
-          lastAttemptAt: now,
-          status: "conflict",
-          nextAttemptAt: undefined,
-          conflict: settlement.conflict,
-          error: { kind: "conflict" },
-        };
+/**
+ * Records how one attempt to send a change ended. With `alongside`, what the
+ * same answer taught the device is written in the same transaction.
+ */
+export function settleMutation(
+  owner: string,
+  opId: string,
+  settlement: Settlement,
+  alongside?: Alongside,
+) {
+  return update(owner, opId, (record) => settled(record, settlement), alongside);
+}
+
+/** What a record becomes when an attempt ended so: `null` gone, `undefined` unchanged. */
+function settled(
+  record: MutationRecord,
+  settlement: Settlement,
+): MutationRecord | null | undefined {
+  const now = Date.now();
+  switch (settlement.outcome) {
+    case "done":
+      return null;
+    case "release":
+      return record.status === "sending" ? { ...record, status: "pending" } : undefined;
+    case "retry": {
+      const autoAttempts = (record.autoAttempts ?? 0) + 1;
+      const stop = autoAttempts >= maxAutoAttempts;
+      return {
+        ...record,
+        attempts: record.attempts + 1,
+        autoAttempts,
+        lastAttemptAt: now,
+        status: stop ? "failed" : "pending",
+        nextAttemptAt: stop ? undefined : now + retryDelay(autoAttempts),
+        error: { kind: settlement.kind, message: settlement.message },
+      };
     }
-  });
+    case "failed":
+      return {
+        ...record,
+        attempts: record.attempts + 1,
+        lastAttemptAt: now,
+        status: "failed",
+        nextAttemptAt: undefined,
+        error: { kind: settlement.kind, message: settlement.message },
+      };
+    case "conflict":
+      return {
+        ...record,
+        attempts: record.attempts + 1,
+        lastAttemptAt: now,
+        status: "conflict",
+        nextAttemptAt: undefined,
+        conflict: settlement.conflict,
+        error: { kind: "conflict" },
+      };
+  }
 }
 
 /** The person asks to send a change again: it waits its turn as if new, keeping what it says. */

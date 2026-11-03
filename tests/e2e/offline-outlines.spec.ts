@@ -200,3 +200,119 @@ test("an outline is found from its sermon and edited with no connection", async 
   await expect(page.getByRole("link", { name: /Grace that is greater/ }).first()).toBeVisible();
   await expect(page.getByText(/4 changes are waiting to sync/)).toBeVisible();
 });
+
+/**
+ * A2.3D: the device has learned that the outline became a sermon document,
+ * with one change of its own still queued. Offline, the outline's address
+ * shows no legacy editor: what the device kept, read only and copyable, the
+ * new editor offered (and said to need a connection), and a Discard that asks.
+ */
+function convert(page: Page) {
+  return page.evaluate(
+    async ({ owner, outlineId, first }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("sermon-tracker");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const tx = db.transaction(["accountData", "mutations"], "readwrite");
+      const data = tx.objectStore("accountData");
+      const read = await new Promise<{ data: { server: { entries: { title: string }[] } } }>(
+        (resolve) => {
+          const request = data.get([owner, "outline", outlineId]);
+          request.onsuccess = () => resolve(request.result);
+        },
+      );
+      const server = read.data.server;
+      const local = {
+        ...server,
+        entries: server.entries.map((entry, index) =>
+          index === 0 ? { ...entry, title: "Grace pardons, kept here", revision: 2 } : entry,
+        ),
+      };
+      data.put({
+        owner,
+        kind: "outline",
+        id: outlineId,
+        data: { server, local, documentAuthoritative: true },
+        updatedAt: Date.now(),
+      });
+      tx.objectStore("mutations").put({
+        opId: "99999999-9999-4999-8999-999999999999",
+        owner,
+        type: "outline.entry.update",
+        entityType: "outline",
+        entityId: outlineId,
+        payload: {
+          entryId: first,
+          title: "Grace pardons, kept here",
+          base: { title: "Grace pardons" },
+        },
+        baseRevision: 1,
+        schemaVersion: 1,
+        createdAt: Date.now(),
+        attempts: 0,
+        status: "pending",
+      });
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { owner, outlineId, first },
+  );
+}
+
+test("an outline that became a sermon document is reviewed, not edited, with no connection", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/offline");
+  await controlled(page);
+  await seed(page);
+  await convert(page);
+
+  await context.setOffline(true);
+  await page.goto(`/outlines/${outlineId}`);
+  await expect(
+    page.getByRole("heading", { name: "This sermon now uses the new editor" }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add point" })).toHaveCount(0);
+  await expect(page.getByText("1 change made here never reached your account.")).toBeVisible();
+
+  const review = page.getByRole("list", { name: "The old outline, as this device kept it" });
+  await expect(review.getByRole("listitem")).toHaveCount(2);
+  await expect(review.getByText("Grace pardons, kept here")).toBeVisible();
+  await expect(review.getByText("Grace keeps")).toBeVisible();
+
+  // The new editor is offered, and said to need a connection; nothing pretends it opened.
+  const open = page.getByRole("link", { name: "Open in the new editor" });
+  await expect(open).toHaveAttribute("href", `/outlines/${outlineId}`);
+  await open.click();
+  await expect(page.getByText(/This device is offline/)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/outlines/${outlineId}$`));
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  // Reopened with no connection, it is still known: the legacy editor never comes back.
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "This sermon now uses the new editor" }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+
+  // Discard asks first, and once confirmed leaves the knowledge in place.
+  await page.getByRole("button", { name: "Discard changes kept here" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("may be lost for good");
+  await dialog.getByRole("button", { name: "Discard for good" }).click();
+  await expect(page.getByText(/The changes kept here were discarded/)).toBeVisible();
+  expect(await queued(page)).toEqual([]);
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(review.getByText("Grace pardons")).toBeVisible();
+});

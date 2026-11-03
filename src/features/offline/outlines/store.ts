@@ -33,7 +33,42 @@ export type KeptOutline = {
    * from it.
    */
   generation?: number;
+  /**
+   * The server said this outline has a sermon document (A2.2), which is what
+   * it says now: its legacy copy here can no longer be changed (A2.3D). Only
+   * ever written true, from the server's word (the manifest, or a
+   * `documentAuthoritative` answer to a queued change), and never taken back:
+   * not by a download that says false or nothing, a full row, an
+   * acknowledgement, a settled conflict, a discard, or removing downloads.
+   * Every writer of a record keeps it (`withAuthority`); a record that would
+   * be forgotten is kept as `authorityOnly` instead. Absent means not known,
+   * never "still legacy on the server".
+   */
+  documentAuthoritative?: true;
 };
+
+/** This device knows the outline's sermon document is what it says now. */
+export const isAuthoritative = (kept: KeptOutline | null | undefined) =>
+  kept?.documentAuthoritative === true;
+
+/** What is kept of an authoritative outline with nothing of its legacy copy left. */
+export const authorityOnly = (): KeptOutline => ({
+  server: null,
+  local: null,
+  documentAuthoritative: true,
+});
+
+/**
+ * The one rule for every rewrite of a record: what the device knew of its
+ * authority before stays known. `next` null (forget it) keeps only that.
+ */
+export function withAuthority(
+  before: KeptOutline | null | undefined,
+  next: KeptOutline | null,
+): KeptOutline | null {
+  if (!isAuthoritative(before)) return next;
+  return next ? { ...next, documentAuthoritative: true } : authorityOnly();
+}
 
 /** How far the account's outlines are on this device: as for ideas. */
 export type OutlinesState = IdeasState;
@@ -137,14 +172,22 @@ export async function keptOutlinesBytes(owner: string): Promise<number> {
 
 /**
  * Removes the owner's kept outlines, except those with changes still queued
- * (`keep`): those are the person's work and stay until sent or discarded.
+ * (`keep`): those are the person's work and stay until sent or discarded. An
+ * outline known to be a sermon document keeps only that knowledge
+ * (`authorityOnly`), so removing downloads never opens its legacy copy to
+ * editing again.
  */
 export async function removeKeptOutlines(owner: string, keep: ReadonlySet<string>) {
   const db = await openOfflineDb();
   const tx = db.transaction("accountData", "readwrite");
   const index = tx.store.index("ownerKind");
   for (const record of await index.getAll([owner, outlineKind])) {
-    if (!keep.has(record.id)) await tx.store.delete([owner, outlineKind, record.id]);
+    if (keep.has(record.id) || record.owner !== owner) continue;
+    if (isAuthoritative(record.data as KeptOutline)) {
+      await tx.store.put(outlineRecord(owner, record.id, authorityOnly()));
+    } else {
+      await tx.store.delete([owner, outlineKind, record.id]);
+    }
   }
   await tx.store.delete([owner, stateKind, stateId]);
   await tx.done;
@@ -168,7 +211,8 @@ export async function rewriteOutline(
   const stored = await tx.store.get([owner, outlineKind, id]);
   if (stored && stored.owner === owner) {
     const kept = stored.data as KeptOutline;
-    const written = next(kept);
+    // What the device knows of the outline's authority stays known, whatever `next` returns.
+    const written = withAuthority(kept, next(kept));
     if (written) {
       const generation = (kept.generation ?? 0) + (restart ? 1 : 0);
       await tx.store.put(outlineRecord(owner, id, { ...written, generation }));

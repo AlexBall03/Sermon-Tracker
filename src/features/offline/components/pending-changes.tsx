@@ -11,7 +11,7 @@ import type { OfflineIdea } from "@/features/sync/ideas";
 import { useLocale, useT } from "@/i18n/client";
 import { readKeptIdeas, shown } from "../ideas/store";
 import { choicesFor, discardIdeaChanges, settle, type Choice } from "../ideas/sync";
-import { readKeptOutlines, shownOutline } from "../outlines/store";
+import { isAuthoritative, readKeptOutlines, shownOutline } from "../outlines/store";
 import {
   discardOutlineChanges,
   outlineChoicesFor,
@@ -33,12 +33,12 @@ type Filter = { type?: MutationType; entityId?: string };
  */
 export function usePendingChanges(
   filter: Filter = {},
-): (MutationRecord & { title: string })[] | null | "unavailable" {
+): (MutationRecord & { title: string; authoritative?: boolean })[] | null | "unavailable" {
   const account = useOfflineAccount();
   const { type, entityId } = filter;
   const [records, setRecords] = useState<{
     account: string | null;
-    list: (MutationRecord & { title: string })[] | "unavailable";
+    list: (MutationRecord & { title: string; authoritative?: boolean })[] | "unavailable";
   } | null>(null);
 
   useEffect(() => {
@@ -56,6 +56,9 @@ export function usePendingChanges(
             account,
             list: list.map((record) => ({
               ...record,
+              // The outline is known to be a sermon document now (A2.3D): nothing is sent to it again.
+              authoritative:
+                record.entityType === "outline" && isAuthoritative(outlines.get(record.entityId)),
               title:
                 record.entityType === "outline"
                   ? (shownOutline(outlines.get(record.entityId))?.sermon.title ?? "")
@@ -139,6 +142,7 @@ export function PendingChanges({
   const sync = useSync();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   if (records === "unavailable") {
     return <p className="text-sm leading-relaxed text-muted-foreground">{t.unavailable}</p>;
@@ -229,6 +233,11 @@ export function PendingChanges({
 
   return (
     <>
+      {problem && (
+        <p role="alert" className="mb-3 text-sm leading-relaxed text-muted-foreground">
+          {problem}
+        </p>
+      )}
       <ul className="divide-y rounded-lg border bg-surface">
         {records.map((record) => {
           const sending = record.status === "sending";
@@ -274,7 +283,7 @@ export function PendingChanges({
               <div className="flex shrink-0 flex-wrap gap-2">
                 {record.status === "conflict" &&
                   outline &&
-                  outlineChoicesFor(record).map((choice, index) => (
+                  outlineChoicesFor(record, record.authoritative).map((choice, index) => (
                     <Button
                       key={choice}
                       size="sm"
@@ -296,7 +305,7 @@ export function PendingChanges({
                       {choiceLabel(record, choice)}
                     </Button>
                   ))}
-                {record.status === "failed" && (
+                {record.status === "failed" && !record.authoritative && (
                   <Button size="sm" onClick={() => void retry(record)}>
                     {t.retry}
                   </Button>
@@ -328,8 +337,13 @@ export function PendingChanges({
                               destructive: true,
                               run: async () => {
                                 if (!account) return { ok: false, message: "" };
-                                await discardOutlineChanges(account, record.entityId);
-                                return { ok: true, message: "" };
+                                const result = await discardOutlineChanges(
+                                  account,
+                                  record.entityId,
+                                );
+                                return result === "dropped"
+                                  ? { ok: true, message: "" }
+                                  : { ok: false, message: t.discardSending };
                               },
                             }
                           : capture
@@ -373,7 +387,8 @@ export function PendingChanges({
         onConfirm={async (chosen) => {
           setBusy(true);
           try {
-            await chosen.run();
+            const result = await chosen.run();
+            setProblem(result.ok || !result.message ? null : result.message);
           } finally {
             setBusy(false);
             setConfirmation(null);

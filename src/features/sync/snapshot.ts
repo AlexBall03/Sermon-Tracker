@@ -86,6 +86,7 @@ export async function outlineManifestFor(
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       sermon: sermonOf(row.sermon),
+      documentAuthoritative: row.documentAuthoritative,
     })),
   };
 }
