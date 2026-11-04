@@ -1,6 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   date,
@@ -18,6 +19,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { builtinPresetIds } from "../features/appearance-presets/builtin";
+import type { AppearanceSnapshot } from "../features/editor-lab/styles/snapshot";
 import { ideaKinds, ideaStatuses, intendedFormats, sermonTypes } from "../features/ideas/model";
 import { notificationKinds } from "../features/notifications/model";
 import { onboardingStatuses, onboardingSteps, tourStates } from "../features/onboarding/model";
@@ -95,6 +98,19 @@ export const users = pgTable(
     emailStatus: boolean("email_status").notNull().default(true),
     /** Whether support notifications go to the devices this account turned push on for. */
     pushSupport: boolean("push_support").notNull().default(true),
+    /*
+     * The appearance a new outline starts from (A4.2B): a built-in preset or
+     * one of the account's own (`appearance_presets`), exactly one of the two.
+     * Balanced until the account chooses something else. It is a choice, never
+     * a live link: an outline keeps a copy of what it was given.
+     */
+    defaultBuiltinAppearancePreset: text("default_builtin_appearance_preset", {
+      enum: builtinPresetIds,
+    }).default("balanced"),
+    /** The account's own preset, when that is the default. Its owner is this account (composite key). */
+    defaultPersonalAppearancePresetId: uuid("default_personal_appearance_preset_id"),
+    /** Moves by one each time the default changes; a change names the one it was made against. */
+    appearanceDefaultRevision: integer("appearance_default_revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -134,6 +150,22 @@ export const users = pgTable(
       "users_tour_state_check",
       sql`${table.tourState} in ('not_offered', 'offered', 'dismissed', 'completed')`,
     ),
+    check(
+      "users_default_builtin_appearance_preset_check",
+      sql`${table.defaultBuiltinAppearancePreset} is null or ${table.defaultBuiltinAppearancePreset} in ('minimal', 'balanced', 'expressive')`,
+    ),
+    // Exactly one default: a built-in preset or a personal one, never both or neither.
+    check(
+      "users_default_appearance_preset_check",
+      sql`(${table.defaultBuiltinAppearancePreset} is null) <> (${table.defaultPersonalAppearancePresetId} is null)`,
+    ),
+    check("users_appearance_default_revision_check", sql`${table.appearanceDefaultRevision} >= 1`),
+    // The owner is in the key: an account's default can only ever be its own preset.
+    foreignKey({
+      name: "users_default_appearance_preset_fk",
+      columns: [table.defaultPersonalAppearancePresetId, table.id],
+      foreignColumns: [appearancePresets.id, appearancePresets.ownerId],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -1296,3 +1328,85 @@ export const pushSubscriptions = pgTable(
 );
 
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+
+/**
+ * An account's own appearance presets (A4.2B): a name and a materialized
+ * `AppearanceSnapshot` (`editor-lab/styles/snapshot.ts`), validated before
+ * it is written and again when it is read. Read and written only by
+ * `src/features/appearance-presets`. Nothing in a sermon document names one:
+ * applying a preset copies its values, so renaming, changing, or deleting it
+ * changes no outline.
+ *
+ * The size limit is on what PostgreSQL stores, the jsonb's text: the
+ * application refuses early what is certainly over (`presetLimits.bytes`),
+ * and the CHECK decides the rest.
+ */
+export const appearancePresets = pgTable(
+  "appearance_presets",
+  {
+    /** Made by the server: a create names an operation, never the preset's ID. */
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id, { onDelete: "restrict" }),
+    /** Trimmed; one name per account whatever its case. */
+    name: text("name").notNull(),
+    appearance: jsonb("appearance").$type<AppearanceSnapshot>().notNull(),
+    /** 1 when made; one more for each rename or replacement. */
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check(
+      "appearance_presets_name_check",
+      sql`char_length(btrim(${table.name})) between 1 and 80 and ${table.name} = btrim(${table.name})`,
+    ),
+    check(
+      "appearance_presets_appearance_check",
+      sql`jsonb_typeof(${table.appearance}) = 'object' and octet_length(${table.appearance}::text) <= 65536`,
+    ),
+    check("appearance_presets_revision_check", sql`${table.revision} >= 1`),
+    // Also the account's list, in name order, and the owner key's lookup.
+    uniqueIndex("appearance_presets_owner_name_key").on(table.ownerId, sql`lower(${table.name})`),
+    // What `users_default_appearance_preset_fk` points at.
+    unique("appearance_presets_id_owner_key").on(table.id, table.ownerId),
+  ],
+);
+
+export type AppearancePresetRow = typeof appearancePresets.$inferSelect;
+
+/**
+ * Creates and duplicates of appearance presets that were carried out (A4.2B),
+ * so the same request sent again (a lost answer, a retry) is answered from
+ * here and never makes a second preset, even after the first was deleted.
+ * `fingerprint` is a SHA-256 of what was asked, so an operation ID reused for
+ * something else is refused. Rows older than `presetLimits.retentionDays` are
+ * pruned by the account's next create (opportunistically: never by a timer),
+ * and by account deletion. No content is stored.
+ */
+export const appearancePresetOperations = pgTable(
+  "appearance_preset_operations",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id, { onDelete: "restrict" }),
+    operationId: uuid("operation_id").notNull(),
+    kind: text("kind", { enum: ["create", "duplicate"] }).notNull(),
+    /** The preset it made. No key: the record outlives the preset. */
+    presetId: uuid("preset_id").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerId, table.operationId] }),
+    check("appearance_preset_operations_kind_check", sql`${table.kind} in ('create', 'duplicate')`),
+    check(
+      "appearance_preset_operations_fingerprint_check",
+      sql`char_length(${table.fingerprint}) = 64`,
+    ),
+  ],
+);

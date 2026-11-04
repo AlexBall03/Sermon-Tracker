@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import {
+  appearancePresetOperations,
+  appearancePresets,
   appSettings,
   bibleFavorites,
   bibleHighlights,
@@ -25,6 +27,7 @@ import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import { updateUser } from "@/features/admin/users";
 import { provisionUser } from "@/features/auth/provisioning";
+import { createPreset } from "@/features/appearance-presets/presets";
 import {
   processDeletion,
   processPendingDeletions,
@@ -129,6 +132,25 @@ async function seed(clerkUserId: string, role: "admin" | "user" = "user") {
     auth: "auth",
     label: "Chrome on macOS",
   });
+  // Two personal appearance presets (A4.2B), one of them the default, and the record of a create.
+  const [chosen, spare] = await db
+    .insert(appearancePresets)
+    .values([
+      { ownerId: owner, name: "Chosen", appearance: { version: 1 } as never },
+      { ownerId: owner, name: "Spare", appearance: { version: 1 } as never },
+    ])
+    .returning();
+  await db
+    .update(users)
+    .set({ defaultBuiltinAppearancePreset: null, defaultPersonalAppearancePresetId: chosen.id })
+    .where(eq(users.id, owner));
+  await db.insert(appearancePresetOperations).values({
+    ownerId: owner,
+    operationId: crypto.randomUUID(),
+    kind: "create",
+    presetId: spare.id,
+    fingerprint: "f".repeat(64),
+  });
   return { user, ticket };
 }
 
@@ -143,6 +165,14 @@ const rowsOf = async (owner: string) => ({
     .length,
   documents: (
     await db.select().from(sermonOutlineDocuments).where(eq(sermonOutlineDocuments.ownerId, owner))
+  ).length,
+  presets: (await db.select().from(appearancePresets).where(eq(appearancePresets.ownerId, owner)))
+    .length,
+  operations: (
+    await db
+      .select()
+      .from(appearancePresetOperations)
+      .where(eq(appearancePresetOperations.ownerId, owner))
   ).length,
 });
 
@@ -183,6 +213,8 @@ describe("account deletion", () => {
       notifications: 0,
       devices: 0,
       documents: 0,
+      presets: 0,
+      operations: 0,
     });
 
     expect(await rowsOf(admin.user.id)).toEqual({
@@ -192,6 +224,8 @@ describe("account deletion", () => {
       notifications: 1,
       devices: 1,
       documents: 1,
+      presets: 2,
+      operations: 1,
     });
     const reply = await db
       .select()
@@ -240,6 +274,8 @@ describe("account deletion", () => {
       notifications: 0,
       devices: 0,
       documents: 0,
+      presets: 0,
+      operations: 0,
     });
 
     // The identity still signs in: it finds its locked row, never a new account.
@@ -254,6 +290,49 @@ describe("account deletion", () => {
 
     expect(await processDeletion(db, user.id, deps())).toBe("done");
     expect(await processDeletion(db, user.id, deps())).toBe("gone");
+  });
+
+  it("removes the account's appearance presets after its default, retrying safely", async () => {
+    const { user } = await seed("user_a");
+    await requestDeletion(db, user.id);
+    // The data step fails part way: nothing of it is kept, and the default still names its preset.
+    await db.execute(sql`
+      create function refuse() returns trigger language plpgsql as $$
+      begin raise exception 'refused for the test'; end $$`);
+    await db.execute(sql`
+      create trigger refuse before delete on appearance_preset_operations
+      for each row execute function refuse()`);
+    expect(await processDeletion(db, user.id, deps())).toBe("retry");
+    expect(await rowsOf(user.id)).toMatchObject({ ideas: 1, presets: 2, operations: 1 });
+    const [held] = await db.select().from(users).where(eq(users.id, user.id));
+    expect(held.defaultPersonalAppearancePresetId).not.toBeNull();
+    expect(held.status).toBe("deleting");
+
+    await db.execute(sql`drop trigger refuse on appearance_preset_operations`);
+    expect(await processDeletion(db, user.id, deps())).toBe("done");
+    expect(await db.select().from(users)).toHaveLength(0);
+    expect(await db.select().from(appearancePresets)).toHaveLength(0);
+    expect(await db.select().from(appearancePresetOperations)).toHaveLength(0);
+  });
+
+  it("refuses a preset created once the account is locked, so nothing is left behind", async () => {
+    const { user } = await seed("user_a");
+    await db.update(users).set({ onboardingStatus: "grandfathered" }).where(eq(users.id, user.id));
+    await requestDeletion(db, user.id);
+    expect(
+      await createPreset(db, user.id, {
+        operationId: crypto.randomUUID(),
+        name: "Late",
+        appearance: {
+          version: 1,
+          preset: "balanced",
+          presetRevision: 2,
+          numbering: { version: 1, preset: "decimal" },
+        },
+      }),
+    ).toEqual({ status: "account_unavailable" });
+    expect(await processDeletion(db, user.id, deps())).toBe("done");
+    expect(await db.select().from(appearancePresets)).toHaveLength(0);
   });
 
   it("refuses to delete the last active administrator", async () => {

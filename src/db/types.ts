@@ -36,3 +36,19 @@ export function describeDatabaseError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(connectionString, "[connection string removed]");
 }
+
+/** True when a write was refused by a CHECK constraint (SQLSTATE 23514). */
+export function isCheckViolation(error: unknown): boolean {
+  return hasSqlState(error, "23514");
+}
+
+/** The name of the constraint that refused a write, when the driver says. */
+export function violatedConstraint(error: unknown): string | null {
+  for (let current = error, depth = 0; current && depth < 3; depth += 1) {
+    if (typeof current !== "object") return null;
+    const name = (current as { constraint?: unknown }).constraint;
+    if (typeof name === "string") return name;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}

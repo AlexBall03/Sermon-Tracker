@@ -1,6 +1,8 @@
-import { and, count, eq, inArray, ne, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, ne, or } from "drizzle-orm";
 
 import {
+  appearancePresetOperations,
+  appearancePresets,
   bibleFavorites,
   bibleHighlights,
   ideas,
@@ -116,6 +118,19 @@ export async function processDeletion(
       await tx.delete(syncOperations).where(eq(syncOperations.ownerId, userId));
       await tx.delete(notifications).where(eq(notifications.recipientId, userId));
       await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.ownerId, userId));
+      // Personal appearance presets (A4.2B). The default points at one of them, so it goes back
+      // to Balanced first; the status, which only ever stays `deleting`, is not touched.
+      await tx
+        .update(users)
+        .set({
+          defaultBuiltinAppearancePreset: "balanced",
+          defaultPersonalAppearancePresetId: null,
+        })
+        .where(and(eq(users.id, userId), isNotNull(users.defaultPersonalAppearancePresetId)));
+      await tx.delete(appearancePresets).where(eq(appearancePresets.ownerId, userId));
+      await tx
+        .delete(appearancePresetOperations)
+        .where(eq(appearancePresetOperations.ownerId, userId));
     });
   } catch (error) {
     console.error("Account data deletion failed:", error instanceof Error ? error.message : error);

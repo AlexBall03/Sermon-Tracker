@@ -248,7 +248,13 @@ Approved for the whole program: one sermon identity with one unified rich-text d
         - Preset container lines and spacing shown as real numbers.
         - Immutable preset revisions: outlines stored before A4.2A keep their exact look (computed-style parity against `7c9d3b6`); Minimal's script is refined in revision 2.
         - The pure-data snapshot contract for personal presets.
-        - Not done: A4.2B (personal preset storage) and A4.2C (their UI). Printing a sermon is now always the document alone in Print Layout (BUG-010, pre-existing, fixed in A4.2A's acceptance with the owner's approval).
+        - Not done in A4.2A: personal preset storage (A4.2B, below) and their UI (A4.2C). Printing a sermon is now always the document alone in Print Layout (BUG-010, pre-existing, fixed in A4.2A's acceptance with the owner's approval).
+      - **A4.2B: Personal Appearance Preset Infrastructure** (4 November 2026, not yet committed; [handoff](HANDOFF-PS-A4.2B.md)). Storage and server interfaces only, no screens:
+        - an account's own appearance presets (`appearance_presets`, migration `0021`, not yet applied anywhere shared): materialized, strictly validated snapshots, 100 per account, names unique per account whatever their case;
+        - an account default (built-in Minimal, Balanced, or Expressive, or a personal preset; Balanced unless chosen), which falls back to Balanced in the same transaction when its preset is deleted;
+        - revision checks on every change, safe retries of creates and duplicates (an operation ledger), and account deletion that removes them;
+        - races verified on a disposable multi-connection PostgreSQL.
+        - Not done: A4.2C (My Presets, Save as Preset, applying one, new outlines from the default).
     - **Next:** the Scripture passage view and expansion, color controls and theme tokens, the Outline Layout engine and panel, toolbar, text styles, menus, and keys (with the owner's requests in the handoff above), and a stand-in docked panel; each starts when the owner says so
 - **PS-2: Document Data Model, Additive Schema & Legacy Conversion Foundation**
 - **PS-3a: Synchronization protocol compatibility** (before any document is queued offline) and **PS-3b: Document Persistence, Revisioning & Offline Synchronization**

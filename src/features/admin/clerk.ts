@@ -13,7 +13,7 @@ import { routes } from "@/lib/site";
  * A person in the directory. What they wrote about themselves (their church,
  * their ministry role, attending preaching class) is theirs and is left out,
  * and so is where their setup and their tour stand, which the directory does
- * not show.
+ * not show, nor the appearance a new outline starts from (A4.2B).
  */
 export type DirectoryEntry = Omit<
   AppUser,
@@ -27,6 +27,9 @@ export type DirectoryEntry = Omit<
   | "emailReplies"
   | "emailStatus"
   | "pushSupport"
+  | "defaultBuiltinAppearancePreset"
+  | "defaultPersonalAppearancePresetId"
+  | "appearanceDefaultRevision"
 > & {
   name: string | null;
   email: string | null;

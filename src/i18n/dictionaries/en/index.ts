@@ -21,3 +21,4 @@ export { notifications } from "./notifications";
 export { legal } from "./legal";
 export { editorLab } from "./editorLab";
 export { sermonEditor } from "./sermonEditor";
+export { appearancePresets } from "./appearancePresets";

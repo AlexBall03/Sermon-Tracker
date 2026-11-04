@@ -446,6 +446,68 @@ An outline's Preacher Studio sermon document: one complete schema v4 document, s
 - **No extra index.** The primary key serves every read, write, and cascade. Only account deletion reads by `owner_id`, through the `RESTRICT` check.
 - **Account deletion.** It cascades from `ideas` through `sermon_outlines`, before the `users` row goes (`deletion.test.ts`).
 
+### Personal appearance presets (A4.2B)
+
+Migration `0021_appearance_presets` adds two tables and three columns on `users`. An account's own saved appearances are reusable sources for its outlines: applying one copies its values into a sermon document (A4.2C), so nothing in a document names a preset, and renaming, changing, or deleting one restyles no outline. They are read and written only by `src/features/appearance-presets` (`presets.ts`, `defaults.ts`), behind its actions, which `authorize("active")` and take the owner from the session.
+
+#### `appearance_presets`
+
+| Column       | Type          | Notes                                                                                              |
+| ------------ | ------------- | -------------------------------------------------------------------------------------------------- |
+| `id`         | `uuid`        | Primary key, `gen_random_uuid()`. Always made by the server: a request never names a new preset ID |
+| `owner_id`   | `uuid`        | Not null, references `users.id`, `ON DELETE RESTRICT`                                              |
+| `name`       | `text`        | Not null. CHECK: 1 to 80 characters after trimming, and stored trimmed                             |
+| `appearance` | `jsonb`       | Not null. A materialized `AppearanceSnapshot`. CHECK: an object, at most 65,536 bytes as stored    |
+| `revision`   | `integer`     | Not null, default 1, CHECK ≥ 1. One more for each rename or replacement                            |
+| `created_at` | `timestamptz` | Not null, default now                                                                              |
+| `updated_at` | `timestamptz` | Not null, default now; set by a rename or replacement, never by a request that changes nothing     |
+
+- `appearance_presets_owner_name_key`: unique index on `(owner_id, lower(name))`. One name per account whatever its case (as PostgreSQL's `lower()` folds it; no accent or other folding); two accounts may use the same name. It is also the index of an account's list (ordered `lower(name), id`) and of the owner key's check, so there is no other index.
+- `appearance_presets_id_owner_key`: `UNIQUE (id, owner_id)`, the target of the default's composite key below.
+- **The size limit is on what is stored**, `octet_length(appearance::text)`: PostgreSQL's own text of the jsonb, which puts a space after every `:` and `,` and is never shorter than compact JSON. The application refuses early what is over 65,536 bytes as compact JSON (and so certainly over as stored), and the CHECK decides the rest; a refusal by the CHECK is answered `too_large`. The largest snapshots the schema admits measure 28,802 bytes (every property, every component, all 32 levels, a 12-level custom numbering) and 32,380 bytes (the same with seventeen-digit numbers and four-byte characters), so the limit is never reached by an appearance the editor can make (`model.test.ts`).
+- **What `appearance` may hold** is the A4.2A snapshot contract (`appearanceSnapshotSchema`, `editor-lab/styles/snapshot.ts`): version 1, a built-in preset and its revision (1 or 2), the outline-wide defaults, named styles, component-type styles, levels 1 to 32, and the numbering. Never sermon content, a passage, a document, outline, or component ID, a node's own appearance, the running header, or view state. Unknown fields anywhere are refused, never dropped (the numbering schema itself would drop them; `hasUnknownKeys`). It is stored `materialize`d: the built-in revision's code values are written in, so a preset keeps its look whatever later built-in revisions do. It is validated again whenever it is read; one that no longer parses is `unreadable`, never repaired.
+
+#### `appearance_preset_operations`
+
+The record of each create and duplicate that was carried out, so the same request sent again is answered with what it made and never carried out twice.
+
+| Column         | Type          | Notes                                                                       |
+| -------------- | ------------- | --------------------------------------------------------------------------- |
+| `owner_id`     | `uuid`        | Not null, references `users.id`, `ON DELETE RESTRICT`                       |
+| `operation_id` | `uuid`        | Not null. Chosen by the browser for the request; primary key with the owner |
+| `kind`         | `text`        | Not null. CHECK: `create` or `duplicate`                                    |
+| `preset_id`    | `uuid`        | Not null. The preset it made. No key: the record outlives the preset        |
+| `fingerprint`  | `text`        | Not null. CHECK: 64 characters. SHA-256 of what was asked                   |
+| `created_at`   | `timestamptz` | Not null, default now                                                       |
+
+- **Why a table of its own.** An operation ID kept on the preset would be lost with the preset: a create retried after its preset was deleted would make it again. `sync_operations` was not used: it is the offline queue's ledger, keyed and pruned by that engine's rules, and holds no fingerprint.
+- **The fingerprint** is a SHA-256 of the request in canonical JSON (keys in order): for a create, its kind, trimmed name, and materialized appearance; for a duplicate, its kind, source ID (lower case), and name. The same operation ID with a different request is `operation_reused` and changes nothing. No content is stored.
+- **Retention: at least 30 days, not exactly.** A record is removed by the account's next create of a new operation once it is more than 30 days old (`presetLimits.retentionDays`), and by account deletion. Nothing else removes one: no timer, no cron. So a record may outlive 30 days by any amount, and while it is there a retry is still answered from it. Once removed, the same request is a new create; because a create never names a preset ID, that can only make a new preset or be refused (a taken name, the count), and never changes an existing one.
+
+#### The default on `users`
+
+| Column                                  | Type      | Notes                                                                                          |
+| --------------------------------------- | --------- | ---------------------------------------------------------------------------------------------- |
+| `default_builtin_appearance_preset`     | `text`    | Nullable, default `balanced`. CHECK: `minimal`, `balanced`, or `expressive`                    |
+| `default_personal_appearance_preset_id` | `uuid`    | Nullable. One of the account's own presets                                                     |
+| `appearance_default_revision`           | `integer` | Not null, default 1, CHECK ≥ 1. One more for each change of the default, the fallback included |
+
+- `users_default_appearance_preset_check`: exactly one of the two is set, never both or neither.
+- **`users_default_appearance_preset_fk`: `(default_personal_appearance_preset_id, id)` → `appearance_presets (id, owner_id)`, `ON DELETE RESTRICT`.** The account's own ID is half the key, so an account's default can only ever be one of its own presets, whatever writes the row. `MATCH SIMPLE`: a built-in default is not checked. The users primary key serves the key's check when a preset is deleted.
+- **The two keys are circular** (a preset names its owner, an owner may name a preset). The migration creates both tables, then the columns, then every key, so nothing names a table that is not there yet. Deleting either side first clears the default: `deletePreset` sets the account back to Balanced in its own transaction, and account deletion does the same before it deletes the presets.
+
+#### Locks and concurrency
+
+Every change (create, duplicate, rename, replace, delete, setting the default) is one transaction that locks the account's `users` row first (`SELECT … FOR NO KEY UPDATE`) and the preset's row second (`FOR UPDATE`, or `FOR KEY SHARE` when choosing it as the default). One order everywhere, so no two changes wait on each other in a cycle. Holding the account row:
+
+- puts an account's changes one after another, which is what keeps the 100-preset limit true under parallel creates (the count is read with the row held);
+- serializes a change with `requestDeletion`, whose `UPDATE` of the same row waits for it or is waited for; the status and setup are read again under the lock, so nothing is made or changed for an account being deleted, even when its request was authorised just before;
+- puts deleting the default and choosing it one after the other: whichever is second sees the first's result.
+
+Revisions are compared in the change's own transaction, with the rows held, and every `UPDATE` and `DELETE` also carries `revision = <expected>` in its WHERE clause. A stale revision writes nothing (`conflict`), even when the value asked for is already there. A request for what is already stored, at the current revision, writes nothing (`unchanged`). A refusal by a constraint aborts the transaction; it is mapped to an answer only after the transaction has ended, with no further statement sent in it. Reads take no lock.
+
+**Tested on separate connections** of a disposable PostgreSQL 18.6 (A4.2B; [handoff](HANDOFF-PS-A4.2B.md)): 95 presets and 20 parallel creates make exactly 5 and end at 100; parallel creates of one name; one create or duplicate sent ten times at once; ten renames or default changes at one revision; choosing a preset as the default while it is deleted (25 rounds); two deletes of the default; a mix of every change on one account (no deadlock); and account deletion against creates, in both orders, with a transaction held open on a raw connection.
+
 ### `reference_datasets`
 
 Which edition of each reference dataset a database holds: `name`, `checksum`, `row_count`, `loaded_at`. The rows the loader keeps are `scripture-kjv` and `scripture-rvg` (31,102 each), and `scripture-kjv-psalm-titles` (116) and `scripture-rvg-psalm-titles` (123). A database that existed before Phase 2C.2 also has `kjv` and `kjv-psalm-titles`, which describe the superseded tables and are no longer consulted.
@@ -609,6 +671,35 @@ The `ADD COLUMN`s and the CHECKs were generated by `npm run db:generate` from `s
 - a document of another account's outline is refused, and so is one that is not an object;
 - the old code's updates and deletes are run against the new schema.
 
+### A4.2B migration
+
+`0021_appearance_presets`, generated by `npm run db:generate -- --name=appearance_presets` and not edited:
+
+1. Two `CREATE TABLE`s, `appearance_preset_operations` and `appearance_presets`, with their primary keys, `UNIQUE (id, owner_id)`, and CHECKs.
+2. Three `ALTER TABLE "users" ADD COLUMN`s: `default_builtin_appearance_preset` (`DEFAULT 'balanced'`, nullable), `default_personal_appearance_preset_id` (nullable), `appearance_default_revision` (`DEFAULT 1 NOT NULL`).
+3. Every foreign key: both tables' owner keys to `users`, and `users_default_appearance_preset_fk` to `appearance_presets (id, owner_id)`, after both tables exist.
+4. The unique index `appearance_presets_owner_name_key`, and three CHECKs on `users`.
+
+- **It only adds.** No existing column, constraint, index, or row is altered, dropped, or rewritten. The new columns' defaults are constants, so PostgreSQL fills no row; every existing account reads as built-in Balanced at revision 1 and satisfies the new CHECKs and the key (a null personal default is not checked). Each `ALTER TABLE "users"` takes that table's exclusive lock for a catalog change or a scan of a table with one row per account.
+- **Safe under the code already live.** That code inserts into `users` naming its own columns, so an account it creates takes the defaults, and it reads rows by named columns. It never names the new tables.
+- **Order with a deployment.** None is needed: the tables and columns are there before the code that uses them goes live.
+- **Not applied anywhere shared.** Development, previews, and production have not run it; production gets it through its own build, after the owner approves (`npm run dev` applies it to development).
+
+**Rolling back the code after presets exist.** The migration stays when a deployment is rolled back, and that is harmless for everything but account deletion:
+
+- The code from before A4.2B does not know `appearance_presets` or `appearance_preset_operations`. Its `processDeletion` deletes the account's data and then its `users` row, which both tables' `ON DELETE RESTRICT` owner keys refuse once the account owns a preset or an operation record (and `users_default_appearance_preset_fk` would refuse deleting a chosen preset first anyway).
+- The result is safe but stuck: that step answers `retry`, the account stays locked as `deleting` (denied everywhere, never provisioned again), its other data is already gone, and the daily cron retries it without success. Its Clerk identity is deleted before the row, so it no longer signs in. Nothing is half-deleted inside a transaction; nothing of another account is touched.
+- **Rollout.** Ship A4.2B's code and migration together (the code is what writes presets, and nothing does until A4.2C's interface exists). Until A4.2C ships nobody can create a preset, so a rollback in that window has nothing to trip over. Once presets may exist, roll back only to a build that has A4.2B's deletion step.
+- **Recovery** if an older build must serve anyway: deploy a build with A4.2B's deletion step again, and the cron (or the next attempt) completes every stuck deletion, since each step is safe to repeat. Do not delete preset rows by hand to unstick an older build unless the owner decides to; if so, clear the account's default to `balanced` first, in the same transaction, then delete its presets and operation records, exactly as `processDeletion` does.
+
+**Tested** in `src/db/appearance-presets-migration.test.ts`:
+
+- migrations 0000 to 0020 are applied to an empty in-memory PostgreSQL, and accounts (an administrator with a profile, an ordinary one, a disabled one, one being deleted), a sermon, its outline, and its document are saved;
+- 0021 is applied; every column of every account but the three new ones, and every row of the other tables, is compared with what was there before, and every account reads Balanced, null, 1;
+- the file is checked to contain only `CREATE TABLE`, the one `CREATE UNIQUE INDEX`, and `ALTER TABLE … ADD` on the new tables and `users`, with every key after both tables;
+- the old code's insert and delete of an account work;
+- every CHECK, the case-insensitive name index, the operation key, the exactly-one default, and the composite key (another account's preset refused even when written directly) refuse what they must; a chosen preset and the owner of a preset cannot be deleted from under them.
+
 ## Bible text
 
 The text is data, not a migration. Each translation lives in `data/bible/<translation>.json` (the list is `datasets` in `scripts/bible/dataset.mjs`) and every `migrate` command loads each one when needed, after any pending migrations and under the same identity checks:
@@ -719,7 +810,7 @@ Keep every migration backward compatible with the code currently in production (
 
 ## Tests
 
-Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions. Where a lock is what makes something true (recording an occasion against a reclassification or a deletion), the committed test checks that the lock is taken, in the statements the code sends; the race itself was run once by hand against the development database in Phase 2E.1 ([handoff](HANDOFF-2E.1.md)). Phase 3A did the same for outlines ([handoff](HANDOFF-3A.md)): the committed test checks that every write locks the outline's row before it touches an entry, and the races were run once against development on separate connections. Phase 3C changed the order (the sermon's row first) and did both again ([handoff](HANDOFF-3C.md)).
+Database tests use PGlite, an in-process PostgreSQL, and apply the committed migration files to a fresh instance per test. They never connect to Neon. PGlite is a single connection, so the tests prove constraints and logic but not behaviour under truly concurrent transactions. Where a lock is what makes something true (recording an occasion against a reclassification or a deletion), the committed test checks that the lock is taken, in the statements the code sends; the race itself was run once by hand against the development database in Phase 2E.1 ([handoff](HANDOFF-2E.1.md)). Phase 3A did the same for outlines ([handoff](HANDOFF-3A.md)): the committed test checks that every write locks the outline's row before it touches an entry, and the races were run once against development on separate connections. Phase 3C changed the order (the sermon's row first) and did both again ([handoff](HANDOFF-3C.md)). A4.2B ran its races on a disposable local PostgreSQL started for the run and deleted after it, never on a shared database: the committed tests assert the outcomes and the locks' order, and the race results are in its [handoff](HANDOFF-PS-A4.2B.md).
 
 ## Data model direction (later phases)
 
