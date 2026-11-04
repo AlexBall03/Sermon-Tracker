@@ -498,7 +498,7 @@ The record of each create and duplicate that was carried out, so the same reques
 
 #### Locks and concurrency
 
-Every change (create, duplicate, rename, replace, delete, setting the default) is one transaction that locks the account's `users` row first (`SELECT … FOR NO KEY UPDATE`) and the preset's row second (`FOR UPDATE`, or `FOR KEY SHARE` when choosing it as the default). One order everywhere, so no two changes wait on each other in a cycle. Holding the account row:
+Every change (create, duplicate, rename, replace, delete, setting the default) is one transaction that locks the account's `users` row first (`SELECT … FOR NO KEY UPDATE`). Only a change that needs a preset's row locks it, and always second: rename, replace, and delete take it `FOR UPDATE`, and choosing a personal preset as the default takes it `FOR KEY SHARE`. A create locks no preset row, and a duplicate reads its source without a row lock, protected by the account lock that every change to that source takes first. One order everywhere, so no two changes wait on each other in a cycle. Holding the account row:
 
 - puts an account's changes one after another, which is what keeps the 100-preset limit true under parallel creates (the count is read with the row held);
 - serializes a change with `requestDeletion`, whose `UPDATE` of the same row waits for it or is waited for; the status and setup are read again under the lock, so nothing is made or changed for an account being deleted, even when its request was authorised just before;
