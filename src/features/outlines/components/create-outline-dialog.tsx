@@ -23,7 +23,8 @@ import { formatNumber } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-import { outlineHref } from "../outlines-query";
+import { newOutlineHref, outlineHref } from "../outlines-query";
+import { UnreadableDefaultConfirm } from "./unreadable-default-confirm";
 import { useStartOutline } from "./use-start-outline";
 
 /** As in `RelateIdea`: a centred dialog where there is room, the whole of a small screen otherwise. */
@@ -81,8 +82,11 @@ function SermonPicker({
   const statuses = useT("ideas").statuses;
   const locale = useLocale();
   const { start, starting } = useStartOutline();
+  const create = useT("outlines").create;
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  /** The sermon whose outline waits on the person's choice of Balanced (A4.2C). */
+  const [fallback, setFallback] = useState<string | null>(null);
 
   const q = normaliseSearch(text);
   const { loading, matches, failed, typed, retry } = useIdeaSearch(q, "sermon", {
@@ -102,7 +106,20 @@ function SermonPicker({
     const outcome = await start(match.id);
     onBusy(false);
     if (outcome.ok) onClose();
+    else if (outcome.code === "default_unreadable") setFallback(match.id);
     else if (outcome.message) setProblem(outcome.message);
+  }
+
+  /** The person chose Balanced: the same sermon, so the same outline ID. */
+  async function withBalanced() {
+    if (!fallback) return { ok: false, message: "" };
+    onBusy(true);
+    const outcome = await start(fallback, { appearance: "balanced" });
+    onBusy(false);
+    setFallback(null);
+    if (outcome.ok) onClose();
+    else if (outcome.message) setProblem(outcome.message);
+    return outcome;
   }
 
   function newSermon() {
@@ -116,7 +133,13 @@ function SermonPicker({
           return true;
         }
         void start(idea.id).then((outcome) => {
-          if (!outcome.ok && outcome.message) toast({ message: outcome.message });
+          // The picker has closed: the choice is made where a sermon is given its outline.
+          if (outcome.code === "default_unreadable") {
+            toast({
+              message: outcome.message,
+              action: { label: create.fallbackReview, href: newOutlineHref(idea.id) },
+            });
+          } else if (!outcome.ok && outcome.message) toast({ message: outcome.message });
         });
         return true;
       },
@@ -125,6 +148,12 @@ function SermonPicker({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-busy={starting !== null}>
+      <UnreadableDefaultConfirm
+        open={fallback !== null}
+        busy={starting !== null}
+        onConfirm={withBalanced}
+        onCancel={() => setFallback(null)}
+      />
       <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="min-w-0">
           <DialogTitle>{t.title}</DialogTitle>

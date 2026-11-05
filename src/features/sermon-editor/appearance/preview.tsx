@@ -2,11 +2,11 @@
 
 import { Editor, type JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { findComponent } from "@/features/editor-lab/styles/component-node";
-import { isDirty } from "@/features/editor-lab/styles/draft";
-import type { ComponentKind } from "@/features/editor-lab/styles/model";
+import { isDirty, type Draft } from "@/features/editor-lab/styles/draft";
+import type { ComponentKind, DocumentStyles } from "@/features/editor-lab/styles/model";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
 import type { Dictionaries } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
@@ -150,19 +150,73 @@ export function AppearancePreview({
   caption: string;
   className?: string;
 }) {
+  const live = session.editor;
+  // The outline's own settings (numbering, translation, styles), read when the blocks are loaded.
+  const attrs = useMemo(
+    () => live.state.doc.toJSON().attrs as Record<string, unknown>,
+    // Read again with the blocks, as the preview always has: not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [live, content],
+  );
+  return (
+    <PreviewSurface
+      attrs={attrs}
+      // The paper the outline is drawn on (Print Layout), so colors show as they will there.
+      paper={live.view.dom.getAttribute("data-paper")}
+      // The outline's committed styles and layout, followed (an Undo underneath shows here too).
+      styles={session.stored}
+      layout={live.state.doc.attrs.layout as unknown}
+      draft={session.draft}
+      content={content}
+      mark={mark}
+      caption={caption}
+      className={className}
+    />
+  );
+}
+
+/**
+ * The preview itself, with no session (A4.2C): what Outline Settings shows
+ * through `AppearancePreview`, and what My Presets shows of a saved preset.
+ * One read-only editor of the same extensions (`labV4Extensions`), loaded
+ * with `loadV4` and shown a draft through `setStylesPreview`, exactly as
+ * before; nothing here resolves a style another way.
+ */
+export function PreviewSurface({
+  attrs,
+  paper = null,
+  styles,
+  layout,
+  draft = null,
+  content,
+  mark = null,
+  caption,
+  className,
+}: {
+  /** The document's attributes the blocks are loaded with; read again only when this object or `content` changes. */
+  attrs: Record<string, unknown>;
+  paper?: string | null;
+  /** The committed styles and layout to draw, followed when they change. */
+  styles: DocumentStyles | null;
+  layout: unknown;
+  draft?: Draft | null;
+  /** The preview's blocks; read again only when this array changes (memoize it). */
+  content: JSONContent[];
+  /** A component to mark and bring into view (view state of the preview only). */
+  mark?: string | null;
+  caption: string;
+  className?: string;
+}) {
   const t = useT("editorLab");
   const locale = useLocale();
   const host = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<Editor | null>(null);
-  const live = session.editor;
   const labels = t.v4.components;
 
   // One read-only editor for as long as the window is open.
   useEffect(() => {
     if (!host.current) return;
-    // The paper the outline is drawn on (Print Layout), so colors show as they will there.
-    const paper = live.view.dom.getAttribute("data-paper");
     const editor = new Editor({
       element: host.current,
       editable: false,
@@ -180,44 +234,41 @@ export function AppearancePreview({
       setPreview(null);
       editor.destroy();
     };
-  }, [live, locale, labels]);
+  }, [paper, locale, labels]);
 
   // The blocks, in a document with the outline's own settings (numbering, translation, styles).
   useEffect(() => {
     if (!preview || preview.isDestroyed) return;
-    const attrs = live.state.doc.toJSON().attrs as Record<string, unknown>;
     const loaded = loadV4(preview, { type: "doc", attrs, content }, "appearance-preview");
     if (!loaded.ok) return;
     // A passage shows its verses (Regular Layout draws them only when expanded).
     preview.commands.setPassagesExpanded(true);
-  }, [preview, live, content]);
+  }, [preview, attrs, content]);
 
-  // The outline's committed styles, followed (an Undo underneath shows here too).
-  const stored = session.stored;
+  // The committed styles, followed.
+  const stored = styles;
   useEffect(() => {
     if (!preview || preview.isDestroyed) return;
     if (preview.state.doc.attrs.styles === stored) return;
     preview.view.dispatch(
       preview.state.tr.setDocAttribute("styles", stored).setMeta("addToHistory", false),
     );
-  }, [preview, stored, content]);
+  }, [preview, stored, attrs, content]);
 
-  // The outline's committed layout (its numbering, A4.2A), followed after an Apply or an Undo.
-  const layout = live.state.doc.attrs.layout as unknown;
+  // The committed layout (its numbering, A4.2A), followed after an Apply or an Undo.
   useEffect(() => {
     if (!preview || preview.isDestroyed) return;
     if (preview.state.doc.attrs.layout === layout) return;
     preview.view.dispatch(
       preview.state.tr.setDocAttribute("layout", layout).setMeta("addToHistory", false),
     );
-  }, [preview, layout, content]);
+  }, [preview, layout, attrs, content]);
 
   // The draft, as the outline shows it.
-  const { draft } = session;
   useEffect(() => {
     if (!preview || preview.isDestroyed) return;
-    preview.commands.setStylesPreview(isDirty(draft) ? { draft } : null);
-  }, [preview, draft, stored, content]);
+    preview.commands.setStylesPreview(draft && isDirty(draft) ? { draft } : null);
+  }, [preview, draft, stored, attrs, content]);
 
   // The component being customized, marked and brought into view inside the preview.
   useEffect(() => {
@@ -229,7 +280,7 @@ export function AppearancePreview({
     if (!(dom instanceof HTMLElement) || !box) return;
     const top = dom.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
     box.scrollTo?.({ top: Math.max(0, top - 24), behavior: "smooth" });
-  }, [preview, mark, content]);
+  }, [preview, mark, attrs, content]);
 
   return (
     <figure

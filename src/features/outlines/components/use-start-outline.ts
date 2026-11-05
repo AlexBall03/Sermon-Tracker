@@ -17,6 +17,12 @@ import { outlineHref } from "../outlines-query";
  * The outline's ID is made here, once for each sermon, so asking twice or
  * again after a lost answer makes one outline; the table's UNIQUE (sermon_id)
  * stands behind it.
+ *
+ * While conversion is on, a new outline starts from the account default
+ * (A4.2C). When that default cannot be read the answer is
+ * `default_unreadable` and nothing is made; the caller asks the person and,
+ * if they choose Balanced, calls `start` again with `{ appearance: "balanced" }`
+ * for the same sermon, which sends the same outline ID.
  */
 export function useStartOutline() {
   const router = useRouter();
@@ -27,13 +33,16 @@ export function useStartOutline() {
   const busy = useRef(false);
 
   const start = useCallback(
-    async (sermonId: string): Promise<ActionResult> => {
+    async (
+      sermonId: string,
+      options?: { appearance: "balanced" },
+    ): Promise<ActionResult & { code?: OutlineActionResult["code"] }> => {
       if (busy.current) return { ok: false, message: "" };
       busy.current = true;
       setStarting(sermonId);
       const id = ids.current.get(sermonId) ?? crypto.randomUUID();
       ids.current.set(sermonId, id);
-      const outcome = await createOutline(sermonId, id).catch((): OutlineActionResult => ({
+      const outcome = await createOutline(sermonId, id, options).catch((): OutlineActionResult => ({
         ok: false,
         message: offline,
       }));

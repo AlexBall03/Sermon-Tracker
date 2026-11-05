@@ -18,6 +18,9 @@ export const outlines = {
     exists: "This sermon already has an outline.",
     created: "Outline created.",
     notCreated: "The outline could not be created. Try again.",
+    /** A4.2C: the account default is a personal preset that can no longer be read. Nothing was made. */
+    defaultUnreadable: "Your default preset can't be read, so the outline wasn't created.",
+    accountUnavailable: "Your account can't make changes right now.",
     deleted: "Outline deleted. The sermon was kept.",
     notDeleted: "The outline could not be deleted. Try again.",
     numberingSaved: "Numbering saved.",
@@ -83,6 +86,13 @@ export const outlines = {
     notSermonTitle: "Only a sermon can have an outline",
     notSermonBody: "File this idea as a sermon first, then come back to give it an outline.",
     backToIdea: "Back to the idea",
+    /** A4.2C: asked when the account default preset can no longer be read. */
+    fallbackTitle: "Your default preset can't be read",
+    fallbackBody:
+      "The preset you chose as your default for new outlines can't be read. You can create this outline with Balanced instead. Your default setting stays as it is; you can change it in Settings → Appearance.",
+    fallbackConfirm: "Create with Balanced",
+    /** The way to the choice, from a message shown after the place that asked has closed. */
+    fallbackReview: "Choose",
   },
   /** The overview at /outlines. */
   overview: {

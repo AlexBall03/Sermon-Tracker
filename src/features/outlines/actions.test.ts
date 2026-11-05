@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ideas, outlineEntries, sermonOutlines, users } from "@/db/schema";
+import { ideas, outlineEntries, sermonOutlineDocuments, sermonOutlines, users } from "@/db/schema";
 import { createTestDatabase } from "@/db/testing";
 import type { Database } from "@/db/types";
 import type { Authorization } from "@/features/auth/access";
@@ -444,5 +445,82 @@ describe("an outline that has become a sermon document (A2.2)", () => {
       code: "document_authoritative",
       message: expect.stringContaining("documento del sermón"),
     });
+  });
+});
+
+describe("creating an outline and the conversion switch (A4.2C)", () => {
+  const documents = () => db.select().from(sermonOutlineDocuments);
+  const grandfather = (id: string) =>
+    db.update(users).set({ onboardingStatus: "grandfathered" }).where(eq(users.id, id));
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("makes a legacy outline exactly as before while the switch is off", async () => {
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "off");
+    await grandfather(me);
+    signInAs(me);
+    const made = await createOutline(await stored("Grace"), crypto.randomUUID());
+    expect(made).toMatchObject({ ok: true, revision: 0 });
+    expect(await documents()).toHaveLength(0);
+    // The fallback is never asked for, and changes nothing, while the switch is off.
+    const again = await createOutline(await stored("Hope"), undefined, { appearance: "balanced" });
+    expect(again.ok).toBe(true);
+    expect(await documents()).toHaveLength(0);
+  });
+
+  it("makes the outline with its document, from the default, while the switch is on", async () => {
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "on");
+    await grandfather(me);
+    signInAs(me);
+    const sermon = await stored("Grace");
+    const id = crypto.randomUUID();
+    const made = await createOutline(sermon, id);
+    expect(made).toMatchObject({ ok: true, outlineId: id });
+    const [row] = await documents();
+    expect(row.outlineId).toBe(id);
+    expect(row.revision).toBe(0);
+    // A retry, even naming Balanced, answers with the one there is and restyles nothing.
+    expect(await createOutline(sermon, id, { appearance: "balanced" })).toMatchObject({
+      ok: false,
+      code: "exists",
+      outlineId: id,
+    });
+    expect(await documents()).toEqual([row]);
+  });
+
+  it("refuses options it does not know, before any work", async () => {
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "on");
+    await grandfather(me);
+    signInAs(me);
+    const sermon = await stored("Grace");
+    for (const options of [
+      { appearance: "minimal" },
+      { appearance: "balanced", ownerId: other },
+      { presetId: crypto.randomUUID() },
+      "balanced",
+      null,
+    ]) {
+      expect(
+        await createOutline(sermon, undefined, options),
+        JSON.stringify(options),
+      ).toMatchObject({
+        ok: false,
+        code: "invalid",
+      });
+    }
+    expect(await db.select().from(sermonOutlines)).toHaveLength(0);
+  });
+
+  it("says so, with nothing made, when the account cannot make changes", async () => {
+    vi.stubEnv("SERMON_DOCUMENT_CONVERSION", "on");
+    // Still owes first-time setup: refused under the account's lock.
+    signInAs(me);
+    expect(await createOutline(await stored("Grace"))).toMatchObject({
+      ok: false,
+      code: "account_unavailable",
+    });
+    expect(await db.select().from(sermonOutlines)).toHaveLength(0);
   });
 });

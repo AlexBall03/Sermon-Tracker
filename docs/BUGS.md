@@ -209,6 +209,80 @@ setSelection must point at the current document`. It now answers only about
 - In the acceptance pass `pagination.spec.ts` P3 (the caret across a page gap) failed against the owner's dev server that had been running all session.
 - It passed against a fresh Turbopack server with the same code, and on webpack with both `7c9d3b6` and the working tree. No defect was found; no entry is open for it.
 
+## Note (A4.2C): the development database has no migration 0021
+
+- **Found:** A4.2C's verification, 4 November 2026, on `npm run dev:next`.
+  Every signed-in page fails ("Something went wrong") because the account
+  read selects A4.2B's three `users` columns, which the development
+  database does not have yet.
+- **Not a defect in the code:** `0021` (A4.2B) has not been applied to
+  development; applying it (`npm run dev` migrates) is the owner's.
+- **Effect on verification:** the signed-in Playwright journeys
+  (`tests/e2e/appearance-presets.spec.ts`, `sermon-appearance.spec.ts`) and
+  the lab specs, which are signed in, could not run in A4.2C. Run them after
+  applying `0021` (`docs/HANDOFF-PS-A4.2C.md`, owner checklist).
+- **Resolved the same day:** the owner applied `0021` to development; the
+  preset journey and the lab specs then ran (`docs/HANDOFF-PS-A4.2C.md`,
+  "Browser runs").
+
+## TEST-002: `sermon-compatibility` clicked "As a subpoint" mid-animation
+
+- **Severity:** P2 (test only). **Status:** Fixed (A4.2C verification, test change only).
+- **Seen:** `tests/e2e/sermon-compatibility.spec.ts`, the saved-point
+  journey: `locator.check: Element is outside of the viewport` on the
+  "As a subpoint" radio of Add from a saved point.
+- **Pre-existing, proved:** the unchanged spec at `27a9b90` (a `git archive`
+  copy served by its own dev server, A4.2C absent) failed the same way once
+  in two warm runs. On A4.2C's code it failed twice in two.
+- **Cause (measured):** the radio is a visually hidden input (`peer sr-only`
+  in `Segmented`). With a probe that measured it before the click, it sat
+  at (640, 186) inside the 1280×720 viewport and the dialog, and the
+  journey passed. The spec used `check({ force: true })`, which skips
+  Playwright's wait for the element to be stable, so it clicked while the
+  dialog's opening animation (zoom and fade) was still running. A person
+  clicks the visible label, and the input is reachable by keyboard: not an
+  application defect.
+- **Fix:** the spec clicks the visible label ("As a subpoint") and asserts the
+  radio is checked. Afterwards, desktop passed 1 + 3 (`--repeat-each=3`), and
+  mobile passed.
+- **Not changed:** the idea page's `check({ force: true })` on the Sermon
+  radio (not in an animating dialog; passes in every spec).
+
+## TEST-003: the legacy outline editor specs fail at the baseline
+
+- **Severity:** P2 (tests of the legacy editor, which production still uses
+  while conversion is off). **Status:** Open, pre-existing, cause not traced.
+- **Seen (A4.2C verification), on a production build served with
+  `SERMON_DOCUMENT_CONVERSION=off`:**
+  - `outlines-integration.spec.ts` fails at line 197: after "Add point",
+    heading "II." is not focused.
+  - `outline-editor.spec.ts` times out at line 166, clicking the "Heading,
+    I." box before "Move down".
+- **Pre-existing, proved:** both fail at the same lines on a production build
+  of `27a9b90`, served from a `git archive` copy with the same switch. Both
+  specs are unchanged since then.
+- **Before that point both pass:** a new outline is made in the legacy
+  editor, a saved point is added, and words are saved. A4.2C's creation path
+  works with conversion off; a separate probe confirmed no sermon document
+  and no default applied.
+- **On a dev server** both also fail earlier and for another reason:
+  `locator('[data-status]')` also matches the Next.js dev-tools badge (strict
+  mode). They are written for the production build.
+- **Next:** trace the focus and toolbar steps in the legacy editor (or update
+  the specs if the editor changed on purpose), in a checkpoint the owner
+  names.
+
+## UX-003: the default for new outlines looked unresponsive
+
+- **Severity:** P2. **Status:** Fixed (A4.2C).
+- **Seen:** `appearance-presets.spec.ts`. The radio for the default stayed on
+  the old choice until the server answered, so a click looked as if nothing
+  happened.
+- **Fix:** while the change is sent, the radio shows the choice (the group is
+  `aria-busy`, and every other change is disabled). It then settles on what
+  the server answered, or on what a read back proved; a failure goes back to
+  the current default. Unit tests, plus the browser journey, passed after.
+
 ## Open, carried from earlier handoffs (not yet re-run in A4.1)
 
 - **BUG-005:** `src/features/ideas/components/idea-editor.test.tsx` was

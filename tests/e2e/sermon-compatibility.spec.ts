@@ -178,7 +178,11 @@ test.describe("legacy compatibility in the sermon editor (A3.1), signed in", () 
       const picker = page.getByRole("dialog", { name: "Add from a saved point" });
       await expect(picker).toBeVisible();
       await expect(picker).toContainText("Its notes and passages stay with the saved point");
-      await picker.getByRole("radio", { name: "As a subpoint" }).check({ force: true });
+      // The visible choice, as a person clicks it. `check({ force: true })` on the visually
+      // hidden input skipped the wait for the dialog's opening animation to settle and clicked
+      // mid-zoom ("Element is outside of the viewport"; docs/BUGS.md, TEST-002).
+      await picker.getByText("As a subpoint", { exact: true }).click();
+      await expect(picker.getByRole("radio", { name: "As a subpoint" })).toBeChecked();
       await picker.getByRole("searchbox").fill(pointTitle);
       const add = picker.getByRole("button", { name: `Add ${pointTitle}` });
       await add.click();

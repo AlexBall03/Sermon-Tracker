@@ -19,6 +19,7 @@ import { createOutline, getOutline, listOutlines } from "@/features/outlines/out
 import type { OutlinesQuery } from "@/features/outlines/outlines-query";
 import { searchLocalOutlines } from "@/features/offline/outlines/search";
 import { convertOutline } from "@/features/sermon-editor/persistence/conversion";
+import { newOutlineDocument } from "@/features/sermon-editor/persistence/new-outline";
 import { applyMutation } from "./apply";
 import type { SyncEnvelope, SyncType } from "./model";
 import { offlineOutlines, outlineManifestFor } from "./snapshot";
@@ -458,5 +459,85 @@ describe("the offline manifest's word on content authority (A2.3D)", () => {
     const [whole] = await offlineOutlines(db, me, [outlineId]);
     expect(whole).not.toHaveProperty("documentAuthoritative");
     expect(JSON.stringify(whole)).not.toContain('"type":"doc"');
+  });
+});
+
+describe("a genuinely new outline made with its sermon document (A4.2C)", () => {
+  /** A new outline as the action makes it while conversion is on. */
+  async function initialized() {
+    await db.update(users).set({ onboardingStatus: "grandfathered" }).where(eq(users.id, me));
+    const sermon = await createIdea(
+      db,
+      me,
+      ideaInputSchema.parse({ kind: "sermon", title: "New" }),
+    );
+    const made = await createOutline(
+      db,
+      me,
+      sermon!.id,
+      crypto.randomUUID(),
+      newOutlineDocument(me, "default"),
+    );
+    if (made.status !== "created") throw new Error(made.status);
+    return made.outline;
+  }
+
+  it("is document-authoritative in the manifest from the first read a device makes", async () => {
+    const outline = await initialized();
+    const listed = (await outlineManifestFor(db, me)).outlines.find(
+      (item) => item.id === outline.id,
+    );
+    expect(listed).toMatchObject({ id: outline.id, revision: 0, documentAuthoritative: true });
+    const [whole] = await offlineOutlines(db, me, [outline.id]);
+    expect(JSON.stringify(whole)).not.toContain('"type":"doc"');
+  });
+
+  it("refuses what an older device would queue against its empty legacy copy, writing nothing", async () => {
+    const outline = await initialized();
+    const before = {
+      outline: await db.select().from(sermonOutlines).where(eq(sermonOutlines.id, outline.id)),
+      entries: await db
+        .select()
+        .from(outlineEntries)
+        .where(eq(outlineEntries.outlineId, outline.id)),
+      documents: await db.select().from(sermonOutlineDocuments),
+      operations: await db.select().from(syncOperations),
+    };
+    for (const envelope of [
+      change(
+        "outline.entry.add",
+        {
+          entryId: crypto.randomUUID(),
+          type: "point",
+          parentId: null,
+          position: 0,
+          title: "Offline",
+        },
+        0,
+        me,
+        outline.id,
+      ),
+      change(
+        "outline.numbering",
+        { numbering: { version: 1, preset: "decimal" } },
+        undefined,
+        me,
+        outline.id,
+      ),
+    ]) {
+      expect(await apply(envelope)).toEqual({
+        status: "conflict",
+        conflict: { reason: "documentAuthoritative" },
+      });
+    }
+    expect({
+      outline: await db.select().from(sermonOutlines).where(eq(sermonOutlines.id, outline.id)),
+      entries: await db
+        .select()
+        .from(outlineEntries)
+        .where(eq(outlineEntries.outlineId, outline.id)),
+      documents: await db.select().from(sermonOutlineDocuments),
+      operations: await db.select().from(syncOperations),
+    }).toEqual(before);
   });
 });

@@ -84,6 +84,25 @@ export function snapshotAppearance(
   return structuredClone(snapshot);
 }
 
+/**
+ * The outline-wide styles a snapshot gives a document, as `doc.attrs.styles`
+ * stores them: the inverse of `snapshotAppearance` (A4.2C, a new outline
+ * started from a default). The numbering is the snapshot's other half and
+ * goes in the layout. A copy: nothing in it refers back to the snapshot.
+ */
+export function snapshotStyles(snapshot: AppearanceSnapshot): DocumentStyles {
+  const styles: DocumentStyles = {
+    version: 1,
+    preset: snapshot.preset,
+    presetRevision: snapshot.presetRevision,
+  };
+  if (snapshot.defaults) styles.defaults = snapshot.defaults;
+  if (snapshot.named) styles.named = snapshot.named;
+  if (snapshot.components) styles.components = snapshot.components;
+  if (snapshot.levels) styles.levels = snapshot.levels;
+  return structuredClone(styles);
+}
+
 const filled = <T extends object>(below: T | undefined, above: T | undefined): T | undefined => {
   const value = { ...(below ?? {}), ...(above ?? {}) } as T;
   return Object.keys(value).length ? value : undefined;

@@ -3,6 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { appearancePresets, users, type AppUser } from "@/db/schema";
 import { isForeignKeyViolation, type Database } from "@/db/types";
 import type { AppearanceSnapshot } from "@/features/editor-lab/styles/snapshot";
+import { needsOnboarding } from "@/features/onboarding/model";
+import type { OutlineStart } from "@/features/sermon-editor/persistence/initialization";
 import { fallbackBuiltinPreset, type BuiltinPresetId } from "./builtin";
 import type { DefaultTarget } from "./model";
 import { readStoredAppearance } from "./model";
@@ -151,9 +153,9 @@ export type ResolvedDefault =
   | { source: "unreadable"; presetId: string; revision: number };
 
 /**
- * What a new outline would start from (A4.2C's entry point; nothing calls it
- * yet): the built-in preset, or the personal preset's validated snapshot to
- * copy. One read. A personal default that does not parse is `unreadable`,
+ * What a new outline would start from, as a plain read with no lock: the
+ * built-in preset, or the personal preset's validated snapshot to copy. One
+ * read. Creating an outline uses `startForNewOutline`, which holds the rows. A personal default that does not parse is `unreadable`,
  * never quietly replaced.
  */
 export async function resolveAccountDefault(
@@ -183,4 +185,65 @@ export async function resolveAccountDefault(
   return snapshot
     ? { source: "personal", presetId: target.presetId, snapshot, revision }
     : { source: "unreadable", presetId: target.presetId, revision };
+}
+
+export type NewOutlineStart =
+  | { status: "start"; start: OutlineStart }
+  /** The personal default does not parse: nothing is put in its place without the person's choice. */
+  | { status: "default_unreadable" }
+  | { status: "account_unavailable" };
+
+/**
+ * What a genuinely new outline starts from (A4.2C), read inside the outline's
+ * own creating transaction with the rows held, so the default and its
+ * snapshot are the ones in force when the outline commits:
+ *
+ * 1. The caller already holds the sermon's `ideas` row (`FOR UPDATE`).
+ *    Account deletion takes `ideas` before `users`, so this order is the
+ *    only one that cannot deadlock with it.
+ * 2. The account's row `FOR SHARE`, rechecked as active and past setup.
+ *    Every default change and every preset change locks this row `FOR NO KEY
+ *    UPDATE` first, so none of them can commit between this read and the
+ *    outline's commit: each waits, then finds the outline already made.
+ * 3. A personal default's preset `FOR KEY SHARE`, read only here.
+ *
+ * `balanced` is the person's explicit choice after `default_unreadable`
+ * (owner's decision): built-in Balanced for this outline, whatever the
+ * default says by now. The account row is never written.
+ */
+export async function startForNewOutline(
+  tx: Database,
+  ownerId: string,
+  choice: "default" | "balanced",
+): Promise<NewOutlineStart> {
+  const [row] = await tx
+    .select({
+      status: users.status,
+      onboardingStatus: users.onboardingStatus,
+      defaultBuiltinAppearancePreset: users.defaultBuiltinAppearancePreset,
+      defaultPersonalAppearancePresetId: users.defaultPersonalAppearancePresetId,
+      appearanceDefaultRevision: users.appearanceDefaultRevision,
+    })
+    .from(users)
+    .where(eq(users.id, ownerId))
+    .for("share");
+  if (!row || row.status !== "active" || needsOnboarding(row)) {
+    return { status: "account_unavailable" };
+  }
+  if (choice === "balanced") {
+    return { status: "start", start: { kind: "builtin", preset: fallbackBuiltinPreset } };
+  }
+  const { target } = accountDefaultOf(row);
+  if (target.kind === "builtin") {
+    return { status: "start", start: { kind: "builtin", preset: target.preset } };
+  }
+  const [preset] = await tx
+    .select({ appearance: appearancePresets.appearance })
+    .from(appearancePresets)
+    .where(and(eq(appearancePresets.id, target.presetId), eq(appearancePresets.ownerId, ownerId)))
+    .for("key share");
+  const snapshot = preset ? readStoredAppearance(preset.appearance) : null;
+  return snapshot
+    ? { status: "start", start: { kind: "snapshot", snapshot } }
+    : { status: "default_unreadable" };
 }

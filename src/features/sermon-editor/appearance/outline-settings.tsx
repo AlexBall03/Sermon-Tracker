@@ -34,6 +34,7 @@ import { NumberingSettings } from "./numbering-settings";
 import { AppearancePreview, sampleIds, sampleLevelIds, sampleOutline } from "./preview";
 import { OutlineResets } from "./resets-menu";
 import { useAppearanceSession, type AppearanceSession } from "./session";
+import { OutlinePresets } from "@/features/appearance-presets/components/outline-presets";
 
 /*
  * Outline Settings (A1-UI.2B.2): the home of everything configured for the
@@ -266,6 +267,8 @@ function OutlineTab({
         conflict={session.conflictFor({ layer: "preset" })}
         update={revised ? () => choose(presetId as UserPresetId) : undefined}
       />
+      {/* The account's own presets (A4.2C), where the host provides them. */}
+      <OutlinePresets session={session} />
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">{a.textStyle}</span>
         <Select

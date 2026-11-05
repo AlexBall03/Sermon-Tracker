@@ -10,6 +10,7 @@ import { useT } from "@/i18n/client";
 import type { ActionResult } from "@/lib/action-result";
 import { routes } from "@/lib/site";
 import { createOutline, type OutlineActionResult } from "../actions";
+import { UnreadableDefaultConfirm } from "./unreadable-default-confirm";
 
 /**
  * Makes a sermon's outline and opens it. The outline's ID is made here, once,
@@ -23,21 +24,27 @@ export function CreateOutlineButton({ sermonId }: { sermonId: string }) {
   const [id] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
+  /** The default could not be read (A4.2C): waiting on the person's choice of Balanced. */
+  const [fallback, setFallback] = useState(false);
 
-  async function create() {
-    if (busy) return;
+  async function create(options?: { appearance: "balanced" }): Promise<ActionResult> {
+    if (busy) return { ok: false, message: "" };
     setBusy(true);
     setResult(null);
-    const outcome = await createOutline(sermonId, id).catch((): OutlineActionResult => ({
+    // The same outline ID every time, Balanced or not: a lost answer never makes a second.
+    const outcome = await createOutline(sermonId, id, options).catch((): OutlineActionResult => ({
       ok: false,
       message: offline,
     }));
+    setFallback(false);
     if (outcome.outlineId) {
       router.replace(`${routes.outlines}/${outcome.outlineId}`);
-      return;
+      return outcome;
     }
     setBusy(false);
-    setResult(outcome);
+    if (outcome.code === "default_unreadable" && !options) setFallback(true);
+    else setResult(outcome);
+    return outcome;
   }
 
   return (
@@ -47,6 +54,12 @@ export function CreateOutlineButton({ sermonId }: { sermonId: string }) {
         {busy ? t.creating : t.action}
       </Button>
       <ActionStatus result={result} />
+      <UnreadableDefaultConfirm
+        open={fallback}
+        busy={busy}
+        onConfirm={() => create({ appearance: "balanced" })}
+        onCancel={() => setFallback(false)}
+      />
     </div>
   );
 }

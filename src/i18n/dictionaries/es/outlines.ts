@@ -17,6 +17,9 @@ export const outlines: Untranslated<typeof english> = {
     exists: "Este sermón ya tiene un bosquejo.",
     created: "Bosquejo creado.",
     notCreated: "No se pudo crear el bosquejo. Inténtalo de nuevo.",
+    defaultUnreadable:
+      "No se puede leer tu estilo predefinido por defecto, así que no se creó el bosquejo.",
+    accountUnavailable: "Tu cuenta no puede hacer cambios en este momento.",
     deleted: "Bosquejo eliminado. El sermón se conservó.",
     notDeleted: "No se pudo eliminar el bosquejo. Inténtalo de nuevo.",
     numberingSaved: "Numeración guardada.",
@@ -80,6 +83,11 @@ export const outlines: Untranslated<typeof english> = {
     notSermonTitle: "Solo un sermón puede tener un bosquejo",
     notSermonBody: "Primero clasifica esta idea como sermón y luego vuelve para darle un bosquejo.",
     backToIdea: "Volver a la idea",
+    fallbackTitle: "No se puede leer tu estilo predefinido por defecto",
+    fallbackBody:
+      "El estilo predefinido que elegiste por defecto para los bosquejos nuevos no se puede leer. Puedes crear este bosquejo con Equilibrada. Tu configuración por defecto no cambia; puedes cambiarla en Configuración → Apariencia.",
+    fallbackConfirm: "Crear con Equilibrada",
+    fallbackReview: "Elegir",
   },
   overview: {
     metaTitle: "Bosquejos",

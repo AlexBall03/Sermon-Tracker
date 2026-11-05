@@ -254,7 +254,12 @@ Approved for the whole program: one sermon identity with one unified rich-text d
         - an account default (built-in Minimal, Balanced, or Expressive, or a personal preset; Balanced unless chosen), which falls back to Balanced in the same transaction when its preset is deleted;
         - revision checks on every change, safe retries of creates and duplicates (an operation ledger), and account deletion that removes them;
         - races verified on a disposable multi-connection PostgreSQL.
-        - Not done: A4.2C (My Presets, Save as Preset, applying one, new outlines from the default).
+        - Not done in A4.2B: their screens (A4.2C, below).
+      - **A4.2C: Personal Preset Management & Editor Integration** (4 November 2026, not yet committed; [handoff](HANDOFF-PS-A4.2C.md)):
+        - My presets in Settings → Appearance: the default for new outlines, preview, rename, duplicate, delete;
+        - in Outline Settings: preview a personal preset as a draft (Apply, Cancel, one undo step), Save as preset, Update a preset;
+        - new outlines start with their sermon document and a copy of the default, in one transaction, while conversion is on; an unreadable default offers Balanced;
+        - races verified on a disposable multi-connection PostgreSQL. The signed-in journeys that cover A4.2C pass on desktop and mobile against development; the legacy outline editor specs fail at the baseline as well (TEST-003, pre-existing; see the handoff).
     - **Next:** the Scripture passage view and expansion, color controls and theme tokens, the Outline Layout engine and panel, toolbar, text styles, menus, and keys (with the owner's requests in the handoff above), and a stand-in docked panel; each starts when the owner says so
 - **PS-2: Document Data Model, Additive Schema & Legacy Conversion Foundation**
 - **PS-3a: Synchronization protocol compatibility** (before any document is queued offline) and **PS-3b: Document Persistence, Revisioning & Offline Synchronization**

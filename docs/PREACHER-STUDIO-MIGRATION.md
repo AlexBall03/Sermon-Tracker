@@ -721,7 +721,7 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
       - **A1-UI.2B:**
         - Minimal and Expressive, and the preset chooser;
         - outline-wide and per-component customization, and drawing a node's own appearance;
-        - formatting inheritance, reset and restore, and saved personal styles (**Implemented, storage only:** A4.2B, 4 November 2026, an account's own appearance presets and its default, with no screens; their UI is A4.2C, **Approved**, not built; [handoff](HANDOFF-PS-A4.2B.md));
+        - formatting inheritance, reset and restore, and saved personal styles (**Implemented:** A4.2B, 4 November 2026, an account's own appearance presets and its default, [handoff](HANDOFF-PS-A4.2B.md); A4.2C, 4 November 2026, My presets in Settings, presets in Outline Settings, and new outlines started from the default while conversion is on, [handoff](HANDOFF-PS-A4.2C.md));
         - appearance controls discoverable and understandable without knowledge of presets, semantic styles, or component schemas.
         - **Open decision:** where a chosen preset is kept.
       - **A1-UI.2C:**

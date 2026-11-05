@@ -99,8 +99,10 @@ const sermon = {
 };
 
 /** What became of an attempt to make an outline. */
-export type CreateOutlineOutcome =
+export type CreateOutlineOutcome<Reason extends string = never> =
   | { status: "created"; outline: OutlineRecord }
+  /** The initializer refused before anything was written (A4.2C). */
+  | { status: "refused"; reason: Reason }
   /** The sermon has one already: that outline, exactly as it stands. */
   | { status: "exists"; outline: OutlineRecord }
   /** No such idea among the owner's. */
@@ -109,6 +111,23 @@ export type CreateOutlineOutcome =
   | { status: "not_sermon" }
   /** The ID could not be used. Nothing says why, and nothing was written. */
   | { status: "unavailable" };
+
+/** The outline just inserted, as an initializer is given it. */
+export type InsertedOutline = { id: string; revision: number; numbering: unknown };
+
+/**
+ * What gives a new outline more than its row, inside `createOutline`'s
+ * transaction (A4.2C): `prepare` may refuse with nothing written; `build`
+ * throws on failure, so nothing at all is kept.
+ */
+export type OutlineInitializer<Reason extends string> = {
+  prepare: (
+    tx: Database,
+  ) => Promise<
+    | { ok: true; build: (tx: Database, outline: InsertedOutline) => Promise<void> }
+    | { ok: false; reason: Reason }
+  >;
+};
 
 /**
  * Makes the outline of one of the owner's sermons, with no entries and the
@@ -119,14 +138,23 @@ export type CreateOutlineOutcome =
  * the idea's row locked, as recording an occasion checks it, which also puts
  * two requests for the same sermon one after the other. The table's own
  * UNIQUE (sermon_id) refuses a second whatever this misses.
+ *
+ * `initialize` (A4.2C, only while conversion is on) gives a genuinely new
+ * outline its first sermon document in this same transaction. It is asked
+ * only once the sermon is held and has no outline, so a retry or a second
+ * request (`exists`) never adds, replaces, or restyles a document. Its
+ * `prepare` runs before anything is written and may refuse; its `build`
+ * runs after the insert and throws on any failure, which rolls the outline
+ * back with it: both rows, or neither.
  */
-export async function createOutline(
+export async function createOutline<Reason extends string = never>(
   db: Database,
   ownerId: string,
   sermonId: string,
   id?: string,
-): Promise<CreateOutlineOutcome> {
-  return db.transaction(async (tx): Promise<CreateOutlineOutcome> => {
+  initialize?: OutlineInitializer<Reason>,
+): Promise<CreateOutlineOutcome<Reason>> {
+  return db.transaction(async (tx): Promise<CreateOutlineOutcome<Reason>> => {
     const [idea] = await tx
       .select({ id: ideas.id, kind: ideas.kind })
       .from(ideas)
@@ -139,12 +167,24 @@ export async function createOutline(
     if (before) return { status: "exists", outline: asOutline(before) };
     if (idea.kind !== "sermon") return { status: "not_sermon" };
 
+    const prepared = initialize ? await initialize.prepare(tx) : null;
+    if (prepared && !prepared.ok) return { status: "refused", reason: prepared.reason };
+
     const [created] = await tx
       .insert(sermonOutlines)
       .values({ ...(id ? { id } : {}), ownerId, sermonId: idea.id })
       .onConflictDoNothing()
       .returning();
-    if (created) return { status: "created", outline: asOutline(created) };
+    if (created) {
+      if (prepared) {
+        await prepared.build(tx, {
+          id: created.id,
+          revision: created.revision,
+          numbering: created.numberingConfig,
+        });
+      }
+      return { status: "created", outline: asOutline(created) };
+    }
 
     // Refused by the table: the sermon was given one a moment ago, or the ID is taken.
     const [after] = await tx.select().from(sermonOutlines).where(ofSermon).limit(1);

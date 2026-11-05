@@ -40,6 +40,7 @@ import {
 } from "../persistence/session/session";
 import { sessionWriteGuard } from "../persistence/session/write-guard";
 import { SermonWorkspace } from "../sermon-workspace";
+import { PresetLibraryProvider } from "@/features/appearance-presets/components/preset-library";
 import { DocumentPreview } from "./document-preview";
 import { Notice, RecoveryView } from "./recovery-view";
 import { describeSave, type SaveView } from "./save-status";
@@ -297,7 +298,8 @@ function SessionView({
         ? t.states.attachFailed
         : null;
     return (
-      <>
+      // The account's appearance presets, for Outline Settings (A4.2C): the production editor only.
+      <PresetLibraryProvider>
         <SermonWorkspace
           key={opened.key}
           document={opened.document}
@@ -335,7 +337,7 @@ function SessionView({
           }
         />
         {guard.dialog}
-      </>
+      </PresetLibraryProvider>
     );
   }
 
