@@ -2,7 +2,7 @@
 
 import type { Editor } from "@tiptap/react";
 import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, RotateCcw } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,7 +19,7 @@ import {
   type PageSetup,
   type PaperSize,
 } from "../pagination/geometry";
-import { layoutModes, printLayoutOf, type LayoutMode } from "../pagination/plugin";
+import { layoutModes, pageInForce, printLayoutOf, type LayoutMode } from "../pagination/plugin";
 import {
   layoutPreferences,
   readDefaultLayout,
@@ -38,6 +38,9 @@ import { Tool } from "./toolbar";
  */
 
 export type PageViewState = { layout: LayoutMode; setup: PageSetup };
+
+const sameMargins = (a: Margins, b: Margins) =>
+  a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left;
 
 /** The nearest ancestor that scrolls the writing area (the desk, or the window). */
 function scrollerOf(element: HTMLElement): HTMLElement {
@@ -102,8 +105,33 @@ export function usePageView() {
   const attach = useCallback((created: Editor) => {
     setEditor(created);
     const current = printLayoutOf(created.state);
-    if (current) setView({ layout: current.layout, setup: current.setup });
+    const page = pageInForce(created.state);
+    if (current && page) setView({ layout: current.layout, setup: page.setup });
   }, []);
+
+  // The view follows the editor (A4.3): in the sermon editor the paper and
+  // margins are the document's, so an Undo, a margin dragged, or another
+  // change to the page is shown in the controls as it is on the pages.
+  useEffect(() => {
+    if (!editor) return;
+    const follow = () => {
+      const current = printLayoutOf(editor.state);
+      const page = pageInForce(editor.state);
+      if (!current || !page) return;
+      setView((shown) =>
+        shown &&
+        shown.layout === current.layout &&
+        shown.setup.size === page.setup.size &&
+        sameMargins(shown.setup.margins, page.setup.margins)
+          ? shown
+          : { layout: current.layout, setup: page.setup },
+      );
+    };
+    editor.on("transaction", follow);
+    return () => {
+      editor.off("transaction", follow);
+    };
+  }, [editor]);
 
   /**
    * Regular or Print Layout, keeping the place in view. `remember`: this
@@ -118,9 +146,23 @@ export function usePageView() {
     setView((current) => (current ? { ...current, layout } : current));
   };
 
-  /** Paper and margins: applied to the pages at once, remembered for the next document when settled. */
+  /**
+   * Paper and margins: applied to the pages at once. In the v3 lab they are
+   * the device's, remembered for the next document when settled. In the
+   * sermon editor (A4.3) they are the sermon's own: shown while a margin is
+   * dragged, and written into its page, one undoable change, when settled;
+   * the device's remembered setup is never written or consulted for them.
+   */
   const applySetup = (setup: PageSetup, remember: boolean) => {
     if (!editor) return;
+    if (pageInForce(editor.state)?.fromDocument) {
+      // A tab that cannot edit (another tab is editing) changes no page.
+      if (!editor.isEditable) return;
+      if (!remember) editor.commands.previewPageSetup(setup);
+      // A page that could not be written (refused) shows its own margins again.
+      else if (!editor.commands.setPageSettings(setup)) editor.commands.previewPageSetup(null);
+      return;
+    }
     editor.commands.setPageSetup(setup);
     if (remember) writePageSetup(setup);
     setView((current) => (current ? { ...current, setup } : current));
@@ -272,9 +314,14 @@ function PageSetupMenu({ page }: { page: PageView }) {
   );
 }
 
-/** The size of the printed pages (@page), for the paper chosen, while in Print Layout. */
-export function PrintPageStyle({ page }: { page: PageView }) {
-  if (!page.print || !page.view) return null;
+/**
+ * The size of the printed pages (@page), for the paper chosen, while in Print
+ * Layout. `always`: whatever the screen's layout, for an editor that is always
+ * printed in Print Layout (the sermon editor, BUG-010): its print may begin in
+ * Regular Layout, and the paper's size must not depend on that (A4.3).
+ */
+export function PrintPageStyle({ page, always = false }: { page: PageView; always?: boolean }) {
+  if ((!always && !page.print) || !page.view) return null;
   return (
     <style>{`@media print { @page { size: ${papers[page.view.setup.size].css}; margin: 0; } }`}</style>
   );

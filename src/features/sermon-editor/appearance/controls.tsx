@@ -46,23 +46,27 @@ export function pendingParts(
   words: {
     outline: string;
     numbering: string;
+    page: string;
     kinds: (count: number) => string;
     components: (count: number) => string;
   },
 ): string {
   let outline = false;
   let numbering = false;
+  let page = false;
   const kinds = new Set<string>();
   const components = new Set<string>();
   for (const { path } of draft.edits.values()) {
     if (path.layer === "component") kinds.add(path.kind);
     else if (path.layer === "instance") components.add(path.id);
     else if (path.layer === "numbering") numbering = true;
+    else if (path.layer === "page") page = true;
     else outline = true;
   }
   return [
     outline ? words.outline : null,
     numbering ? words.numbering : null,
+    page ? words.page : null,
     kinds.size ? words.kinds(kinds.size) : null,
     components.size ? words.components(components.size) : null,
   ]

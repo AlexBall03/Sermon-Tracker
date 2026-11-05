@@ -8,6 +8,10 @@ import { findComponent } from "@/features/editor-lab/styles/component-node";
 import { isDirty, type Draft } from "@/features/editor-lab/styles/draft";
 import type { ComponentKind, DocumentStyles } from "@/features/editor-lab/styles/model";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
+import { PageScaler } from "@/features/editor-lab/components/page-scaler";
+import type { PageSetup } from "@/features/editor-lab/pagination/geometry";
+import { pageInForce, printLayoutOf } from "@/features/editor-lab/pagination/plugin";
+import { SermonHeader } from "../header/sermon-header";
 import type { Dictionaries } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
@@ -105,6 +109,23 @@ export function sampleOutline(words: SampleWords): JSONContent[] {
 }
 
 /**
+ * Two pages of a short sermon (A4.3), for Header & Footer: an explicit page
+ * break puts the second point on page 2, so the first page's header, the
+ * later page's running header, and both page numbers can be seen.
+ */
+export function pagesSample(words: SampleWords): JSONContent[] {
+  return [
+    point(sampleIds.introduction, words.introduction, 1, "introduction"),
+    prose(words.introductionText, 1),
+    point(sampleIds.point, words.point, 1),
+    prose(words.pointText, 1),
+    { type: "pageBreak" },
+    point(sampleIds.conclusion, words.conclusion, 1, "conclusion"),
+    prose(words.conclusionText, 1),
+  ];
+}
+
+/**
  * One component of the outline, as itself: a copy of its node with the
  * headings that own it (so a subpoint keeps its depth, and a note inside the
  * Introduction keeps the section's frame), or null when it is not found.
@@ -141,6 +162,7 @@ export function AppearancePreview({
   mark = null,
   caption,
   className,
+  pages = false,
 }: {
   session: AppearanceSession;
   /** The preview's blocks; read again only when this array changes (memoize it). */
@@ -149,8 +171,12 @@ export function AppearancePreview({
   mark?: string | null;
   caption: string;
   className?: string;
+  /** Show the sample as pages, with the sermon header (Header & Footer, A4.3). */
+  pages?: boolean;
 }) {
   const live = session.editor;
+  const sampleTitle = useT("editorLab").appearance.headerFooter.sampleTitle;
+  const inForce = pageInForce(live.state);
   // The outline's own settings (numbering, translation, styles), read when the blocks are loaded.
   const attrs = useMemo(
     () => live.state.doc.toJSON().attrs as Record<string, unknown>,
@@ -171,9 +197,22 @@ export function AppearancePreview({
       mark={mark}
       caption={caption}
       className={className}
+      pages={
+        pages
+          ? {
+              // The outline's own title and paper, as its pages show them.
+              title: printLayoutOf(live.state)?.title || sampleTitle,
+              setup: inForce?.setup ?? null,
+              page: live.state.doc.attrs.page as unknown,
+            }
+          : null
+      }
     />
   );
 }
+
+/** What a preview drawn as pages needs from the outline (A4.3). */
+export type PreviewPages = { title: string; setup: PageSetup | null; page: unknown };
 
 /**
  * The preview itself, with no session (A4.2C): what Outline Settings shows
@@ -192,7 +231,13 @@ export function PreviewSurface({
   mark = null,
   caption,
   className,
+  pages = null,
 }: {
+  /**
+   * Draw the sample as pages in Print Layout, with the sermon header (A4.3):
+   * the same paginator, header, and footer as the outline, read-only.
+   */
+  pages?: PreviewPages | null;
   /** The document's attributes the blocks are loaded with; read again only when this object or `content` changes. */
   attrs: Record<string, unknown>;
   paper?: string | null;
@@ -213,8 +258,9 @@ export function PreviewSurface({
   const scroller = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<Editor | null>(null);
   const labels = t.v4.components;
+  const asPages = pages !== null;
 
-  // One read-only editor for as long as the window is open.
+  // One read-only editor for as long as the window is open (and drawn the same way).
   useEffect(() => {
     if (!host.current) return;
     const editor = new Editor({
@@ -229,12 +275,28 @@ export function PreviewSurface({
         },
       },
     });
+    // Pages (A4.3): Print Layout, view state of the preview only.
+    if (asPages) editor.commands.setLayout("print");
     setPreview(editor);
     return () => {
       setPreview(null);
       editor.destroy();
     };
-  }, [paper, locale, labels]);
+  }, [paper, locale, labels, asPages]);
+
+  // The outline's paper and margins, and its committed page, followed (A4.3). View state, or the preview's own document.
+  const setup = pages?.setup ?? null;
+  const page = pages?.page;
+  useEffect(() => {
+    if (!preview || preview.isDestroyed || !asPages) return;
+    preview.commands.previewPageSetup(setup);
+    if (preview.state.doc.attrs.page !== page) {
+      preview.view.dispatch(
+        preview.state.tr.setDocAttribute("page", page ?? null).setMeta("addToHistory", false),
+      );
+    }
+  }, [preview, asPages, setup, page, attrs, content]);
+  const width = preview && asPages ? (pageInForce(preview.state)?.metrics.width ?? 816) : 816;
 
   // The blocks, in a document with the outline's own settings (numbering, translation, styles).
   useEffect(() => {
@@ -306,7 +368,25 @@ export function PreviewSurface({
         data-testid="appearance-preview-scroller"
         className="lab-appearance-preview relative min-h-0 flex-1 overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
-        <div ref={host} className="lab-surface" aria-hidden inert />
+        {asPages ? (
+          // The pages, scaled to the box, with the sermon header read-only (A4.3).
+          <div aria-hidden inert className="p-2">
+            <PageScaler layout="print" pageWidth={width}>
+              <div className="sermon-page relative">
+                {preview && !preview.isDestroyed && pages && (
+                  <SermonHeader
+                    editor={preview}
+                    editable={false}
+                    title={{ value: pages.title, editable: false, commit: () => undefined }}
+                  />
+                )}
+                <div ref={host} key="pages" className="lab-surface" />
+              </div>
+            </PageScaler>
+          </div>
+        ) : (
+          <div ref={host} key="flow" className="lab-surface" aria-hidden inert />
+        )}
       </div>
     </figure>
   );

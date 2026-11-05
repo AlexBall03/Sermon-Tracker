@@ -163,10 +163,23 @@ export function ideaSchemas(locale: Locale = defaultLocale) {
       }),
   });
 
+  /**
+   * A new title for an idea, from the sermon editor's header (A4.3): the same
+   * rule as the form's title, and the revision it was typed against.
+   */
+  const renameInputSchema = z
+    .object({
+      ideaId: ideaIdSchema,
+      title: ideaInputSchema.shape.title,
+      expectedRevision: z.number().int().min(0),
+    })
+    .strict();
+
   return {
     tagName: tagNameSchema,
     tagIds: tagIdsSchema,
     ideaInput: ideaInputSchema,
+    renameInput: renameInputSchema,
     ideaUpdate: ideaUpdateSchema,
     attachInput: attachInputSchema,
   };
@@ -182,6 +195,8 @@ export type IdeaInput = z.infer<typeof ideaInputSchema>;
 export const ideaUpdateSchema = inEnglish.ideaUpdate;
 export type IdeaUpdate = z.infer<typeof ideaUpdateSchema>;
 export const attachInputSchema = inEnglish.attachInput;
+export const renameInputSchema = inEnglish.renameInput;
+export type RenameInput = z.infer<typeof renameInputSchema>;
 export type AttachInput = z.infer<typeof attachInputSchema>;
 
 /** What the forms hold while someone is writing. */

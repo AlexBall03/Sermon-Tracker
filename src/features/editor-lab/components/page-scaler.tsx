@@ -48,10 +48,12 @@ export function PageScaler({
       // A transform leaves the layout box at full size: the box takes the scaled height instead.
       box.style.height = scale < 1 ? `${sheet.offsetHeight * scale}px` : "";
     };
+    fit();
+    // Without a ResizeObserver (a test's DOM), the sheet is fitted once.
+    if (typeof ResizeObserver === "undefined") return clear;
     const observer = new ResizeObserver(fit);
     observer.observe(box);
     observer.observe(sheet);
-    fit();
     return () => {
       observer.disconnect();
       clear();

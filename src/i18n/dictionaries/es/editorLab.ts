@@ -59,7 +59,11 @@ export const editorLab: Untranslated<typeof english> = {
     settingsHint:
       "Ajustes solo de este bosquejo. Los cambios se ven en la vista previa; nada cambia hasta que los aplique.",
     categoriesLabel: "Categorías de ajustes",
-    categories: { appearance: "Apariencia", numbering: "Numeración" },
+    categories: {
+      appearance: "Apariencia",
+      numbering: "Numeración",
+      headerFooter: "Encabezado y pie",
+    },
     tabsLabel: "Qué personalizar",
     tabs: { outline: "Bosquejo", components: "Componentes", levels: "Niveles" },
     tabHints: {
@@ -85,6 +89,28 @@ export const editorLab: Untranslated<typeof english> = {
         "No se puede leer la numeración de este bosquejo, así que no se puede cambiar aquí. No se cambió nada.",
       invalid: "Parte del texto de la numeración no se puede usar. Revise los campos marcados.",
       previewHint: "La vista previa muestra la numeración que elija antes de aplicarla.",
+    },
+    headerFooter: {
+      hint: "El título del sermón arriba de la primera página, un encabezado en las páginas siguientes y los números de página al pie de cada página.",
+      title: "Título del sermón",
+      titleAlign: "Posición del título",
+      align: { left: "Izquierda", center: "Centro", right: "Derecha" },
+      titleHint:
+        "Escribe el título y el subtítulo en la página misma. El título es del sermón, así que se guarda con el sermón.",
+      runningHeader: "Encabezado en las páginas siguientes",
+      runningHeaderHint:
+        "Muestra el título del sermón arriba de cada página después de la primera. Sigue la posición del título.",
+      runningSubtitle: "Incluir el subtítulo",
+      runningSize: "Tamaño del encabezado",
+      runningColor: "Color del encabezado",
+      pageNumbers: "Números de página",
+      pageNumbersHint: "Numera cada página abajo, empezando por 1 en la primera.",
+      numberAlign: "Posición del número",
+      numberBold: "Números de página en negrita",
+      useDefaults: "Usar el encabezado y el pie estándar",
+      previewHint:
+        "La vista previa muestra dos páginas con tus elecciones antes de aplicarlas. Los números y los encabezados aparecen en el diseño de impresión y al imprimir.",
+      sampleTitle: "La lámpara y la luz",
     },
     presetUpdate: "Hay un diseño actualizado de este estilo predefinido.",
     presetUpdateUse: "Usar el diseño actualizado",
@@ -237,7 +263,7 @@ export const editorLab: Untranslated<typeof english> = {
         removes:
           "Quita las personalizaciones de estilo de este bosquejo: valores comunes, estilos de texto, estilos de tipo de componente y la apariencia de cada componente individual.",
         keeps:
-          "Conserva el estilo predefinido elegido y la numeración. Sus palabras, la estructura y el formato del texto no se tocan.",
+          "Conserva el estilo predefinido elegido, la numeración y el encabezado y el pie (el tamaño y el color del encabezado vuelven a los del estilo). Sus palabras, la estructura y el formato del texto no se tocan.",
       },
       original: {
         label: (): string => "Restaurar los valores originales de Preacher Studio",
@@ -245,13 +271,14 @@ export const editorLab: Untranslated<typeof english> = {
         removes:
           "Vuelve al estilo Equilibrada y quita toda personalización de apariencia de este bosquejo, incluidos los componentes individuales.",
         keeps:
-          "Conserva la numeración. Sus palabras, la estructura, los puntos, los roles y el formato del texto no se tocan.",
+          "Conserva la numeración y el encabezado y el pie (el tamaño y el color del encabezado vuelven a los del estilo). Sus palabras, la estructura, los puntos, los roles y el formato del texto no se tocan.",
       },
     },
     pending: (parts: string): string => `Sin aplicar todavía: ${parts}`,
     pendingParts: {
       outline: "bosquejo",
       numbering: "numeración",
+      page: "encabezado y pie",
       kinds: (count: number): string =>
         count === 1 ? "1 tipo de componente" : `${count} tipos de componente`,
       components: (count: number): string =>

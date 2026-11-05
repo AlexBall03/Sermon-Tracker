@@ -90,7 +90,8 @@ export function labV4Extensions({
     folding ? PointFolding.configure(folding) : PointFolding,
     PrintPreparation,
     // A sermon is always printed in Print Layout, whatever the screen shows (BUG-010).
-    PrintLayout.configure({ ...printLayout, printsInPrintLayout: true }),
+    // The sermon document governs its own pages (A4.3); the v3 lab keeps the device's.
+    PrintLayout.configure({ ...printLayout, printsInPrintLayout: true, pageFromDocument: true }),
   ];
 }
 

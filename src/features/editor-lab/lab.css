@@ -279,7 +279,8 @@
   max-width: none;
   min-height: 0;
   margin: 0;
-  padding: var(--mt) var(--mr) 0 var(--ml);
+  /* The first page's text may start below its header (A4.3); without one, at the top margin. */
+  padding: var(--first-top, var(--mt)) var(--mr) 0 var(--ml);
   background: var(--surface);
   box-shadow: var(--elevation-raised);
 }
@@ -296,6 +297,11 @@
   clear: both;
   width: 0;
   height: var(--content-h);
+}
+
+/* The first page's text area, shorter by what its header takes from it (A4.3). */
+.lab-page-spacer:first-child {
+  height: var(--first-content-h, var(--content-h));
 }
 
 .lab-page-gap,
@@ -341,6 +347,64 @@
   line-height: 1;
   text-align: right;
   transform: translateY(-50%);
+}
+
+/*
+ * The sermon's footer (A4.3): its page numbers where the page puts them, or
+ * none. Left out (the v3 lab), they are drawn as above.
+ */
+.lab-editor[data-page-numbers="off"] .lab-page-number {
+  display: none;
+}
+
+.lab-editor[data-page-numbers="left"] .lab-page-number {
+  right: auto;
+  left: var(--ml);
+  text-align: left;
+}
+
+.lab-editor[data-page-numbers="center"] .lab-page-number {
+  right: auto;
+  left: 50%;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.lab-editor[data-page-number-weight="bold"] .lab-page-number {
+  font-weight: 700;
+}
+
+/*
+ * The running header (A4.3): a copy of the title, drawn in each later page's
+ * top margin when the page asks for it. It is presentation, never sermon
+ * text: no editing, no selection, hidden from the reading order with its gap.
+ */
+.lab-running-header {
+  display: none;
+  position: absolute;
+  top: calc(var(--mb) + var(--desk) + var(--mt) / 2);
+  right: var(--mr);
+  left: var(--ml);
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+}
+
+.lab-editor[data-running-header="on"] .lab-running-header {
+  display: block;
+}
+
+.lab-editor[data-title-align="center"] .lab-running-header {
+  text-align: center;
+}
+
+.lab-editor[data-title-align="right"] .lab-running-header {
+  text-align: right;
 }
 
 /* An explicit break fills the rest of its page; on screen its top is marked. */
@@ -496,7 +560,15 @@
     background: none !important;
   }
 
-  body:has(.lab-editor[data-layout="print"]) :not(:has(.lab-editor), .lab-editor, .lab-editor *) {
+  /* The sermon header (A4.3) sits beside the editor, on its first page, and prints with it. */
+  body:has(.lab-editor[data-layout="print"])
+    :not(
+      :has(.lab-editor),
+      .lab-editor,
+      .lab-editor *,
+      [data-print-with-editor],
+      [data-print-with-editor] *
+    ) {
     display: none !important;
   }
 

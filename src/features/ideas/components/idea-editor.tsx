@@ -108,6 +108,15 @@ export function IdeaEditor({
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
+  // The revision the draft was started from (A4.3): a save names it, and the
+  // server writes nothing if the idea has changed since. It moves only to a
+  // revision this page made or one whose changes the draft has taken in.
+  const [baseRevision, setBaseRevision] = useState(revision);
+  /** The idea changed elsewhere since the draft began: what it is now. Nothing was written. */
+  const [conflict, setConflict] = useState<{ revision: number; title: string } | null>(null);
+  /** The person chose to drop their draft for the saved version; it comes with the page's next answer. */
+  const [discarding, setDiscarding] = useState(false);
+
   // Archived here, on the device, before the page is shown again; the page's word otherwise.
   const [archived, setArchived] = useState(archivedAt);
   const [seenArchived, setSeenArchived] = useState(archivedAt?.getTime() ?? null);
@@ -149,7 +158,7 @@ export function IdeaEditor({
     subject: saved.subject || null,
     references: saved.references,
     tagIds: draftTagIds(saved),
-    revision,
+    revision: baseRevision,
     createdAt: createdAt.toISOString(),
     updatedAt: updatedAt.toISOString(),
     lastDevelopedAt: lastDevelopedAt?.toISOString() ?? null,
@@ -186,16 +195,34 @@ export function IdeaEditor({
   // nothing unsaved here, the page simply shows it. With edits under way they
   // are kept, and only passages added elsewhere are brought in, so the next
   // Save does not take them off again.
-  const incoming = JSON.stringify(initial);
+  //
+  // The draft's revision follows only what it has taken in: the whole idea
+  // when nothing was unsaved, or, with edits under way, one revision whose
+  // only change was passages added (and brought in here). Anything else keeps
+  // the older revision, so the next Save is refused rather than writing over it.
+  const incoming = JSON.stringify([initial, revision]);
   const [seen, setSeen] = useState(incoming);
   if (incoming !== seen) {
+    const [before, beforeRevision] = JSON.parse(seen) as [IdeaDraft, number];
     setSeen(incoming);
     setSaved(initial);
-    if (!dirty) {
+    if (!dirty || discarding) {
       setDraft(initial);
+      setBaseRevision(revision);
+      setConflict(null);
+      setDiscarding(false);
     } else {
-      const before = new Set((JSON.parse(seen) as IdeaDraft).references.map(referenceKey));
-      const arrived = initial.references.filter((item) => !before.has(referenceKey(item)));
+      const onlyAdded =
+        revision === baseRevision + 1 &&
+        beforeRevision === baseRevision &&
+        JSON.stringify({ ...before, references: [] }) ===
+          JSON.stringify({ ...initial, references: [] }) &&
+        before.references.every((item) =>
+          initial.references.some((next) => referenceKey(next) === referenceKey(item)),
+        );
+      if (onlyAdded) setBaseRevision(revision);
+      const held = new Set(before.references.map(referenceKey));
+      const arrived = initial.references.filter((item) => !held.has(referenceKey(item)));
       if (arrived.length > 0) {
         setDraft((current) => {
           const held = new Set(current.references.map(referenceKey));
@@ -222,7 +249,11 @@ export function IdeaEditor({
     setResult(null);
   }, []);
 
-  async function save() {
+  /**
+   * Saves the draft against `against`: the draft's own revision, or, after a
+   * conflict and only because the person chose it, the revision the idea has now.
+   */
+  async function save(against = baseRevision) {
     if (busy) return;
     const parsed = ideaSchemas(locale).ideaInput.safeParse({
       ...draft,
@@ -237,10 +268,39 @@ export function IdeaEditor({
     setBusy("save");
     setResult(null);
     const sent = draft;
-    const outcome = await attempt("update", () => updateIdea(id, parsed.data), parsed.data);
+    const outcome = await attempt(
+      "update",
+      () => updateIdea(id, parsed.data, against),
+      parsed.data,
+    );
     setBusy(null);
+    if ("stale" in outcome && outcome.stale) {
+      // Nothing was written, and the draft stays as it is.
+      setConflict(outcome.stale);
+      setResult(null);
+      return;
+    }
     setResult(outcome);
-    if (outcome.ok) setSaved(sent);
+    if (!outcome.ok) return;
+    setSaved(sent);
+    setConflict(null);
+    if ("revision" in outcome && typeof outcome.revision === "number") {
+      setBaseRevision(outcome.revision);
+    }
+  }
+
+  /** Asks, then drops the draft for the idea as it is saved now. */
+  function askToDiscardForSaved() {
+    setConfirmation({
+      title: t.conflict.discardTitle,
+      description: t.conflict.discardDescription,
+      confirmLabel: t.conflict.discardConfirm,
+      run: async () => {
+        setDiscarding(true);
+        setResult(null);
+        return { ok: true, message: t.conflict.discarded };
+      },
+    });
   }
 
   async function reclassify(kind: IdeaKind) {
@@ -262,8 +322,12 @@ export function IdeaEditor({
     );
     setBusy(null);
     setResult(outcome);
-    if (outcome.ok) setSaved((current) => ({ ...current, kind }));
-    else setDraft((current) => ({ ...current, kind: previous }));
+    if (outcome.ok) {
+      setSaved((current) => ({ ...current, kind }));
+      // This page's own change: the draft takes the revision it made, and only that one.
+      const made = "revision" in outcome ? outcome.revision : undefined;
+      if (typeof made === "number" && made === baseRevision + 1) setBaseRevision(made);
+    } else setDraft((current) => ({ ...current, kind: previous }));
   }
 
   async function restore() {
@@ -391,6 +455,43 @@ export function IdeaEditor({
             </Button>
             {dirty && <span className="text-sm text-muted-foreground">{t.unsavedChanges}</span>}
           </div>
+          {conflict && (
+            <div
+              role="alert"
+              data-testid="idea-conflict"
+              className="mt-4 space-y-3 rounded-xl border bg-muted/50 px-4 py-3"
+            >
+              <p className="flex items-start gap-2 text-sm font-medium">
+                <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                {t.conflict.message}
+              </p>
+              {conflict.title && (
+                <p className="text-sm text-muted-foreground">
+                  {t.conflict.savedTitle(conflict.title)}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => void save(conflict.revision)}
+                >
+                  {t.conflict.keepMine}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={askToDiscardForSaved}
+                >
+                  {t.conflict.useSaved}
+                </Button>
+              </div>
+            </div>
+          )}
           <ActionStatus result={result} />
         </div>
       </form>

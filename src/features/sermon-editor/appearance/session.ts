@@ -22,7 +22,12 @@ import {
   type LayerPath,
   type Path,
 } from "@/features/editor-lab/styles/draft";
-import type { ComponentStyle, DocumentStyles } from "@/features/editor-lab/styles/model";
+import type {
+  ComponentStyle,
+  DocumentStyles,
+  HeaderFooter,
+} from "@/features/editor-lab/styles/model";
+import { headerFooterOf } from "@/features/editor-lab/pagination/page-config";
 import { documentStylesKey } from "@/features/editor-lab/styles/plugin";
 import { presetAt, type Preset, type PresetId } from "@/features/editor-lab/styles/presets";
 import { layoutParses } from "@/features/editor-lab/layout";
@@ -58,6 +63,8 @@ export type AppearanceSession = {
   layoutReadable: boolean;
   /** The outline's committed numbering (the default when its layout cannot be read). */
   numbering: NumberingConfig;
+  /** The page's header and footer as they are drawn now (A4.3). */
+  headerFooter: HeaderFooter;
   /** The target component's committed own appearance (null when none, or no target). */
   appearance: ComponentStyle | null;
   dirty: boolean;
@@ -104,6 +111,8 @@ export function useAppearanceSession(
           .join("\n"),
         orphans: orphansOf(draft, doc).length,
         layout: doc.attrs.layout as unknown,
+        // The page's header and footer (A4.3): Header & Footer shows them as drawn.
+        page: doc.attrs.page as unknown,
       };
     },
     equalityFn: (x, y) =>
@@ -113,7 +122,8 @@ export function useAppearanceSession(
       x!.appearance === y!.appearance &&
       x!.conflicts === y!.conflicts &&
       x!.orphans === y!.orphans &&
-      x!.layout === y!.layout,
+      x!.layout === y!.layout &&
+      x!.page === y!.page,
   });
   const stored = committed?.styles ?? null;
   const merged = useMemo(() => mergeStyles(stored, draft), [stored, draft]);
@@ -130,6 +140,8 @@ export function useAppearanceSession(
     () => readNumbering(layoutReadable ? (layout as { numbering: unknown }).numbering : undefined),
     [layout, layoutReadable],
   );
+  const page = committed?.page;
+  const headerFooter = useMemo(() => headerFooterOf(page), [page]);
 
   // The outline shows the draft while there is one: view state only, never the document's.
   useEffect(() => {
@@ -173,6 +185,7 @@ export function useAppearanceSession(
     preset: presetAt(presetId, merged?.presetRevision),
     layoutReadable,
     numbering,
+    headerFooter,
     appearance: committed?.appearance ?? null,
     dirty,
     conflictCount: conflictKeys.size,

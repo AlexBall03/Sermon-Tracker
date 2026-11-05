@@ -14,6 +14,7 @@ import {
   getIdea,
   markDeveloped,
   restoreIdea,
+  renameIdeaAt,
   setIdeaKind,
   updateIdea,
 } from "@/features/ideas/ideas";
@@ -83,10 +84,11 @@ describe("an idea's revision", () => {
     expect(await revisionOf(id)).toBe(1);
     await classifyIdea(db, me, id, { status: "developing" });
     await setIdeaKind(db, me, id, "point");
+    await renameIdeaAt(db, me, id, "Grace renamed", 3);
     await attachReferences(db, me, id, [
       { book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: null },
     ]);
-    expect(await revisionOf(id)).toBe(4);
+    expect(await revisionOf(id)).toBe(5);
     // Putting it away, outline work, and a passage it already has change nothing it says.
     await archiveIdea(db, me, id);
     await restoreIdea(db, me, id);
@@ -94,7 +96,7 @@ describe("an idea's revision", () => {
     await attachReferences(db, me, id, [
       { book: 43, chapterStart: 3, verseStart: 16, chapterEnd: null, verseEnd: null },
     ]);
-    expect(await revisionOf(id)).toBe(4);
+    expect(await revisionOf(id)).toBe(5);
   });
 });
 
@@ -152,6 +154,20 @@ describe("applying a queued edit", () => {
       status: "conflict",
       conflict: { reason: "missing" },
     });
+  });
+
+  it("answers an edit queued before a title saved in the sermon editor as stale (A4.3)", async () => {
+    const { id } = await idea(me);
+    const edit = change(me, "idea.update", id, draft({ title: "Queued offline" }), 0);
+    expect(await renameIdeaAt(db, me, id, "Renamed in the editor", 0)).toMatchObject({
+      status: "renamed",
+      revision: 1,
+    });
+    expect(await applyMutation(db, me, edit, "en")).toMatchObject({
+      status: "conflict",
+      conflict: { reason: "stale", server: { title: "Renamed in the editor", revision: 1 } },
+    });
+    expect((await getIdea(db, me, id))?.title).toBe("Renamed in the editor");
   });
 
   it("refuses an edit without its revision, and never touches another account's idea", async () => {

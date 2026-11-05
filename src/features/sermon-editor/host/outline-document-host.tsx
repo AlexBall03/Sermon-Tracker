@@ -40,6 +40,7 @@ import {
 } from "../persistence/session/session";
 import { sessionWriteGuard } from "../persistence/session/write-guard";
 import { SermonWorkspace } from "../sermon-workspace";
+import { TitleStatus, useSermonTitle } from "../header/use-sermon-title";
 import { PresetLibraryProvider } from "@/features/appearance-presets/components/preset-library";
 import { DocumentPreview } from "./document-preview";
 import { Notice, RecoveryView } from "./recovery-view";
@@ -74,6 +75,8 @@ import { browserConnectivity, identitySignal } from "./signals";
 export type OutlineHostSermon = {
   id: string;
   title: string;
+  /** `ideas.revision`: what the header saves a new title against (A4.3). */
+  revision?: number;
   kind: string;
   archivedAt: string | null;
 };
@@ -286,7 +289,19 @@ function SessionView({
     holdUnsavedWork(key);
     return () => releaseUnsavedWork(key);
   }, [holds]);
-  const guard = useLeaveGuard(save?.guardLeaving ?? false, t.save.leave);
+  // The sermon's title, edited in the header and saved on its own (A4.3), only where the outline can be.
+  const canEdit = session.canEdit();
+  const sermonTitle = useSermonTitle({
+    ideaId: sermon.id,
+    title: sermon.title,
+    revision: sermon.revision ?? 0,
+    canEdit: canEdit && sermon.revision !== undefined,
+  });
+  // Leaving asks first while words are not yet kept: the document's, or a title not yet saved.
+  const guard = useLeaveGuard(
+    (save?.guardLeaving ?? false) || sermonTitle.holds,
+    sermonTitle.holds && !save?.guardLeaving ? t.titleSave.unsaved : t.save.leave,
+  );
 
   const editing =
     opened && (state.kind === "ready" || state.kind === "active" || state.kind === "relinquishing");
@@ -310,12 +325,15 @@ function SessionView({
           openInBible={openInBible}
           onReady={onReady}
           onRefused={() => setRefused(true)}
+          title={sermonTitle.control}
+          editable={canEdit}
           headerStart={
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <SermonTitle sermon={sermon} />
+              <SermonTitle sermon={{ ...sermon, title: sermonTitle.snapshot.confirmed.title }} />
               {save && (
                 <SaveIndicator view={save} onAction={(action) => act(action, session, renew)} />
               )}
+              <TitleStatus title={sermonTitle} />
               {problem && (
                 <span
                   role="alert"

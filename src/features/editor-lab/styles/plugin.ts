@@ -5,7 +5,8 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/p
 import { ReplaceAroundStep, ReplaceStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
-import { touchedBlocks } from "../pagination/plugin";
+import { pageWith } from "../pagination/page-config";
+import { pageInForce, touchedBlocks } from "../pagination/plugin";
 import { appearanceSchemaFor } from "./attributes";
 import { inkOn, type ColorValue } from "./colors";
 import { componentOfNode, findComponent } from "./component-node";
@@ -18,12 +19,14 @@ import {
   type ComponentKind,
   type ComponentStyle,
   type DocumentStyles,
+  type PageSetupV2,
   type PresetRevision,
   type UserPresetId,
 } from "./model";
 import { presetAt, type Preset, type PresetId } from "./presets";
 import { appearanceStyle, styleSheet } from "./render";
 import { resolveAt } from "./context";
+import { documentStylesKey, type Preview, type StylesState } from "./preview-key";
 import { readStyles, resolveComponent, type ResolvedBlock } from "./resolve";
 
 /*
@@ -56,15 +59,7 @@ import { readStyles, resolveComponent, type ResolvedBlock } from "./resolve";
  * layer is removed), and never touch another layer.
  */
 
-/**
- * What is previewed, or null for no preview: whole styles (null inside: every
- * default; the v3 lab's Document Styles), or the Appearance panel's draft
- * (A1-UI.2B.2), laid over whatever is committed at each moment.
- */
-export type Preview = { styles: DocumentStyles | null } | { draft: Draft } | null;
-type StylesState = { preview: Preview; fallback: PresetId };
-
-export const documentStylesKey = new PluginKey<StylesState>("labDocumentStyles");
+export { documentStylesKey, type Preview };
 const pairsKey = new PluginKey<DecorationSet>("labColorPairs");
 const appearanceKey = new PluginKey<DecorationSet>("labAppearance");
 /** The component the Appearance panel's Selected scope customizes, by ID: view state only. */
@@ -129,7 +124,9 @@ let lastMerge: {
   styles: DocumentStyles | null;
 } | null = null;
 const styleEdits = (draft: Draft) =>
-  [...draft.edits.entries()].filter(([key]) => key !== "numbering").map(([, edit]) => edit);
+  [...draft.edits.entries()]
+    .filter(([key]) => key !== "numbering" && key !== "page")
+    .map(([, edit]) => edit);
 function merged(stored: DocumentStyles | null, draft: Draft): DocumentStyles | null {
   const cached = mergeCache.get(draft);
   if (cached && cached.stored === stored) return cached.styles;
@@ -289,13 +286,28 @@ export const DocumentStylesExtension = Extension.create<{ preset: PresetId }>({
           // The whole plan is checked before anything is written: all of it, or nothing.
           const plan = applyPlan(draft, readStyles(state.doc.attrs.styles), state.doc);
           if (!plan.ok) return false;
-          if (plan.styles === undefined && plan.layout === undefined && !plan.instances.length) {
+          // The header and footer (A4.3), as a version 2 page with the paper and margins in force.
+          let page: PageSetupV2 | undefined;
+          if (plan.headerFooter) {
+            const setup = pageInForce(state);
+            if (!setup?.fromDocument) return false;
+            const written = pageWith(setup.setup, plan.headerFooter);
+            if (!written) return false;
+            if (JSON.stringify(written) !== JSON.stringify(state.doc.attrs.page)) page = written;
+          }
+          if (
+            plan.styles === undefined &&
+            plan.layout === undefined &&
+            page === undefined &&
+            !plan.instances.length
+          ) {
             return false;
           }
           if (dispatch) {
             if (plan.styles !== undefined) tr.setDocAttribute("styles", plan.styles);
             // The numbering (A4.2A), over the layout that was read; never a replaced one.
             if (plan.layout !== undefined) tr.setDocAttribute("layout", plan.layout);
+            if (page !== undefined) tr.setDocAttribute("page", page);
             // Attributes only: no position moves, so each one found still holds.
             for (const { pos, appearance } of plan.instances) {
               tr.setNodeAttribute(pos, "appearance", appearance);

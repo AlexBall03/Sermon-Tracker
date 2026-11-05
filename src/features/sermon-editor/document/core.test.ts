@@ -85,3 +85,55 @@ describe("one canonical schema (A2.0)", () => {
     }
   });
 });
+
+describe("the sermon header's subtitle and the page (A4.3)", () => {
+  const fixture = () => structuredClone(Object.values(v4Fixtures)[0]);
+  const withAttrs = (attrs: Record<string, unknown>) => {
+    const json = fixture();
+    return { ...json, attrs: { ...json.attrs, ...attrs } };
+  };
+  const page2 = {
+    version: 2,
+    paper: "letter",
+    margins: { top: 72, right: 72, bottom: 72, left: 72 },
+    header: { titleAlign: "left" },
+    runningHeader: { enabled: true, subtitle: false },
+    pageNumbers: { enabled: true, align: "center", weight: "bold" },
+  };
+
+  it("restores a valid subtitle and a version 1 or 2 page unchanged", () => {
+    for (const attrs of [
+      { subtitle: "Psalm 23", page: page2 },
+      {
+        page: {
+          version: 1,
+          paper: "a4",
+          margins: { top: 54, right: 54, bottom: 54, left: 54 },
+          runningHeader: { enabled: false, subtitle: false },
+          pageNumbers: { enabled: true },
+        },
+      },
+    ]) {
+      const restored = restoreSermonDocument(withAttrs(attrs));
+      expect(restored.ok).toBe(true);
+      if (restored.ok) expect(restored.doc.attrs).toMatchObject(attrs);
+    }
+  });
+
+  it("refuses, never repairs, a bad subtitle or page", () => {
+    for (const attrs of [
+      { subtitle: "" },
+      { subtitle: "   " },
+      { subtitle: "<b>Bold</b>" },
+      { subtitle: "x".repeat(201) },
+      { page: { ...page2, header: { titleAlign: "justify" } } },
+      { page: { ...page2, pageNumbers: { enabled: true } } },
+      { page: { ...page2, extra: 1 } },
+      { page: { ...page2, version: 9 } },
+      { page: "letter" },
+    ]) {
+      const restored = restoreSermonDocument(withAttrs(attrs));
+      expect(restored.ok, JSON.stringify(attrs)).toBe(false);
+    }
+  });
+});

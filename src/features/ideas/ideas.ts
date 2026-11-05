@@ -620,6 +620,64 @@ export async function updateIdeaAt(
   });
 }
 
+/** What became of a new title for an idea (A4.3). */
+export type RenameOutcome =
+  | { status: "renamed"; revision: number; title: string }
+  /** It already had that title at that revision; nothing was written. */
+  | { status: "unchanged"; revision: number; title: string }
+  /** The idea was changed since that revision; nothing was written. */
+  | { status: "stale"; revision: number; title: string }
+  | { status: "missing" };
+
+/**
+ * Gives an idea a new title, and nothing else, only while it is still at the
+ * revision the title was typed against: compared with the row locked, as in
+ * `updateIdeaAt`, so a title from the sermon editor never writes over a change
+ * made since. Notes, subject, passages, tags, kind, and classifications are
+ * not touched. A new title is development, as it is in `updateIdeaAt`, and
+ * raises the revision; the same title again writes nothing.
+ */
+export async function renameIdeaAt(
+  db: Database,
+  ownerId: string,
+  id: string,
+  title: string,
+  expectedRevision: number,
+): Promise<RenameOutcome> {
+  return db.transaction(async (tx): Promise<RenameOutcome> => {
+    const [stored] = await tx
+      .select({ title: ideas.title, revision: ideas.revision })
+      .from(ideas)
+      .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+      .for("update");
+    if (!stored) return { status: "missing" };
+    if (stored.revision !== expectedRevision) {
+      return { status: "stale", revision: stored.revision, title: stored.title };
+    }
+    if (stored.title === title) return { status: "unchanged", ...stored };
+    const [updated] = await tx
+      .update(ideas)
+      .set({ title, revision: sql`${ideas.revision} + 1`, lastDevelopedAt: new Date() })
+      .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)))
+      .returning({ title: ideas.title, revision: ideas.revision });
+    if (!updated) return { status: "missing" };
+    return { status: "renamed", ...updated };
+  });
+}
+
+/** An idea's title and revision, for the sermon editor to check a title save against (A4.3). */
+export async function ideaHeading(
+  db: Database,
+  ownerId: string,
+  id: string,
+): Promise<{ title: string; revision: number } | null> {
+  const [row] = await db
+    .select({ title: ideas.title, revision: ideas.revision })
+    .from(ideas)
+    .where(and(eq(ideas.id, id), eq(ideas.ownerId, ownerId)));
+  return row ?? null;
+}
+
 /** What became of an attempt to put passages on an idea. */
 export type AttachOutcome =
   | { status: "missing" }

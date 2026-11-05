@@ -238,11 +238,18 @@ export async function getOutlineSermon(
   db: Reader,
   ownerId: string,
   id: string,
-): Promise<{ id: string; sermon: OutlineSermon } | null> {
-  const [row] = await outlineRows(db)
+): Promise<{ id: string; sermon: OutlineSermon & Pick<Idea, "revision"> } | null> {
+  // With the sermon's revision: the editor's header saves the title against it (A4.3).
+  const [row] = await db
+    .select({ id: sermonOutlines.id, sermon: { ...sermon, revision: ideas.revision } })
+    .from(sermonOutlines)
+    .innerJoin(
+      ideas,
+      and(eq(ideas.id, sermonOutlines.sermonId), eq(ideas.ownerId, sermonOutlines.ownerId)),
+    )
     .where(and(eq(sermonOutlines.id, id), eq(sermonOutlines.ownerId, ownerId)))
     .limit(1);
-  return row ? { id: row.outline.id, sermon: row.sermon } : null;
+  return row ? { id: row.id, sermon: row.sermon } : null;
 }
 
 /** The outline of one of the owner's sermons with its entries, or null when it has none. */

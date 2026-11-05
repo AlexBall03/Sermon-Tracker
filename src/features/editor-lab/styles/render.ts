@@ -545,6 +545,20 @@ export function styleSheet(
     css.push(`${selector} { ${lines.join("; ")}; }`);
     for (const more of rule.more ?? []) css.push(more.replaceAll("&", selector));
   }
+  // The running header's size and color (A4.3), drawn in each later page's top margin.
+  const header = styles?.runningHeader;
+  if (header?.fontSize !== undefined) {
+    css.push(`${scope} .lab-running-header { font-size: ${header.fontSize}pt; }`);
+  }
+  if (header?.color !== undefined) {
+    const pair = inkPair(header.color ?? null);
+    if (pair) {
+      css.push(`${scope} .lab-running-header { color: ${pair.light}; }`);
+      dark.push(
+        `.dark ${scope}:not([data-paper="light"]) .lab-running-header { color: ${pair.dark}; }`,
+      );
+    }
+  }
   if (dark.length) css.push(`@media screen { ${dark.join(" ")} }`);
   return css.join("\n");
 }

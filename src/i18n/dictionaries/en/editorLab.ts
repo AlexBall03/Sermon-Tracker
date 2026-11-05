@@ -59,7 +59,11 @@ export const editorLab = {
     settingsHint:
       "Settings for this outline only. Changes show in the preview; nothing changes until you apply it.",
     categoriesLabel: "Settings categories",
-    categories: { appearance: "Appearance", numbering: "Numbering" },
+    categories: {
+      appearance: "Appearance",
+      numbering: "Numbering",
+      headerFooter: "Header & Footer",
+    },
     tabsLabel: "What to customize",
     tabs: { outline: "Outline", components: "Components", levels: "Levels" },
     tabHints: {
@@ -84,6 +88,28 @@ export const editorLab = {
         "This outline's numbering settings can't be read, so they can't be changed here. Nothing was changed.",
       invalid: "Some numbering text can't be used. Check the highlighted fields.",
       previewHint: "The preview shows the numbering you choose before you apply it.",
+    },
+    headerFooter: {
+      hint: "The sermon's title at the top of the first page, a header on the pages after it, and page numbers at the foot of each page.",
+      title: "Sermon title",
+      titleAlign: "Title position",
+      align: { left: "Left", center: "Center", right: "Right" },
+      titleHint:
+        "Type the title and subtitle on the page itself. The title is the sermon's own, so it is saved with the sermon.",
+      runningHeader: "Header on later pages",
+      runningHeaderHint:
+        "Shows the sermon's title at the top of every page after the first. It follows the title's position.",
+      runningSubtitle: "Include the subtitle",
+      runningSize: "Header size",
+      runningColor: "Header color",
+      pageNumbers: "Page numbers",
+      pageNumbersHint: "Numbers every page at the bottom, starting with 1 on the first page.",
+      numberAlign: "Number position",
+      numberBold: "Bold page numbers",
+      useDefaults: "Use the standard header and footer",
+      previewHint:
+        "The preview shows two pages, with your choices, before you apply them. Page numbers and headers appear in Print Layout and when printing.",
+      sampleTitle: "The Lamp and the Light",
     },
     presetUpdate: "An updated design of this preset is available.",
     presetUpdateUse: "Use the updated design",
@@ -235,7 +261,7 @@ export const editorLab = {
         removes:
           "Removes this outline's style customizations: shared defaults, text styles, component type styles, and every individual component's appearance.",
         keeps:
-          "Keeps the preset you chose and the numbering. Your words, structure, and text formatting are not touched.",
+          "Keeps the preset you chose, the numbering, and the header and footer settings (the header's size and color go back to the preset's). Your words, structure, and text formatting are not touched.",
       },
       original: {
         label: (): string => "Restore original Preacher Studio defaults",
@@ -243,13 +269,14 @@ export const editorLab = {
         removes:
           "Sets the preset back to Balanced and removes every appearance customization in this outline, including individual components.",
         keeps:
-          "Keeps the numbering. Your words, structure, points, roles, and text formatting are not touched.",
+          "Keeps the numbering and the header and footer settings (the header's size and color go back to the preset's). Your words, structure, points, roles, and text formatting are not touched.",
       },
     },
     pending: (parts: string): string => `Not applied yet: ${parts}`,
     pendingParts: {
       outline: "outline",
       numbering: "numbering",
+      page: "header and footer",
       kinds: (count: number): string =>
         count === 1 ? "1 component type" : `${count} component types`,
       components: (count: number): string => (count === 1 ? "1 component" : `${count} components`),

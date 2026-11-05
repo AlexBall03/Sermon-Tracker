@@ -36,6 +36,7 @@ import type { DocumentProblem } from "@/features/editor-lab/validate";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { AppearanceDialogsProvider, useAppearanceDialogs } from "./appearance/dialogs";
+import { SermonHeader, type TitleControl } from "./header/sermon-header";
 import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
 import { readFolded, storeFolded } from "./folding-storage";
 import { noticeText } from "./notice";
@@ -83,6 +84,14 @@ export type SermonWorkspaceProps = {
    * no link. Read when the editor is made.
    */
   openInBible?: PassageLink;
+  /**
+   * The sermon's title for the header (A4.3): shown, and edited there. The
+   * title is the sermon's, so whoever mounts the workspace saves it; without
+   * it there is no header.
+   */
+  title?: TitleControl;
+  /** Whether the document may be changed now (the session's `canEdit`): the subtitle follows it. */
+  editable?: boolean;
 };
 
 /**
@@ -116,6 +125,8 @@ export function SermonWorkspace({
   extensions: extra,
   foldKey,
   openInBible,
+  title,
+  editable = true,
 }: SermonWorkspaceProps) {
   const t = useT("editorLab");
   const viewWords = useT("sermonEditor").view;
@@ -289,7 +300,13 @@ export function SermonWorkspace({
                     onCommit={(margins) => page.setMargins(margins, true)}
                   />
                 )}
-                <EditorContent editor={editor} className="lab-surface" />
+                {/* The first page and its header (A4.3): the header is outside the editor's body. */}
+                <div className="sermon-page relative">
+                  {editor && ready && !refused && title && (
+                    <SermonHeader editor={editor} title={title} editable={editable} />
+                  )}
+                  <EditorContent editor={editor} className="lab-surface" />
+                </div>
               </PageScaler>
             </main>
           </div>
@@ -329,7 +346,8 @@ export function SermonWorkspace({
             )}
           </p>
         )}
-        <PrintPageStyle page={page} />
+        {/* Always: a sermon prints in Print Layout even from Regular (BUG-010), on its own paper (A4.3). */}
+        <PrintPageStyle page={page} always />
       </WorkspaceFrame>
     </AppearanceDialogsProvider>
   );

@@ -80,11 +80,21 @@ export const defaultSetup = (size: PaperSize = defaultPaper): PageSetup => ({
 /** The space between two sheets on screen. It is not printed (`--desk: 0` in print). */
 export const deskGap = 24;
 
-/** The numbers a page's layout is made of. `stride` is one sheet and the desk after it. */
-export function pageMetrics(setup: PageSetup, desk = deskGap) {
+/**
+ * The numbers a page's layout is made of. `stride` is one sheet and the desk after it.
+ *
+ * The first page may begin its text lower than the others (A4.3): its sermon
+ * header sits in the top margin, and pushes the text down only when it is
+ * taller than the margin leaves room for (Word's model). `firstTop` is where
+ * page 0's text area begins; every later page is alike, so only page 0
+ * differs, and a `firstTop` at or above the top margin changes nothing.
+ */
+export function pageMetrics(setup: PageSetup, desk = deskGap, firstTop = 0) {
   const paper = papers[setup.size];
   const { top, bottom, left, right } = setup.margins;
   const contentHeight = paper.height - top - bottom;
+  // Never so low that the first page holds less than a line or two of text.
+  const first = Math.min(Math.max(firstTop, top), paper.height - bottom - marginLimits.minSide);
   return {
     width: paper.width,
     height: paper.height,
@@ -93,6 +103,8 @@ export function pageMetrics(setup: PageSetup, desk = deskGap) {
     top,
     bottom,
     stride: paper.height + desk,
+    firstTop: Math.max(first, top),
+    firstContentHeight: paper.height - Math.max(first, top) - bottom,
   };
 }
 
@@ -103,9 +115,17 @@ export function pageAt(metrics: PageMetrics, y: number): number {
   return Math.max(0, Math.floor((y - metrics.top) / metrics.stride));
 }
 
+/** The top of page `index`'s text area. */
+export const contentTop = (metrics: PageMetrics, index: number) =>
+  index === 0 ? metrics.firstTop : metrics.top + index * metrics.stride;
+
+/** The height of page `index`'s text area. */
+export const contentHeightOf = (metrics: PageMetrics, index: number) =>
+  index === 0 ? metrics.firstContentHeight : metrics.contentHeight;
+
 /** How far `y` is below the top of its page's text area (negative in the margin above it). */
 export function intoPage(metrics: PageMetrics, y: number): number {
-  return y - metrics.top - pageAt(metrics, y) * metrics.stride;
+  return y - contentTop(metrics, pageAt(metrics, y));
 }
 
 /**
@@ -118,7 +138,7 @@ export function intoPage(metrics: PageMetrics, y: number): number {
 export function breakFill(metrics: PageMetrics, y: number): { fill: number; atTop: boolean } {
   const into = intoPage(metrics, y);
   if (into <= 0.5) return { fill: 0, atTop: true };
-  return { fill: metrics.contentHeight - into, atTop: false };
+  return { fill: contentHeightOf(metrics, pageAt(metrics, y)) - into, atTop: false };
 }
 
 /**
@@ -127,11 +147,11 @@ export function breakFill(metrics: PageMetrics, y: number): { fill: number; atTo
  * there) needs the next page.
  */
 export function pagesFor(metrics: PageMetrics, bottom: number) {
-  const y = Math.max(bottom - 0.5, metrics.top);
+  const y = Math.max(bottom - 0.5, metrics.firstTop);
   const page = pageAt(metrics, y);
-  return intoPage(metrics, y) > metrics.contentHeight ? page + 2 : page + 1;
+  return intoPage(metrics, y) > contentHeightOf(metrics, page) ? page + 2 : page + 1;
 }
 
-/** The top of page `index`'s text area. */
-export const contentTop = (metrics: PageMetrics, index: number) =>
-  metrics.top + index * metrics.stride;
+/** Points to the editor's pixels, and back: a document's page is stored in points (A4.3). */
+export const pointsToPx = (points: number) => (points * pxPerInch) / 72;
+export const pxToPoints = (px: number) => Math.round(((px * 72) / pxPerInch) * 100) / 100;

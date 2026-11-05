@@ -70,8 +70,21 @@ function cmap(text: string): Font {
   return map;
 }
 
-/** Every line of text, with the page it is on, top to bottom. */
-export function pdfLines(bytes: Buffer, pageHeight: number): PdfLine[] {
+/**
+ * Every line of text, with the page it is on, top to bottom.
+ *
+ * `placed` (A4.3): where each line is drawn, through the graphics state (a
+ * positioned element such as a page number or a running header has its own
+ * `cm`), in CSS pixels from the top of its page plus the pages before it.
+ * Left out, positions are the text matrices' own, as every caller before
+ * A4.3 measured them (P1 reads a print with `@page` margins as a column of
+ * text areas).
+ */
+export function pdfLines(
+  bytes: Buffer,
+  pageHeight: number,
+  { placed = false }: { placed?: boolean } = {},
+): PdfLine[] {
   const source = bytes.toString("latin1");
   const table = objects(source, bytes);
 
@@ -90,19 +103,56 @@ export function pdfLines(bytes: Buffer, pageHeight: number): PdfLine[] {
     }
   }
 
+  /*
+   * The pages in order (the page tree's /Kids), each with its content stream
+   * and its height in points. Text is placed through the graphics state:
+   * every `cm` (a page's own offset, and the one Chrome gives each positioned
+   * element: a page number, a running header) is followed, so a line's
+   * position is where it is drawn on its page (A4.3), not where its text
+   * matrix alone would put it.
+   */
+  type Matrix = [number, number, number, number, number, number];
+  const apply = (m: Matrix, px: number, py: number) => ({
+    x: m[0] * px + m[2] * py + m[4],
+    y: m[1] * px + m[3] * py + m[5],
+  });
+  // `inner` drawn inside `outer`: a point goes through `inner` first.
+  const within = (inner: Matrix, outer: Matrix): Matrix => [
+    inner[0] * outer[0] + inner[1] * outer[2],
+    inner[0] * outer[1] + inner[1] * outer[3],
+    inner[2] * outer[0] + inner[3] * outer[2],
+    inner[2] * outer[1] + inner[3] * outer[3],
+    inner[4] * outer[0] + inner[5] * outer[2] + outer[4],
+    inner[4] * outer[1] + inner[5] * outer[3] + outer[5],
+  ];
+  const kids = source.match(/\/Type\s*\/Pages[^]*?\/Kids\s*\[([^\]]*)\]/);
+  const pageIds = kids ? [...kids[1].matchAll(/(\d+) 0 R/g)].map((match) => Number(match[1])) : [];
+  const pages = pageIds.flatMap((id) => {
+    const dict = table.get(id)?.dict ?? "";
+    const contents = dict.match(/\/Contents\s+(\d+) 0 R/);
+    const box = dict.match(/\/MediaBox\s*\[\s*[-\d.]+\s+[-\d.]+\s+[-\d.]+\s+([-\d.]+)\s*\]/);
+    const stream = contents ? table.get(Number(contents[1]))?.stream : null;
+    return stream ? [{ stream, heightPt: box ? Number(box[1]) : (pageHeight * 72) / 96 }] : [];
+  });
+
   const runs: { y: number; x: number; text: string }[] = [];
-  for (const { stream, dict } of table.values()) {
-    if (!stream || /\/Type\s*\/(XObject|Font)|ToUnicode|\/Length1/.test(dict)) continue;
+  pages.forEach(({ stream, heightPt }, pageIndex) => {
     const content = stream.toString("latin1");
-    if (!/\bBT\b/.test(content)) continue;
+    if (!/\bBT\b/.test(content)) return;
     let font: { font: Font; width: number } | undefined;
     let x = 0;
     let y = 0;
+    let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+    const saved: Matrix[] = [];
     const tokens = content.matchAll(
-      /\/(\w+)\s+[\d.]+\s+Tf|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm|([-\d.]+)\s+([-\d.]+)\s+Td|<([0-9A-Fa-f]*)>\s*Tj|\[([^\]]*)\]\s*TJ/g,
+      /\/(\w+)\s+[\d.]+\s+Tf|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm|([-\d.]+)\s+([-\d.]+)\s+Td|<([0-9A-Fa-f]*)>\s*Tj|\[([^\]]*)\]\s*TJ|([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+cm|(?<![\w/])([qQ])(?![\w])/g,
     );
     for (const token of tokens) {
-      if (token[1]) font = fonts.get(token[1]);
+      if (token[12] !== undefined) {
+        ctm = within(token.slice(12, 18).map(Number) as Matrix, ctm);
+      } else if (token[18] === "q") saved.push(ctm);
+      else if (token[18] === "Q") ctm = saved.pop() ?? ctm;
+      else if (token[1]) font = fonts.get(token[1]);
       else if (token[2] !== undefined) {
         x = Number(token[6]);
         y = Number(token[7]);
@@ -121,10 +171,20 @@ export function pdfLines(bytes: Buffer, pageHeight: number): PdfLine[] {
             text += font.font.get(hex(string.slice(at, at + size))) ?? "";
           }
         }
-        runs.push({ x, y, text });
+        // Points from the page's foot to CSS pixels from its top, then from the first page's top.
+        if (!placed) {
+          runs.push({ x, y, text });
+          continue;
+        }
+        const at = apply(ctm, x, y);
+        runs.push({
+          x: (at.x * 96) / 72,
+          y: pageIndex * pageHeight + ((heightPt - at.y) * 96) / 72,
+          text,
+        });
       }
     }
-  }
+  });
 
   // Runs within a few pixels of each other make one line (a raised verse
   // number is a little above its line), read left to right.

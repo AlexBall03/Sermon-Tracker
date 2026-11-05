@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { materialize, type AppearanceSnapshot } from "@/features/editor-lab/styles/snapshot";
 import { restoreSermonDocument, v4SchemaVersion } from "@/features/sermon-editor/document";
+import { newDocumentPage } from "@/features/editor-lab/pagination/page-config";
 import { initialDocument } from "./initialization";
 
 const outline = {
@@ -61,5 +62,26 @@ describe("initialDocument (A4.2C)", () => {
       { kind: "builtin", preset: "balanced" },
     );
     expect(made.ok).toBe(false);
+  });
+
+  it("gives every new outline the new page: numbers on, right, and bold; the title centred (A4.3)", () => {
+    for (const start of [
+      { kind: "builtin", preset: "expressive" } as const,
+      { kind: "snapshot", snapshot: personal } as const,
+    ]) {
+      const made = initialDocument(outline, start);
+      if (!made.ok) throw new Error("not made");
+      const page = (made.content.attrs as { page: unknown }).page;
+      expect(page).toEqual(newDocumentPage());
+      expect(page).toMatchObject({
+        version: 2,
+        paper: "letter",
+        margins: { top: 72, right: 72, bottom: 72, left: 72 },
+        header: { titleAlign: "center" },
+        runningHeader: { enabled: false, subtitle: false },
+        pageNumbers: { enabled: true, align: "right", weight: "bold" },
+      });
+      expect(restoreSermonDocument(made.content).ok).toBe(true);
+    }
   });
 });

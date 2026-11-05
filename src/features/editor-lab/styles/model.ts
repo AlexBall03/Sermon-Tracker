@@ -447,21 +447,80 @@ const paperPoints = {
   halfLetter: { width: 396, height: 612 },
 } as const satisfies Record<(typeof paperSizes)[number], { width: number; height: number }>;
 
-/** A sermon's own paper, margins, running header, and page numbers (2B.1 §8.1). */
+const pageMargins = z.object({ top: margin, right: margin, bottom: margin, left: margin }).strict();
+const leavesText = ({
+  paper,
+  margins,
+}: {
+  paper: (typeof paperSizes)[number];
+  margins: z.infer<typeof pageMargins>;
+}) => {
+  const size = paperPoints[paper];
+  return (
+    size.width - margins.left - margins.right >= minText &&
+    size.height - margins.top - margins.bottom >= minText
+  );
+};
+
+/**
+ * A sermon's own paper, margins, running header, and page numbers (2B.1 §8.1),
+ * version 1. Kept as it was: a stored version 1 is read, never repurposed,
+ * and a person's change writes version 2 (A4.3).
+ */
 export const pageSetupSchema = z
   .object({
     version: z.literal(1),
     paper: z.enum(paperSizes),
-    margins: z.object({ top: margin, right: margin, bottom: margin, left: margin }).strict(),
+    margins: pageMargins,
     runningHeader: z.object({ enabled: z.boolean(), subtitle: z.boolean() }).strict(),
     pageNumbers: z.object({ enabled: z.boolean() }).strict(),
   })
   .strict()
-  .refine(({ paper, margins }) => {
-    const size = paperPoints[paper];
-    return (
-      size.width - margins.left - margins.right >= minText &&
-      size.height - margins.top - margins.bottom >= minText
-    );
-  }, "margins leave too little text");
+  .refine(leavesText, "margins leave too little text");
 export type PageSetup = z.infer<typeof pageSetupSchema>;
+
+export const headerAlignments = ["left", "center", "right"] as const;
+export type HeaderAlignment = (typeof headerAlignments)[number];
+export const pageNumberWeights = ["normal", "bold"] as const;
+export type PageNumberWeight = (typeof pageNumberWeights)[number];
+
+/** What Outline Settings → Header & Footer sets: the header, the running header, the page numbers. */
+export const headerFooterSchema = z
+  .object({
+    header: z.object({ titleAlign: z.enum(headerAlignments) }).strict(),
+    runningHeader: z.object({ enabled: z.boolean(), subtitle: z.boolean() }).strict(),
+    pageNumbers: z
+      .object({
+        enabled: z.boolean(),
+        align: z.enum(headerAlignments),
+        weight: z.enum(pageNumberWeights),
+      })
+      .strict(),
+  })
+  .strict();
+export type HeaderFooter = z.infer<typeof headerFooterSchema>;
+
+/**
+ * A sermon's own page, version 2 (A4.3): paper and margins in points, as in
+ * version 1, and the header and footer. It is what governs the sermon
+ * editor's pages; what a device remembers never overrides it.
+ */
+export const pageSetupV2Schema = z
+  .object({
+    version: z.literal(2),
+    paper: z.enum(paperSizes),
+    margins: pageMargins,
+    ...headerFooterSchema.shape,
+  })
+  .strict()
+  .refine(leavesText, "margins leave too little text");
+export type PageSetupV2 = z.infer<typeof pageSetupV2Schema>;
+
+/** `doc.attrs.page` when it is not null: either version, as stored. */
+export const pageConfigSchema = z.union([pageSetupSchema, pageSetupV2Schema]);
+export type PageConfig = z.infer<typeof pageConfigSchema>;
+
+/** The paper's size in points, for turning a page's margins into the editor's pixels. */
+export function paperInPoints(paper: (typeof paperSizes)[number]) {
+  return paperPoints[paper];
+}

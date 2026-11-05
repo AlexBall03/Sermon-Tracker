@@ -260,6 +260,18 @@ Approved for the whole program: one sermon identity with one unified rich-text d
         - in Outline Settings: preview a personal preset as a draft (Apply, Cancel, one undo step), Save as preset, Update a preset;
         - new outlines start with their sermon document and a copy of the default, in one transaction, while conversion is on; an unreadable default offers Balanced;
         - races verified on a disposable multi-connection PostgreSQL. The signed-in journeys that cover A4.2C pass on desktop and mobile against development; the legacy outline editor specs fail at the baseline as well (TEST-003, pre-existing; see the handoff).
+      - **A4.3: Semantic Sermon Header, Footer & Pagination Integration** (A1-UI.2C; 5 November 2026, not yet committed; verified, ready with nonblocking limitations; [handoff](HANDOFF-PS-A4.3.md)). No migration, no new package:
+        - the sermon header on the first page: the canonical title (`ideas.title`), edited in place and saved on its own with a revision check (online only), and the optional subtitle (`doc.attrs.subtitle`, one undoable document change);
+        - a sermon's own page (`doc.attrs.page`, version 2) now governs its paper, margins, header, and footer; a document from before A4.3 is drawn exactly as before until a person changes its page;
+        - a first page whose text starts below a tall header; an optional running header on later pages; page numbers on, right, and bold for new outlines (UX-001, the owner's new default);
+        - Outline Settings → Header & Footer in the same draft (preview, Apply, Cancel, one undo step);
+        - the library's idea editor now saves against the idea's revision and shows a conflict instead of writing over a newer title.
+        - Not done in A4.3: keep-together and keep-with-next (BUG-002, A4.6), and every UI.3 interaction (below).
+      - **A1-UI.3, future: drag-and-drop (approved requirement, owner, 5 November 2026; not built).** Recorded during A4.3 and not implemented there. Details in the [migration document](PREACHER-STUDIO-MIGRATION.md) (A1-UI.3, "Approved future requirement: drag-and-drop"):
+        - drag new components from the Insert palette to a precise place, and move existing ones, with an insertion indicator, edge auto-scroll, and correct behaviour across Print Layout's page boundaries;
+        - **dragging a point or subpoint moves its whole semantic group by default** (heading, subpoints, writing, passages, notes, scripts), by the v4 order-and-depth ownership model, identities and hierarchy kept, invalid moves refused;
+        - Scripture dragged from the Bible in the Workspace Panel (verses, a passage, or a chosen whole chapter), and from Saved Scripture, becomes the existing Scripture Passage component: references and translation only, never verse text; the source selection stays;
+        - Saved Points by their established semantics; all sources through one validated insert/move path with adapters; one successful drop is one undo step, an invalid drop changes nothing; touch and keyboard alternatives; autosave, recovery, and one-editing-tab protections kept.
     - **Next:** the Scripture passage view and expansion, color controls and theme tokens, the Outline Layout engine and panel, toolbar, text styles, menus, and keys (with the owner's requests in the handoff above), and a stand-in docked panel; each starts when the owner says so
 - **PS-2: Document Data Model, Additive Schema & Legacy Conversion Foundation**
 - **PS-3a: Synchronization protocol compatibility** (before any document is queued offline) and **PS-3b: Document Persistence, Revisioning & Offline Synchronization**

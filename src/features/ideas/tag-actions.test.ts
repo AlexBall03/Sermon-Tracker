@@ -236,7 +236,7 @@ describe("idea actions with tags", () => {
 
     for (const tag of [theirs.tag, nowhere]) {
       expect(await createIdea({ title: "New", tagIds: [tag] })).toEqual(unknownTag);
-      expect(await updateIdea(id, { title: "Changed", notes: "After.", tagIds: [tag] })).toEqual(
+      expect(await updateIdea(id, { title: "Changed", notes: "After.", tagIds: [tag] }, 0)).toEqual(
         unknownTag,
       );
     }
@@ -249,9 +249,9 @@ describe("idea actions with tags", () => {
     signInAs(me);
     const faith = (await createTag("Faith")).tag!.id;
     const { id } = await createIdea({ title: "Draft", tagIds: [faith] });
-    expect(await updateIdea(id, { title: "Better" })).toMatchObject({ ok: true });
+    expect(await updateIdea(id, { title: "Better" }, 0)).toMatchObject({ ok: true });
     expect((await getIdea(db, me, id!))?.tags).toEqual([{ id: faith, name: "Faith" }]);
-    expect(await updateIdea(id, { title: "Better", tagIds: [] })).toMatchObject({ ok: true });
+    expect(await updateIdea(id, { title: "Better", tagIds: [] }, 1)).toMatchObject({ ok: true });
     expect((await getIdea(db, me, id!))?.tags).toEqual([]);
   });
 });

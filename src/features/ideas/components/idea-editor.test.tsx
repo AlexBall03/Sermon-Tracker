@@ -118,6 +118,7 @@ describe("IdeaEditor", () => {
         notes: "2 Kings 4.",
         references: initial.references,
       }),
+      0,
     );
     expect(save()).toBeDisabled();
   });
@@ -406,6 +407,7 @@ describe("IdeaEditor tags", () => {
     expect(state.updateIdea).toHaveBeenCalledWith(
       id,
       expect.objectContaining({ title: initial.title, notes: initial.notes }),
+      0,
     );
   });
 
@@ -593,5 +595,105 @@ describe("IdeaEditor Scripture", () => {
       expect.stringContaining("2 Kings 4:26"),
       expect.stringContaining("Romans 6:23"),
     ]);
+  });
+});
+
+describe("IdeaEditor revision checks (A4.3)", () => {
+  const at = (revision: number, fields: Partial<IdeaDraft> = {}) => (
+    <IdeaEditor
+      id={id}
+      initial={{ ...initial, ...fields }}
+      allTags={[faith, hope, prayer]}
+      createdAt={new Date(0)}
+      updatedAt={new Date(0)}
+      revision={revision}
+    />
+  );
+
+  it("names the revision the draft began from, then the one its own save made", async () => {
+    render(at(4));
+    state.updateIdea.mockResolvedValueOnce({ ok: true, message: "Changes saved.", revision: 5 });
+    fireEvent.change(title(), { target: { value: "First" } });
+    fireEvent.click(save());
+    await screen.findByText("Changes saved.");
+    expect(state.updateIdea.mock.calls.at(-1)?.[2]).toBe(4);
+    fireEvent.change(title(), { target: { value: "Second" } });
+    fireEvent.click(save());
+    await waitFor(() => expect(state.updateIdea).toHaveBeenCalledTimes(2));
+    expect(state.updateIdea.mock.calls.at(-1)?.[2]).toBe(5);
+  });
+
+  it("keeps the draft on a stale answer, says what the idea is now, and saves over it only when asked", async () => {
+    render(at(4));
+    state.updateIdea.mockResolvedValueOnce({
+      ok: false,
+      message: "changed elsewhere",
+      stale: { revision: 6, title: "From the editor" },
+    });
+    fireEvent.change(title(), { target: { value: "Mine" } });
+    fireEvent.click(save());
+    const conflict = await screen.findByTestId("idea-conflict");
+    expect(conflict).toHaveTextContent("Its saved title is now “From the editor”.");
+    expect(title()).toHaveValue("Mine");
+    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    expect(state.updateIdea).toHaveBeenCalledTimes(1);
+
+    state.updateIdea.mockResolvedValueOnce({ ok: true, message: "Changes saved.", revision: 7 });
+    fireEvent.click(within(conflict).getByRole("button", { name: "Save mine over it" }));
+    await screen.findByText("Changes saved.");
+    expect(state.updateIdea.mock.calls.at(-1)?.[2]).toBe(6);
+    expect(screen.queryByTestId("idea-conflict")).toBeNull();
+  });
+
+  it("does not move the draft's revision when the page brings a newer idea while edits are under way", async () => {
+    const { rerender } = render(at(4));
+    fireEvent.change(title(), { target: { value: "Mine" } });
+    // Saved elsewhere meanwhile: a different title at revision 5.
+    rerender(at(5, { title: "Theirs" }));
+    expect(title()).toHaveValue("Mine");
+    fireEvent.click(save());
+    await waitFor(() => expect(state.updateIdea).toHaveBeenCalledTimes(1));
+    expect(state.updateIdea.mock.calls[0][2]).toBe(4);
+  });
+
+  it("takes in a passage added elsewhere, and its revision, without losing the edits", async () => {
+    const { rerender } = render(at(4));
+    fireEvent.change(title(), { target: { value: "Mine" } });
+    const added = {
+      book: 19,
+      chapterStart: 23,
+      verseStart: null,
+      chapterEnd: null,
+      verseEnd: null,
+      isPrimary: false,
+    };
+    rerender(at(5, { references: [...initial.references, added] }));
+    fireEvent.click(save());
+    await waitFor(() => expect(state.updateIdea).toHaveBeenCalledTimes(1));
+    expect(state.updateIdea.mock.calls[0][2]).toBe(5);
+    expect(state.updateIdea.mock.calls[0][1].references).toHaveLength(2);
+  });
+
+  it("drops the draft for the saved version only after the person confirms", async () => {
+    const { rerender } = render(at(4));
+    state.updateIdea.mockResolvedValueOnce({
+      ok: false,
+      message: "changed elsewhere",
+      stale: { revision: 5, title: "Theirs" },
+    });
+    fireEvent.change(title(), { target: { value: "Mine" } });
+    fireEvent.click(save());
+    const conflict = await screen.findByTestId("idea-conflict");
+    fireEvent.click(
+      within(conflict).getByRole("button", { name: "Discard mine and show the saved version" }),
+    );
+    // Asked first: nothing is dropped yet.
+    expect(screen.getByDisplayValue("Mine")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Discard my changes" }));
+    await waitFor(() => expect(state.refresh).toHaveBeenCalled());
+    rerender(at(5, { title: "Theirs" }));
+    expect(title()).toHaveValue("Theirs");
+    expect(screen.queryByTestId("idea-conflict")).toBeNull();
+    expect(save()).toBeDisabled();
   });
 });

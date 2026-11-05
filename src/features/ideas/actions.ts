@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { getDb } from "@/db";
 import { describeDatabaseError } from "@/db/types";
@@ -90,27 +91,103 @@ export async function createIdea(input: unknown, id?: unknown): Promise<IdeaActi
   }
 }
 
-export async function updateIdea(id: unknown, input: unknown): Promise<ActionResult> {
+/** A save's answer: the revision it made, or, when the idea changed since, what it is now. */
+export type UpdateIdeaResult = ActionResult & {
+  revision?: number;
+  /** Changed since `expectedRevision`; nothing was written. */
+  stale?: { revision: number; title: string };
+};
+
+const revisionSchema = z.number().int().min(0);
+
+/**
+ * Saves an idea from its editor, only while it is still at the revision the
+ * editor started from (A4.3): a save made against an older one writes nothing
+ * and answers `stale`, so the library's editor never writes over a title saved
+ * in the sermon editor, or anything else saved since. The revision is
+ * required: a page loaded before it was (an old tab) is told to reload, and
+ * its words stay in its form.
+ */
+export async function updateIdea(
+  id: unknown,
+  input: unknown,
+  expectedRevision?: unknown,
+): Promise<UpdateIdeaResult> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
   const { t, schemas } = await context();
 
   const ideaId = ideaIdSchema.safeParse(id);
   if (!ideaId.success) return { ok: false, message: t.invalid };
+  const revision = revisionSchema.safeParse(expectedRevision);
+  if (!revision.success) return { ok: false, message: t.reloadToSave };
   // Unlike a new idea's input, this has no default classification: one left out is left alone.
   const parsed = schemas.ideaUpdate.safeParse(input);
   if (!parsed.success) return firstIssue(parsed.error, t.changesNotSaved);
 
+  let outcome: service.RevisedUpdate;
   try {
-    const idea = await service.updateIdea(getDb(), actor.user.id, ideaId.data, parsed.data);
-    if (!idea) return { ok: false, message: t.missing };
+    outcome = await service.updateIdeaAt(
+      getDb(),
+      actor.user.id,
+      ideaId.data,
+      parsed.data,
+      revision.data,
+    );
   } catch (error) {
     if (error instanceof UnknownTagError) return { ok: false, message: t.unknownTag };
     console.error("Idea update failed:", describeDatabaseError(error));
     return { ok: false, message: t.yourChangesNotSaved };
   }
+  if (outcome.status === "missing") return { ok: false, message: t.missing };
+  if (outcome.status === "stale") {
+    const now = await service.ideaHeading(getDb(), actor.user.id, ideaId.data).catch(() => null);
+    return {
+      ok: false,
+      message: t.changedElsewhere,
+      stale: { revision: outcome.revision, title: now?.title ?? "" },
+    };
+  }
   refresh(ideaId.data);
-  return { ok: true, message: t.changesSaved };
+  return { ok: true, message: t.changesSaved, revision: outcome.idea.revision };
+}
+
+/** What became of a sermon's new title (A4.3). */
+export type RenameResult =
+  | { code: "renamed" | "unchanged"; revision: number; title: string }
+  | { code: "stale"; revision: number; title: string }
+  | { code: "missing" | "invalid" | "failed" | "unauthorized"; message: string };
+
+/**
+ * A sermon's new title from the sermon editor's header (A4.3), written only
+ * while the idea is at the revision it was typed against
+ * (`service.renameIdeaAt`). Nothing else about the idea changes. `failed`
+ * says nothing about whether it was written: its statement may have
+ * committed, so the editor reads the title back before it decides.
+ */
+export async function renameSermonTitle(input: unknown): Promise<RenameResult> {
+  const actor = await authorize("active");
+  if (!actor.ok) return { code: "unauthorized", message: actor.message };
+  const { t, schemas } = await context();
+
+  const parsed = schemas.renameInput.safeParse(input);
+  if (!parsed.success) {
+    return { code: "invalid", message: parsed.error.issues[0]?.message ?? t.invalid };
+  }
+  const { ideaId, title, expectedRevision } = parsed.data;
+  let outcome: service.RenameOutcome;
+  try {
+    outcome = await service.renameIdeaAt(getDb(), actor.user.id, ideaId, title, expectedRevision);
+  } catch (error) {
+    console.error("Sermon rename failed:", describeDatabaseError(error));
+    return { code: "failed", message: t.yourChangesNotSaved };
+  }
+  if (outcome.status === "missing") return { code: "missing", message: t.missing };
+  if (outcome.status === "renamed") {
+    refresh(ideaId);
+    revalidatePath(routes.outlines);
+  }
+  return { code: outcome.status, revision: outcome.revision, title: outcome.title };
 }
 
 export type AttachActionResult = ActionResult & {
@@ -177,7 +254,10 @@ export async function attachScripture(input: unknown): Promise<AttachActionResul
   };
 }
 
-export async function changeIdeaKind(id: unknown, kind: unknown): Promise<ActionResult> {
+export async function changeIdeaKind(
+  id: unknown,
+  kind: unknown,
+): Promise<ActionResult & { revision?: number }> {
   const actor = await authorize("active");
   if (!actor.ok) return actor;
   const { t } = await context();
@@ -186,15 +266,18 @@ export async function changeIdeaKind(id: unknown, kind: unknown): Promise<Action
   const parsed = ideaKindSchema.safeParse(kind);
   if (!ideaId.success || !parsed.success) return { ok: false, message: t.invalid };
 
+  let revision: number;
   try {
     const idea = await service.setIdeaKind(getDb(), actor.user.id, ideaId.data, parsed.data);
     if (!idea) return { ok: false, message: t.missing };
+    revision = idea.revision;
   } catch (error) {
     console.error("Idea reclassification failed:", describeDatabaseError(error));
     return { ok: false, message: t.notReclassified };
   }
   refresh(ideaId.data);
-  return { ok: true, message: t.reclassified(parsed.data) };
+  // The revision it made, so the editor can tell its own change from one made elsewhere.
+  return { ok: true, message: t.reclassified(parsed.data), revision };
 }
 
 /**

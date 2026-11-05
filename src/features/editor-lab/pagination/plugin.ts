@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
@@ -12,6 +13,10 @@ import {
   type PageMetrics,
   type PageSetup,
 } from "./geometry";
+import { draftPage } from "../styles/draft";
+import type { HeaderFooter } from "../styles/model";
+import { documentStylesKey, type Preview } from "../styles/preview-key";
+import { headerFooterOf, historicalHeaderFooter, pageWith, setupOf } from "./page-config";
 import { printingKey } from "./printing";
 
 /*
@@ -43,7 +48,25 @@ import { printingKey } from "./printing";
 export const layoutModes = ["regular", "print"] as const;
 export type LayoutMode = (typeof layoutModes)[number];
 
-export type PrintLayoutState = { layout: LayoutMode; setup: PageSetup };
+export type PrintLayoutState = {
+  layout: LayoutMode;
+  /**
+   * The device's paper and margins (`preferences.ts`). In the sermon editor
+   * (`pageFromDocument`) only a document that has no page of its own is
+   * drawn with them, as every document was before A4.3.
+   */
+  setup: PageSetup;
+  /** Set once, in the sermon editor: the document's own page governs (A4.3). */
+  fromDocument?: boolean;
+  /** Paper and margins being chosen (a margin dragged), shown before they are written. View state. */
+  draftSetup?: PageSetup | null;
+  /** The measured height of the sermon header on the first page, in pixels (A4.3). View state. */
+  headerHeight?: number;
+  /** The sermon's title as the header shows it, for the running header's copies. View state. */
+  title?: string;
+  /** The header and footer of an Outline Settings draft being previewed. View state. */
+  preview?: HeaderFooter | null;
+};
 
 export const printLayoutKey = new PluginKey<PrintLayoutState>("labPrintLayout");
 
@@ -74,6 +97,13 @@ export type PrintLayoutOptions = {
    * flows, as the v3 lab, the unchanged baseline, always has.
    */
   printsInPrintLayout?: boolean;
+  /**
+   * Whether the document's own page (`doc.attrs.page`, A4.3) governs the
+   * pages: its paper, margins, header, and footer. The sermon editor's
+   * (`labV4Extensions`). Left out, the device's setup is used and the page
+   * numbers are always drawn, as the v3 lab, the unchanged baseline, always has.
+   */
+  pageFromDocument?: boolean;
 };
 
 type PrintLayoutStorage = { current: PrintLayoutState | null };
@@ -83,19 +113,83 @@ declare module "@tiptap/core" {
     printLayout: {
       /** Regular or Print Layout. View state: no document change, no history. */
       setLayout: (layout: LayoutMode) => ReturnType;
-      /** Paper and margins. In this prototype also view state (see the handoff). */
+      /** The device's paper and margins: view state (the v3 lab; a sermon with no page of its own). */
       setPageSetup: (setup: PageSetup) => ReturnType;
+      /** Paper and margins shown while they are being chosen (null: none). View state. */
+      previewPageSetup: (setup: PageSetup | null) => ReturnType;
+      /**
+       * Writes the sermon's paper and margins into its page (A4.3), keeping its
+       * header and footer as they are drawn: one undoable document change. A
+       * page with none of its own is written as version 2 from what it showed.
+       */
+      setPageSettings: (setup: PageSetup) => ReturnType;
+      /** The sermon header's measured height (A4.3). View state. */
+      setHeaderHeight: (height: number) => ReturnType;
+      /** The title the header shows, for the running header (A4.3). View state. */
+      setHeadingTitle: (title: string) => ReturnType;
     };
   }
 }
 
-const cssVariables = (setup: PageSetup) => {
-  const metrics = pageMetrics(setup);
+/** Where the first page's header begins below the paper's top edge: half an inch, or half the margin. */
+export const headerOffset = (setup: PageSetup) => Math.min(48, setup.margins.top / 2);
+/** The space between the header and the first line of the sermon, when the header pushes it down. */
+const headerGap = 12;
+
+/** Where the first page's text begins, for a header `height` high (0: no header). */
+export const firstTopFor = (setup: PageSetup, height: number) =>
+  height > 0 ? headerOffset(setup) + height + headerGap : 0;
+
+/** What the editor's pages are drawn with now (A4.3). */
+export type PageInForce = {
+  setup: PageSetup;
+  headerFooter: HeaderFooter;
+  metrics: PageMetrics;
+  /** Whether the document's page governs (the sermon editor). */
+  fromDocument: boolean;
+};
+
+const inForce = new WeakMap<object, { doc: ProseMirrorNode; page: PageInForce }>();
+
+/**
+ * The paper, margins, header, and footer in force: a margin being chosen,
+ * else the document's own page (in the sermon editor), else the device's;
+ * and the header and footer of an Outline Settings draft while it is
+ * previewed. Worked out once for each state and document.
+ */
+export function pageInForce(state: EditorState): PageInForce | null {
+  const current = printLayoutKey.getState(state);
+  if (!current) return null;
+  const cached = inForce.get(current);
+  if (cached && cached.doc === state.doc) return cached.page;
+  const fromDocument = current.fromDocument === true;
+  const page = state.doc.attrs.page;
+  const setup =
+    current.draftSetup ?? (fromDocument ? setupOf(page, () => current.setup) : current.setup);
+  const headerFooter =
+    current.preview ?? (fromDocument ? headerFooterOf(page) : historicalHeaderFooter);
+  const firstTop =
+    fromDocument && current.layout === "print" ? firstTopFor(setup, current.headerHeight ?? 0) : 0;
+  const result: PageInForce = {
+    setup,
+    headerFooter,
+    metrics: pageMetrics(setup, deskGap, firstTop),
+    fromDocument,
+  };
+  inForce.set(current, { doc: state.doc, page: result });
+  return result;
+}
+
+const cssVariables = (page: PageInForce) => {
+  const { metrics, setup } = page;
   const { margins } = setup;
   return [
     `--page-w:${metrics.width}px`,
     `--page-h:${metrics.height}px`,
     `--content-h:${metrics.contentHeight}px`,
+    `--first-top:${metrics.firstTop}px`,
+    `--first-content-h:${metrics.firstContentHeight}px`,
+    `--header-offset:${headerOffset(setup)}px`,
     `--mt:${margins.top}px`,
     `--mr:${margins.right}px`,
     `--mb:${margins.bottom}px`,
@@ -129,6 +223,52 @@ export const PrintLayout = Extension.create<PrintLayoutOptions, PrintLayoutStora
           if (dispatch) tr.setMeta(printLayoutKey, { setup }).setMeta("addToHistory", false);
           return true;
         },
+      previewPageSetup:
+        (setup) =>
+        ({ tr, dispatch }) => {
+          if (dispatch) {
+            tr.setMeta(printLayoutKey, { draftSetup: setup }).setMeta("addToHistory", false);
+          }
+          return true;
+        },
+      setPageSettings:
+        (setup) =>
+        ({ tr, state, dispatch }) => {
+          if (!pageInForce(state)?.fromDocument) return false;
+          const page = pageWith(setup, headerFooterOf(state.doc.attrs.page));
+          if (!page) return false;
+          if (JSON.stringify(page) === JSON.stringify(state.doc.attrs.page)) {
+            // Nothing to write; a margin shown while it was dragged is put away.
+            if (dispatch) {
+              tr.setMeta(printLayoutKey, { draftSetup: null }).setMeta("addToHistory", false);
+            }
+            return true;
+          }
+          if (dispatch) {
+            closeHistory(
+              tr.setDocAttribute("page", page).setMeta(printLayoutKey, { draftSetup: null }),
+            );
+          }
+          return true;
+        },
+      setHeaderHeight:
+        (height) =>
+        ({ tr, state, dispatch }) => {
+          const now = printLayoutKey.getState(state)?.headerHeight ?? 0;
+          // Under half a pixel moves no line: not worth a measurement.
+          if (Math.abs(now - height) < 0.5) return false;
+          if (dispatch) {
+            tr.setMeta(printLayoutKey, { headerHeight: height }).setMeta("addToHistory", false);
+          }
+          return true;
+        },
+      setHeadingTitle:
+        (title) =>
+        ({ tr, state, dispatch }) => {
+          if (printLayoutKey.getState(state)?.title === title) return false;
+          if (dispatch) tr.setMeta(printLayoutKey, { title }).setMeta("addToHistory", false);
+          return true;
+        },
     };
   },
 
@@ -140,11 +280,29 @@ export const PrintLayout = Extension.create<PrintLayoutOptions, PrintLayoutStora
         key: printLayoutKey,
         state: {
           // A document loaded into the editor later keeps the layout in force.
-          init: () => (storage.current ??= options.initial()),
+          init: () =>
+            (storage.current ??= {
+              ...options.initial(),
+              ...(options.pageFromDocument ? { fromDocument: true } : {}),
+            }),
           apply(tr, previous) {
             const change = tr.getMeta(printLayoutKey) as Partial<PrintLayoutState> | undefined;
-            if (!change) return previous;
-            const next = { ...previous, ...change };
+            // An Outline Settings draft's header and footer, while it is previewed (A4.3).
+            const styles = tr.getMeta(documentStylesKey) as Preview | undefined;
+            const preview =
+              styles === undefined || !options.pageFromDocument
+                ? undefined
+                : styles && "draft" in styles
+                  ? (draftPage(styles.draft) ?? null)
+                  : null;
+            if (!change && (preview === undefined || preview === (previous.preview ?? null))) {
+              return previous;
+            }
+            const next = {
+              ...previous,
+              ...change,
+              ...(preview === undefined ? {} : { preview }),
+            };
             storage.current = next;
             return next;
           },
@@ -152,7 +310,16 @@ export const PrintLayout = Extension.create<PrintLayoutOptions, PrintLayoutStora
         props: {
           attributes: (state) => {
             const current = printLayoutKey.getState(state)!;
-            return { "data-layout": current.layout, style: cssVariables(current.setup) };
+            const page = pageInForce(state)!;
+            const { pageNumbers, runningHeader, header } = page.headerFooter;
+            return {
+              "data-layout": current.layout,
+              "data-title-align": header.titleAlign,
+              style: cssVariables(page),
+              "data-page-numbers": pageNumbers.enabled ? pageNumbers.align : "off",
+              "data-page-number-weight": pageNumbers.weight,
+              "data-running-header": runningHeader.enabled ? "on" : "off",
+            };
           },
           decorations: (state) =>
             printLayoutKey.getState(state)!.layout === "print"
@@ -335,8 +502,33 @@ class Paginator {
       viewChanged = true;
     }
     if (viewChanged) this.view.dispatch(tr.setMeta("addToHistory", false));
+    this.readHeader();
     this.measure();
   };
+
+  /**
+   * The first page's header, read now (A4.3): an element marked
+   * `data-page-header` beside the editor (the sermon header). Its place and
+   * width follow the editor's layout in CSS, so once a print has put the
+   * editor in Print Layout its height is already the printed one, before
+   * any observer or render could report it. View state only.
+   */
+  private readHeader() {
+    const current = printLayoutKey.getState(this.view.state);
+    if (!current?.fromDocument || current.layout !== "print") return;
+    const surface = this.view.dom.parentElement;
+    const header = surface?.parentElement?.querySelector<HTMLElement>(
+      ":scope > [data-page-header]",
+    );
+    if (!header) return;
+    const height = header.offsetHeight;
+    if (Math.abs((current.headerHeight ?? 0) - height) < 0.5) return;
+    this.view.dispatch(
+      this.view.state.tr
+        .setMeta(printLayoutKey, { headerHeight: height })
+        .setMeta("addToHistory", false),
+    );
+  }
 
   /** After printing: the screen's view state (and layout) is drawn again, and the pages follow it. */
   private readonly onAfterPrint = () => {
@@ -440,10 +632,36 @@ class Paginator {
     return edge;
   }
 
+  /**
+   * The running header's words (A4.3): the title, and the subtitle when the
+   * page asks for it. Drawn in each later page's top margin; never part of the
+   * document, never editable, and hidden while the page does not ask for it.
+   */
+  private runningHeaderText() {
+    const state = this.view.state;
+    const title = printLayoutKey.getState(state)?.title ?? "";
+    const subtitle = state.doc.attrs.subtitle as string | null;
+    return pageInForce(state)?.headerFooter.runningHeader.subtitle && subtitle
+      ? `${title} · ${subtitle}`
+      : title;
+  }
+
+  private setRunningHeaders() {
+    const text = this.runningHeaderText();
+    for (const gap of this.gaps) {
+      const header = gap.querySelector<HTMLElement>(".lab-running-header");
+      if (header && header.textContent !== text) header.textContent = text;
+    }
+  }
+
   /** Keeps exactly `count` gaps, numbering the pages they end and the last one. */
   private setGaps(count: number) {
     while (this.gaps.length < count) {
       const gap = this.sheetEdge("lab-page-gap", this.gaps.length + 1);
+      const header = this.view.dom.ownerDocument.createElement("span");
+      header.className = "lab-running-header";
+      header.textContent = this.runningHeaderText();
+      gap.append(header);
       const endSpacer = this.end.previousElementSibling!;
       this.root.insertBefore(this.spacer(), endSpacer);
       this.root.insertBefore(gap, endSpacer);
@@ -466,7 +684,8 @@ class Paginator {
     if (typeof matchMedia !== "undefined" && matchMedia("print").matches) return;
 
     const started = performance.now();
-    const metrics = pageMetrics(state.setup);
+    const metrics = pageInForce(this.view.state)!.metrics;
+    this.setRunningHeaders();
     const box = () => dom.getBoundingClientRect();
     const scale = box().width / (dom.offsetWidth || 1) || 1;
     const offset = (y: number) => (y - box().top) / scale;
@@ -529,7 +748,7 @@ class Paginator {
     while (last && (last === this.root || !drawn(last))) {
       last = last.previousElementSibling as HTMLElement | null;
     }
-    return last ? offset(last.getBoundingClientRect().bottom) : metrics.top;
+    return last ? offset(last.getBoundingClientRect().bottom) : metrics.firstTop;
   }
 }
 

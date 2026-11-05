@@ -2,17 +2,20 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 import { numberingConfigSchema, type NumberingConfig } from "@/features/outlines/numbering";
 import { layoutParses, outlineLayoutSchema } from "../layout";
+import { headerFooterOf } from "../pagination/page-config";
 import { componentOfNode, findComponent } from "./component-node";
 import {
   appearanceSchemas,
   componentKinds,
   documentStylesSchema,
+  headerFooterSchema,
   levelKey,
   namedStyles,
   userPresetIds,
   type ComponentKind,
   type ComponentStyle,
   type DocumentStyles,
+  type HeaderFooter,
   type NamedStyle,
   type UserPresetId,
 } from "./model";
@@ -51,6 +54,13 @@ import {
  * transaction only when the stored layout can be read; an unreadable layout
  * refuses the whole draft and is never replaced or normalized.
  *
+ * Since A4.3 a draft also holds the page's header and footer (`page`: the
+ * title's alignment, the running header, the page numbers; one edit, read
+ * from `doc.attrs.page` as it is drawn). Like the numbering it is not
+ * appearance: no appearance reset touches it, a preset never carries it,
+ * and Apply writes it beside the styles in the same one transaction. The
+ * paper and margins are not in it, so moving a margin is never a conflict.
+ *
  * Nothing here touches the editor: the plugin previews a draft (`plugin.ts`)
  * and `applyAppearanceDraft` writes the plan worked out here.
  */
@@ -62,6 +72,7 @@ export type Path =
   | { layer: "preset" }
   | { layer: "presetRevision" }
   | { layer: "numbering" }
+  | { layer: "page" }
   | { layer: "level"; depth: number; field: string }
   | { layer: "defaults"; field: string }
   | { layer: "named"; name: NamedStyle; field: string }
@@ -83,6 +94,8 @@ export function keyOf(path: Path): string {
       return "presetRevision";
     case "numbering":
       return "numbering";
+    case "page":
+      return "page";
     case "level":
       return `level|${path.depth}|${path.field}`;
     case "defaults":
@@ -146,6 +159,8 @@ export function committedAt(
     const layout = doc.attrs.layout as { numbering?: unknown } | null | undefined;
     return layoutParses(layout) ? orUnset(layout?.numbering) : UNSET;
   }
+  // The header and footer as the page draws them now (A4.3): always a value, never unset.
+  if (path.layer === "page") return headerFooterOf(doc.attrs.page);
   if (path.layer === "instance") {
     const appearance = findComponent(doc, path.id)?.node.attrs.appearance as
       Record<string, unknown> | null | undefined;
@@ -266,6 +281,18 @@ export function draftNumbering(draft: Draft): NumberingConfig | undefined {
   return valid.get(edit) ? (edit.value as NumberingConfig) : undefined;
 }
 const valid = new WeakMap<Edit, boolean>();
+
+/**
+ * The header and footer a draft would give the page (A4.3), or undefined when
+ * it changes none or what it holds does not validate.
+ */
+export function draftPage(draft: Draft): HeaderFooter | undefined {
+  const edit = draft.edits.get("page");
+  if (!edit || edit.value === UNSET) return undefined;
+  if (!validPage.has(edit)) validPage.set(edit, headerFooterSchema.safeParse(edit.value).success);
+  return validPage.get(edit) ? (edit.value as HeaderFooter) : undefined;
+}
+const validPage = new WeakMap<Edit, boolean>();
 
 /**
  * "Reset all components to outline defaults": every single component's own
@@ -487,6 +514,12 @@ export type ApplyPlan =
       styles?: DocumentStyles | null;
       /** The outline's layout with the drafted numbering, or undefined to leave it. */
       layout?: Record<string, unknown>;
+      /**
+       * The page's header and footer (A4.3), or undefined to leave them. The
+       * command writes them as a version 2 page with the paper and margins in
+       * force (`pageWith`), which only the editor knows for a page that never said.
+       */
+      headerFooter?: HeaderFooter;
       instances: { pos: number; appearance: ComponentStyle | null }[];
     }
   | { ok: false; reason: "conflict" | "orphan" | "invalid" };
@@ -505,7 +538,7 @@ export function applyPlan(
   if (conflicts(draft, stored, doc).length) return { ok: false, reason: "conflict" };
   const outlineEdits = editsWhere(
     draft,
-    (path) => path.layer !== "instance" && path.layer !== "numbering",
+    (path) => path.layer !== "instance" && path.layer !== "numbering" && path.layer !== "page",
   );
   let styles: DocumentStyles | null | undefined;
   if (outlineEdits.length) {
@@ -528,6 +561,14 @@ export function applyPlan(
     layout = { ...stored, numbering: parsed.data };
     if (!outlineLayoutSchema.safeParse(layout).success) return { ok: false, reason: "invalid" };
   }
+  // The header and footer (A4.3): the whole setting, valid, or the draft is refused.
+  let headerFooter: HeaderFooter | undefined;
+  const page = draft.edits.get("page");
+  if (page) {
+    const parsed = headerFooterSchema.safeParse(page.value);
+    if (page.value === UNSET || !parsed.success) return { ok: false, reason: "invalid" };
+    headerFooter = parsed.data;
+  }
   const ids = new Set(
     editsWhere(draft, (path) => path.layer === "instance").map(
       (edit) => (edit.path as { id: string }).id,
@@ -546,7 +587,7 @@ export function applyPlan(
     }
     instances.push({ pos: found.pos, appearance });
   }
-  return { ok: true, styles, layout, instances };
+  return { ok: true, styles, layout, headerFooter, instances };
 }
 
 /** Whether the draft holds anything to apply. */

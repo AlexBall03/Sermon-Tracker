@@ -7,7 +7,13 @@ import { validHighlight, validTextColor } from "../schema/formatting";
 import { pointPresentationSchema } from "../schema/model";
 import { referenceFrom } from "../schema/scripture";
 import { appearanceSchemaFor } from "../styles/attributes";
-import { appearanceSchemas, documentStylesSchema, namedStyles } from "../styles/model";
+import {
+  appearanceSchemas,
+  documentStylesSchema,
+  namedStyles,
+  pageConfigSchema,
+  subtitleSchema,
+} from "../styles/model";
 import { rawProblems, restoreDocument, type DocumentProblem } from "../validate";
 import { v3ToV4 } from "./migrate";
 import { maxDepth, pointRoles, v4SchemaVersion } from "./model";
@@ -47,6 +53,13 @@ function invariants(doc: ProseMirrorNode): DocumentProblem[] {
     problems.push({ code: "invalid_attribute", path, detail });
   if (doc.attrs.styles !== null && !documentStylesSchema.safeParse(doc.attrs.styles).success) {
     bad("", "doc.styles");
+  }
+  // The sermon header's subtitle and the page (A4.3): null, or exactly what their schemas accept.
+  if (doc.attrs.subtitle !== null && !subtitleSchema.safeParse(doc.attrs.subtitle).success) {
+    bad("", "doc.subtitle");
+  }
+  if (doc.attrs.page !== null && !pageConfigSchema.safeParse(doc.attrs.page).success) {
+    bad("", "doc.page");
   }
   const ids = new Set<string>();
   const roles = new Set<string>();

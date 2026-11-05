@@ -13,9 +13,12 @@ import {
   createIdea,
   deleteIdea,
   getIdea,
+  ideaHeading,
   recentIdeas,
+  renameIdeaAt,
   setIdeaKind,
   updateIdea,
+  updateIdeaAt,
 } from "./ideas";
 import { attachInputSchema, ideaInputSchema, type IdeaReference } from "./schemas";
 
@@ -169,6 +172,105 @@ describe("updateIdea", () => {
       notes: "Kept.",
       references: [john316],
     });
+  });
+});
+
+describe("updateIdeaAt (A4.3: the library's revision check)", () => {
+  it("writes nothing when the idea moved past the revision the save was made against", async () => {
+    const idea = await createIdea(db, me, input({ title: "Draft", notes: "First." }));
+    // The sermon editor renamed it meanwhile.
+    expect(await renameIdeaAt(db, me, idea!.id, "From the editor", idea!.revision)).toMatchObject({
+      status: "renamed",
+    });
+    const stale = await updateIdeaAt(
+      db,
+      me,
+      idea!.id,
+      input({ title: "From the library", notes: "Second." }),
+      idea!.revision,
+    );
+    expect(stale).toEqual({ status: "stale", revision: idea!.revision + 1 });
+    expect(await getIdea(db, me, idea!.id)).toMatchObject({
+      title: "From the editor",
+      notes: "First.",
+    });
+  });
+});
+
+describe("renameIdeaAt (A4.3)", () => {
+  it("changes the title only, raises the revision, and counts as development", async () => {
+    const idea = await createIdea(
+      db,
+      me,
+      input({
+        kind: "sermon",
+        title: "Old",
+        notes: "Kept.",
+        subject: "Grace",
+        status: "developing",
+        sermonType: "topical",
+        references: [john316, psalm23],
+      }),
+    );
+    const outcome = await renameIdeaAt(db, me, idea!.id, "New", idea!.revision);
+    expect(outcome).toEqual({ status: "renamed", title: "New", revision: idea!.revision + 1 });
+    const after = await getIdea(db, me, idea!.id);
+    expect(after).toMatchObject({
+      title: "New",
+      notes: "Kept.",
+      subject: "Grace",
+      kind: "sermon",
+      status: "developing",
+      sermonType: "topical",
+      references: [john316, psalm23],
+      archivedAt: null,
+    });
+    expect(after!.lastDevelopedAt).not.toBeNull();
+  });
+
+  it("refuses a stale revision and writes nothing", async () => {
+    const idea = await createIdea(db, me, input({ title: "Old" }));
+    await renameIdeaAt(db, me, idea!.id, "Second", idea!.revision);
+    expect(await renameIdeaAt(db, me, idea!.id, "Third", idea!.revision)).toEqual({
+      status: "stale",
+      revision: idea!.revision + 1,
+      title: "Second",
+    });
+    expect((await getIdea(db, me, idea!.id))?.title).toBe("Second");
+  });
+
+  it("answers the same title as unchanged, without a write", async () => {
+    const idea = await createIdea(db, me, input({ title: "Same" }));
+    expect(await renameIdeaAt(db, me, idea!.id, "Same", idea!.revision)).toEqual({
+      status: "unchanged",
+      revision: idea!.revision,
+      title: "Same",
+    });
+    const after = await getIdea(db, me, idea!.id);
+    expect(after!.revision).toBe(idea!.revision);
+    expect(after!.lastDevelopedAt).toBeNull();
+  });
+
+  it("answers another account's idea as missing and leaves it alone", async () => {
+    const theirs = await createIdea(db, other, input({ title: "Theirs" }));
+    expect(await renameIdeaAt(db, me, theirs!.id, "Mine", theirs!.revision)).toEqual({
+      status: "missing",
+    });
+    expect(await ideaHeading(db, me, theirs!.id)).toBeNull();
+    expect(await ideaHeading(db, other, theirs!.id)).toEqual({
+      title: "Theirs",
+      revision: theirs!.revision,
+    });
+  });
+
+  it("lets only one of two renames at the same revision through", async () => {
+    const idea = await createIdea(db, me, input({ title: "Start" }));
+    const [first, second] = await Promise.all([
+      renameIdeaAt(db, me, idea!.id, "A", idea!.revision),
+      renameIdeaAt(db, me, idea!.id, "B", idea!.revision),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual(["renamed", "stale"]);
   });
 });
 

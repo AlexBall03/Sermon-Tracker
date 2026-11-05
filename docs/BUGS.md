@@ -73,9 +73,82 @@ setSelection must point at the current document`. It now answers only about
 
 ## UX-001: footer page numbers
 
-- **Status:** Deferred to A4.3 / UI.2C (approved, not built).
-- An optional footer, off by default, whose page numbers are right-aligned and
-  bold by default, and customisable.
+- **Status:** Fixed (A4.3 / UI.2C, 5 November 2026; [handoff](HANDOFF-PS-A4.3.md)).
+- Approved first as an optional footer, off by default, whose page numbers are
+  right-aligned and bold by default, and customisable.
+- **Owner's decision (5 November 2026):** page numbers are **on by default for
+  new sermon documents**, right-aligned and bold. A document stored before
+  A4.3 (no page of its own) keeps what it always drew: numbers on, plain, at
+  the right, until a person changes its page.
+- **Built:** Outline Settings → Header & Footer turns them on or off and sets
+  their position (left, centre, right) and weight; they follow the real
+  pagination, and the screen's Print Layout and the printed pages agree.
+
+## BUG-012: the sermon header in Regular-started prints, narrow papers, and dark themes
+
+- **Severity:** P1 (printing). **Status:** Fixed (A4.3 commit-readiness check, 5 November 2026).
+- **Found** by `tests/lab/header-footer.spec.ts`, and by the owner's screenshot (the faint title).
+- **Printing from Regular Layout.**
+  - **Cause:** the header's place and measured height followed React. `beforeprint` puts the editor in Print Layout and measures at once, before React renders again, so the header stayed a block above the text at its Regular height, and the printed pages were pushed down by it.
+  - **Fix:** the header's place follows the editor's layout in CSS (`.sermon-page:has(… [data-layout="print"])`, `v4/lab-v4.css`), and the paginator reads its height itself in `beforeprint` (`readHeader`, `data-page-header`). Unit test in `v4/header-footer.test.ts`.
+  - **Evidence:** a Regular-started A4 print in Chromium matches the screen prepared for print (pages, numbers in their margins, every line in its text area).
+- **A long title on a narrow paper was clipped.**
+  - **Cause:** the fields were sized in JavaScript only when their words changed, never when the paper changed.
+  - **Fix:** they now grow in CSS (a hidden copy of the words in the same grid cell), so a narrower page adds the line it needs (A5: the text starts at 181 px, not 148).
+- **The title was nearly invisible in a dark theme** (the owner's screenshot).
+  - **Cause:** the header sits on Print Layout's white paper but outside the editor, so it took the dark theme's near-white ink.
+  - **Fix:** it now carries the editor's `data-paper`, so it takes the paper's tokens.
+  - **Evidence:** the browser test compares the title's computed color with the paper's ink (both `rgb(23, 24, 27)` in a dark theme).
+
+## UX-005: restoring an Introduction, and where Insert → Introduction puts it
+
+- **Severity:** P2. **Status:** Open; recorded for the owner's decision (UI.3, the Insert workflow). Not changed in A4.3, which is limited to UI.2C.
+- **Reported by the owner (5 November 2026, `/lab/editor/v4`):**
+  - the Introduction heading became ordinary writing ("The point is now ordinary writing…", the existing rule for Backspace at a heading's start; the notice offers Undo);
+  - with the caret on an empty line at the top, Insert → Introduction put the new Introduction below the opening writing instead of at the caret.
+- **Cause (existing behavior, A3):** `insertRolePoint` (`v4/commands.ts`) places an Introduction just before the first main point, and at the caret only when the sermon has no main point. Top-level writing before "I." therefore stays above it. It never turns existing writing into the Introduction.
+- **Options for the owner:**
+  - **(a)** insert at the caret's line whenever that is before the first main point (still refusing any placement that would change an existing block's owner);
+  - **(b)** a "Make this the Introduction" action on a line of writing, which turns that line back into the Introduction heading in one undoable step;
+  - **(c)** both.
+  - Each must keep one Introduction per sermon and the v4 ownership guards.
+
+## BUG-011: a passage's label can be drawn in a page's bottom margin
+
+- **Severity:** P2. **Status:** Open, pre-existing; deferred to A4.6 with
+  keep-together (BUG-002).
+- **Found (A4.3 verification, 5 November 2026):** `tests/lab/header-footer.spec.ts`
+  measured every text line of `/lab/editor/v4` against its page's text area.
+  When a Scripture passage falls at a page's foot, its label
+  (`.lab-passage-label`, a flex box) is drawn below the text area, up to about
+  58 px into the bottom margin.
+- **Pre-existing, proved:** a probe with the first page's header offset
+  inactive (a short title, so page 1 is laid out as before A4.3), sweeping the
+  top margin from 72 to 240 px on Letter, found it at several margins.
+- **Not yet checked:** whether the printed page shows the same (the A4.3 PDF
+  check's fixture did not place a passage at a page's foot).
+- **Seen in the commit-readiness check:** on A5 with a long title, such a
+  label falls on that page's number (page 4). The geometry spec sets the label
+  aside for the number check too, and says why.
+- The A4.3 spec checks every other line, and the label against the header and
+  the page numbers, and says why it sets the label aside.
+
+## UX-004: the library could write over a title saved in the sermon editor
+
+- **Severity:** P2. **Status:** Fixed (A4.3, 5 November 2026).
+- **Found (A4.3 audit):** the library's idea editor saved online with no
+  revision, so a page opened before a title was changed in the sermon editor
+  could save its older title (and everything else in its form) over it.
+- **Fix:** the online save names the revision its draft began from
+  (`updateIdea(id, input, expectedRevision)` → `updateIdeaAt`); a stale save
+  writes nothing, keeps the form, and offers "Save mine over it" (against the
+  revision the idea has now) or "Discard mine" (after a confirmation). The
+  draft's revision moves only with a change this page made or one it took in
+  (passages added elsewhere).
+- **Old clients:** a page loaded before A4.3 sends no revision and is now told
+  to reload, with its words kept in its form; it can no longer write without
+  a check. Queued offline changes always carried their revision and are
+  unchanged.
 
 ## BUG-003: the offline queue could send two changes in the wrong order
 
@@ -271,6 +344,16 @@ setSelection must point at the current document`. It now answers only about
 - **Next:** trace the focus and toolbar steps in the legacy editor (or update
   the specs if the editor changed on purpose), in a checkpoint the owner
   names.
+
+## TEST-004: three lab tests that fail at the baseline
+
+- **Severity:** P2 (lab tests). **Status:** Open, pre-existing, cause not traced.
+- **Classified in A4.3's final verification (5 November 2026).** Each was rerun alone against A4.3 and against a `git archive` copy of `4576620`, served with `next dev --webpack`. The specs are unchanged from HEAD.
+- **The failures:**
+  - `tests/lab/v4.spec.ts` "a deletion the browser makes on its own never merges a heading into writing" (desktop): the content is protected, but `sermon-editor-notice` is not shown (line 298). Fails the same way at the baseline.
+  - `tests/lab/navigation.spec.ts` "walk Print Layout test in Regular" (mobile): `up.stalls` is not empty (line 216). Fails the same way at the baseline.
+  - `tests/lab/pagination.spec.ts` P3 (mobile, the v3 lab): intermittent. With `--repeat-each=3`, 2 of 3 pass on both A4.3 and the baseline, failing at line 539 (the caret's page after ArrowDown across a gap).
+- **Next:** trace each in a checkpoint the owner names.
 
 ## UX-003: the default for new outlines looked unresponsive
 

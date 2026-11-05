@@ -42,12 +42,20 @@ export function EditorLabV4() {
   const [opening, setOpening] = useState(() => open("whenIdolsFall"));
   const label = (id: FixtureId) =>
     isV4(id) ? t.v4.fixtures[id] : t.v4.migrated(t.fixtures[id as LabFixtureId]);
+  // The header's title (A4.3): a sermon's is its idea's; a fixture's lives only in this page.
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const title = titles[opening.key] ?? label(opening.id);
 
   return (
     <SermonWorkspace
       key={opening.key}
       document={opening.json}
       documentKey={opening.key}
+      title={{
+        value: title,
+        editable: true,
+        commit: (next) => setTitles((all) => ({ ...all, [opening.key]: next })),
+      }}
       back={{ href: routes.outlines, label: t.workspace.back }}
       headerStart={
         <>

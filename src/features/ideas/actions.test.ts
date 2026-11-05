@@ -26,6 +26,7 @@ import {
   classifyIdea,
   createIdea,
   deleteIdea,
+  renameSermonTitle,
   restoreIdea,
   updateIdea,
 } from "./actions";
@@ -72,7 +73,7 @@ describe("idea actions", () => {
       for (const result of [
         await attachScripture({ ideaId: id, references: [] }),
         await createIdea({ title: "Thought" }),
-        await updateIdea(id, { title: "Thought" }),
+        await updateIdea(id, { title: "Thought" }, 0),
         await changeIdeaKind(id, "sermon"),
         await classifyIdea(id, { status: "ready" }),
         await archiveIdea(id),
@@ -131,7 +132,7 @@ describe("idea actions", () => {
     signInAs(me);
     const missing = { ok: false, message: "That idea no longer exists." };
     for (const id of [theirs.id!, "77777777-7777-4777-8777-777777777777"]) {
-      expect(await updateIdea(id, { title: "Taken" })).toEqual(missing);
+      expect(await updateIdea(id, { title: "Taken" }, 0)).toEqual(missing);
       expect(await changeIdeaKind(id, "sermon")).toEqual(missing);
       expect(await deleteIdea(id)).toEqual(missing);
     }
@@ -144,7 +145,7 @@ describe("idea actions", () => {
   it("refuse malformed IDs and classifications", async () => {
     signInAs(me);
     const invalid = { ok: false, message: "That request was not valid." };
-    expect(await updateIdea("1; drop table ideas", { title: "T" })).toEqual(invalid);
+    expect(await updateIdea("1; drop table ideas", { title: "T" }, 0)).toEqual(invalid);
     expect(await deleteIdea(undefined)).toEqual(invalid);
     const { id } = await createIdea({ title: "T" });
     expect(await changeIdeaKind(id, "series")).toEqual(invalid);
@@ -153,13 +154,13 @@ describe("idea actions", () => {
   it("update, reclassify, and delete the caller's own idea", async () => {
     signInAs(me);
     const { id } = await createIdea({ title: "Draft", notes: "Keep me." });
-    expect(await updateIdea(id, { title: "Better", notes: "Keep me.", status: "ready" })).toEqual({
-      ok: true,
-      message: "Changes saved.",
-    });
+    expect(
+      await updateIdea(id, { title: "Better", notes: "Keep me.", status: "ready" }, 0),
+    ).toEqual({ ok: true, message: "Changes saved.", revision: 1 });
     expect(await changeIdeaKind(id, "point")).toEqual({
       ok: true,
       message: "Now filed as: Point idea.",
+      revision: 2,
     });
     expect(await getIdea(db, me, id!)).toMatchObject({
       title: "Better",
@@ -210,14 +211,16 @@ describe("classification actions", () => {
   it("do not reset a classification when a save names only the title or the notes", async () => {
     signInAs(me);
     const { id } = await createIdea(sermon);
-    expect(await updateIdea(id, { kind: "sermon", title: "Renamed" })).toMatchObject({ ok: true });
+    expect(await updateIdea(id, { kind: "sermon", title: "Renamed" }, 0)).toMatchObject({
+      ok: true,
+    });
     expect(await getIdea(db, me, id!)).toMatchObject({
       title: "Renamed",
       status: "developing",
       intendedFormat: "flexible",
       sermonType: "textual",
     });
-    await updateIdea(id, { kind: "sermon", title: "Renamed", notes: "More." });
+    await updateIdea(id, { kind: "sermon", title: "Renamed", notes: "More." }, 1);
     expect(await getIdea(db, me, id!)).toMatchObject({
       notes: "More.",
       status: "developing",
@@ -266,7 +269,7 @@ describe("classification actions", () => {
     expect(await archiveIdea("not-a-uuid")).toEqual(invalid);
     expect(await restoreIdea(undefined)).toEqual(invalid);
     for (const fields of [{ status: "preached" }, { intendedFormat: 1 }, { sermonType: "x" }]) {
-      expect(await updateIdea(id, { title: "T", ...fields })).toMatchObject({ ok: false });
+      expect(await updateIdea(id, { title: "T", ...fields }, 0)).toMatchObject({ ok: false });
       expect(await createIdea({ title: "T", ...fields })).toMatchObject({ ok: false });
     }
     expect(await getIdea(db, me, id!)).toMatchObject(sermon);
@@ -441,6 +444,110 @@ describe("attachScripture", () => {
         references: [john316],
       }),
     ).toEqual({ ok: false, message: "The passage could not be added. Try again." });
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
+  });
+});
+
+describe("revision-checked saves (A4.3)", () => {
+  it("refuse a save that names no revision, as a page loaded before A4.3 sends, and write nothing", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ title: "Draft", notes: "Kept." });
+    for (const revision of [undefined, null, -1, 1.5, "0"]) {
+      expect(await updateIdea(id, { title: "Old tab", notes: "Lost?" }, revision)).toEqual({
+        ok: false,
+        message:
+          "This page is out of date, so your changes were not saved. Copy them, reload the page, and save again.",
+      });
+    }
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      title: "Draft",
+      notes: "Kept.",
+      revision: 0,
+    });
+  });
+
+  it("refuse a library save made before a title saved in the sermon editor, and say what it is now", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ kind: "sermon", title: "Draft", notes: "Kept." });
+    expect(
+      await renameSermonTitle({ ideaId: id, title: "From the editor", expectedRevision: 0 }),
+    ).toEqual({ code: "renamed", revision: 1, title: "From the editor" });
+    expect(await updateIdea(id, { kind: "sermon", title: "From the library" }, 0)).toEqual({
+      ok: false,
+      message:
+        "This idea was changed somewhere else since you opened it, so your changes were not saved. They are still here.",
+      stale: { revision: 1, title: "From the editor" },
+    });
+    expect(await getIdea(db, me, id!)).toMatchObject({ title: "From the editor", notes: "Kept." });
+    // Saving over it is the person's choice, made against the revision it has now.
+    expect(await updateIdea(id, { kind: "sermon", title: "From the library" }, 1)).toMatchObject({
+      ok: true,
+      revision: 2,
+    });
+  });
+
+  it("rename only the caller's own idea, only at its revision, and only its title", async () => {
+    signInAs(other);
+    const theirs = await createIdea({ title: "Theirs" });
+    signInAs(me);
+    const { id } = await createIdea({ kind: "sermon", title: "Old", notes: "Kept." });
+    expect(
+      await renameSermonTitle({ ideaId: theirs.id, title: "Taken", expectedRevision: 0 }),
+    ).toEqual({ code: "missing", message: "That idea no longer exists." });
+    expect(await getIdea(db, other, theirs.id!)).toMatchObject({ title: "Theirs" });
+    expect(await renameSermonTitle({ ideaId: id, title: "  New  ", expectedRevision: 0 })).toEqual({
+      code: "renamed",
+      revision: 1,
+      title: "New",
+    });
+    expect(await renameSermonTitle({ ideaId: id, title: "Newer", expectedRevision: 0 })).toEqual({
+      code: "stale",
+      revision: 1,
+      title: "New",
+    });
+    expect(await renameSermonTitle({ ideaId: id, title: "New", expectedRevision: 1 })).toEqual({
+      code: "unchanged",
+      revision: 1,
+      title: "New",
+    });
+    expect(await getIdea(db, me, id!)).toMatchObject({
+      title: "New",
+      notes: "Kept.",
+      kind: "sermon",
+    });
+  });
+
+  it("refuse a blank, overlong, or malformed rename", async () => {
+    signInAs(me);
+    const { id } = await createIdea({ title: "Old" });
+    for (const input of [
+      { ideaId: id, title: "   ", expectedRevision: 0 },
+      { ideaId: id, title: "x".repeat(1000), expectedRevision: 0 },
+      { ideaId: id, title: "T" },
+      { ideaId: "not-a-uuid", title: "T", expectedRevision: 0 },
+      { ideaId: id, title: "T", expectedRevision: 0, ownerId: other },
+      null,
+    ]) {
+      expect(await renameSermonTitle(input)).toMatchObject({ code: "invalid" });
+    }
+    expect(await getIdea(db, me, id!)).toMatchObject({ title: "Old", revision: 0 });
+  });
+
+  it("answer a signed-out caller as unauthorized and a database failure as failed", async () => {
+    const id = "55555555-5555-4555-8555-555555555555";
+    expect(await renameSermonTitle({ ideaId: id, title: "T", expectedRevision: 0 })).toEqual({
+      code: "unauthorized",
+      message: "Your session has ended. Sign in again.",
+    });
+    signInAs(me);
+    state.db = {
+      transaction: () => {
+        throw new Error("postgres://user:secret@host/db refused");
+      },
+    };
+    expect(await renameSermonTitle({ ideaId: id, title: "T", expectedRevision: 0 })).toMatchObject({
+      code: "failed",
+    });
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("secret");
   });
 });

@@ -97,6 +97,18 @@ export const ideas = {
     waiting:
       "Changes made to this idea on this device are waiting to be saved to your account. You can edit it again once they are.",
     keptHere: "Changes on this device are waiting to be saved to your account.",
+    conflict: {
+      message:
+        "This idea was changed somewhere else since you opened it, so your changes were not saved. They are still in the form.",
+      savedTitle: (title: string) => `Its saved title is now “${title}”.`,
+      keepMine: "Save mine over it",
+      useSaved: "Discard mine and show the saved version",
+      discardTitle: "Discard your changes?",
+      discardDescription:
+        "Your unsaved changes to this idea will be dropped, and the page will show the idea as it is saved now.",
+      discardConfirm: "Discard my changes",
+      discarded: "Showing the saved version.",
+    },
     unsaved: "Your changes to this idea have not been saved.",
     kindHint: "Changing this takes effect straight away and keeps everything else as it is.",
     saving: "Saving…",
@@ -274,6 +286,10 @@ export const ideas = {
     saved: "Saved to your library.",
     changesNotSaved: "Those changes could not be saved.",
     yourChangesNotSaved: "Your changes could not be saved. Try again.",
+    reloadToSave:
+      "This page is out of date, so your changes were not saved. Copy them, reload the page, and save again.",
+    changedElsewhere:
+      "This idea was changed somewhere else since you opened it, so your changes were not saved. They are still here.",
     changesSaved: "Changes saved.",
     passageNotAdded: "The passage could not be added. Try again.",
     full: (limit: number) => `That idea already holds ${limit} references, the most it can.`,

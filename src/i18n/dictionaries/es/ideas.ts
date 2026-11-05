@@ -93,6 +93,18 @@ export const ideas: Untranslated<typeof english> = {
     waiting:
       "Hay cambios en esta idea hechos en este dispositivo que esperan guardarse en tu cuenta. Podrás editarla de nuevo cuando se guarden.",
     keptHere: "Hay cambios en este dispositivo que esperan guardarse en tu cuenta.",
+    conflict: {
+      message:
+        "Esta idea se cambió en otro lugar desde que la abriste, así que tus cambios no se guardaron. Siguen en el formulario.",
+      savedTitle: (title: string) => `Su título guardado ahora es «${title}».`,
+      keepMine: "Guardar los míos encima",
+      useSaved: "Descartar los míos y mostrar la versión guardada",
+      discardTitle: "¿Descartar tus cambios?",
+      discardDescription:
+        "Tus cambios sin guardar en esta idea se descartarán, y la página mostrará la idea tal como está guardada ahora.",
+      discardConfirm: "Descartar mis cambios",
+      discarded: "Se muestra la versión guardada.",
+    },
     unsaved: "Tus cambios en esta idea no se han guardado.",
     kindHint: "Este cambio se aplica de inmediato y deja todo lo demás como está.",
     saving: "Guardando…",
@@ -269,6 +281,10 @@ export const ideas: Untranslated<typeof english> = {
     saved: "Guardada en tu biblioteca.",
     changesNotSaved: "No se pudieron guardar esos cambios.",
     yourChangesNotSaved: "No se pudieron guardar tus cambios. Inténtalo de nuevo.",
+    reloadToSave:
+      "Esta página está desactualizada, así que tus cambios no se guardaron. Cópialos, vuelve a cargar la página y guarda otra vez.",
+    changedElsewhere:
+      "Esta idea se cambió en otro lugar desde que la abriste, así que tus cambios no se guardaron. Siguen aquí.",
     changesSaved: "Cambios guardados.",
     passageNotAdded: "No se pudo agregar el pasaje. Inténtalo de nuevo.",
     full: (limit) => `Esa idea ya tiene ${limit} referencias, el máximo que admite.`,

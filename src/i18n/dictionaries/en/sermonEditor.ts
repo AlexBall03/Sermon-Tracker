@@ -12,6 +12,42 @@ export const sermonEditor = {
       "The outline and everything written in it are deleted. The sermon is kept. This can't be undone.",
     deleteConfirm: "Delete outline",
   },
+  sermonHeader: {
+    label: "Sermon header",
+    title: "Sermon title",
+    titlePlaceholder: "Sermon title",
+    titleHint:
+      "The sermon's own title, as the library shows it. It is saved on its own when you leave the field or press Enter, and Undo in the outline does not change it.",
+    subtitle: "Subtitle",
+    subtitlePlaceholder: "Add a subtitle",
+    addSubtitle: "Add subtitle",
+    subtitleInvalid:
+      "A subtitle can't contain < or >. Change it, or press Escape to leave it as it was.",
+  },
+  titleSave: {
+    saving: "Saving the title…",
+    saved: "Title saved",
+    /** Definite: nothing was written. */
+    failed: "The title wasn't saved. Try again.",
+    /** The answer was lost: the title may or may not have been saved. */
+    uncertain:
+      "We couldn't confirm the title was saved. It's kept here until it is; if you close or reload this page first, it may be lost.",
+    checking: "Checking whether the title was saved…",
+    conflict: (title: string) =>
+      `The title was changed somewhere else to “${title}”, so yours wasn't saved.`,
+    missing: "This sermon no longer exists, so its title can't be saved.",
+    blocked: "Your session has ended. Sign in again to save the title.",
+    invalid: "That title can't be saved.",
+    retry: "Try again",
+    check: "Check again",
+    keepMine: "Keep mine",
+    useTheirs: "Use theirs",
+    revert: "Use the saved title",
+    waitingDevice:
+      "Changes to this sermon are waiting on this device. The title can be changed once they're saved to your account.",
+    readOnly: "The title can be changed in the tab that is editing this outline.",
+    unsaved: "The sermon's new title hasn't been saved yet.",
+  },
   opening: {
     title: "Opening the outline…",
     converting: "Preparing the outline…",

@@ -576,3 +576,64 @@ describe("Levels and Numbering (A4.2A)", () => {
     );
   });
 });
+
+describe("Header & Footer (A4.3)", () => {
+  it("previews the header and footer, applies them in one step, and Cancel discards", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "headerFooter" }));
+    const settings = screen.getByRole("dialog", { name: "Outline Settings" });
+    expect(within(settings).getByTestId("header-footer-settings")).toBeInTheDocument();
+    // An outline stored before A4.3 shows what it always drew: numbers on, plain, on the right.
+    expect(within(settings).getByRole("switch", { name: /Page numbers/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(within(settings).getByRole("switch", { name: "Bold page numbers" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    fireEvent.click(within(settings).getAllByRole("radio", { name: "Left" })[0]);
+    fireEvent.click(within(settings).getByRole("switch", { name: "Bold page numbers" }));
+    expect(editor.state.doc.attrs.page).toBeNull();
+    expect(editor.view.dom.dataset.titleAlign).toBe("left");
+    expect(screen.getByRole("status")).toHaveTextContent("header and footer");
+
+    // Cancel: nothing was written, and the outline shows what is committed.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(editor.state.doc.attrs.page).toBeNull();
+    expect(editor.view.dom.dataset.titleAlign).toBe("center");
+
+    fireEvent.click(within(settings).getByRole("switch", { name: /Header on later pages/ }));
+    const depth = undoDepth(editor.state);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(undoDepth(editor.state)).toBe(depth + 1);
+    expect(editor.state.doc.attrs.page).toMatchObject({
+      version: 2,
+      runningHeader: { enabled: true, subtitle: false },
+      pageNumbers: { enabled: true, align: "right", weight: "normal" },
+    });
+  });
+
+  it("draws the preview as pages with the same header", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "headerFooter" }));
+    expect(previewEditor().dataset.layout).toBe("print");
+    expect(
+      screen.getByTestId("appearance-preview").querySelector("[data-testid=sermon-header]"),
+    ).not.toBeNull();
+  });
+
+  it("speaks Spanish", () => {
+    const editor = open();
+    show(editor, "es");
+    act(() => api.openOutlineSettings({ category: "headerFooter" }));
+    const settings = screen.getByRole("dialog", { name: "Ajustes del bosquejo" });
+    expect(within(settings).getByRole("button", { name: "Encabezado y pie" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(settings).getByRole("switch", { name: "Números de página" })).toBeInTheDocument();
+  });
+});

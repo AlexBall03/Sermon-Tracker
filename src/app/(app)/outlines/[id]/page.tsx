@@ -56,6 +56,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
     sermon: {
       id: found.sermon.id,
       title: found.sermon.title,
+      revision: found.sermon.revision,
       kind: found.sermon.kind,
       archivedAt: found.sermon.archivedAt?.toISOString() ?? null,
     },

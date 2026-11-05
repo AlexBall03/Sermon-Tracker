@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 
+import { newDocumentPage } from "@/features/editor-lab/pagination/page-config";
 import { latestPresetRevision, type UserPresetId } from "@/features/editor-lab/styles/model";
 import { snapshotStyles, type AppearanceSnapshot } from "@/features/editor-lab/styles/snapshot";
 import { legacyToDocument } from "@/features/sermon-editor/document";
@@ -20,6 +21,10 @@ import type { DocumentRefusal } from "./model";
  *   - a personal preset: its stored snapshot (already materialized when it
  *     was saved), styles and numbering both, copied. Nothing in the document
  *     names the preset, so changing or deleting it later restyles nothing.
+ *
+ * and the new outline's page (A4.3, owner's decision): Letter, one-inch
+ * margins, the title centred, no running header, page numbers on, right, and
+ * bold (`newDocumentPage`). A preset never says anything about the page.
  *
  * Existing outlines, conversions, recovery drafts, and kept copies never pass
  * through here.
@@ -54,6 +59,6 @@ export function initialDocument(outline: NewOutline, start: OutlineStart): Initi
       : { version: 1 as const, preset: start.preset, presetRevision: latestPresetRevision };
   return prepareDocument({
     ...empty.content,
-    attrs: { ...empty.content.attrs, styles },
+    attrs: { ...empty.content.attrs, styles, page: newDocumentPage() },
   });
 }

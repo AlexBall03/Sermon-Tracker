@@ -13,6 +13,40 @@ export const sermonEditor: Untranslated<typeof english> = {
       "Se eliminan el bosquejo y todo lo escrito en él. El sermón se conserva. No se puede deshacer.",
     deleteConfirm: "Eliminar bosquejo",
   },
+  sermonHeader: {
+    label: "Encabezado del sermón",
+    title: "Título del sermón",
+    titlePlaceholder: "Título del sermón",
+    titleHint:
+      "El título propio del sermón, como lo muestra la biblioteca. Se guarda por separado al salir del campo o pulsar Intro, y Deshacer en el bosquejo no lo cambia.",
+    subtitle: "Subtítulo",
+    subtitlePlaceholder: "Añadir un subtítulo",
+    addSubtitle: "Añadir subtítulo",
+    subtitleInvalid:
+      "Un subtítulo no puede contener < ni >. Cámbialo, o pulsa Escape para dejarlo como estaba.",
+  },
+  titleSave: {
+    saving: "Guardando el título…",
+    saved: "Título guardado",
+    failed: "El título no se guardó. Inténtalo de nuevo.",
+    uncertain:
+      "No pudimos confirmar que el título se guardó. Se conserva aquí hasta que se confirme; si cierras o recargas esta página antes, podría perderse.",
+    checking: "Comprobando si el título se guardó…",
+    conflict: (title: string) =>
+      `El título se cambió en otro lugar a «${title}», así que el tuyo no se guardó.`,
+    missing: "Este sermón ya no existe, así que su título no se puede guardar.",
+    blocked: "Tu sesión terminó. Inicia sesión de nuevo para guardar el título.",
+    invalid: "Ese título no se puede guardar.",
+    retry: "Intentar de nuevo",
+    check: "Comprobar de nuevo",
+    keepMine: "Conservar el mío",
+    useTheirs: "Usar el otro",
+    revert: "Usar el título guardado",
+    waitingDevice:
+      "Hay cambios de este sermón esperando en este dispositivo. El título se podrá cambiar cuando se guarden en tu cuenta.",
+    readOnly: "El título se puede cambiar en la pestaña que está editando este bosquejo.",
+    unsaved: "El nuevo título del sermón aún no se ha guardado.",
+  },
   opening: {
     title: "Abriendo el bosquejo…",
     converting: "Preparando el bosquejo…",

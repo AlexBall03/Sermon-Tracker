@@ -1,7 +1,7 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
-import { Eye, EyeOff, ListOrdered, Palette, RotateCcw } from "lucide-react";
+import { Eye, EyeOff, ListOrdered, Palette, PanelTop, RotateCcw } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -30,8 +30,15 @@ import { cn } from "@/lib/utils";
 import { PresetChooser, SessionFields, SessionFooter } from "./controls";
 import { blockGroups, defaultsGroups, levelGroups, typeGroups } from "./fields";
 import { AppearanceModal } from "./modal";
+import { HeaderFooterSettings } from "./header-footer-settings";
 import { NumberingSettings } from "./numbering-settings";
-import { AppearancePreview, sampleIds, sampleLevelIds, sampleOutline } from "./preview";
+import {
+  AppearancePreview,
+  pagesSample,
+  sampleIds,
+  sampleLevelIds,
+  sampleOutline,
+} from "./preview";
 import { OutlineResets } from "./resets-menu";
 import { useAppearanceSession, type AppearanceSession } from "./session";
 import { OutlinePresets } from "@/features/appearance-presets/components/outline-presets";
@@ -56,12 +63,16 @@ import { OutlinePresets } from "@/features/appearance-presets/components/outline
  * Appearance's (Components and Levels).
  */
 
-export const outlineSettingsCategories = ["appearance", "numbering"] as const;
+export const outlineSettingsCategories = ["appearance", "numbering", "headerFooter"] as const;
 export type OutlineSettingsCategory = (typeof outlineSettingsCategories)[number];
 export type AppearanceTab = "outline" | "components" | "levels";
 export type OutlineTarget = "defaults" | NamedStyle;
 
-const categoryIcons = { appearance: Palette, numbering: ListOrdered } as const;
+const categoryIcons = {
+  appearance: Palette,
+  numbering: ListOrdered,
+  headerFooter: PanelTop,
+} as const;
 
 export type OutlineSettingsOptions = {
   category?: OutlineSettingsCategory;
@@ -102,6 +113,9 @@ export function OutlineSettings({
   const [depth, setDepth] = useState<number>(initial.depth ?? 1);
   const [showPreview, setShowPreview] = useState(true);
   const sample = useMemo(() => sampleOutline(a.sample), [a.sample]);
+  // Header & Footer is seen on pages (A4.3): two of them, with the header and the numbers.
+  const pagesOf = useMemo(() => pagesSample(a.sample), [a.sample]);
+  const asPages = category === "headerFooter";
   const tabsName = useId();
 
   const appearance = category === "appearance";
@@ -174,7 +188,8 @@ export function OutlineSettings({
             </Button>
             <AppearancePreview
               session={session}
-              content={sample}
+              content={asPages ? pagesOf : sample}
+              pages={asPages}
               mark={mark}
               caption={caption}
               className={cn(
@@ -209,8 +224,10 @@ export function OutlineSettings({
                   <LevelsTab session={session} depth={depth} onDepth={setDepth} />
                 )}
               </>
-            ) : (
+            ) : category === "numbering" ? (
               <NumberingSettings session={session} />
+            ) : (
+              <HeaderFooterSettings session={session} />
             )}
           </div>
         </div>
