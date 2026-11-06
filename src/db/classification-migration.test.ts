@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
+
 /*
  * Migration 0007 (Phase 2D.1) on a database that already holds ideas: every
  * migration before it is applied, ideas are saved as the code of that day
@@ -42,7 +44,7 @@ const everything = async () =>
   ).rows;
 
 beforeAll(async () => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
   const index = tags.indexOf(tag);
   expect(index).toBeGreaterThan(0);
   for (const earlier of tags.slice(0, index)) await apply(pg, earlier);

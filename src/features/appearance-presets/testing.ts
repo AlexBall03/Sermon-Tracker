@@ -133,13 +133,21 @@ export async function recordingDatabase() {
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
   const schema = await import("@/db/schema");
+  const { ownTestClient } = await import("@/db/test-lifecycle");
   const statements: string[] = [];
+  // Closed when its test or file ends, like createTestDatabase's (src/db/test-lifecycle.ts).
+  const client = ownTestClient(new PGlite());
   const db = drizzle({
-    client: new PGlite(),
+    client,
     schema,
     logger: { logQuery: (query: string) => statements.push(query) },
   });
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  try {
+    await migrate(db, { migrationsFolder: "./drizzle" });
+  } catch (error) {
+    await client.close().catch(() => {});
+    throw error;
+  }
   statements.length = 0;
   return { db: db as unknown as import("@/db/types").Database, statements };
 }

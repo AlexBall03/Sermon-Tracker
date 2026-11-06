@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
+
 /*
  * Migration 0021 (A4.2B) on a database that already holds accounts (active,
  * disabled, deleting, mid-setup), a sermon, its outline, and its document:
@@ -72,7 +74,7 @@ const preset = async (owner: string, name: string) =>
   );
 
 beforeAll(async () => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
   for (const name of tags.slice(0, tags.indexOf(tag))) await apply(pg, name);
   me = await one(
     `insert into users (clerk_user_id, role, church_name) values ('user_me', 'admin', 'Grace Chapel') returning id`,

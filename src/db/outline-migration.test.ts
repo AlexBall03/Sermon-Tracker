@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
+
 /*
  * Migration 0013 (Phase 3A) on a database that already holds accounts and
  * ideas: every migration before it is applied, ideas are saved, and then 0013
@@ -45,7 +47,7 @@ const snapshot = async () => {
 };
 
 beforeAll(async () => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
   for (const name of tags.slice(0, tags.indexOf(tag))) await apply(pg, name);
 
   const owner = (

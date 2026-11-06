@@ -10,6 +10,11 @@ export default defineConfig({
     },
   },
   test: {
+    // A worker can reach about 1.3 GB (a jsdom file with in-memory databases), so the
+    // default is two, never one per CPU. Whole runs go through the coordinator
+    // (`npm run verify:unit`, docs/TESTING.md), which sets this from free memory.
+    pool: "forks",
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS) || 2,
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],

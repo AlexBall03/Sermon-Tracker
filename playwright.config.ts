@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { desktopDevice, outputDir, workers } from "./tests/run-policy";
+
 // The signed-in spec (tests/e2e/library.spec.ts) reads the development Clerk keys
 // and E2E_CLERK_USER_EMAIL from the same file the application does. A machine
 // without one (CI, a fresh clone) simply runs the guest specs.
@@ -9,31 +11,39 @@ try {
   // No .env.local: nothing to load.
 }
 
-// A dedicated port keeps e2e runs clear of a dev server on 3000.
+// A dedicated port keeps e2e runs clear of a dev server on 3000. The verification
+// coordinator (docs/TESTING.md) starts the server itself and names it in E2E_BASE_URL.
 const port = 3100;
-const baseURL = `http://localhost:${port}`;
+const existing = process.env.E2E_BASE_URL;
+const baseURL = existing ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
+  // One browser at a time unless PW_WORKERS says otherwise (tests/run-policy.ts).
+  workers: workers(1),
+  outputDir: outputDir("e2e"),
   forbidOnly: !!process.env.CI,
   reporter: "list",
   use: { baseURL, trace: "retain-on-failure" },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    { name: "desktop", use: { ...desktopDevice() } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
-  // Playwright starts the production server and stops it when the run ends.
-  webServer: {
-    command: `npm run build && npm run start -- --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-    // The sermon editor (A3) converts an outline on opening only while this is "on". The
-    // legacy outline specs need it off: `SERMON_DOCUMENT_CONVERSION=off npx playwright test …`.
-    env: {
-      ...(process.env as Record<string, string>),
-      SERMON_DOCUMENT_CONVERSION: process.env.SERMON_DOCUMENT_CONVERSION ?? "on",
-    },
-  },
+  // Playwright builds and starts the production server, and stops it when the run
+  // ends. `next build`, never `npm run build`: no migration step in a test run.
+  webServer: existing
+    ? undefined
+    : {
+        command: `npx next build && npx next start --port ${port}`,
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 600_000,
+        // The sermon editor (A3) converts an outline on opening only while this is "on". The
+        // legacy outline specs need it off: `SERMON_DOCUMENT_CONVERSION=off npx playwright test …`.
+        env: {
+          ...(process.env as Record<string, string>),
+          SERMON_DOCUMENT_CONVERSION: process.env.SERMON_DOCUMENT_CONVERSION ?? "on",
+        },
+      },
 });

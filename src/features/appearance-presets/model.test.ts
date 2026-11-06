@@ -2,6 +2,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
 import { userPresetIds } from "@/features/editor-lab/styles/model";
 import { presetAt } from "@/features/editor-lab/styles/presets";
 import {
@@ -34,7 +35,7 @@ const minimal: AppearanceSnapshot = {
 
 let pg: PGlite;
 beforeAll(() => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
 });
 afterAll(() => pg.close());
 

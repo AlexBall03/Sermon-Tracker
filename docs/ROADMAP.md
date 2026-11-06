@@ -267,13 +267,17 @@ Approved for the whole program: one sermon identity with one unified rich-text d
         - Outline Settings → Header & Footer in the same draft (preview, Apply, Cancel, one undo step);
         - the library's idea editor now saves against the idea's revision and shows a conflict instead of writing over a newer title.
         - Not done in A4.3: keep-together and keep-with-next (BUG-002, A4.6), and every UI.3 interaction (below).
-      - **A4.4: Final Presentation Refinements** (A1-UI.2D; 5 November 2026, not yet committed; [handoff](HANDOFF-PS-A4.4.md)). No migration, no new package, no document change:
+      - **A4.4: Final Presentation Refinements** (A1-UI.2D; 5 November 2026, committed by the owner in `33c5629`; [handoff](HANDOFF-PS-A4.4.md)). Its handoff recorded its phase-wide checks as not run (memory); they were carried into the Testing Infrastructure Stabilization checkpoint below, whose handoff has their results. No migration, no new package, no document change:
         - optional dark editing paper (View → Paper: Automatic, Light, Dark), this device's choice for every sermon, independent of the application theme and scoped to the document surface; Automatic is the look before A4.4;
         - print color modes, Color (the default), Grayscale, and Black & White: a device default, and a one-time choice for one print, in a new Outline Settings → Printing category with a preview drawn by the print rules themselves; a mode only paints, so every mode prints the same pages;
         - printing is always on white paper, whatever the theme or the paper (BUG-014: Chrome's dark canvas under a dark theme, found and fixed here);
         - the built-in presets reviewed in all three modes: no new preset revision was justified (Minimal's revision 2 already separates scripts from reminders);
         - BUG-013 (pre-existing): a preview of pages (Header & Footer, Printing) had a box's padding instead of the paper's margins, so the header covered the first lines; fixed.
         - Not done in A4.4: every UI.3 interaction (below), UX-005, and A4.6/UI.4 (BUG-002, BUG-011).
+      - **Testing Infrastructure Stabilization** (6 November 2026, no phase number yet, before A1-UI.3; [handoff](HANDOFF-TEST-INFRA.md), [how tests are run](TESTING.md)). No migration, no new package, no application change:
+        - the cause of the memory exhaustion found and fixed: unit tests never closed their in-memory databases (TEST-005);
+        - a verification coordinator (`npm run verify:*`) that runs the whole unit suite in batches proven complete, one heavy job at a time within measured memory, with servers and processes it owns, and results that cannot pass unless everything ran on the code as it is;
+        - A4.4's outstanding checks run with it (results in the handoff).
       - **A1-UI.3, future: drag-and-drop (approved requirement, owner, 5 November 2026; not built).** Recorded during A4.3 and not implemented there. Details in the [migration document](PREACHER-STUDIO-MIGRATION.md) (A1-UI.3, "Approved future requirement: drag-and-drop"):
         - drag new components from the Insert palette to a precise place, and move existing ones, with an insertion indicator, edge auto-scroll, and correct behaviour across Print Layout's page boundaries;
         - **dragging a point or subpoint moves its whole semantic group by default** (heading, subpoints, writing, passages, notes, scripts), by the v4 order-and-depth ownership model, identities and hierarchy kept, invalid moves refused;

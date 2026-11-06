@@ -14,10 +14,15 @@ import { defineConfig, devices } from "@playwright/test";
  *                               production build (port 3300), proving every
  *                               /lab address is a 404
  *
- * The production build runs `next build` directly, never `npm run build`, so
- * the migration step is not part of it. Signed-in tests use the development
- * Clerk instance only (see tests/e2e/library.spec.ts).
+ * The production build runs `next build` directly, never `npm run build`, and
+ * the development server is `next dev`, never `npm run dev`: no test run
+ * migrates a database. Signed-in tests use the development Clerk instance only
+ * (see tests/e2e/library.spec.ts). The verification coordinator
+ * (docs/TESTING.md) starts the servers itself and names them in LAB_BASE_URL
+ * and E2E_BASE_URL.
  */
+import { desktopDevice, outputDir } from "../run-policy";
+
 try {
   process.loadEnvFile(".env.local");
 } catch {
@@ -27,15 +32,18 @@ try {
 export function labConfig({ production }: { production: boolean }) {
   const port = production ? 3300 : 3200;
   // Next runs one development server per folder; one already running can be named instead.
-  const existing = production ? undefined : process.env.LAB_BASE_URL;
+  const existing = production ? process.env.E2E_BASE_URL : process.env.LAB_BASE_URL;
   const baseURL = existing ?? `http://localhost:${port}`;
 
   return defineConfig({
     testMatch: production
       ? "production.spec.ts"
       : /(editor|pagination|typography|v4|navigation|persistence-probe|preset-parity|appearance-levels|print-workspace|header-footer|print-color)\.spec\.ts$/,
+    // One development server and one browser: the lab's pages are heavy, and its
+    // specs share the signed-in test account.
     fullyParallel: false,
     workers: 1,
+    outputDir: outputDir(production ? "lab-prod" : "lab"),
     forbidOnly: !!process.env.CI,
     reporter: "list",
     timeout: 90_000,
@@ -43,7 +51,7 @@ export function labConfig({ production }: { production: boolean }) {
     projects: production
       ? [{ name: "production", use: { ...devices["Desktop Chrome"] } }]
       : [
-          { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+          { name: "desktop", use: { ...desktopDevice() } },
           { name: "mobile", use: { ...devices["Pixel 7"] } },
         ],
     webServer: existing
@@ -56,7 +64,7 @@ export function labConfig({ production }: { production: boolean }) {
             timeout: 600_000,
           }
         : {
-            command: `npm run dev -- --port ${port}`,
+            command: `npx next dev --port ${port}`,
             url: baseURL,
             reuseExistingServer: !process.env.CI,
             timeout: 240_000,

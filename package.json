@@ -22,7 +22,14 @@
     "brand:assets": "node scripts/generate-brand-assets.mjs",
     "test:e2e:lab": "playwright test -c playwright.lab.config.ts",
     "test:e2e:lab:prod": "playwright test -c playwright.lab-prod.config.ts",
-    "test:e2e:ownership": "playwright test -c playwright.ownership.config.ts"
+    "test:e2e:ownership": "playwright test -c playwright.ownership.config.ts",
+    "verify:changed": "node scripts/verify/cli.mjs unit --changed",
+    "verify:unit": "node scripts/verify/cli.mjs unit",
+    "verify:build": "node scripts/verify/cli.mjs build",
+    "verify:e2e": "node scripts/verify/cli.mjs e2e",
+    "verify:phase": "node scripts/verify/cli.mjs phase",
+    "verify:resume": "node scripts/verify/cli.mjs resume",
+    "verify:report": "node scripts/verify/cli.mjs report"
   },
   "engines": {
     "node": ">=22"

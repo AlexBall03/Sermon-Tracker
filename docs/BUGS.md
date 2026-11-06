@@ -373,6 +373,102 @@ setSelection must point at the current document`. It now answers only about
   - `tests/lab/pagination.spec.ts` P3 (mobile, the v3 lab): intermittent. With `--repeat-each=3`, 2 of 3 pass on both A4.3 and the baseline, failing at line 539 (the caret's page after ArrowDown across a gap).
 - **Next:** trace each in a checkpoint the owner names.
 
+## TEST-005: unit tests never closed their in-memory databases
+
+- **Severity:** P1 (test infrastructure: it ran the development machine out
+  of memory and stopped A4.4's verification twice). **Status:** Fixed
+  (Testing Infrastructure Stabilization, 6 November 2026;
+  [handoff](HANDOFF-TEST-INFRA.md)).
+- **Seen:** A4.4's third Vitest batch, stopped twice with the machine
+  critically low on memory and one worker at about 1.8 GB.
+- **Cause (measured):** `createTestDatabase()` made a PGlite instance, ran the
+  migrations, and returned only the Drizzle handle; nothing ever closed it.
+  Forty-eight test files call it, almost all in `beforeEach`, so every test made
+  one. An instance holds about 238 MB outside the JavaScript heap, and one that
+  is no longer referenced is **never reclaimed**, even after a forced garbage
+  collection: eight unclosed instances held 1.9 GB in one process to the end.
+  Eight closed one after another kept the process at about 440 MB. Of the eight
+  test files that make a `new PGlite()` themselves, one closed it.
+- **Effect, before and after,** on `src/features/ideas/classification.test.ts`
+  alone, one worker: process tree peak 2,684 MB working set and 3,521 MB
+  private before, 899 MB and 1,321 MB after; the machine's lowest free memory
+  9 MB before, 2,970 MB after.
+- **Fix:** `src/db/test-lifecycle.ts` registers every instance
+  (`createTestDatabase`, `recordingDatabase`, `ownTestClient(new PGlite())`)
+  and `vitest.setup.ts` closes it after its test (or file) ends, after the
+  file's own hooks; an instance whose migrations fail is closed at once. Proven
+  by `src/db/test-lifecycle.test.ts`, which runs fixture files in a child
+  Vitest with the real setup: the order of hooks and closes, a failing
+  `beforeEach`, a failing `beforeAll`, a failed migration, and a query on a
+  closed database refused.
+
+## TEST-006: an unhandled jsdom error made every whole unit run exit 1
+
+- **Severity:** P2 (test only). **Status:** Fixed (Testing Infrastructure
+  Stabilization).
+- **Seen:** A4.4 (its section 11, at the baseline too):
+  `TypeError: target.getClientRects is not a function` after
+  `appearance-dialogs.test.tsx` "keeps focus inside while open…". Every test
+  passes, but Vitest exits 1, so no whole run could ever pass.
+- **Cause:** jsdom gives a `Range` no geometry, and ProseMirror asks for it
+  when focus goes back to the outline. The file stubbed it, but inside a later
+  test, after the test that needs it had run.
+- **Fix:** the same stub, installed once for the file in a `beforeAll`. No
+  assertion changed; 34 of 34 pass with no unhandled error.
+
+## TEST-007: the v3 lab's rich-title bold selects one character short
+
+- **Severity:** P2 (lab test of the v3 baseline lab). **Status:** Open, cause
+  not traced, not classified as pre-existing or as a regression.
+- **Seen:** Testing Infrastructure Stabilization, 6 November 2026, four runs of
+  four, on `next dev` (Turbopack), desktop: `tests/lab/editor.spec.ts:389`,
+  "schema v2: rich titles, leaving a point with Enter, and a paste between
+  documents". After End and five Shift+ArrowLeft in the title "Walking in the
+  Light" (italic and underlined), Ctrl+B bolds "ight", not "Light". The phone
+  project passes.
+- **What is known:** the application code is the same as `33c5629`; this
+  checkpoint changed no application file and not the spec. A4.3's handoff
+  records `editor` as 8 of 8 passing on desktop at `f77fd0a`. A4.4's changes to
+  `src/features/editor-lab` are colors, paper, and CSS, with nothing about
+  keys or selection.
+- **Not done:** a run of the same spec at `f77fd0a`. A `git archive` copy
+  cannot be served on Turbopack (TOOL-001), and webpack draws the lab without
+  Tailwind's utilities, so that comparison was left to the owner.
+- **Next:** trace it (or compare with the baseline) in a checkpoint the owner
+  names.
+
+## TEST-008: the persistence probe's row-lock case times out
+
+- **Severity:** P2 (development-only probe of A2.3B.2D). **Status:** Open,
+  cause not traced.
+- **Seen:** Testing Infrastructure Stabilization, two runs of two, desktop:
+  `tests/lab/persistence-probe.spec.ts:206`, "server execution: the GET
+  completes while the save waits inside Next.js on a row lock". The test holds
+  a row lock on the development database and waits up to 30 s for the
+  application's save to wait behind it; no waiting statement appears. The
+  other test of the spec passes.
+- **What is known:** the application code is the same as `33c5629`. No run of
+  this spec is recorded after A2.3B.2D (A4.2A's handoff lists it as not run),
+  so whether it passed more recently is unknown. It depends on the remote
+  development database and on timing inside `next dev`.
+- **Next:** trace it in a checkpoint the owner names.
+
+## TEST-009: the lab's sign-in helper races Clerk's redirect in Firefox and WebKit
+
+- **Severity:** P2 (test only). **Status:** Open, recorded.
+- **Seen:** Testing Infrastructure Stabilization, desktop project drawn by
+  Firefox and by WebKit (`--browser`). After `clerk.signIn`, the spec's
+  `page.goto` is aborted (Firefox: `NS_BINDING_ABORTED`; WebKit: "interrupted
+  by another navigation to /dashboard"), so most signed-in specs stop before
+  their first check. Chromium does not abort it.
+- **What did run in WebKit** (and passed): the header, a long title, and the
+  pages never overlap on every paper; the header is drawn in the paper's ink in
+  a dark theme; a format chosen at a collapsed cursor applies to what is typed
+  next. One typography check differed by rounding only (`21.333334px` against
+  `21.3333px`). `page.pdf()` is Chromium's only.
+- **Next:** wait for the redirect after signing in (a test change, the owner's
+  call), then run the screen specs in both engines.
+
 ## UX-003: the default for new outlines looked unresponsive
 
 - **Severity:** P2. **Status:** Fixed (A4.2C).

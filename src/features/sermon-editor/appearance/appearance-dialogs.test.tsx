@@ -3,7 +3,7 @@ import { undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ref } from "@/features/editor-lab/fixtures";
 import { findComponent } from "@/features/editor-lab/styles/component-node";
@@ -26,6 +26,13 @@ import { installPrintColor, resetPrintJob } from "../presentation/print-job";
  * preview, Apply and Cancel over one draft, the resets, and a close that never
  * applies and never silently loses a change.
  */
+
+// jsdom gives a Range no geometry, which ProseMirror asks for when focus goes back to the
+// outline after a window closes (also after a test ends): an empty answer, for this file.
+beforeAll(() => {
+  Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+});
 
 const editors: Editor[] = [];
 afterEach(() => {
@@ -705,10 +712,6 @@ describe("Printing (A4.4)", () => {
 
   it("closes the window first, then prints once in the chosen colors", async () => {
     const release = installPrintColor();
-    // jsdom gives a Range no geometry, which ProseMirror asks for when focus goes back to the
-    // outline after the window closes (also after this test ends): an empty answer, for this file.
-    Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
-    Range.prototype.getBoundingClientRect ??= () => new DOMRect();
     const seen: (string | null)[] = [];
     const present: boolean[] = [];
     const print = vi.spyOn(window, "print").mockImplementation(() => {

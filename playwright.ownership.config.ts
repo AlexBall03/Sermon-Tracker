@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { outputDir } from "./tests/run-policy";
+
 /*
  * Editor sessions in a real browser (A2.3B.3): tests/lab/editor-ownership.spec.ts.
  * No development server and no database: the spec bundles the session
@@ -14,6 +16,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: "list",
   timeout: 60_000,
+  outputDir: outputDir("ownership"),
   use: { trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

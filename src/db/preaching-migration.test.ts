@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
+
 /*
  * Migration 0009 (Phase 2E.1) on a database that already holds accounts and
  * ideas: every migration before it is applied, ideas are saved with tags and
@@ -65,7 +67,7 @@ const constraints = async (table: string) =>
   ).rows;
 
 beforeAll(async () => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
   const index = tags.indexOf(tag);
   expect(index).toBe(9);
   for (const earlier of tags.slice(0, index)) await apply(pg, earlier);

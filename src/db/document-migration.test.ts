@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ownTestClient } from "@/db/test-lifecycle";
+
 /*
  * Migration 0020 (A2.1) on a database that already holds an account, a
  * sermon, its outline, and entries with a passage: every migration before it
@@ -55,7 +57,7 @@ const snapshot = async () => {
 };
 
 beforeAll(async () => {
-  pg = new PGlite();
+  pg = ownTestClient(new PGlite());
   for (const name of tags.slice(0, tags.indexOf(tag))) await apply(pg, name);
   const one = async (sql: string, params: unknown[] = []) =>
     (await pg.query<{ id: string }>(sql, params)).rows[0].id;
