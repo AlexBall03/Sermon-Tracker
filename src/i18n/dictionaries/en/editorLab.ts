@@ -63,6 +63,7 @@ export const editorLab = {
       appearance: "Appearance",
       numbering: "Numbering",
       headerFooter: "Header & Footer",
+      printing: "Printing",
     },
     tabsLabel: "What to customize",
     tabs: { outline: "Outline", components: "Components", levels: "Levels" },
@@ -110,6 +111,27 @@ export const editorLab = {
       previewHint:
         "The preview shows two pages, with your choices, before you apply them. Page numbers and headers appear in Print Layout and when printing.",
       sampleTitle: "The Lamp and the Light",
+    },
+    /** Outline Settings → Printing (A4.4): this device's print colors, never the outline's. */
+    printing: {
+      hint: "How this device prints sermons. These choices are not part of the outline and never change it.",
+      colorMode: "Print colors",
+      modes: { color: "Color", grayscale: "Grayscale", bw: "Black & White" },
+      modeHints: {
+        color: "Prints the outline's own colors on white paper.",
+        grayscale:
+          "Prints every color as a shade of gray, keeping how light or dark it is, so components stay distinct.",
+        bw: "Prints black text on white paper with no fills. Components are told apart by their lines and labels, using as little ink as possible.",
+      },
+      defaultIs: (mode: string): string => `Default on this device: ${mode}`,
+      print: "Print",
+      printHint: "Prints this sermon once in the colors chosen here. Your default stays as it is.",
+      pendingFirst: "Apply or cancel your appearance changes before printing.",
+      makeDefault: "Use as default on this device",
+      madeDefault: (mode: string): string => `${mode} is now the default on this device.`,
+      shortcutHint:
+        "Printing from the browser's menu or with Ctrl+P (⌘P) uses the default. Dark paper never prints: the paper is always white.",
+      preview: (mode: string): string => `Sample pages · printed in ${mode}`,
     },
     presetUpdate: "An updated design of this preset is available.",
     presetUpdateUse: "Use the updated design",

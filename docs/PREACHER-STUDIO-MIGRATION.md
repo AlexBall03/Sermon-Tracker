@@ -724,14 +724,17 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
         - formatting inheritance, reset and restore, and saved personal styles (**Implemented:** A4.2B, 4 November 2026, an account's own appearance presets and its default, [handoff](HANDOFF-PS-A4.2B.md); A4.2C, 4 November 2026, My presets in Settings, presets in Outline Settings, and new outlines started from the default while conversion is on, [handoff](HANDOFF-PS-A4.2C.md));
         - appearance controls discoverable and understandable without knowledge of presets, semantic styles, or component schemas.
         - **Open decision:** where a chosen preset is kept.
-      - **A1-UI.2C** (**Implemented** as A4.3, 5 November 2026, not yet committed; [handoff](HANDOFF-PS-A4.3.md)):
+      - **A1-UI.2C** (**Implemented** as A4.3, 5 November 2026, committed in `f77fd0a`; [handoff](HANDOFF-PS-A4.3.md)):
         - the dedicated sermon header with a directly editable Sermon Title and optional Subtitle (basic header editing is not postponed to UI.3);
         - a functional footer with discoverable basic configuration and correct pagination: page numbers **on for new sermon documents**, right-aligned and bold (owner's decision, 5 November 2026, replacing "off by default"); a document stored before A4.3 keeps its historical numbers (on, plain, right) until a person changes them;
         - first-page and later-page treatments, integrated with pagination; the running header off by default.
         - **Decided (owner, 5 November 2026):** canonical title storage is option (a): `ideas.title` stays the one title, edited in the header and saved by the idea's own revision-checked rename, online only, outside the document's Undo. The subtitle stays `doc.attrs.subtitle`. The title is centred by default and placed through Outline Settings → Header & Footer. The library's online idea saves are revision-checked too, as a consistency dependency.
         - **Decided (owner, 5 November 2026):** a sermon's own page (`doc.attrs.page`) governs its presentation; browser storage never overrides it. Compatibility: a document with no page of its own keeps the device's paper and margins until its page is first changed.
-      - **A1-UI.2D:**
-        - the dark-paper control, final preset refinement, print independence, and print color modes.
+      - **A1-UI.2D** (**Implemented** as A4.4, 5 November 2026, not yet committed; [handoff](HANDOFF-PS-A4.4.md)):
+        - the dark-paper control: View → Paper (Automatic, Light, Dark), a device preference for every sermon, independent of the application theme and drawn on the document surface only. Automatic is the look before A4.4 (Regular follows the theme, Print Layout is white). Never saved in the document, never a change, never printed (**Decided, owner, 5 November 2026**).
+        - print independence: a print is always Print Layout on white paper, whatever the theme, the layout, or the paper (BUG-010 kept; BUG-014, a dark canvas under a dark theme, fixed).
+        - print color modes: Color (default), Grayscale, Black & White, in Outline Settings → Printing. A remembered device default and a one-time choice for one print; no per-sermon storage and no migration (**Decided, owner**). A mode only paints, so pages are the same in every mode; Grayscale keeps each color's lightness, Black & White prints black on white with no fills.
+        - final preset refinement: Minimal, Balanced, and Expressive reviewed in all three modes; no change was justified, so no revision 3 (revision 1 parity and revision 2 unchanged).
     - **A1-UI.3, required for A1:**
       - inserting and converting Preacher Notes, Scripts, and Page Breaks, and Scripture from the editor's own UI;
       - a prominently discoverable Insert workflow for every semantic component, with no reliance on the lab inspector;
@@ -749,14 +752,14 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
   - **Then:**
     - **A2:** persistence around `SermonWorkspace`, mounted on a real sermon route (handoff "Boundary for A2"), with revisions and data protection.
       - **A2.0 (built, 26 October 2026; committed as `f480456`):** the production-safe document core, `src/features/sermon-editor/document` ([handoff](HANDOFF-PS-A2.md)). Nothing persisted; no database change.
-      - **A2.1 (built and approved, 26 October 2026; not yet committed):** server document persistence ([handoff](HANDOFF-PS-A2.md)).
+      - **A2.1 (built and approved, 26 October 2026; committed in `d5eebf6`):** server document persistence ([handoff](HANDOFF-PS-A2.md)).
         - **Storage:** `sermon_outline_documents` (migration `0020`, applied to development only), one v4 document to an outline, with its own revision.
         - **Status:** approved by the owner on 26 October 2026; the two-connection race passed on development.
         - **Code:** an owner-scoped service with an atomic revision check (`src/features/sermon-editor/persistence`), and thin actions behind `authorize("active")`.
         - **Not yet:** nothing calls it, nothing converts, nothing syncs, and the legacy outline is unchanged.
         - **Decided (owner):** a starting size limit of 512 KiB of UTF-8, reassessed in A2.3. This answers open decision 8 for documents only.
         - **Decided (the A2.1 brief):** one document revision, independent of the outline's. This answers open decision 6 for A2's documents.
-      - **A2.2 (built, 26 October 2026; not yet committed):** legacy conversion and content authority ([handoff](HANDOFF-PS-A2.md)). No migration.
+      - **A2.2 (built, 26 October 2026; committed in `b141037`):** legacy conversion and content authority ([handoff](HANDOFF-PS-A2.md)). No migration.
         - **Implemented:** a document row is the outline's content authority. That answers §9.3 step 4's "row or switch" question: the row, with no flag or column.
         - **Implemented:** every legacy entry and numbering write is refused once the row exists (`document_authoritative`). Over sync it is a kept conflict (`documentAuthoritative`), discarded only by the person.
         - **Implemented:** one server conversion, `convertOutline`, behind `convertOutlineDocument`.
@@ -764,30 +767,30 @@ PS-1B.2 does not build the Workspace Panel and does not change the shell: an edi
           - It is refused unless the result can be read back as exactly the outline.
           - It replaces A2.1's `createOutlineDocument` action (owner's decision).
         - **Not yet:** nothing calls the conversion (A3). Queued legacy changes are not yet carried into the document, and devices are not yet told an outline is converted (A2.3).
-      - **A2.3A (built, 26 October 2026; not yet committed):** persistence and local durability contracts ([handoff](HANDOFF-PS-A2.md)). No migration.
+      - **A2.3A (built, 26 October 2026; committed in `578fe23`):** persistence and local durability contracts ([handoff](HANDOFF-PS-A2.md)). No migration.
         - **Decided (owner):** full-document saves through the existing Server Action; durable local recovery in IndexedDB; at most one save in flight per controller; no automatic merging; manual recovery of legacy offline conflicts; production integration in A3.
         - **Decided (owner), implemented:** the document limit is 3 MiB of UTF-8 (replacing A2.1's 512 KiB), with a 4 MB Server Action body limit. Verified by encoding a save at the limit as the client does.
         - **Implemented:** account-scoped recovery drafts (`persistence/recovery`) with compare-and-set sequences, and the save contract (`persistence/saving.ts`).
         - **Not yet:** the autosave controller (A2.3B), the recovery interface (A2.3C), offline authority integration (A2.3D).
-      - **A2.3C (built, 29 October 2026; not yet committed):** recovery resolution contracts ([handoff](HANDOFF-PS-A2.md#a23c-recovery-resolution-29-october-2026)). No migration, no UI, not mounted.
+      - **A2.3C (built, 29 October 2026; committed in `674515f`):** recovery resolution contracts ([handoff](HANDOFF-PS-A2.md#a23c-recovery-resolution-29-october-2026)). No migration, no UI, not mounted.
         - **Decided (owner):** a restored original is kept until the restored work's save is confirmed (A); switchable read-only previews, no diff or merge (B, built in A3); restoring needs durable local protection, not a server save (C); an oversized draft can be restored and is never sent until it fits; every other divergent draft is resolved before restoring one.
         - **Implemented:** classification, lineage units, exact-identity guarded restore and discard, confirmation evidence (cleanup markers), and idempotent cleanup.
         - **Not yet:** the recovery dialog and production mounting (A3), offline authority integration (A2.3D).
     - **A3:** full signed-in editor integration.
-      - **A3 (built, 29 October 2026; not yet committed):** the production editor on `/outlines/[id]` ([handoff](HANDOFF-PS-A3.md)). No migration.
+      - **A3 (built, 29 October 2026; committed in `4a68720`):** the production editor on `/outlines/[id]` ([handoff](HANDOFF-PS-A3.md)). No migration.
         - **Decided (owner):** conversion on opening behind a server-side switch that fails closed and stays off in production until A2.3D and A2.2's Vercel checks are done (an outline that has a document always opens in the new editor); a minimal Insert menu in A3 (part of UI.3 pulled forward, not the whole of it); `markDeveloped` on a confirmed save whose stored content changed, in the save's transaction.
         - **Implemented:** `OutlineDocumentHost` (one editor session at a time, Clerk identity, browser connectivity, guarded editing), `ConvertOnOpen`, the save indicator, full-page recovery with switchable read-only previews, read-only tabs with "Edit here", the Insert menu, and the developed rule.
         - **Release dependencies (not A3's):** A2.3D, then the owner's Vercel checks, then `SERMON_DOCUMENT_CONVERSION=on` in production.
         - **Cutover regressions:** restored by A3.1 (below).
-      - **A3.1 (built, 29 October 2026; not yet committed):** legacy compatibility in the production editor ([handoff](HANDOFF-PS-A3.1.md)). No migration.
+      - **A3.1 (built, 29 October 2026; committed in `bbfedae`):** legacy compatibility in the production editor ([handoff](HANDOFF-PS-A3.1.md)). No migration.
         - **Decided (owner):** a saved point copies its title and `sourcePointId` only; folding and Scripture expansion are separate, view-only controls; folding works in Print Layout too, with the desktop still Print-only; printing is always complete and keeps the `print` settings; the Bible opens in the same tab under the existing leave guard.
         - **Implemented:** Add from Saved Point in the Insert menu, `PointFolding` and the View menu, Print Layout’s screen-only Scripture collapse, print preparation in the Paginator, and the passage’s Open in the Bible.
         - **Release dependencies (unchanged):** A2.3D, the owner’s Vercel checks, then the switch.
         - **Still approved and unbuilt** (as of A3.1): UI.2B.3, UI.2C (title and subtitle header, footer), the rest of UI.3, UI.2D, UI.4. _Since then UI.2B.3 was built as A4.2B/A4.2C and UI.2C as A4.3._
-      - **A4.1 (built, 3 November 2026; not yet committed, partly verified):** editor reliability and cursor navigation ([handoff](HANDOFF-PS-A4.1.md), [bug register](BUGS.md)). No migration.
+      - **A4.1 (built, 3 November 2026; committed in `7c9d3b6`, partly verified):** editor reliability and cursor navigation ([handoff](HANDOFF-PS-A4.1.md), [bug register](BUGS.md)). No migration.
         - **Implemented:** `HeldSelection` for BUG-001 (a selected block the browser cannot hold is kept after a key); the offline queue ordered by when each change was made (`orderedAt`, never back within a queue) and a per-owner sequence.
         - **Approved for later checkpoints:** keep-together and keep-with-next for short components (A4.6 / UI.4); an optional footer with bold, right-aligned page numbers (A4.3 / UI.2C, implemented below).
-      - **A4.3 (built, 5 November 2026; not yet committed):** the semantic sermon header, footer, and pagination integration, A1-UI.2C ([handoff](HANDOFF-PS-A4.3.md)). No migration.
+      - **A4.3 (built, 5 November 2026; committed in `f77fd0a`):** the semantic sermon header, footer, and pagination integration, A1-UI.2C ([handoff](HANDOFF-PS-A4.3.md)). No migration.
         - **Implemented:** the header (title and subtitle) on the first page; a sermon's own page, version 2, governing its pages; first-page geometry; the running header; page numbers on, right, and bold for new outlines; Outline Settings → Header & Footer; revision-checked title saves from the editor and from the library.
         - **Not done:** BUG-002 (A4.6), the UI.3 interactions including drag-and-drop (recorded above under A1-UI.3), UI.2D, UI.4.
     - **B1:** the Workspace Panel. **B2:** KJV/RVG resources and dictionaries. **B3:** My Outlines and templates.

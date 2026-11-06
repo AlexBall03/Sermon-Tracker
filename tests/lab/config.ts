@@ -33,7 +33,7 @@ export function labConfig({ production }: { production: boolean }) {
   return defineConfig({
     testMatch: production
       ? "production.spec.ts"
-      : /(editor|pagination|typography|v4|navigation|persistence-probe|preset-parity|appearance-levels|print-workspace|header-footer)\.spec\.ts$/,
+      : /(editor|pagination|typography|v4|navigation|persistence-probe|preset-parity|appearance-levels|print-workspace|header-footer|print-color)\.spec\.ts$/,
     fullyParallel: false,
     workers: 1,
     forbidOnly: !!process.env.CI,

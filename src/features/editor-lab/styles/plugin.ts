@@ -8,7 +8,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { pageWith } from "../pagination/page-config";
 import { pageInForce, touchedBlocks } from "../pagination/plugin";
 import { appearanceSchemaFor } from "./attributes";
-import { inkOn, type ColorValue } from "./colors";
+import { grayOf, inkOn, type ColorValue } from "./colors";
 import { componentOfNode, findComponent } from "./component-node";
 import { applyPlan, mergeAppearance, mergeStyles, touches, type Draft } from "./draft";
 import {
@@ -510,7 +510,7 @@ function pairs(state: EditorState, from: number, to: number, set: DecorationSet)
     added.push(
       Decoration.inline(pos, pos + node.nodeSize, {
         class: "lab-ink",
-        style: `color: ${light}; --ink-d: ${dark}`,
+        style: `color: ${light}; --ink-d: ${dark}; --ink-g: ${grayOf(light)}`,
       }),
     );
     return false;

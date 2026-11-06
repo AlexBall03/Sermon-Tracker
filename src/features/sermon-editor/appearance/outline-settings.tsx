@@ -1,7 +1,7 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
-import { Eye, EyeOff, ListOrdered, Palette, PanelTop, RotateCcw } from "lucide-react";
+import { Eye, EyeOff, ListOrdered, Palette, PanelTop, Printer, RotateCcw } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ import { blockGroups, defaultsGroups, levelGroups, typeGroups } from "./fields";
 import { AppearanceModal } from "./modal";
 import { HeaderFooterSettings } from "./header-footer-settings";
 import { NumberingSettings } from "./numbering-settings";
+import { PrintingSettings } from "./printing-settings";
+import { readPrintColor, type PrintColorMode } from "../presentation/preferences";
 import {
   AppearancePreview,
   pagesSample,
@@ -47,14 +49,15 @@ import { OutlinePresets } from "@/features/appearance-presets/components/outline
  * Outline Settings (A1-UI.2B.2): the home of everything configured for the
  * outline that is open, never the account. Its categories are
  * `outlineSettingsCategories`, and only one that works is listed (no
- * placeholders): Appearance, and since A4.2A Numbering. Page Setup, Header &
- * Footer, and Printing join them in their own checkpoints, reusing the
- * commands and state their current controls already use.
+ * placeholders): Appearance, Numbering (A4.2A), Header & Footer (A4.3), and
+ * Printing (A4.4). Page Setup joins them in its own checkpoint, reusing the
+ * commands and state its current controls already use.
  *
  * Every category edits one session and one draft (`useAppearanceSession`):
  * moving between categories or tabs keeps every pending edit, the preview
  * shows them all, and one Apply writes them in one transaction (one undo
- * step), or nothing.
+ * step), or nothing. Printing is the exception: it is this device's, not
+ * the outline's, so it never enters the draft (`printing-settings.tsx`).
  *
  * Appearance has three tabs: Outline (the preset, the shared defaults, the
  * text styles), Components (every component of one type), and Levels (the
@@ -63,7 +66,12 @@ import { OutlinePresets } from "@/features/appearance-presets/components/outline
  * Appearance's (Components and Levels).
  */
 
-export const outlineSettingsCategories = ["appearance", "numbering", "headerFooter"] as const;
+export const outlineSettingsCategories = [
+  "appearance",
+  "numbering",
+  "headerFooter",
+  "printing",
+] as const;
 export type OutlineSettingsCategory = (typeof outlineSettingsCategories)[number];
 export type AppearanceTab = "outline" | "components" | "levels";
 export type OutlineTarget = "defaults" | NamedStyle;
@@ -72,6 +80,7 @@ const categoryIcons = {
   appearance: Palette,
   numbering: ListOrdered,
   headerFooter: PanelTop,
+  printing: Printer,
 } as const;
 
 export type OutlineSettingsOptions = {
@@ -96,10 +105,13 @@ export function OutlineSettings({
   editor,
   onClose,
   initial = {},
+  onPrint,
 }: {
   editor: Editor;
   onClose: () => void;
   initial?: OutlineSettingsOptions;
+  /** Closes the window and prints the sermon once in these colors (Printing, A4.4). */
+  onPrint?: (mode: PrintColorMode) => void;
 }) {
   const t = useT("editorLab");
   const a = t.appearance;
@@ -115,7 +127,17 @@ export function OutlineSettings({
   const sample = useMemo(() => sampleOutline(a.sample), [a.sample]);
   // Header & Footer is seen on pages (A4.3): two of them, with the header and the numbers.
   const pagesOf = useMemo(() => pagesSample(a.sample), [a.sample]);
-  const asPages = category === "headerFooter";
+  // Printing (A4.4): every kind of component, on pages; the title is the header's, so the sample's own is left out.
+  const printSample = useMemo(
+    () =>
+      sample.filter((block) => !["title", "subtitle"].includes(block.attrs?.styleName as string)),
+    [sample],
+  );
+  // Printing (A4.4) is seen on pages too, as the chosen colors print them.
+  const asPages = category === "headerFooter" || category === "printing";
+  // A print's colors, chosen here: this device's default until another is picked (never the draft).
+  const [printMode, setPrintMode] = useState<PrintColorMode>(() => readPrintColor());
+  const printing = category === "printing";
   const tabsName = useId();
 
   const appearance = category === "appearance";
@@ -126,13 +148,15 @@ export function OutlineSettings({
       : tab === "levels"
         ? (sampleLevelIds[depth as 1 | 2 | 3] ?? null)
         : null;
-  const caption = !appearance
-    ? a.previewOutline
-    : tab === "components"
-      ? a.previewKind(a.kinds[kind])
-      : tab === "levels"
-        ? a.previewLevel(depth)
-        : a.previewOutline;
+  const caption = printing
+    ? a.printing.preview(a.printing.modes[printMode])
+    : !appearance
+      ? a.previewOutline
+      : tab === "components"
+        ? a.previewKind(a.kinds[kind])
+        : tab === "levels"
+          ? a.previewLevel(depth)
+          : a.previewOutline;
 
   return (
     <AppearanceModal
@@ -188,8 +212,10 @@ export function OutlineSettings({
             </Button>
             <AppearancePreview
               session={session}
-              content={asPages ? pagesOf : sample}
+              // Printing shows every kind of component, on pages, so each mode can be judged (A4.4).
+              content={printing ? printSample : asPages ? pagesOf : sample}
               pages={asPages}
+              printColor={printing ? printMode : null}
               mark={mark}
               caption={caption}
               className={cn(
@@ -226,6 +252,13 @@ export function OutlineSettings({
               </>
             ) : category === "numbering" ? (
               <NumberingSettings session={session} />
+            ) : printing ? (
+              <PrintingSettings
+                session={session}
+                mode={printMode}
+                onMode={setPrintMode}
+                onPrint={onPrint}
+              />
             ) : (
               <HeaderFooterSettings session={session} />
             )}

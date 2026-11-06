@@ -1,9 +1,9 @@
 import { Editor, type JSONContent } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ref } from "@/features/editor-lab/fixtures";
 import { findComponent } from "@/features/editor-lab/styles/component-node";
@@ -17,6 +17,8 @@ import { editorLab } from "@/i18n/dictionaries/en/editorLab";
 import type { Locale } from "@/i18n/locales";
 import { AppearanceDialogsProvider, useAppearanceDialogs, type AppearanceDialogs } from "./dialogs";
 import { componentExcerpt, sampleIds, sampleOutline } from "./preview";
+import { readPrintColor, resetHeldPreferences } from "../presentation/preferences";
+import { installPrintColor, resetPrintJob } from "../presentation/print-job";
 
 /*
  * Outline Settings and Component Appearance (A1-UI.2B.2 final) as a person
@@ -635,5 +637,129 @@ describe("Header & Footer (A4.3)", () => {
       "page",
     );
     expect(within(settings).getByRole("switch", { name: "Números de página" })).toBeInTheDocument();
+  });
+});
+
+describe("Printing (A4.4)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetHeldPreferences();
+    resetPrintJob();
+  });
+
+  it("is a category of its own that never enters the draft or the outline", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "printing" }));
+    const settings = screen.getByRole("dialog", { name: "Outline Settings" });
+    expect(within(settings).getByRole("button", { name: "Printing" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(settings).getByTestId("printing-settings")).toBeInTheDocument();
+    // This device's default to start with, shown on pages, on white paper, as Color prints.
+    expect(within(settings).getByRole("radio", { name: "Color" })).toBeChecked();
+    const pages = screen.getByTestId("appearance-preview-pages");
+    expect(pages).toHaveAttribute("data-print-color", "color");
+    expect(previewEditor().dataset.layout).toBe("print");
+    expect(previewEditor().dataset.paper).toBe("light");
+    expect(screen.getByTestId("appearance-preview")).toHaveAttribute("data-print-never");
+    expect(screen.getByRole("figure")).toHaveTextContent("Sample pages · printed in Color");
+
+    const json = JSON.stringify(editor.getJSON());
+    const depth = undoDepth(editor.state);
+    fireEvent.click(within(settings).getByRole("radio", { name: "Grayscale" }));
+    expect(pages).toHaveAttribute("data-print-color", "grayscale");
+    fireEvent.click(within(settings).getByRole("radio", { name: "Black & White" }));
+    expect(pages).toHaveAttribute("data-print-color", "bw");
+    expect(screen.getByRole("figure")).toHaveTextContent("printed in Black & White");
+    // Nothing pending, nothing written, nothing remembered.
+    expect(previewing(editor)).toBe(false);
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(JSON.stringify(editor.getJSON())).toBe(json);
+    expect(undoDepth(editor.state)).toBe(depth);
+    expect(readPrintColor()).toBe("color");
+    expect(within(settings).getByTestId("printing-default")).toHaveTextContent(
+      "Default on this device: Color",
+    );
+  });
+
+  it("remembers the default only when asked", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "printing" }));
+    const settings = screen.getByRole("dialog", { name: "Outline Settings" });
+    const make = within(settings).getByTestId("printing-make-default");
+    expect(make).toBeDisabled();
+    fireEvent.click(within(settings).getByRole("radio", { name: "Grayscale" }));
+    expect(make).toBeEnabled();
+    fireEvent.click(make);
+    expect(readPrintColor()).toBe("grayscale");
+    expect(window.localStorage.getItem("sermon-print-color")).toBe("grayscale");
+    expect(within(settings).getByTestId("printing-default")).toHaveTextContent("Grayscale");
+    expect(make).toBeDisabled();
+    expect(
+      within(settings).getByText("Grayscale is now the default on this device."),
+    ).toBeVisible();
+  });
+
+  it("closes the window first, then prints once in the chosen colors", async () => {
+    const release = installPrintColor();
+    // jsdom gives a Range no geometry, which ProseMirror asks for when focus goes back to the
+    // outline after the window closes (also after this test ends): an empty answer, for this file.
+    Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+    Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+    const seen: (string | null)[] = [];
+    const present: boolean[] = [];
+    const print = vi.spyOn(window, "print").mockImplementation(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+      seen.push(document.documentElement.getAttribute("data-print-color"));
+      present.push(screen.queryByRole("dialog") !== null);
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings({ category: "printing" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Black & White" }));
+    fireEvent.click(screen.getByTestId("printing-print"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(seen).toEqual(["bw"]);
+    expect(present).toEqual([false]);
+    // The default is as it was, and the next print uses it.
+    expect(readPrintColor()).toBe("color");
+    expect(document.documentElement.hasAttribute("data-print-color")).toBe(false);
+    release();
+  });
+
+  it("waits while appearance changes are pending", () => {
+    const editor = open();
+    show(editor);
+    act(() => api.openOutlineSettings());
+    setNumber("Size (pt)", "15");
+    fireEvent.click(screen.getByRole("button", { name: "Printing" }));
+    expect(screen.getByTestId("printing-print")).toBeDisabled();
+    expect(
+      screen.getByText("Apply or cancel your appearance changes before printing."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("printing-print")).toBeEnabled();
+  });
+
+  it("is reached by keyboard and speaks Spanish", () => {
+    const editor = open();
+    show(editor, "es");
+    act(() => api.openOutlineSettings({ category: "printing" }));
+    const settings = screen.getByRole("dialog", { name: "Ajustes del bosquejo" });
+    const category = within(settings).getByRole("button", { name: "Impresión" });
+    expect(category.tagName).toBe("BUTTON");
+    expect(
+      within(settings).getByRole("group", { name: "Colores de impresión" }),
+    ).toBeInTheDocument();
+    const gray = within(settings).getByRole("radio", { name: "Escala de grises" });
+    gray.focus();
+    fireEvent.click(gray);
+    expect(gray).toBeChecked();
+    expect(within(settings).getByRole("button", { name: "Imprimir" })).toBeInTheDocument();
   });
 });

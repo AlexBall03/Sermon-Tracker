@@ -203,5 +203,13 @@ export const sermonEditor = {
     /** The chevron and menu item of one point. */
     collapsePoint: "Collapse point",
     expandPoint: "Expand point",
+    /** The paper written on (A4.4): this device's, never printed and never part of the sermon. */
+    paper: {
+      label: "Paper",
+      automatic: "Automatic",
+      light: "Light paper",
+      dark: "Dark paper",
+      hint: "Paper on this device. Printing is always on white paper.",
+    },
   },
 };

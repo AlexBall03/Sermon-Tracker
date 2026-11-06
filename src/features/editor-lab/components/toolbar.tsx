@@ -36,8 +36,7 @@ import {
   run,
   type Command,
 } from "../outline-commands";
-import { printLayoutOf } from "../pagination/plugin";
-import { paperKey } from "../v4/paper";
+import { paperShown } from "../v4/paper";
 import { ColorControl } from "./formatting/color-control";
 import { useKeptSelection } from "./formatting/keep-selection";
 import { AlignButtons, SpacingControl } from "./formatting/paragraph-controls";
@@ -264,10 +263,8 @@ export function InlineGroup({ editor }: { editor: Editor }) {
         underline: current.isActive("underline"),
         color: text.color,
         highlight: text.highlight,
-        // Text on light paper is drawn in its light colors in either theme (`v4/paper.ts`).
-        lightPaper:
-          printLayoutOf(current.state)?.layout === "print" &&
-          paperKey.getState(current.state) === "light",
+        // Text on paper is drawn in that paper's colors in either theme (`v4/paper.ts`).
+        paper: paperShown(current.state),
       };
     },
   });
@@ -299,7 +296,7 @@ export function InlineGroup({ editor }: { editor: Editor }) {
         onOpen={keeper.remember}
         onPick={(value) => keeper.apply(setTextColor(value))}
         finalFocus={keeper.finalFocus}
-        lightPaper={state.lightPaper}
+        paper={state.paper}
       />
       <ColorControl
         kind="fill"
@@ -308,7 +305,7 @@ export function InlineGroup({ editor }: { editor: Editor }) {
         onOpen={keeper.remember}
         onPick={(value) => keeper.apply(setHighlight(value))}
         finalFocus={keeper.finalFocus}
-        lightPaper={state.lightPaper}
+        paper={state.paper}
       />
     </Group>
   );

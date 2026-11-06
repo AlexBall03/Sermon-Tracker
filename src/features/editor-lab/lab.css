@@ -57,14 +57,53 @@
  * only which rule applies: the document and its history are untouched.
  */
 @media screen {
-  /* Light paper (`v4/paper.ts`) shows the light variants in either theme. */
-  .dark .lab-editor:not([data-paper="light"]) .lab-ink {
+  /*
+   * Light paper (`v4/paper.ts`) shows the light variants in either theme;
+   * dark paper (A4.4) the dark ones in either theme.
+   */
+  :is(.dark .lab-editor:not([data-paper="light"]), .lab-editor[data-paper="dark"]) .lab-ink {
     color: var(--ink-d) !important;
   }
 
-  .dark .lab-editor:not([data-paper="light"]) .lab-fill {
+  :is(.dark .lab-editor:not([data-paper="light"]), .lab-editor[data-paper="dark"]) .lab-fill {
     background-color: var(--fill-d) !important;
   }
+}
+
+/*
+ * The print color modes (A4.4, `sermon-editor/presentation/print-job.ts`):
+ * `data-print-color` on an ancestor (`<html>` while a print is in progress,
+ * the Printing preview's page). Color sets nothing and is drawn as always.
+ * Only paint changes, never a width, a font, or what is drawn, so the pages
+ * are the same in every mode. A document's own colors are never rewritten:
+ * inline colors carry their grayscale value (`--ink-g`, `--fill-g`, worked
+ * out with `grayOf`), and everything else is grayed where it is drawn.
+ */
+[data-print-color="grayscale"] .lab-editor .lab-ink {
+  color: var(--ink-g) !important;
+}
+
+[data-print-color="grayscale"] .lab-editor .lab-fill {
+  background-color: var(--fill-g) !important;
+}
+
+/*
+ * Black & White: black words on white paper, no fills, and every line that
+ * is drawn drawn black (`lab-v4.css`). A highlight is underlined instead.
+ */
+/* A pseudo-element (a label, a number) cannot be inside `:is()`, so each is named. */
+[data-print-color="bw"] :is(.lab-editor, .sermon-header),
+[data-print-color="bw"] :is(.lab-editor, .sermon-header) *,
+[data-print-color="bw"] :is(.lab-editor, .sermon-header)::before,
+[data-print-color="bw"] :is(.lab-editor, .sermon-header) *::before,
+[data-print-color="bw"] :is(.lab-editor, .sermon-header) *::after {
+  color: #000 !important;
+}
+
+[data-print-color="bw"] .lab-editor :is(.lab-fill, mark) {
+  background-color: transparent !important;
+  text-decoration-line: underline;
+  text-decoration-color: #000;
 }
 
 /* A color swatch in the controls, as the theme shows it. */
@@ -81,6 +120,11 @@
   background: var(--swatch-l);
 }
 
+/* And on dark paper (A4.4), as the dark paper draws it, in either theme. */
+.lab-swatch[data-surface="dark-paper"] {
+  background: var(--swatch-d);
+}
+
 /* Text in the theme's own color: the theme's text, or the paper's ink on light paper. */
 .lab-swatch-theme {
   background: var(--foreground);
@@ -88,6 +132,10 @@
 
 .lab-swatch-theme[data-surface="paper"] {
   background: var(--brand-ink);
+}
+
+.lab-swatch-theme[data-surface="dark-paper"] {
+  background: var(--brand-ivory);
 }
 
 /*
@@ -592,9 +640,12 @@
   /*
    * Printed in ink on paper whatever the theme: in dark mode the screen's
    * light text and dark sheet would otherwise print grey on white, with a
-   * dark band where a page's margin is drawn.
+   * dark band where a page's margin is drawn. The sermon header too: it
+   * follows the editor's paper through React, which a print does not wait
+   * for, so on dark paper (A4.4) it must not depend on it.
    */
-  .lab-editor[data-layout="print"] {
+  .lab-editor[data-layout="print"],
+  .sermon-header[data-print-with-editor] {
     --desk: 0px !important;
     --foreground: var(--brand-ink);
     --muted-foreground: color-mix(in oklab, var(--brand-ink) 65%, transparent);
@@ -638,6 +689,15 @@
 
   .lab-editor[data-layout="print"] .lab-passage[data-print="hidden"] {
     display: none;
+  }
+
+  /*
+   * A preview (Outline Settings, My Presets) and the window around it are
+   * never printed (A4.4), even while one is open: only the sermon is. As
+   * specific as the rule above that shows an editor's ancestors, and after it.
+   */
+  body:has(.lab-editor[data-layout="print"]) :is([data-print-never], [data-print-never] *) {
+    display: none !important;
   }
 }
 

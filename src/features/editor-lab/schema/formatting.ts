@@ -3,7 +3,7 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
-import { colorVariants, isHex, type ColorKind, type ColorValue } from "../styles/colors";
+import { colorVariants, grayOf, isHex, type ColorKind, type ColorValue } from "../styles/colors";
 import { fontFromCss, fontStack, sizeFromCss } from "../styles/font-stack";
 import { fillColorSchema, inkColorSchema, isFontKey, isFontSize } from "../styles/model";
 import { defaultHighlight, highlightPresets, textAlignments, textColorPresets } from "./model";
@@ -110,7 +110,8 @@ export function colorHTML(color: unknown, kind: ColorKind): Record<string, strin
   return {
     ...data,
     class: kind === "ink" ? "lab-ink" : "lab-fill",
-    style: `${property}: ${variants.light}; ${variable}: ${variants.dark}`,
+    // The light variant (paper), the dark screen's, and Grayscale printing's (A4.4).
+    style: `${property}: ${variants.light}; ${variable}: ${variants.dark}; ${variable.replace("-d", "-g")}: ${grayOf(variants.light)}`,
   };
 }
 

@@ -253,7 +253,7 @@ export function ColorControl({
   onOpen,
   onPick,
   finalFocus,
-  lightPaper = false,
+  paper = null,
 }: {
   kind: ColorKind;
   value: Shown;
@@ -262,10 +262,10 @@ export function ColorControl({
   onPick: (value: ColorValue | null) => void;
   finalFocus: () => boolean;
   /**
-   * Whether the text is on light paper (Print Layout, `v4/paper.ts`): the bar
-   * then shows the color as the paper draws it, in either theme.
+   * The paper the text is on (`v4/paper.ts`), if any: the bar then shows the
+   * color as that paper draws it, in either theme.
    */
-  lightPaper?: boolean;
+  paper?: "light" | "dark" | null;
 }) {
   const t = useT("editorLab").format;
   const [open, setOpen] = useState(false);
@@ -308,7 +308,7 @@ export function ColorControl({
           <Icon className="size-4" aria-hidden />
           <span
             data-state={state}
-            data-surface={lightPaper ? "paper" : undefined}
+            data-surface={paper === "light" ? "paper" : paper === "dark" ? "dark-paper" : undefined}
             className={cn(
               "lab-bar mt-0.5 h-1 w-4 rounded-full",
               state === "color" && "lab-swatch",

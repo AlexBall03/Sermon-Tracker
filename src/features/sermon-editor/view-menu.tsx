@@ -1,7 +1,17 @@
 "use client";
 
 import { useEditorState, type Editor } from "@tiptap/react";
-import { BookOpen, ChevronDown, ChevronsDownUp, ChevronsUpDown, Eye } from "lucide-react";
+import { useId } from "react";
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Eye,
+  Moon,
+  Sun,
+  SunMoon,
+} from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -9,6 +19,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -17,6 +30,10 @@ import { printLayoutOf } from "@/features/editor-lab/pagination/plugin";
 import { foldingOf } from "@/features/editor-lab/v4/folding";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
+import { isPaperChoice, paperChoices } from "./presentation/preferences";
+import { usePaperChoice } from "./presentation/use-presentation";
+
+const paperIcons = { automatic: SunMoon, light: Sun, dark: Moon } as const;
 
 /*
  * The View menu (A3.1): what is shown of the outline, never what it says.
@@ -29,9 +46,15 @@ import { cn } from "@/lib/utils";
  * text; in Print Layout a passage shows as its `print` setting says, and
  * "Collapse all Scripture" only hides the text on screen until it is
  * expanded again. Each item rests when it would do nothing.
+ *
+ * The paper (A4.4) is this device's choice for every sermon (`presentation`):
+ * view state, so it is offered in a read-only tab too, and choosing it moves
+ * no caret, scroll, or layout. Printing is always on white paper.
  */
 export function ViewMenu({ editor }: { editor: Editor }) {
   const t = useT("sermonEditor").view;
+  const [paper, choosePaper] = usePaperChoice();
+  const paperIds = useId();
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => {
@@ -110,6 +133,29 @@ export function ViewMenu({ editor }: { editor: Editor }) {
             {t.collapseScripture}
           </DropdownMenuItem>
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        {/* One group, named by its label and described by its hint. */}
+        <DropdownMenuRadioGroup
+          aria-describedby={`${paperIds}-hint`}
+          value={paper}
+          onValueChange={(value: unknown) => {
+            if (isPaperChoice(value)) choosePaper(value);
+          }}
+        >
+          <DropdownMenuLabel>{t.paper.label}</DropdownMenuLabel>
+          {paperChoices.map((value) => {
+            const Icon = paperIcons[value];
+            return (
+              <DropdownMenuRadioItem key={value} value={value} data-testid={`view-paper-${value}`}>
+                <Icon aria-hidden />
+                {t.paper[value]}
+              </DropdownMenuRadioItem>
+            );
+          })}
+          <p id={`${paperIds}-hint`} className="px-2.5 pt-1 pb-1.5 text-xs text-muted-foreground">
+            {t.paper.hint}
+          </p>
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

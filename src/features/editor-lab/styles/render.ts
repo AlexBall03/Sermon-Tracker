@@ -31,7 +31,8 @@ import {
  * the light variant is the rule, the dark variant a second rule for the dark
  * theme on screen only, so printing always draws the paper colors. Light
  * paper (`data-paper="light"`, `v4/paper.ts`) is left out of the dark rules:
- * it shows the light variants in either theme. A style
+ * it shows the light variants in either theme; dark paper (A4.4) takes them
+ * in either theme (`darkScope`). A style
  * whose color is null sets none: its text is the theme's, or what its
  * container gives.
  *
@@ -486,6 +487,24 @@ export function appearanceStyle(
   return lines.join("; ");
 }
 
+/**
+ * Where the dark variants apply, on screen (A4.4): an editor on dark paper in
+ * either theme, or one with no paper of its own in the dark theme. Light
+ * paper never.
+ */
+export const darkScope = (scope: string) =>
+  `:is(.dark ${scope}:not([data-paper="light"]), ${scope}[data-paper="dark"])`;
+
+/** The print color modes (A4.4), as the ancestor attribute `print-job.ts` and the preview set. */
+export const grayscaleScope = `[data-print-color="grayscale"]`;
+
+/**
+ * A color drawn in grayscale (A4.4): its own OKLCH lightness with no chroma,
+ * its alpha kept. A CSS relative color, so it works on any expression a rule
+ * draws (a variable, a fallback, `currentColor`), and it is paint only.
+ */
+export const grayCss = (color: string) => `oklch(from ${color} l 0 h)`;
+
 /** The whole sheet for `styles`, scoped to `scope` (one editor), under `preset`. */
 export function styleSheet(
   styles: DocumentStyles | null,
@@ -508,10 +527,9 @@ export function styleSheet(
   ];
   const css: string[] = [`${scope} { ${own.join("; ")}; }`];
   const dark: string[] = [];
-  // The same rules in the same order, scoped to an editor whose paper is not light.
-  const darkSelectors = rules(styles, `${scope}:not([data-paper="light"])`, preset).map(
-    (rule) => rule.selector,
-  );
+  const gray: string[] = [];
+  // The same rules in the same order, scoped to an editor drawn in the dark variants.
+  const darkSelectors = rules(styles, darkScope(scope), preset).map((rule) => rule.selector);
   for (const [index, rule] of rules(styles, scope, preset).entries()) {
     const { selector, block, onFill: judged, hang, instance, typographyOnly, section } = rule;
     const lines = [
@@ -540,8 +558,10 @@ export function styleSheet(
       const darkColor = own("-d", variants?.dark);
       lines.push(`color: ${light}`);
       darkLines.push(`color: ${darkColor}`);
+      // Printed in grayscale (A4.4): the same color, its lightness kept and its hue taken out.
+      if (light) gray.push(`${grayscaleScope} ${selector} { color: ${grayCss(light)}; }`);
     }
-    if (darkLines.length) dark.push(`.dark ${darkSelectors[index]} { ${darkLines.join("; ")}; }`);
+    if (darkLines.length) dark.push(`${darkSelectors[index]} { ${darkLines.join("; ")}; }`);
     css.push(`${selector} { ${lines.join("; ")}; }`);
     for (const more of rule.more ?? []) css.push(more.replaceAll("&", selector));
   }
@@ -554,11 +574,13 @@ export function styleSheet(
     const pair = inkPair(header.color ?? null);
     if (pair) {
       css.push(`${scope} .lab-running-header { color: ${pair.light}; }`);
-      dark.push(
-        `.dark ${scope}:not([data-paper="light"]) .lab-running-header { color: ${pair.dark}; }`,
+      gray.push(
+        `${grayscaleScope} ${scope} .lab-running-header { color: ${grayCss(pair.light)}; }`,
       );
+      dark.push(`${darkScope(scope)} .lab-running-header { color: ${pair.dark}; }`);
     }
   }
   if (dark.length) css.push(`@media screen { ${dark.join(" ")} }`);
+  css.push(...gray);
   return css.join("\n");
 }

@@ -746,43 +746,75 @@
 }
 
 @media screen {
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point[data-depth="1"] {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    p.lab-v4-point[data-depth="1"] {
     --x-notation: var(--ps-point-i-notation-d, var(--ps-point-notation-d, var(--k-point-notation)));
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) p.lab-v4-point:not([data-depth="1"]) {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    p.lab-v4-point:not([data-depth="1"]) {
     --x-notation: var(
       --ps-subpoint-i-notation-d,
       var(--ps-subpoint-notation-d, var(--k-subpoint-notation))
     );
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) > [data-frame="introduction"] {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    > [data-frame="introduction"] {
     --x-frame-accent: var(--ps-intro-accent-d, var(--k-section-accent));
     --x-frame-border: var(--ps-intro-border-d, var(--k-section-line));
     --x-frame-fill: var(--ps-intro-fill-d, transparent);
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) > [data-frame="conclusion"] {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    > [data-frame="conclusion"] {
     --x-frame-accent: var(--ps-concl-accent-d, var(--k-section-accent));
     --x-frame-border: var(--ps-concl-border-d, var(--k-section-line));
     --x-frame-fill: var(--ps-concl-fill-d, transparent);
   }
   /* The preset's fallbacks (`--k-*`) follow the theme by themselves; only the outline's own colors have a dark variant. */
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-passage {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    .lab-passage {
     --x-accent: var(--ps-scripture-accent-d, var(--k-scripture-accent));
     --x-border: var(--ps-scripture-border-d, var(--k-scripture-line));
     --x-fill: var(--ps-scripture-fill-d, var(--k-scripture-fill));
     --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-scripture {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    .lab-scripture {
     --x-reference: var(--ps-scripture-reference-d, var(--k-scripture-ink));
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-note {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    .lab-note {
     --x-accent: var(--ps-note-accent-d, var(--k-accent));
     --x-border: var(--ps-note-border-d, var(--k-line));
     --x-fill: var(--ps-note-fill-d, var(--k-fill));
     --x-ink: var(--ps-note-ink-d, var(--foreground));
     --x-label: var(--ps-note-label-d, var(--ps-note-ink-d, var(--k-label)));
   }
-  .dark .lab-editor[data-studio]:not([data-paper="light"]) .lab-script {
+  :is(
+      .dark .lab-editor[data-studio]:not([data-paper="light"]),
+      .lab-editor[data-studio][data-paper="dark"]
+    )
+    .lab-script {
     --x-accent: var(--ps-script-accent-d, var(--k-accent));
     --x-border: var(--ps-script-border-d, var(--k-line));
     --x-fill: var(--ps-script-fill-d, var(--k-fill));
@@ -807,7 +839,14 @@
    * which `lab.css` already clears). It showed as a tint behind every page
    * and white bands at the page gaps when background graphics are printed.
    */
+  /*
+   * Nor the dark theme's canvas (A4.4): with the root transparent, a dark
+   * `color-scheme` (next-themes sets it on <html>) let Chrome paint its own
+   * dark canvas (#121212) under every printed page, measured in a production
+   * (Turbopack) bundle's PDF. Printing is always on white paper.
+   */
   html:has(.lab-editor[data-studio][data-layout="print"]) {
+    color-scheme: light !important;
     background: none !important;
   }
 }
@@ -955,7 +994,10 @@
   font-style: italic;
 }
 @media screen {
-  .dark .lab-editor[data-preset="expressive"]:not([data-paper="light"]) {
+  :is(
+    .dark .lab-editor[data-preset="expressive"]:not([data-paper="light"]),
+    .lab-editor[data-preset="expressive"][data-paper="dark"]
+  ) {
     --k-section-ink: var(--sermon-section);
   }
 }
@@ -988,14 +1030,22 @@
   flex-direction: column;
 }
 .lab-appearance-preview .lab-editor {
-  flex: 1 0 auto;
-  width: 100%;
-  max-width: none;
   min-height: 0;
-  padding: 1rem clamp(0.75rem, 3vw, 1.75rem) 1.5rem;
   caret-color: transparent;
   /* The page's own ground, as Print Layout draws it: light paper's white, else the theme's surface. */
   background: var(--surface);
+}
+/*
+ * The flowing preview fills its box. A preview of pages (Header & Footer,
+ * Printing) is the page itself: its width and margins are the paper's, as
+ * Print Layout draws them (`lab.css`), so the first page's text starts below
+ * the header (BUG-013, A4.4; this rule once gave pages a box's padding too).
+ */
+.lab-appearance-preview .lab-editor:not([data-layout="print"]) {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: none;
+  padding: 1rem clamp(0.75rem, 3vw, 1.75rem) 1.5rem;
 }
 
 /*
@@ -1319,4 +1369,146 @@
   .sermon-header-subtitle > textarea::placeholder {
     color: transparent;
   }
+}
+
+/*
+ * The print color modes (A4.4; `lab.css` has the inline colors and the
+ * words). `data-print-color` is on an ancestor: `<html>` for the length of a
+ * print (`sermon-editor/presentation/print-job.ts`), the page of the Printing
+ * preview in Outline Settings. One set of rules draws both, so the preview
+ * is the print. Color sets nothing.
+ *
+ * Paint only: colors, fills, and outlines, never a width, a padding, a font,
+ * or what is drawn, so every mode prints the same pages. Every color reaches
+ * its component through `--x-*` (the outline's own, a single node's own, or
+ * the preset's), so it is changed where it is drawn, with CSS relative colors:
+ * the document's colors, and the variables that carry them, stay as they are.
+ *
+ *   - Grayscale: each color's own OKLCH lightness with its chroma taken out,
+ *     its alpha kept (a transparent line stays transparent). The kinds stay
+ *     apart as they were designed to, by label and shape (wash, box, rule,
+ *     dashed box, double rule), and by the weight of their grays.
+ *   - Black & White: black words (`lab.css`), no fills, and every line that
+ *     is drawn drawn solid black (`rgb(from … / calc(alpha * 1000))` is black
+ *     where the line shows and transparent where it does not, so no line
+ *     appears that the page did not have). A study note, which Balanced draws
+ *     as a wash alone, is given a dotted outline in place of its wash.
+ */
+/*
+ * The paper's hues, grayed. `:not([data-print-color-none])` (an attribute
+ * nothing sets) only lifts these above the print rules' paper colors (`lab.css`).
+ */
+[data-print-color="grayscale"] :is(.lab-editor, .sermon-header):not([data-print-color-none]) {
+  --sermon-section: oklch(from var(--brand-gold) l 0 h);
+  --sermon-scripture: oklch(from var(--brand-burgundy) l 0 h);
+  --sermon-script: oklch(from var(--brand-slate) l 0 h);
+  --sermon-reminder: oklch(from var(--brand-amber) l 0 h);
+  --sermon-cue: oklch(from var(--brand-copper) l 0 h);
+  --sermon-question: oklch(from var(--brand-violet) l 0 h);
+  --sermon-illustration: oklch(from var(--brand-sage) l 0 h);
+  --sermon-application: oklch(from var(--brand-teal) l 0 h);
+  --sermon-neutral: oklch(from var(--brand-stone) l 0 h);
+  --primary: oklch(from var(--brand-emerald) l 0 h);
+  /* The paper's ink itself, which the print rules and the header draw in. */
+  --brand-ink: var(--brand-ink-gray);
+  --foreground: var(--brand-ink);
+  --muted-foreground: color-mix(in oklab, var(--brand-ink) 65%, transparent);
+  --border: color-mix(in oklab, var(--brand-ink) 16%, transparent);
+}
+[data-print-color="bw"] :is(.lab-editor, .sermon-header):not([data-print-color-none]) {
+  --brand-ink: #000;
+  --foreground: #000;
+  --muted-foreground: #000;
+  --border: #000;
+}
+
+/* Containers: their four edges, their fill, their words, and their label. */
+[data-print-color="grayscale"] .lab-editor[data-studio] :is(.lab-passage, .lab-note, .lab-script) {
+  border-color: oklch(from var(--x-top) l 0 h) oklch(from var(--x-right) l 0 h)
+    oklch(from var(--x-bottom) l 0 h) oklch(from var(--x-left) l 0 h);
+  background-color: oklch(from var(--x-fill) l 0 h);
+}
+[data-print-color="grayscale"] .lab-editor[data-studio] :is(.lab-note, .lab-script) {
+  color: oklch(from var(--x-ink) l 0 h);
+}
+[data-print-color="grayscale"]
+  .lab-editor[data-studio]
+  :is(.lab-note, .lab-script)[data-component-label]::before {
+  color: oklch(from var(--x-label) l 0 h);
+}
+[data-print-color="bw"] .lab-editor[data-studio] :is(.lab-passage, .lab-note, .lab-script) {
+  border-color: rgb(from var(--x-top) 0 0 0 / calc(alpha * 1000))
+    rgb(from var(--x-right) 0 0 0 / calc(alpha * 1000))
+    rgb(from var(--x-bottom) 0 0 0 / calc(alpha * 1000))
+    rgb(from var(--x-left) 0 0 0 / calc(alpha * 1000));
+  background-color: transparent;
+}
+[data-print-color="bw"]
+  .lab-editor[data-studio]:not([data-preset="minimal"], [data-preset="expressive"])
+  .lab-note:not(
+    [data-kind="reminder"],
+    [data-kind="cue"],
+    [data-kind="task"],
+    [data-own-appearance]
+  ) {
+  outline: 0.75pt dotted #000;
+  outline-offset: -0.75pt;
+}
+
+/* Scripture's reference, in a passage and inline. */
+[data-print-color="grayscale"] .lab-editor[data-studio] :is(.lab-passage-label, .lab-scripture) {
+  color: oklch(from var(--x-reference) l 0 h);
+}
+[data-print-color="grayscale"]
+  .lab-editor[data-studio]:not([data-preset="minimal"])
+  .lab-scripture {
+  background: color-mix(in oklab, oklch(from var(--x-reference) l 0 h) 7%, transparent);
+}
+[data-print-color="bw"] .lab-editor[data-studio] .lab-scripture {
+  background: transparent;
+}
+
+/* A point's number. */
+[data-print-color="grayscale"] .lab-editor[data-studio] p.lab-v4-point.lab-numbered::before {
+  color: oklch(from var(--x-notation) l 0 h);
+}
+
+/* The introduction and the conclusion: their fill, their opening rule, their closing hairline. */
+[data-print-color="grayscale"] .lab-editor[data-studio] > [data-frame] {
+  background-color: oklch(from var(--x-frame-fill) l 0 h);
+}
+[data-print-color="grayscale"]
+  .lab-editor[data-studio]
+  > p.lab-v4-point.lab-v4-frame-start::before {
+  border-top-color: oklch(from var(--x-frame-accent) l 0 h);
+}
+[data-print-color="grayscale"] .lab-editor[data-studio] > .lab-v4-frame-end {
+  border-bottom-color: oklch(from var(--x-frame-border) l 0 h);
+}
+[data-print-color="grayscale"]
+  .lab-editor[data-studio]
+  > .lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script)::after {
+  border-top-color: oklch(from var(--x-frame-border) l 0 h);
+}
+[data-print-color="bw"] .lab-editor[data-studio] > [data-frame] {
+  background-color: transparent;
+}
+[data-print-color="bw"] .lab-editor[data-studio] > p.lab-v4-point.lab-v4-frame-start::before {
+  border-top-color: rgb(from var(--x-frame-accent) 0 0 0 / calc(alpha * 1000));
+}
+[data-print-color="bw"] .lab-editor[data-studio] > .lab-v4-frame-end {
+  border-bottom-color: rgb(from var(--x-frame-border) 0 0 0 / calc(alpha * 1000));
+}
+[data-print-color="bw"]
+  .lab-editor[data-studio]
+  > .lab-v4-frame-end:is(.lab-passage, .lab-note, .lab-script)::after {
+  border-top-color: rgb(from var(--x-frame-border) 0 0 0 / calc(alpha * 1000));
+}
+
+/* A quotation's rule. */
+[data-print-color="grayscale"] .lab-editor[data-studio] blockquote {
+  border-left-color: oklch(from var(--k-quote-line) l 0 h);
+}
+[data-print-color="bw"] .lab-editor[data-studio] blockquote {
+  border-left-color: rgb(from var(--k-quote-line) 0 0 0 / calc(alpha * 1000));
 }

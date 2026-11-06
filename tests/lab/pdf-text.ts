@@ -209,3 +209,98 @@ export function pdfLines(
 
 /** Text compared without spaces: the PDF does not always draw the space glyph. */
 export const squeeze = (text: string) => text.replace(/\s+/g, "");
+
+/** A color a PDF's content paints with (A4.4): fill or stroke, as RGB from 0 to 1. */
+export type PdfColor = { op: "fill" | "stroke"; rgb: [number, number, number] };
+
+/**
+ * Every color set in the PDF's page and form content (A4.4): `rg`/`RG`
+ * (RGB), `g`/`G` (gray), and `k`/`K` (CMYK, converted naively), so a test
+ * can say what a print was painted with. Images and fonts are skipped; a
+ * pattern or a shading would not be seen (Chrome paints solid colors here).
+ */
+export function pdfColors(bytes: Buffer): PdfColor[] {
+  const source = bytes.toString("latin1");
+  const colors: PdfColor[] = [];
+  // Chrome writes numbers such as `.0706` (no leading zero).
+  const pattern =
+    /(?<![\w.])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+(rg|RG)(?!\w)|(?<![\w.])([-\d.]+)\s+(g|G)(?!\w)|(?<![\w.])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+(k|K)(?!\w)/g;
+  for (const { dict, stream } of objects(source, bytes).values()) {
+    if (!stream) continue;
+    if (/\/Subtype\s*\/Image|\/Length1|\/FontFile|\/Type\s*\/XRef/.test(dict)) continue;
+    const content = stream.toString("latin1");
+    if (content.includes("begincmap")) continue;
+    for (const match of content.matchAll(pattern)) {
+      if (match[4]) {
+        colors.push({
+          op: match[4] === "rg" ? "fill" : "stroke",
+          rgb: [Number(match[1]), Number(match[2]), Number(match[3])],
+        });
+      } else if (match[6]) {
+        const v = Number(match[5]);
+        colors.push({ op: match[6] === "g" ? "fill" : "stroke", rgb: [v, v, v] });
+      } else if (match[11]) {
+        const [c, m, y, k] = [7, 8, 9, 10].map((i) => Number(match[i]));
+        const to = (v: number) => (1 - v) * (1 - k);
+        colors.push({ op: match[11] === "k" ? "fill" : "stroke", rgb: [to(c), to(m), to(y)] });
+      }
+    }
+  }
+  return colors;
+}
+
+/** The PDF's page boxes (A4.4), in points: [width, height] each. */
+export function pdfPageSizes(bytes: Buffer): [number, number][] {
+  const source = bytes.toString("latin1");
+  return [
+    ...source.matchAll(/\/MediaBox\s*\[\s*([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s*\]/g),
+  ].map((m) => [Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])]);
+}
+
+/**
+ * The filled rectangles of a PDF that cover at least `share` of a page in a
+ * dark color (A4.4): a page drawn dark. Follows `cm`, `q`, and `Q` for scale,
+ * the current fill color (`rg`, `g`), and `re` … `f`.
+ */
+export function pdfDarkAreas(
+  bytes: Buffer,
+  share = 0.2,
+): { page: number; rgb: number[]; share: number }[] {
+  const source = bytes.toString("latin1");
+  const table = objects(source, bytes);
+  const kids = source.match(/\/Type\s*\/Pages[^]*?\/Kids\s*\[([^\]]*)\]/);
+  const ids = kids ? [...kids[1].matchAll(/(\d+) 0 R/g)].map((match) => Number(match[1])) : [];
+  const found: { page: number; rgb: number[]; share: number }[] = [];
+  ids.forEach((id, page) => {
+    const dict = table.get(id)?.dict ?? "";
+    const contents = dict.match(/\/Contents\s+(\d+) 0 R/);
+    const box = dict.match(/\/MediaBox\s*\[\s*[-\d.]+\s+[-\d.]+\s+([-\d.]+)\s+([-\d.]+)\s*\]/);
+    const stream = contents ? table.get(Number(contents[1]))?.stream : null;
+    if (!stream || !box) return;
+    const pageArea = Number(box[1]) * Number(box[2]);
+    let scale = 1;
+    const saved: number[] = [];
+    let fill = [0, 0, 0];
+    let rect = 0;
+    const tokens = stream
+      .toString("latin1")
+      .matchAll(
+        /([-\d.]+)\s+[-\d.]+\s+[-\d.]+\s+([-\d.]+)\s+[-\d.]+\s+[-\d.]+\s+cm|(?<![\w.])([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+rg(?!\w)|(?<![\w.])([-\d.]+)\s+g(?!\w)|[-\d.]+\s+[-\d.]+\s+([-\d.]+)\s+([-\d.]+)\s+re(?!\w)|(?<![\w/])(q|Q|f\*?|n|S|B)(?![\w])/g,
+      );
+    for (const t of tokens) {
+      if (t[1] !== undefined) scale *= Math.sqrt(Math.abs(Number(t[1]) * Number(t[2])));
+      else if (t[3] !== undefined) fill = [Number(t[3]), Number(t[4]), Number(t[5])];
+      else if (t[6] !== undefined) fill = [Number(t[6]), Number(t[6]), Number(t[6])];
+      else if (t[7] !== undefined) rect = Math.abs(Number(t[7]) * Number(t[8])) * scale * scale;
+      else if (t[9] === "q") saved.push(scale);
+      else if (t[9] === "Q") scale = saved.pop() ?? scale;
+      else if (t[9]?.startsWith("f")) {
+        const lum = 0.2126 * fill[0] + 0.7152 * fill[1] + 0.0722 * fill[2];
+        if (rect / pageArea >= share && lum < 0.5)
+          found.push({ page, rgb: fill, share: rect / pageArea });
+        rect = 0;
+      } else rect = 0;
+    }
+  });
+  return found;
+}

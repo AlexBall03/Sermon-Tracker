@@ -5,8 +5,8 @@ import { useEditorState, type Editor } from "@tiptap/react";
 import { Plus } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
-import { headerOffset, pageInForce, printLayoutOf } from "@/features/editor-lab/pagination/plugin";
-import { paperKey } from "@/features/editor-lab/v4/paper";
+import { headerOffset, pageInForce } from "@/features/editor-lab/pagination/plugin";
+import { paperShown } from "@/features/editor-lab/v4/paper";
 import { subtitleSchema } from "@/features/editor-lab/styles/model";
 import { useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
@@ -75,10 +75,8 @@ export function SermonHeader({
         right: page?.setup.margins.right ?? 0,
         // The sheet's paper, as the editor has it (`v4/paper.ts`): the header sits on the page,
         // so it takes the paper's colors too, not the application theme's (white paper in a dark theme).
-        paper:
-          printLayoutOf(current.state)?.layout === "print"
-            ? (paperKey.getState(current.state) ?? null)
-            : null,
+        // In Regular Layout too, once this device chose a paper (A4.4).
+        paper: paperShown(current.state),
       };
     },
     equalityFn: (a, b) =>

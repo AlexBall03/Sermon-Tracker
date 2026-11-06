@@ -40,6 +40,8 @@ import { SermonHeader, type TitleControl } from "./header/sermon-header";
 import { initialWorkspaceLayout, useDesktop, workspaceLayout } from "./layout";
 import { readFolded, storeFolded } from "./folding-storage";
 import { noticeText } from "./notice";
+import { readPaper } from "./presentation/preferences";
+import { useEditorPaper, usePrintColorMode } from "./presentation/use-presentation";
 import { InsertMenu } from "./insert-menu";
 import { StructureTools } from "./structure-tools";
 import { ViewMenu } from "./view-menu";
@@ -159,6 +161,8 @@ export function SermonWorkspace({
           labels: { collapse: viewWords.collapsePoint, expand: viewWords.expandPoint },
         },
         openInBible: openInBible ?? null,
+        // This device's paper (A4.4), read whenever a document is loaded.
+        paper: readPaper,
       }).concat(extra ?? []),
     // `extra`, `foldKey`, and `openInBible` are read when the editor is made, as it reads its extensions once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,6 +199,9 @@ export function SermonWorkspace({
   });
 
   const { view, print } = page;
+  // The paper (A4.4) and the print color mode: this device's, never the document's.
+  const paper = useEditorPaper(editor);
+  usePrintColorMode();
 
   // A desktop shows Print Layout only; a smaller window starts in Regular (`layout.ts`).
   const desktop = useDesktop();
@@ -265,10 +272,12 @@ export function SermonWorkspace({
           {/* The writing area. */}
           <div className="relative flex min-w-0 flex-1 flex-col lg:min-h-0">
             <main
+              // In Regular Layout the writing area is the paper (A4.4); in Print Layout it is the desk.
+              data-paper={!print && paper ? paper : undefined}
               className={cn(
                 print
                   ? "lab-desk min-w-0 flex-1 px-3 pb-10 sm:px-6 lg:min-h-0 lg:overflow-auto lg:overscroll-contain"
-                  : "min-w-0 flex-1 bg-surface pb-10 lg:min-h-0 lg:overflow-auto lg:overscroll-contain",
+                  : "sermon-paper min-w-0 flex-1 bg-surface pb-10 text-foreground lg:min-h-0 lg:overflow-auto lg:overscroll-contain",
               )}
             >
               {refused && (

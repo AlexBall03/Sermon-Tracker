@@ -237,6 +237,18 @@ export function renderColor(
     : adaptFill(base, themeOf(target));
 }
 
+/**
+ * A color as Grayscale printing draws it (A4.4): its OKLCH lightness kept,
+ * its chroma taken out, so a darker color stays darker and contrast is about
+ * what it was. The same transformation the print rules apply in CSS
+ * (`grayCss`, `render.ts`), worked out here for colors written inline.
+ */
+export function grayOf(hex: string): string {
+  if (!isHex(hex)) return hex;
+  const { l } = toLch(hex);
+  return fromLch({ l, c: 0, h: 0 });
+}
+
 /** Both screen variants at once; paper is `light`. */
 export function colorVariants(value: ColorValue, kind: ColorKind) {
   const light = renderColor(value, kind, "light");

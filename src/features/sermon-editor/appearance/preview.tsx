@@ -8,10 +8,12 @@ import { findComponent } from "@/features/editor-lab/styles/component-node";
 import { isDirty, type Draft } from "@/features/editor-lab/styles/draft";
 import type { ComponentKind, DocumentStyles } from "@/features/editor-lab/styles/model";
 import { labV4Extensions, loadV4 } from "@/features/editor-lab/v4/extensions";
+import type { PaperTheme } from "@/features/editor-lab/v4/paper";
 import { PageScaler } from "@/features/editor-lab/components/page-scaler";
 import type { PageSetup } from "@/features/editor-lab/pagination/geometry";
 import { pageInForce, printLayoutOf } from "@/features/editor-lab/pagination/plugin";
 import { SermonHeader } from "../header/sermon-header";
+import type { PrintColorMode } from "../presentation/preferences";
 import type { Dictionaries } from "@/i18n";
 import { useLocale, useT } from "@/i18n/client";
 import { cn } from "@/lib/utils";
@@ -163,6 +165,7 @@ export function AppearancePreview({
   caption,
   className,
   pages = false,
+  printColor = null,
 }: {
   session: AppearanceSession;
   /** The preview's blocks; read again only when this array changes (memoize it). */
@@ -173,6 +176,8 @@ export function AppearancePreview({
   className?: string;
   /** Show the sample as pages, with the sermon header (Header & Footer, A4.3). */
   pages?: boolean;
+  /** Show the pages as a print in this color mode would draw them, on white paper (Printing, A4.4). */
+  printColor?: PrintColorMode | null;
 }) {
   const live = session.editor;
   const sampleTitle = useT("editorLab").appearance.headerFooter.sampleTitle;
@@ -188,7 +193,9 @@ export function AppearancePreview({
     <PreviewSurface
       attrs={attrs}
       // The paper the outline is drawn on (Print Layout), so colors show as they will there.
-      paper={live.view.dom.getAttribute("data-paper")}
+      // A print preview is always on white paper: a print never takes the screen's paper (A4.4).
+      paper={printColor ? "light" : live.view.dom.getAttribute("data-paper")}
+      printColor={printColor}
       // The outline's committed styles and layout, followed (an Undo underneath shows here too).
       styles={session.stored}
       layout={live.state.doc.attrs.layout as unknown}
@@ -232,7 +239,10 @@ export function PreviewSurface({
   caption,
   className,
   pages = null,
+  printColor = null,
 }: {
+  /** Draw the pages as a print in this color mode would (A4.4): the same print rules, on screen. */
+  printColor?: PrintColorMode | null;
   /**
    * Draw the sample as pages in Print Layout, with the sermon header (A4.3):
    * the same paginator, header, and footer as the outline, read-only.
@@ -263,15 +273,21 @@ export function PreviewSurface({
   // One read-only editor for as long as the window is open (and drawn the same way).
   useEffect(() => {
     if (!host.current) return;
+    // The outline's paper (A4.4): view state, read again each time a document is loaded, so the header follows it too.
+    const shown: PaperTheme = paper === "light" || paper === "dark" ? paper : "automatic";
     const editor = new Editor({
       element: host.current,
       editable: false,
-      extensions: labV4Extensions({ locale, preset: "balanced", componentLabels: labels }),
+      extensions: labV4Extensions({
+        locale,
+        preset: "balanced",
+        componentLabels: labels,
+        paper: () => shown,
+      }),
       editorProps: {
         attributes: {
           class: "lab-editor",
           "data-testid": "appearance-preview-editor",
-          ...(paper ? { "data-paper": paper } : {}),
         },
       },
     });
@@ -351,6 +367,8 @@ export function PreviewSurface({
         className,
       )}
       data-testid="appearance-preview"
+      // A preview is never printed, even while its window is open (`lab.css`).
+      data-print-never=""
     >
       <figcaption className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
         {caption}
@@ -370,7 +388,14 @@ export function PreviewSurface({
       >
         {asPages ? (
           // The pages, scaled to the box, with the sermon header read-only (A4.3).
-          <div aria-hidden inert className="p-2">
+          <div
+            aria-hidden
+            inert
+            className="p-2"
+            // The print color mode shown (A4.4): the attribute the print rules read, as `print-job.ts` sets it on <html>.
+            data-print-color={printColor ?? undefined}
+            data-testid="appearance-preview-pages"
+          >
             <PageScaler layout="print" pageWidth={width}>
               <div className="sermon-page relative">
                 {preview && !preview.isDestroyed && pages && (

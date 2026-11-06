@@ -46,6 +46,8 @@
   --brand-gold: #a47b35;
   --brand-gold-bright: #d5b574;
   --brand-ink: #17181b;
+  /* The paper's ink as Grayscale printing draws it (A4.4): its lightness, no hue. */
+  --brand-ink-gray: oklch(from var(--brand-ink) l 0 h);
   --brand-paper: #f7f5f0;
   --brand-ivory: #efebe2;
   --brand-charcoal: #0e0f11;
@@ -162,7 +164,15 @@
   --elevation-focus: 0 0 0 3px color-mix(in oklab, var(--brand-emerald) 16%, transparent);
 }
 
-.dark {
+/*
+ * The dark theme's colors. A sermon written on dark paper (A4.4,
+ * `data-paper="dark"`, `v4/paper.ts`) takes them too, in either theme, on the
+ * document surface only: the editor, its header, and Regular Layout's writing
+ * area (`.sermon-paper`). Never the application's bar, menus, dialogs, or
+ * toolbars, which follow the theme; and never in print (`lab.css`).
+ */
+.dark,
+:is(.lab-editor, .sermon-header, .sermon-paper)[data-paper="dark"] {
   --background: var(--brand-charcoal);
   --foreground: var(--brand-ivory);
   --surface: #17191c;

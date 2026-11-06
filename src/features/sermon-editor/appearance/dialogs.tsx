@@ -1,12 +1,14 @@
 "use client";
 
 import type { Editor } from "@tiptap/react";
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { findComponent } from "@/features/editor-lab/styles/component-node";
 import { ComponentAppearance } from "./component-appearance";
 import { OutlineSettings, type OutlineSettingsOptions } from "./outline-settings";
 import { componentAtSelection, type Target } from "./target";
+import type { PrintColorMode } from "../presentation/preferences";
+import { printWith } from "../presentation/print-job";
 
 /*
  * How the outline editor opens its settings (A1-UI.2B.2). Outline Settings
@@ -57,12 +59,36 @@ export function AppearanceDialogsProvider({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState<Open>(null);
+  /*
+   * A print asked for in Outline Settings → Printing (A4.4). The window closes
+   * first; the print starts only once it is gone from the page (this effect
+   * runs after React has removed it) and a frame has been drawn, so nothing
+   * of the window or its preview is in the page being printed. The mode is
+   * given to the print job only when the print starts (`printWith`), so a
+   * print that never starts (the page left, the workspace unmounted, another
+   * window opened first) leaves no request behind.
+   */
+  const [printRequest, setPrintRequest] = useState<{ mode: PrintColorMode } | null>(null);
+  useEffect(() => {
+    if (!printRequest || open !== null) return;
+    const frame = requestAnimationFrame(() => {
+      setPrintRequest(null);
+      if (!editor || editor.isDestroyed) return;
+      printWith(printRequest.mode);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [printRequest, open, editor]);
   const value = useMemo<AppearanceDialogs>(
     () => ({
-      openOutlineSettings: (options = {}) => setOpen({ kind: "outline", options }),
+      // Opening a window drops a print not yet started: it would print with the window open.
+      openOutlineSettings: (options = {}) => {
+        setPrintRequest(null);
+        setOpen({ kind: "outline", options });
+      },
       openComponentAppearance: (id) => {
         const target = editor ? resolveTarget(editor, id) : null;
         if (!target) return false;
+        setPrintRequest(null);
         setOpen({ kind: "component", target });
         return true;
       },
@@ -75,7 +101,15 @@ export function AppearanceDialogsProvider({
     <Context.Provider value={value}>
       {children}
       {editor && open?.kind === "outline" && (
-        <OutlineSettings editor={editor} initial={open.options} onClose={close} />
+        <OutlineSettings
+          editor={editor}
+          initial={open.options}
+          onClose={close}
+          onPrint={(mode) => {
+            setOpen(null);
+            setPrintRequest({ mode });
+          }}
+        />
       )}
       {editor && open?.kind === "component" && (
         <ComponentAppearance

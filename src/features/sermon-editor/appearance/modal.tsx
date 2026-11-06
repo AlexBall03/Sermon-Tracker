@@ -57,6 +57,8 @@ export function AppearanceModal({
         <DialogContent
           placement="settings"
           data-testid={testId}
+          // Never printed with the sermon, even while open (A4.4, `lab.css`).
+          data-print-never=""
           finalFocus={outline}
           className={cn("text-foreground", className)}
         >

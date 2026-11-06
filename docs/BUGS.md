@@ -84,6 +84,24 @@ setSelection must point at the current document`. It now answers only about
   their position (left, centre, right) and weight; they follow the real
   pagination, and the screen's Print Layout and the printed pages agree.
 
+## BUG-014: a dark theme printed every page on a near-black canvas
+
+- **Severity:** P1 (printing). **Status:** Fixed (A4.4, 5 November 2026).
+- **Found** by `tests/lab/print-color.spec.ts` (a PDF reader of fills, `pdfDarkAreas` in `tests/lab/pdf-text.ts`): in a Turbopack dev bundle with the dark theme, Chrome's PDF had an opaque `#121212` rectangle covering every page, under the sheet.
+- **Cause:** the root is transparent in print (BUG-010's review) while `<html>` keeps the dark `color-scheme` next-themes gives it, so Chrome paints its own dark canvas behind the page.
+- **Fix:** `html:has(.lab-editor[data-studio][data-layout="print"]) { color-scheme: light !important; }` in print (`v4/lab-v4.css`).
+- **Evidence:** after the fix, no dark fill of a fifth of a page or more in any mode, paper, theme, or editing paper (the spec's three papers × three modes from a dark theme on dark paper).
+- **Origin not proven:** the baseline cannot be served on Turbopack from a `git archive` copy (TOOL-001), and on webpack neither tree shows it. A4.4 changed nothing on `<html>` or its `color-scheme`, so it is most likely pre-existing; recorded as found and fixed in A4.4.
+- **Unchecked:** Firefox and Safari printing (they may treat a dark canvas differently).
+
+## BUG-013: a preview of pages covered its first lines with the header
+
+- **Severity:** P2 (a preview only; never the outline or a print). **Status:** Fixed (A4.4, 5 November 2026).
+- **Found** in A4.4's Printing preview, then seen in A4.3's Header & Footer preview on the lab's fixtures: the title was drawn over the introduction.
+- **Cause:** `.lab-appearance-preview .lab-editor` gave every preview editor a box's padding (16 px on top), which outranked Print Layout's paper margins (`--first-top`, `lab.css`), so the text started at the top of the page instead of below the header. The state was right (`--first-top: 96px`); only the CSS was wrong.
+- **Fix:** the box's padding, width, and growth are for a flowing preview only (`:not([data-layout="print"])`); a preview of pages is drawn as the paper is.
+- **Evidence:** computed `padding-top` is the first page's top (96 px) and the header no longer overlaps (screenshots in the A4.4 handoff's run).
+
 ## BUG-012: the sermon header in Regular-started prints, narrow papers, and dark themes
 
 - **Severity:** P1 (printing). **Status:** Fixed (A4.3 commit-readiness check, 5 November 2026).

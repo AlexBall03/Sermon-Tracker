@@ -203,5 +203,12 @@ export const sermonEditor: Untranslated<typeof english> = {
     collapseScripture: "Contraer todos los pasajes",
     collapsePoint: "Contraer punto",
     expandPoint: "Expandir punto",
+    paper: {
+      label: "Papel",
+      automatic: "Automático",
+      light: "Papel claro",
+      dark: "Papel oscuro",
+      hint: "Papel en este dispositivo. Siempre se imprime en papel blanco.",
+    },
   },
 };

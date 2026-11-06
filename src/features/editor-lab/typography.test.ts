@@ -270,8 +270,10 @@ describe("drawing, and copy and paste", () => {
     expect(html).toContain("font-size: 11pt");
     expect(html).toContain('data-color-mode="exact"');
     expect(html).toContain('data-color-dark="#fdba74"');
-    // The light variant inline (jsdom writes it as rgb()), the dark one in a variable.
-    expect(html).toMatch(/class="lab-ink" style="color: rgb\([\d, ]+\); --ink-d: #[0-9a-f]{6};"/);
+    // The light variant inline (jsdom writes it as rgb()), the dark one and Grayscale printing's (A4.4) in variables.
+    expect(html).toMatch(
+      /class="lab-ink" style="color: rgb\([\d, ]+\); --ink-d: #[0-9a-f]{6}; --ink-g: #[0-9a-f]{6};"/,
+    );
     expect(html).toContain("padding-top: 18pt");
     expect(html).toContain("text-indent: -18pt");
     const element = document.createElement("div");
@@ -341,7 +343,8 @@ describe("document styles", () => {
     );
     expect(sheet).toContain("padding-bottom: 6pt");
     expect(sheet).toMatch(
-      /@media screen \{ \.dark .*\[data-style-name="title"\] \{ color: #[0-9a-f]{6}; \}/,
+      // The dark theme without light paper, or dark paper in either theme (A4.4).
+      /@media screen \{ :is\(\.dark [^)]*:not\(\[data-paper="light"\]\), [^)]*\[data-paper="dark"\]\) .*\[data-style-name="title"\] \{ color: #[0-9a-f]{6}; \}/,
     );
   });
 

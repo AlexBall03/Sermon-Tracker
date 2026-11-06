@@ -18,7 +18,7 @@ import { PointFolding, type FoldingOptions } from "./folding";
 import { HeldSelection } from "./held-selection";
 import { V4Keymap } from "./keymap";
 import { ComponentLabelsV4, type ComponentLabels } from "./labels";
-import { PaperV4 } from "./paper";
+import { PaperV4, type PaperTheme } from "./paper";
 import type { V4Notice } from "./model";
 import { NumberingV4, type RoleNumbering } from "./numbering";
 import { V4Plugins } from "./plugins";
@@ -40,6 +40,8 @@ export type V4ExtensionOptions = {
   folding?: Partial<FoldingOptions>;
   /** A passage's way to the Bible reader (A3.1); none where the page gives none. */
   openInBible?: PassageLink | null;
+  /** The paper to draw (A4.4): this device's choice, read each time a document is loaded; Automatic when left out. */
+  paper?: () => PaperTheme;
 };
 
 /**
@@ -65,6 +67,7 @@ export function labV4Extensions({
   componentLabels,
   folding,
   openInBible = null,
+  paper,
 }: V4ExtensionOptions = {}): Extensions {
   const ids = newId ?? (() => crypto.randomUUID());
   return [
@@ -83,7 +86,7 @@ export function labV4Extensions({
     HeldSelection,
     V4Keymap,
     ComponentLabelsV4.configure({ labels: componentLabels ?? null }),
-    PaperV4,
+    paper ? PaperV4.configure({ initial: paper }) : PaperV4,
     GapCaret,
     ClickPlacement,
     PassageExpansion,

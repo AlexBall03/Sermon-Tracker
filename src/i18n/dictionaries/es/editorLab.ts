@@ -63,6 +63,7 @@ export const editorLab: Untranslated<typeof english> = {
       appearance: "Apariencia",
       numbering: "Numeración",
       headerFooter: "Encabezado y pie",
+      printing: "Impresión",
     },
     tabsLabel: "Qué personalizar",
     tabs: { outline: "Bosquejo", components: "Componentes", levels: "Niveles" },
@@ -111,6 +112,28 @@ export const editorLab: Untranslated<typeof english> = {
       previewHint:
         "La vista previa muestra dos páginas con tus elecciones antes de aplicarlas. Los números y los encabezados aparecen en el diseño de impresión y al imprimir.",
       sampleTitle: "La lámpara y la luz",
+    },
+    printing: {
+      hint: "Cómo imprime sermones este dispositivo. Estas opciones no forman parte del bosquejo y nunca lo cambian.",
+      colorMode: "Colores de impresión",
+      modes: { color: "Color", grayscale: "Escala de grises", bw: "Blanco y negro" },
+      modeHints: {
+        color: "Imprime los colores del bosquejo sobre papel blanco.",
+        grayscale:
+          "Imprime cada color como un tono de gris, conservando lo claro u oscuro que es, para que los componentes se distingan.",
+        bw: "Imprime texto negro sobre papel blanco sin rellenos. Los componentes se distinguen por sus líneas y etiquetas, con la menor cantidad de tinta posible.",
+      },
+      defaultIs: (mode: string): string => `Predeterminado en este dispositivo: ${mode}`,
+      print: "Imprimir",
+      printHint:
+        "Imprime este sermón una vez con los colores elegidos aquí. Tu opción predeterminada no cambia.",
+      pendingFirst: "Aplica o cancela tus cambios de apariencia antes de imprimir.",
+      makeDefault: "Usar como predeterminado en este dispositivo",
+      madeDefault: (mode: string): string =>
+        `${mode} es ahora el predeterminado en este dispositivo.`,
+      shortcutHint:
+        "Al imprimir desde el menú del navegador o con Ctrl+P (⌘P) se usa la opción predeterminada. El papel oscuro nunca se imprime: el papel siempre es blanco.",
+      preview: (mode: string): string => `Páginas de muestra · impresas en ${mode}`,
     },
     presetUpdate: "Hay un diseño actualizado de este estilo predefinido.",
     presetUpdateUse: "Usar el diseño actualizado",
